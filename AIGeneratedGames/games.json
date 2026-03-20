@@ -101,5 +101,6 @@
   { "dir": "game-47", "title": "Retro Bowl Runner", "input": "both", "series": "football", "genre": "NES" },
   { "dir": "game-48", "title": "Football Pong", "input": "keyboard", "series": "football", "genre": "Classic" },
   { "dir": "game-49", "title": "Kaiju Bowl", "input": "keyboard", "series": "football", "genre": "Kaiju" },
-  { "dir": "game-50", "title": "The Waterboy", "input": "keyboard", "series": "football", "genre": "Simulation" }
+  { "dir": "game-50", "title": "The Waterboy", "input": "keyboard", "series": "football", "genre": "Simulation" },
+  { "dir": "game-51", "title": "Uptown Charlotte 3D", "input": "keyboard", "series": "charlotte" }
 ]

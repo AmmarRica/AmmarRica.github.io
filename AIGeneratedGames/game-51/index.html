@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Uptown Charlotte 3D – Helicopter Tour</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #87ceeb; font-family: Arial, sans-serif; }
+canvas#c { display: block; }
+
+#overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.82);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: #fff; z-index: 200;
+}
+#overlay h1 { font-size: 2.2rem; color: #00bfff; margin-bottom: 6px; }
+#overlay .sub { font-size: 1rem; color: #aad; margin-bottom: 18px; }
+#overlay table { border-collapse: collapse; font-size: 0.93rem; color: #ddd; margin-bottom: 20px; }
+#overlay td { padding: 3px 14px; }
+#overlay td:first-child { color: #7df; font-weight: bold; text-align: right; }
+#startBtn {
+  padding: 13px 36px; font-size: 1.1rem;
+  background: #00bfff; border: none; color: #000;
+  cursor: pointer; border-radius: 6px; font-weight: bold;
+  transition: background .2s;
+}
+#startBtn:hover { background: #33ccff; }
+
+#crosshair {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  color: rgba(255,255,255,0.7); font-size: 22px;
+  pointer-events: none; z-index: 50; display: none;
+  text-shadow: 0 0 4px #000;
+}
+#building-label {
+  position: fixed; top: 18px; left: 50%;
+  transform: translateX(-50%);
+  color: #fff; font-size: 1rem; font-weight: bold;
+  background: rgba(0,0,0,0.65);
+  padding: 6px 18px; border-radius: 20px;
+  z-index: 50; display: none;
+  text-align: center; white-space: pre-line;
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+#hud {
+  position: fixed; bottom: 16px; left: 16px;
+  color: #fff; font-size: 0.82rem;
+  background: rgba(0,0,0,0.5);
+  padding: 8px 12px; border-radius: 6px;
+  z-index: 50; line-height: 1.6;
+  pointer-events: none;
+}
+#autoBtn {
+  position: fixed; bottom: 16px; right: 16px;
+  padding: 8px 16px; font-size: 0.85rem;
+  background: rgba(0,0,0,0.6); color: #7df;
+  border: 1px solid #7df; cursor: pointer;
+  border-radius: 6px; z-index: 50;
+}
+#autoBtn:hover { background: rgba(0,120,200,0.4); }
+nav {
+  position: fixed; top: 10px; left: 12px;
+  z-index: 300;
+}
+nav a {
+  color: #a78bfa; text-decoration: none; font-size: 14px;
+  background: rgba(0,0,0,0.55); padding: 5px 10px;
+  border-radius: 4px;
+}
+nav a:hover { color: #c4b5fd; }
+</style>
+</head>
+<body>
+<nav><a href="../">← Games</a></nav>
+<canvas id="c"></canvas>
+
+<div id="overlay">
+  <h1>🏙️ Uptown Charlotte 3D</h1>
+  <p class="sub">Helicopter tour of Downtown Charlotte, NC</p>
+  <table>
+    <tr><td>W / S</td><td>Fly forward / backward</td></tr>
+    <tr><td>A / D</td><td>Strafe left / right</td></tr>
+    <tr><td>E / Q</td><td>Ascend / Descend</td></tr>
+    <tr><td>Mouse</td><td>Look around</td></tr>
+    <tr><td>Shift</td><td>Boost speed</td></tr>
+    <tr><td>Esc</td><td>Release mouse / pause</td></tr>
+  </table>
+  <button id="startBtn">🚁 Start Flying!</button>
+</div>
+
+<div id="crosshair">+</div>
+<div id="building-label"></div>
+<div id="hud">
+  Alt: <span id="altVal">0</span> ft &nbsp;|&nbsp;
+  Speed: <span id="spdVal">0</span> mph
+  <br>
+  <span style="color:#aaa;font-size:0.75rem">Click screen to fly · Esc to pause · Tab: auto-tour</span>
+</div>
+<button id="autoBtn">▶ Auto Tour</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─────────────────────────────────────────────
+//  SCENE SETUP
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.FogExp2(0xa8c8e8, 0.0015);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 3000);
+camera.position.set(0, 180, 320);
+
+// ─────────────────────────────────────────────
+//  LIGHTING
+// ─────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+
+const sun = new THREE.DirectionalLight(0xfffde7, 1.1);
+sun.position.set(250, 500, 150);
+sun.castShadow = true;
+sun.shadow.mapSize.setScalar(2048);
+sun.shadow.camera.near = 10;
+sun.shadow.camera.far = 2500;
+sun.shadow.camera.left = sun.shadow.camera.bottom = -600;
+sun.shadow.camera.right = sun.shadow.camera.top = 600;
+scene.add(sun);
+
+const hemi = new THREE.HemisphereLight(0x87ceeb, 0x556644, 0.4);
+scene.add(hemi);
+
+// ─────────────────────────────────────────────
+//  HELPER: canvas window texture
+// ─────────────────────────────────────────────
+function makeWindowTex(baseHex, lit = true) {
+  const cv = document.createElement('canvas');
+  cv.width = 128; cv.height = 256;
+  const ct = cv.getContext('2d');
+  ct.fillStyle = '#' + baseHex.toString(16).padStart(6,'0');
+  ct.fillRect(0, 0, 128, 256);
+  // window rows
+  const cols = 6, rows = 20;
+  const pw = 128/cols, ph = 256/rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const on = Math.random() > (lit ? 0.25 : 0.75);
+      ct.fillStyle = on ? (Math.random()>0.3 ? '#ffffcc' : '#ccddff') : 'rgba(0,0,0,0.4)';
+      ct.fillRect(c*pw+2, r*ph+2, pw-4, ph-4);
+    }
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+// ─────────────────────────────────────────────
+//  GROUND PLANE
+// ─────────────────────────────────────────────
+(function buildGround() {
+  // Base tarmac
+  const g = new THREE.PlaneGeometry(3000, 3000);
+  const m = new THREE.MeshLambertMaterial({ color: 0x3a3a3a });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.rotation.x = -Math.PI/2;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+
+  // Sidewalk blocks between buildings
+  const blockMat = new THREE.MeshLambertMaterial({ color: 0x5a5a5a });
+  const blocks = [
+    [-200,-200,400,400], // full uptown area as lighter block
+  ];
+  const uptown = new THREE.Mesh(new THREE.PlaneGeometry(400,400), new THREE.MeshLambertMaterial({color:0x4a4a4a}));
+  uptown.rotation.x = -Math.PI/2; uptown.position.set(0,0.05,0); scene.add(uptown);
+})();
+
+// ─────────────────────────────────────────────
+//  STREETS
+// ─────────────────────────────────────────────
+function addRoad(x, z, w, d, color=0x222222) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d), new THREE.MeshLambertMaterial({color}));
+  m.rotation.x = -Math.PI/2; m.position.set(x,0.15,z); scene.add(m);
+}
+// N-S streets (x = fixed, run along z)
+[-100,-50,0,50,100].forEach(x => addRoad(x, 0, 7, 400));
+// E-W streets (z = fixed, run along x)
+[-100,-50,0,50,100].forEach(z => addRoad(0, z, 400, 7));
+// Diagonal/extra
+addRoad(-75, 75, 7, 200, 0x222222);  // Brookshire Fwy approximate
+// Yellow center lines
+function addCenterLine(x,z,w,d) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d), new THREE.MeshLambertMaterial({color:0xffcc00}));
+  m.rotation.x = -Math.PI/2; m.position.set(x,0.2,z); scene.add(m);
+}
+[-100,-50,0,50,100].forEach(x => addCenterLine(x,0,0.5,400));
+[-100,-50,0,50,100].forEach(z => addCenterLine(0,z,400,0.5));
+
+// ─────────────────────────────────────────────
+//  PARKS / GREEN AREAS
+// ─────────────────────────────────────────────
+function addPark(x, z, w, d, col=0x2d7a2d) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d), new THREE.MeshLambertMaterial({color:col}));
+  m.rotation.x = -Math.PI/2; m.position.set(x,0.25,z); scene.add(m);
+}
+addPark(  75,  70, 70, 55, 0x2d8c2d);  // Marshall Park
+addPark( -50, -70, 55, 45, 0x3a963a);  // Romare Bearden Park
+addPark(  75, -80, 50, 50, 0x2d8c2d);  // First Ward Park
+addPark(  20,  30, 30, 25, 0x4aaa4a);  // Small plaza
+addPark(-110,  40, 40, 35, 0x3a963a);  // Greenway
+
+// ─────────────────────────────────────────────
+//  BUILDINGS DATA
+//  x/z = center, w/d = footprint width/depth, h = height,
+//  col = main color (hex), label = display name, spires/dome/etc.
+// ─────────────────────────────────────────────
+const BUILDINGS = [
+  // ── SIGNATURE SKYSCRAPERS ──────────────────────────────────────────────
+  {
+    id:'bofa', name:'Bank of America\nCorporate Center',
+    x:-18, z:-18, w:22, d:22, h:235, col:0x8899aa,
+    roof:'crown', desc:'Tallest in Charlotte, 60 floors, opened 1992'
+  },
+  {
+    id:'duke', name:'Duke Energy Center',
+    x:40, z:22, w:20, d:20, h:185, col:0x2255aa,
+    roof:'flat', glass:true, desc:'48 floors, distinctive blue-glass curtain wall'
+  },
+  {
+    id:'hearst', name:'Hearst Tower\n(300 S. Tryon)',
+    x:4, z:50, w:18, d:18, h:182, col:0xddccaa,
+    roof:'flat', xbrace:true, desc:'47 floors, distinctive diamond X-bracing'
+  },
+  {
+    id:'wf1', name:'One Wells Fargo\nCenter',
+    x:22, z:-18, w:26, d:26, h:160, col:0x1a2f55,
+    roof:'flat', desc:'42 floors, dark-glass tower'
+  },
+  {
+    id:'wf2', name:'Two Wells Fargo\nCenter',
+    x:25, z:-58, w:18, d:18, h:120, col:0x223344,
+    roof:'flat', desc:'32 floors'
+  },
+  {
+    id:'truist', name:'Truist Center\n(formerly BB&T)',
+    x:-18, z:28, w:20, d:20, h:120, col:0x111111,
+    roof:'flat', glass:true, desc:'32 floors, black-glass tower'
+  },
+  {
+    id:'550', name:'550 S. Tryon\n(Duke Energy HQ)',
+    x:0, z:88, w:22, d:22, h:110, col:0x1a3d88,
+    roof:'flat', desc:'31 floors, opened 2010'
+  },
+  {
+    id:'vue', name:'The Vue\n(Residential)',
+    x:-58, z:-58, w:13, d:13, h:190, col:0x7799bb,
+    roof:'flat', desc:'50 floors residential tower'
+  },
+  // ── MID-RISE OFFICE ───────────────────────────────────────────────────
+  {
+    id:'westin', name:'Westin Charlotte\n(Hotel)',
+    x:45, z:-48, w:15, d:15, h:70, col:0xbbccdd,
+    roof:'flat', desc:'25 floors hotel'
+  },
+  {
+    id:'marriott', name:'Marriott City Center\n(Hotel)',
+    x:-18, z:-52, w:14, d:14, h:58, col:0xcc8833,
+    roof:'flat', desc:'17-floor hotel, distinctive brick facade'
+  },
+  {
+    id:'omni', name:'Omni Hotel\nCharlotte',
+    x:45, z:-22, w:15, d:15, h:80, col:0xddcc99,
+    roof:'flat', desc:'22 floors'
+  },
+  {
+    id:'fifth', name:'Fifth Third Center',
+    x:32, z:8, w:14, d:14, h:90, col:0x334455,
+    roof:'flat', desc:'25 floors'
+  },
+  {
+    id:'300s', name:'300 S. Tryon St',
+    x:4, z:68, w:14, d:14, h:98, col:0xeeddcc,
+    roof:'flat', desc:'28 floors'
+  },
+  {
+    id:'121w', name:'121 W. Trade St',
+    x:-32, z:-12, w:18, d:18, h:40, col:0x998866,
+    roof:'flat', desc:'12 floors'
+  },
+  {
+    id:'400s', name:'400 S. Tryon',
+    x:4, z:108, w:13, d:13, h:78, col:0xee7700,
+    roof:'flat', desc:'22 floors'
+  },
+  {
+    id:'leg1', name:'Legacy Union\nTower 1',
+    x:-42, z:28, w:18, d:18, h:140, col:0x4d6678,
+    roof:'flat', desc:'38 floors'
+  },
+  {
+    id:'leg2', name:'Legacy Union\nTower 2',
+    x:-42, z:52, w:18, d:18, h:126, col:0x4d6678,
+    roof:'flat', desc:'34 floors'
+  },
+  {
+    id:'obs', name:'Charlotte Observer\nBuilding',
+    x:68, z:-58, w:14, d:14, h:44, col:0x887766,
+    roof:'flat', desc:'12 floors'
+  },
+  {
+    id:'212', name:'212 S. Tryon',
+    x:2, z:30, w:11, d:11, h:62, col:0x668855,
+    roof:'flat', desc:'18 floors'
+  },
+  {
+    id:'615', name:'615 S. College',
+    x:52, z:62, w:12, d:12, h:52, col:0x554433,
+    roof:'flat', desc:'15 floors'
+  },
+  {
+    id:'epicentre', name:'EpiCentre\n(Entertainment)',
+    x:-58, z:8, w:30, d:28, h:28, col:0x552244,
+    roof:'flat', desc:'8-floor mixed-use entertainment complex'
+  },
+  {
+    id:'mintm', name:'Mint Museum\nUptown',
+    x:32, z:-58, w:18, d:18, h:22, col:0xcc9944,
+    roof:'flat', desc:'Contemporary art museum'
+  },
+  {
+    id:'gw', name:'Gateway Village\n(IBM)',
+    x:-92, z:-82, w:30, d:25, h:28, col:0x2244aa,
+    roof:'flat', desc:'IBM campus'
+  },
+  // ── ARENAS & STADIUM ─────────────────────────────────────────────────
+  {
+    id:'spectrum', name:'Spectrum Center\n(Hornets Arena)',
+    x:-72, z:-28, w:60, d:50, h:32, col:0x004c97,
+    roof:'arena', desc:'NBA Charlotte Hornets arena'
+  },
+  {
+    id:'bofastadium', name:'Bank of America Stadium\n(Panthers / Charlotte FC)',
+    x:-92, z:52, w:82, d:68, h:22, col:0x0085ca,
+    roof:'stadium', desc:'NFL Carolina Panthers & Charlotte FC stadium'
+  },
+  {
+    id:'nascar', name:'NASCAR Hall of Fame',
+    x:90, z:8, w:42, d:42, h:20, col:0xaa2211,
+    roof:'dome', desc:'NASCAR museum & Hall of Fame'
+  },
+  {
+    id:'convention', name:'Charlotte\nConvention Center',
+    x:88, z:-22, w:80, d:42, h:18, col:0x778899,
+    roof:'flat', desc:'Large convention facility'
+  },
+  // ── SMALLER FILL BUILDINGS ───────────────────────────────────────────
+  {id:'fill1',  name:'N. Tryon Building',   x:-50, z:-22, w:12,d:12,h:30, col:0x556677,roof:'flat'},
+  {id:'fill2',  name:'Trade St Office',     x: 60, z:-48, w:13,d:13,h:35, col:0x775544,roof:'flat'},
+  {id:'fill3',  name:'Church St Office',    x:-38, z:-48, w:11,d:11,h:26, col:0x557744,roof:'flat'},
+  {id:'fill4',  name:'College St Mixed',    x: 22, z: 38, w:13,d:13,h:22, col:0x447755,roof:'flat'},
+  {id:'fill5',  name:'5th St Parking',      x:-22, z:-80, w:22,d:18,h:18, col:0x666655,roof:'flat'},
+  {id:'fill6',  name:'Stonewall Office',    x: 58, z: 38, w:14,d:14,h:32, col:0x445566,roof:'flat'},
+  {id:'fill7',  name:'College & Trade',     x: 50, z:-68, w:12,d:12,h:25, col:0x664433,roof:'flat'},
+  {id:'fill8',  name:'W. 4th St Tower',     x:-70, z: 52, w:14,d:14,h:35, col:0x446688,roof:'flat'},
+  {id:'fill9',  name:'Morehead Condos',     x: 20, z:128, w:14,d:14,h:55, col:0x558899,roof:'flat'},
+  {id:'fill10', name:'Elizabeth Ave Condo', x: 90, z: 58, w:12,d:12,h:48, col:0x779988,roof:'flat'},
+];
+
+// ─────────────────────────────────────────────
+//  BUILD GEOMETRY
+// ─────────────────────────────────────────────
+const buildingMeshes = [];
+
+BUILDINGS.forEach(b => {
+  const H = b.h;
+  const tex = makeWindowTex(b.col, true);
+  tex.repeat.set(Math.max(1,Math.round(b.w/8)), Math.max(1,Math.round(H/18)));
+
+  const mats = [
+    new THREE.MeshLambertMaterial({map: tex}),  // +x
+    new THREE.MeshLambertMaterial({map: tex}),  // -x
+    new THREE.MeshLambertMaterial({color: b.col}), // top
+    new THREE.MeshLambertMaterial({color: b.col}), // bottom
+    new THREE.MeshLambertMaterial({map: tex}),  // +z
+    new THREE.MeshLambertMaterial({map: tex}),  // -z
+  ];
+  // glass tint for glass buildings
+  if (b.glass) {
+    const glassTex = makeWindowTex(b.col, false);
+    glassTex.repeat.set(Math.max(1,Math.round(b.w/8)), Math.max(1,Math.round(H/18)));
+    [0,1,4,5].forEach(i => {
+      mats[i] = new THREE.MeshLambertMaterial({map:glassTex, transparent:true, opacity:0.88});
+    });
+  }
+
+  const geo = new THREE.BoxGeometry(b.w, H, b.d);
+  const mesh = new THREE.Mesh(geo, mats);
+  mesh.position.set(b.x, H/2, b.z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData = { name: b.name, floors: Math.round(H/3.9), desc: b.desc||'' };
+  scene.add(mesh);
+  buildingMeshes.push(mesh);
+
+  // ── Roof features ──────────────────────────────────────────────────
+  if (b.roof === 'crown') {
+    // BofA "rabbit-ear" twin spires + crown base
+    const crownMat = new THREE.MeshLambertMaterial({color:0xbbccdd});
+    const crownBase = new THREE.Mesh(new THREE.BoxGeometry(b.w*0.7, 18, b.d*0.7), crownMat);
+    crownBase.position.set(b.x, H + 9, b.z);
+    scene.add(crownBase);
+    // Two spires
+    [[b.x-5, H+18+14, b.z-5],[b.x+5, H+18+14, b.z+5]].forEach(([sx,sy,sz]) => {
+      const spireGeo = new THREE.CylinderGeometry(0.3, 2.2, 28, 4);
+      const spire = new THREE.Mesh(spireGeo, new THREE.MeshLambertMaterial({color:0xd0e0ee}));
+      spire.position.set(sx, sy, sz);
+      scene.add(spire);
+    });
+  }
+
+  if (b.roof === 'arena') {
+    // Spectrum Center – flat barrel roof
+    const roofGeo = new THREE.CylinderGeometry(b.w*0.52, b.w*0.52, 4, 16);
+    const roof = new THREE.Mesh(roofGeo, new THREE.MeshLambertMaterial({color:0x002288}));
+    roof.position.set(b.x, H+2, b.z);
+    scene.add(roof);
+  }
+
+  if (b.roof === 'dome') {
+    // NASCAR dome
+    const dGeo = new THREE.SphereGeometry(Math.min(b.w,b.d)*0.55, 18, 9, 0, Math.PI*2, 0, Math.PI/2);
+    const dome = new THREE.Mesh(dGeo, new THREE.MeshLambertMaterial({color:0x888888, side:THREE.DoubleSide}));
+    dome.position.set(b.x, H, b.z);
+    scene.add(dome);
+    // Spire on top
+    const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.8,8,6), new THREE.MeshLambertMaterial({color:0xaa2200}));
+    sp.position.set(b.x, H + Math.min(b.w,b.d)*0.55, b.z);
+    scene.add(sp);
+  }
+
+  if (b.roof === 'stadium') {
+    // BofA Stadium – add upper deck ring & light stanchions
+    const deckMat = new THREE.MeshLambertMaterial({color:0x0055aa});
+    const outer = new THREE.Mesh(new THREE.BoxGeometry(b.w+4, 6, b.d+4), deckMat);
+    outer.position.set(b.x, H+3, b.z);
+    scene.add(outer);
+    // Field (green inside stadium)
+    const field = new THREE.Mesh(new THREE.PlaneGeometry(b.w-20, b.d-20), new THREE.MeshLambertMaterial({color:0x2db52d}));
+    field.rotation.x = -Math.PI/2;
+    field.position.set(b.x, H+0.5, b.z);
+    scene.add(field);
+    // Light towers at corners
+    const ltMat = new THREE.MeshLambertMaterial({color:0xdddddd});
+    [[b.w/2,b.d/2],[-b.w/2,b.d/2],[b.w/2,-b.d/2],[-b.w/2,-b.d/2]].forEach(([dx,dz])=>{
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.4,30,6), ltMat);
+      pole.position.set(b.x+dx*0.9, H+15, b.z+dz*0.9);
+      scene.add(pole);
+    });
+  }
+
+  if (b.xbrace) {
+    // Hearst Tower – X-bracing visible on facade
+    const brMat = new THREE.MeshLambertMaterial({color:0x888877, side:THREE.DoubleSide});
+    for (let lvl=0; lvl<5; lvl++) {
+      const yOff = lvl * H/5 + H/10;
+      // Front face diagonals
+      [[-1,1],[1,-1]].forEach(([xs,xe])=>{
+        const pts = [
+          new THREE.Vector3(xs*b.w*0.5, yOff-H/10, b.d*0.5+0.2),
+          new THREE.Vector3(xe*b.w*0.5, yOff+H/10, b.d*0.5+0.2)
+        ];
+        const curve = new THREE.LineCurve3(pts[0],pts[1]);
+        const tg = new THREE.TubeGeometry(curve,1,0.4,4,false);
+        scene.add(new THREE.Mesh(tg, brMat));
+      });
+    }
+  }
+});
+
+// ─────────────────────────────────────────────
+//  TREES
+// ─────────────────────────────────────────────
+const trunkMat = new THREE.MeshLambertMaterial({color:0x5c3d11});
+const leafMat  = new THREE.MeshLambertMaterial({color:0x228b22});
+const leafMat2 = new THREE.MeshLambertMaterial({color:0x197519});
+
+function addTree(x, z, h=4.5) {
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.35,h*0.6,5), trunkMat);
+  trunk.position.set(x, h*0.3, z);
+  scene.add(trunk);
+  const lm = Math.random() > 0.5 ? leafMat : leafMat2;
+  const crown = new THREE.Mesh(new THREE.SphereGeometry(h*0.55, 7, 5), lm);
+  crown.position.set(x, h, z);
+  scene.add(crown);
+}
+
+// Street trees along main avenues
+for (let i=-180; i<=180; i+=18) {
+  if (Math.abs(i) > 12) { addTree(i, -3, 5); addTree(i, 3, 5); }
+  if (Math.abs(i) > 12) { addTree(-3, i, 5); addTree(3, i, 5); }
+}
+// Park trees – Marshall Park
+for (let tx=50;tx<=110;tx+=13) for(let tz=45;tz<=88;tz+=13) if(Math.random()>0.35) addTree(tx,tz,5+Math.random()*3);
+// Park trees – Romare Bearden
+for (let tx=-70;tx<=-25;tx+=13) for(let tz=-90;tz<=-50;tz+=13) if(Math.random()>0.35) addTree(tx,tz,5+Math.random()*3);
+// First Ward
+for (let tx=52;tx<=98;tx+=13) for(let tz=-100;tz<=-60;tz+=13) if(Math.random()>0.4) addTree(tx,tz,4+Math.random()*3);
+
+// ─────────────────────────────────────────────
+//  CHARLOTTE SKYLINE SIGN
+// ─────────────────────────────────────────────
+(function addSignboard() {
+  const sv = document.createElement('canvas');
+  sv.width = 512; sv.height = 96;
+  const sc = sv.getContext('2d');
+  sc.fillStyle = 'rgba(0,20,60,0.85)';
+  sc.fillRect(0,0,512,96);
+  sc.font = 'bold 48px Arial';
+  sc.fillStyle = '#00bfff';
+  sc.textAlign = 'center';
+  sc.fillText('UPTOWN CHARLOTTE', 256, 58);
+  const st = new THREE.CanvasTexture(sv);
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(80,15),
+    new THREE.MeshBasicMaterial({map:st, transparent:true, side:THREE.DoubleSide})
+  );
+  sign.position.set(0, 260, -160);
+  scene.add(sign);
+})();
+
+// ─────────────────────────────────────────────
+//  POINTER-LOCK HELICOPTER CONTROLS
+// ─────────────────────────────────────────────
+let isLocked = false;
+let yaw = Math.PI, pitch = -0.18; // start facing buildings
+const keys = {};
+let autoTour = true; // start in auto-tour mode
+
+document.addEventListener('pointerlockchange', () => {
+  isLocked = !!document.pointerLockElement;
+  document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none';
+  if (isLocked) autoTour = false;
+});
+
+document.addEventListener('mousemove', e => {
+  if (!isLocked) return;
+  yaw -= e.movementX * 0.002;
+  pitch -= e.movementY * 0.002;
+  pitch = Math.max(-1.3, Math.min(1.3, pitch));
+});
+
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Tab') { e.preventDefault(); autoTour = !autoTour; document.getElementById('autoBtn').textContent = autoTour ? '⏹ Stop Tour' : '▶ Auto Tour'; }
+  if (e.code === 'Escape' && isLocked) document.exitPointerLock();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+document.getElementById('startBtn').addEventListener('click', () => canvas.requestPointerLock());
+canvas.addEventListener('click', () => { if (!isLocked) canvas.requestPointerLock(); });
+document.getElementById('autoBtn').addEventListener('click', () => {
+  autoTour = !autoTour;
+  document.getElementById('autoBtn').textContent = autoTour ? '⏹ Stop Tour' : '▶ Auto Tour';
+});
+
+// ─────────────────────────────────────────────
+//  AUTO-TOUR WAYPOINTS (orbit the skyline)
+// ─────────────────────────────────────────────
+const tourPoints = [
+  {x:  0, y:160, z: 320, lx:  0, ly: 80, lz:  0},
+  {x:-180, y:130, z: 180, lx:-30, ly: 60, lz:-30},
+  {x:-220, y:110, z:   0, lx:-40, ly: 50, lz: 20},
+  {x:-160, y: 90, z:-180, lx:  0, ly: 60, lz:  0},
+  {x:  0,  y: 80, z:-220, lx:  0, ly: 60, lz:  0},
+  {x: 180, y: 95, z:-160, lx: 30, ly: 60, lz: 30},
+  {x: 240, y:110, z:   0, lx: 40, ly: 60, lz: 10},
+  {x: 160, y:130, z: 200, lx:  0, ly: 80, lz:  0},
+  {x:  0,  y: 70, z: 120, lx:  0, ly: 30, lz:  0}, // low pass
+  {x:-60,  y: 45, z:  40, lx:-30, ly: 20, lz:-20}, // near BofA
+  {x: 40,  y: 50, z:  10, lx: 20, ly: 20, lz: 20}, // near Duke Energy
+  {x:  0,  y:160, z: 320, lx:  0, ly: 80, lz:  0}, // back to start
+];
+let tourIdx = 0, tourT = 0, tourSpeed = 0.0004;
+
+// ─────────────────────────────────────────────
+//  RAYCASTER FOR BUILDING LABELS
+// ─────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const centerScreen = new THREE.Vector2(0, 0);
+const labelEl = document.getElementById('building-label');
+
+// ─────────────────────────────────────────────
+//  ANIMATION LOOP
+// ─────────────────────────────────────────────
+const clock = new THREE.Clock();
+let lastLabelName = '';
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (autoTour && !isLocked) {
+    // Smooth interpolation between waypoints
+    tourT += tourSpeed * dt * 1000;
+    if (tourT >= 1) { tourT -= 1; tourIdx = (tourIdx + 1) % (tourPoints.length - 1); }
+    const a = tourPoints[tourIdx], nextPoint = tourPoints[tourIdx+1];
+    const t = tourT;
+    camera.position.lerpVectors(new THREE.Vector3(a.x,a.y,a.z), new THREE.Vector3(nextPoint.x,nextPoint.y,nextPoint.z), t);
+    const lookAt = new THREE.Vector3(
+      a.lx + (nextPoint.lx-a.lx)*t, a.ly + (nextPoint.ly-a.ly)*t, a.lz + (nextPoint.lz-a.lz)*t
+    );
+    camera.lookAt(lookAt);
+  } else if (isLocked) {
+    const speed = (keys['ShiftLeft']||keys['ShiftRight'] ? 90 : 32) * dt;
+    const fwd = new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw)*Math.cos(pitch));
+    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+
+    if (keys['KeyW'] || keys['ArrowUp'])    camera.position.addScaledVector(fwd, speed);
+    if (keys['KeyS'] || keys['ArrowDown'])  camera.position.addScaledVector(fwd,-speed);
+    if (keys['KeyA'] || keys['ArrowLeft'])  camera.position.addScaledVector(right,-speed);
+    if (keys['KeyD'] || keys['ArrowRight']) camera.position.addScaledVector(right, speed);
+    if (keys['KeyE']) camera.position.y += speed;
+    if (keys['KeyQ']) camera.position.y -= speed;
+
+    camera.position.y = Math.max(4, camera.position.y);
+
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+  }
+
+  // Raycasting – label the building you're looking at
+  raycaster.setFromCamera(centerScreen, camera);
+  const hits = raycaster.intersectObjects(buildingMeshes, false);
+  if (hits.length && hits[0].distance < 400) {
+    const ud = hits[0].object.userData;
+    const nameStr = ud.name + (ud.desc ? '\n' + ud.desc : '');
+    if (nameStr !== lastLabelName) { labelEl.textContent = nameStr; lastLabelName = nameStr; }
+    labelEl.style.display = 'block';
+  } else {
+    labelEl.style.display = 'none';
+    lastLabelName = '';
+  }
+
+  // HUD
+  const altFt = Math.round(camera.position.y * 10);
+  const moving = ['KeyW','KeyS','KeyA','KeyD','KeyE','KeyQ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].some(k=>keys[k]);
+  const spdMph = isLocked ? (moving ? ((keys['ShiftLeft']||keys['ShiftRight']) ? 180 : 65) : 0) : (autoTour ? 28 : 0);
+  document.getElementById('altVal').textContent = altFt;
+  document.getElementById('spdVal').textContent = spdMph;
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// Remove overlay on pointer lock
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement) {
+    document.getElementById('overlay').style.display = 'none';
+  }
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
