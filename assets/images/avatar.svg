@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 280" width="280" height="280">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4f46e5"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+    <clipPath id="circle">
+      <circle cx="140" cy="140" r="140"/>
+    </clipPath>
+  </defs>
+  <circle cx="140" cy="140" r="140" fill="url(#bg)"/>
+  <!-- Head -->
+  <circle cx="140" cy="108" r="44" fill="rgba(255,255,255,0.9)"/>
+  <!-- Body -->
+  <ellipse cx="140" cy="230" rx="72" ry="56" fill="rgba(255,255,255,0.9)" clip-path="url(#circle)"/>
+  <!-- Initials overlay -->
+  <text x="140" y="122" font-family="Inter, system-ui, sans-serif" font-size="40" font-weight="700"
+        fill="#4f46e5" text-anchor="middle" dominant-baseline="middle">AR</text>
+</svg>

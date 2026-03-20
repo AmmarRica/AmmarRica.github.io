@@ -1,0 +1,34 @@
+---
+layout: default
+title: Blog
+permalink: /blog/
+---
+
+<div class="blog-page container">
+  <header class="blog-page__header">
+    <h1 class="blog-page__title">Blog</h1>
+    <p class="blog-page__desc">Thoughts, tutorials, and things I find interesting.</p>
+  </header>
+
+  {% if site.posts.size > 0 %}
+  <div class="posts__grid">
+    {% for post in site.posts %}
+    <article class="post-card">
+      <div class="post-card__meta">
+        <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%B %-d, %Y" }}</time>
+        {% if post.categories.size > 0 %}
+        <span class="post-card__category">{{ post.categories | first }}</span>
+        {% endif %}
+      </div>
+      <h2 class="post-card__title">
+        <a href="{{ post.url | relative_url }}">{{ post.title }}</a>
+      </h2>
+      <p class="post-card__excerpt">{{ post.excerpt | strip_html | truncatewords: 30 }}</p>
+      <a href="{{ post.url | relative_url }}" class="post-card__link">Read more &rarr;</a>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p style="text-align:center; color: #94a3b8;">No posts yet — check back soon!</p>
+  {% endif %}
+</div>
