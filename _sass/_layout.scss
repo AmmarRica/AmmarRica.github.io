@@ -1,14 +1,14 @@
 // ============================================================
 // Layout
 // ============================================================
-@use "variables" as *;
+@import "variables";
 
 // ── Site Header ─────────────────────────────────────────────
 .site-header {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba($color-bg, 0.9);
+  background: rgba($color-bg, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid $color-border;
@@ -82,10 +82,12 @@
     top: 64px;
     left: 0;
     right: 0;
+    z-index: 99;
     background: $color-surface;
     border-bottom: 1px solid $color-border;
     padding: $space-4 $space-6;
     display: none;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 
     &--open { display: block; }
 
@@ -125,7 +127,8 @@
 // ── Hero Section ────────────────────────────────────────────
 .hero {
   padding: $space-24 0;
-  background: radial-gradient(ellipse 80% 60% at 50% -20%, rgba($color-primary, 0.15), transparent);
+  background: radial-gradient(ellipse 80% 60% at 50% -20%, rgba($color-primary, 0.2), transparent),
+              radial-gradient(ellipse 40% 40% at 80% 60%, rgba($color-accent, 0.08), transparent);
 
   &__inner {
     max-width: $max-width;
@@ -195,19 +198,27 @@
   }
 
   @media (max-width: $bp-md) {
-    padding: $space-16 0;
+    padding: $space-12 0;
     text-align: center;
 
+    &__inner { padding: 0 $space-4; }
     &__bio { max-width: 100%; }
     &__links { justify-content: center; }
     &__social { justify-content: center; }
+  }
+
+  @media (max-width: $bp-sm) {
+    padding: $space-10 0;
+
+    &__name { font-size: $font-size-3xl; }
+    &__bio { font-size: $font-size-base; }
   }
 }
 
 // ── Skills Section ──────────────────────────────────────────
 .skills__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: $space-6;
 }
 
@@ -246,7 +257,7 @@
 // ── Posts Grid ──────────────────────────────────────────────
 .posts__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: $space-6;
 
   @media (max-width: $bp-sm) {
