@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Game a Day - Football Collection</title>
+  <title>Game a Day</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -30,6 +30,50 @@
       margin-top: 0.5rem;
       color: #9ca3af;
       font-size: 1.1rem;
+    }
+
+    /* Filter bar */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      max-width: 1200px;
+      margin: 0 auto 2rem;
+    }
+
+    .filter-label {
+      color: #9ca3af;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-right: 0.25rem;
+    }
+
+    .filter-btn {
+      background: #1e1e2e;
+      border: 1px solid #3b3b5c;
+      border-radius: 20px;
+      color: #9ca3af;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0.4rem 1rem;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .filter-btn:hover {
+      border-color: #a78bfa;
+      color: #e0e0ff;
+    }
+
+    .filter-btn.active {
+      background: #a78bfa;
+      border-color: #a78bfa;
+      color: #0f0f1a;
+      font-weight: 600;
     }
 
     .section-title {
@@ -59,11 +103,16 @@
       text-decoration: none;
       color: inherit;
       transition: transform 0.15s, border-color 0.15s;
+      position: relative;
     }
 
     .card:hover {
       transform: translateY(-4px);
       border-color: #a78bfa;
+    }
+
+    .card.hidden {
+      display: none;
     }
 
     .card .day-number {
@@ -86,6 +135,32 @@
       color: #e0e0ff;
       font-weight: 500;
     }
+
+    .input-badge {
+      display: inline-block;
+      margin-top: 0.55rem;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+
+    .input-badge.touch   { background: #14532d; color: #86efac; }
+    .input-badge.keyboard { background: #431407; color: #fdba74; }
+    .input-badge.both    { background: #1e1b4b; color: #a5b4fc; }
+
+    .section-block {
+      margin-bottom: 0.5rem;
+    }
+
+    .section-empty-msg {
+      text-align: center;
+      color: #4b4b6e;
+      font-size: 0.9rem;
+      padding: 1rem 0;
+      grid-column: 1 / -1;
+    }
   </style>
 </head>
 <body>
@@ -94,531 +169,142 @@
     <p>One small game built every day.</p>
   </header>
 
-  <h2 class="section-title">Daily Games (2 Games)</h2>
-  <div class="gallery">
-    <a class="card" href="day-01/index.html">
-      <div class="day-number">01</div>
-      <div class="day-label">Day 1</div>
-      <div class="day-title">Sheep Grazer</div>
-    </a>
-    <a class="card" href="day-02/index.html">
-      <div class="day-number">02</div>
-      <div class="day-label">Day 2</div>
-      <div class="day-title">Story Points</div>
-    </a>
+  <div class="filter-bar">
+    <span class="filter-label">Filter:</span>
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="mobile">📱 Mobile-Friendly</button>
+    <button class="filter-btn" data-filter="keyboard">⌨️ Keyboard Only</button>
   </div>
 
-  <h2 class="section-title">UFO-Like Games (51 Games)</h2>
-  <div class="gallery">
-    <a class="card" href="day-03/index.html">
-      <div class="day-number">03</div>
-      <div class="day-label">Day 3</div>
-      <div class="day-title">Crypt Survivors</div>
-    </a>
-    <a class="card" href="day-04/index.html">
-      <div class="day-number">04</div>
-      <div class="day-label">Day 4</div>
-      <div class="day-title">Chess Football Tactics</div>
-    </a>
-    <a class="card" href="day-05/index.html">
-      <div class="day-number">05</div>
-      <div class="day-label">Day 5</div>
-      <div class="day-title">Bug Hunter</div>
-    </a>
-    <a class="card" href="day-06/index.html">
-      <div class="day-number">06</div>
-      <div class="day-label">Day 6</div>
-      <div class="day-title">Ninpek</div>
-    </a>
-    <a class="card" href="day-07/index.html">
-      <div class="day-number">07</div>
-      <div class="day-label">Day 7</div>
-      <div class="day-title">Paint Chase</div>
-    </a>
-    <a class="card" href="day-08/index.html">
-      <div class="day-number">08</div>
-      <div class="day-label">Day 8</div>
-      <div class="day-title">Magic Garden</div>
-    </a>
-    <a class="card" href="day-09/index.html">
-      <div class="day-number">09</div>
-      <div class="day-label">Day 9</div>
-      <div class="day-title">Mortol</div>
-    </a>
-    <a class="card" href="day-10/index.html">
-      <div class="day-number">10</div>
-      <div class="day-label">Day 10</div>
-      <div class="day-title">Velgress</div>
-    </a>
-    <a class="card" href="day-11/index.html">
-      <div class="day-number">11</div>
-      <div class="day-label">Day 11</div>
-      <div class="day-title">Planet Zoldath</div>
-    </a>
-    <a class="card" href="day-12/index.html">
-      <div class="day-number">12</div>
-      <div class="day-label">Day 12</div>
-      <div class="day-title">Attactics</div>
-    </a>
-    <a class="card" href="day-13/index.html">
-      <div class="day-number">13</div>
-      <div class="day-label">Day 13</div>
-      <div class="day-title">Devilition</div>
-    </a>
-    <a class="card" href="day-14/index.html">
-      <div class="day-number">14</div>
-      <div class="day-label">Day 14</div>
-      <div class="day-title">Kick Club</div>
-    </a>
-    <a class="card" href="day-15/index.html">
-      <div class="day-number">15</div>
-      <div class="day-label">Day 15</div>
-      <div class="day-title">Avianos</div>
-    </a>
-    <a class="card" href="day-16/index.html">
-      <div class="day-number">16</div>
-      <div class="day-label">Day 16</div>
-      <div class="day-title">Mooncat</div>
-    </a>
-    <a class="card" href="day-17/index.html">
-      <div class="day-number">17</div>
-      <div class="day-label">Day 17</div>
-      <div class="day-title">Bushido Ball</div>
-    </a>
-    <a class="card" href="day-18/index.html">
-      <div class="day-number">18</div>
-      <div class="day-label">Day 18</div>
-      <div class="day-title">Block Koala</div>
-    </a>
-    <a class="card" href="day-19/index.html">
-      <div class="day-number">19</div>
-      <div class="day-label">Day 19</div>
-      <div class="day-title">Camouflage</div>
-    </a>
-    <a class="card" href="day-20/index.html">
-      <div class="day-number">20</div>
-      <div class="day-label">Day 20</div>
-      <div class="day-title">Campanella</div>
-    </a>
-    <a class="card" href="day-21/index.html">
-      <div class="day-number">21</div>
-      <div class="day-label">Day 21</div>
-      <div class="day-title">Golfaria</div>
-    </a>
-    <a class="card" href="day-22/index.html">
-      <div class="day-number">22</div>
-      <div class="day-label">Day 22</div>
-      <div class="day-title">Big Bell Race</div>
-    </a>
-    <a class="card" href="day-23/index.html">
-      <div class="day-number">23</div>
-      <div class="day-label">Day 23</div>
-      <div class="day-title">Warptank</div>
-    </a>
-    <a class="card" href="day-24/index.html">
-      <div class="day-number">24</div>
-      <div class="day-label">Day 24</div>
-      <div class="day-title">Waldorf's Journey</div>
-    </a>
-    <a class="card" href="day-25/index.html">
-      <div class="day-number">25</div>
-      <div class="day-label">Day 25</div>
-      <div class="day-title">Porgy</div>
-    </a>
-    <a class="card" href="day-26/index.html">
-      <div class="day-number">26</div>
-      <div class="day-label">Day 26</div>
-      <div class="day-title">Onion Delivery</div>
-    </a>
-    <a class="card" href="day-27/index.html">
-      <div class="day-number">27</div>
-      <div class="day-label">Day 27</div>
-      <div class="day-title">Caramel Caramel</div>
-    </a>
-    <a class="card" href="day-28/index.html">
-      <div class="day-number">28</div>
-      <div class="day-label">Day 28</div>
-      <div class="day-title">Party House</div>
-    </a>
-    <a class="card" href="day-29/index.html">
-      <div class="day-number">29</div>
-      <div class="day-label">Day 29</div>
-      <div class="day-title">Hot Foot</div>
-    </a>
-    <a class="card" href="day-30/index.html">
-      <div class="day-number">30</div>
-      <div class="day-label">Day 30</div>
-      <div class="day-title">Divers</div>
-    </a>
-    <a class="card" href="day-31/index.html">
-      <div class="day-number">31</div>
-      <div class="day-label">Day 31</div>
-      <div class="day-title">Rail Heist</div>
-    </a>
-    <a class="card" href="day-32/index.html">
-      <div class="day-number">32</div>
-      <div class="day-label">Day 32</div>
-      <div class="day-title">Vainger</div>
-    </a>
-    <a class="card" href="day-33/index.html">
-      <div class="day-number">33</div>
-      <div class="day-label">Day 33</div>
-      <div class="day-title">Rock On Island</div>
-    </a>
-    <a class="card" href="day-34/index.html">
-      <div class="day-number">34</div>
-      <div class="day-label">Day 34</div>
-      <div class="day-title">Pingolf</div>
-    </a>
-    <a class="card" href="day-35/index.html">
-      <div class="day-number">35</div>
-      <div class="day-label">Day 35</div>
-      <div class="day-title">Mortol II</div>
-    </a>
-    <a class="card" href="day-36/index.html">
-      <div class="day-number">36</div>
-      <div class="day-label">Day 36</div>
-      <div class="day-title">Fist Hell</div>
-    </a>
-    <a class="card" href="day-37/index.html">
-      <div class="day-number">37</div>
-      <div class="day-label">Day 37</div>
-      <div class="day-title">Overbold</div>
-    </a>
-    <a class="card" href="day-38/index.html">
-      <div class="day-number">38</div>
-      <div class="day-label">Day 38</div>
-      <div class="day-title">Campanella 2</div>
-    </a>
-    <a class="card" href="day-39/index.html">
-      <div class="day-number">39</div>
-      <div class="day-label">Day 39</div>
-      <div class="day-title">Hyper Contender</div>
-    </a>
-    <a class="card" href="day-40/index.html">
-      <div class="day-number">40</div>
-      <div class="day-label">Day 40</div>
-      <div class="day-title">Valbrace</div>
-    </a>
-    <a class="card" href="day-41/index.html">
-      <div class="day-number">41</div>
-      <div class="day-label">Day 41</div>
-      <div class="day-title">Rakshasa</div>
-    </a>
-    <a class="card" href="day-42/index.html">
-      <div class="day-number">42</div>
-      <div class="day-label">Day 42</div>
-      <div class="day-title">Star Waspir</div>
-    </a>
-    <a class="card" href="day-43/index.html">
-      <div class="day-number">43</div>
-      <div class="day-label">Day 43</div>
-      <div class="day-title">Grimstone</div>
-    </a>
-    <a class="card" href="day-44/index.html">
-      <div class="day-number">44</div>
-      <div class="day-label">Day 44</div>
-      <div class="day-title">Lords of Diskonia</div>
-    </a>
-    <a class="card" href="day-45/index.html">
-      <div class="day-number">45</div>
-      <div class="day-label">Day 45</div>
-      <div class="day-title">Night Manor</div>
-    </a>
-    <a class="card" href="day-46/index.html">
-      <div class="day-number">46</div>
-      <div class="day-label">Day 46</div>
-      <div class="day-title">Elfazar's Hat</div>
-    </a>
-    <a class="card" href="day-47/index.html">
-      <div class="day-number">47</div>
-      <div class="day-label">Day 47</div>
-      <div class="day-title">Pilot Quest</div>
-    </a>
-    <a class="card" href="day-48/index.html">
-      <div class="day-number">48</div>
-      <div class="day-label">Day 48</div>
-      <div class="day-title">Mini & Max</div>
-    </a>
-    <a class="card" href="day-49/index.html">
-      <div class="day-number">49</div>
-      <div class="day-label">Day 49</div>
-      <div class="day-title">Combatants</div>
-    </a>
-    <a class="card" href="day-50/index.html">
-      <div class="day-number">50</div>
-      <div class="day-label">Day 50</div>
-      <div class="day-title">Quibble Race</div>
-    </a>
-    <a class="card" href="day-51/index.html">
-      <div class="day-number">51</div>
-      <div class="day-label">Day 51</div>
-      <div class="day-title">Seaside Drive</div>
-    </a>
-    <a class="card" href="day-52/index.html">
-      <div class="day-number">52</div>
-      <div class="day-label">Day 52</div>
-      <div class="day-title">Campanella 3</div>
-    </a>
-    <a class="card" href="day-53/index.html">
-      <div class="day-number">53</div>
-      <div class="day-label">Day 53</div>
-      <div class="day-title">Cyber Owls</div>
-    </a>
-  </div>
+  <div id="galleries"></div>
 
-  <h2 class="section-title">Football Games Collection (50 Games)</h2>
-  <div class="gallery">
-    <a class="card" href="game-01/index.html">
-      <div class="day-number">01</div>
-      <div class="day-label">Arcade</div>
-      <div class="day-title">Gridiron Kicker</div>
-    </a>
-    <a class="card" href="game-02/index.html">
-      <div class="day-number">02</div>
-      <div class="day-label">Strategy</div>
-      <div class="day-title">Football Auto Chess</div>
-    </a>
-    <a class="card" href="game-03/index.html">
-      <div class="day-number">03</div>
-      <div class="day-label">Card Game</div>
-      <div class="day-title">Pigskin Spire</div>
-    </a>
-    <a class="card" href="game-04/index.html">
-      <div class="day-number">04</div>
-      <div class="day-label">RPG</div>
-      <div class="day-title">Darkest Downs</div>
-    </a>
-    <a class="card" href="game-05/index.html">
-      <div class="day-number">05</div>
-      <div class="day-label">Synthwave</div>
-      <div class="day-title">Synthwave Scramble</div>
-    </a>
-    <a class="card" href="game-06/index.html">
-      <div class="day-number">06</div>
-      <div class="day-label">Action</div>
-      <div class="day-title">Gun Game Gridiron</div>
-    </a>
-    <a class="card" href="game-07/index.html">
-      <div class="day-number">07</div>
-      <div class="day-label">Sci-Fi</div>
-      <div class="day-title">Space Bowl 3000</div>
-    </a>
-    <a class="card" href="game-08/index.html">
-      <div class="day-number">08</div>
-      <div class="day-label">Steampunk</div>
-      <div class="day-title">Steampunk Scrimmage</div>
-    </a>
-    <a class="card" href="game-09/index.html">
-      <div class="day-number">09</div>
-      <div class="day-label">Rhythm</div>
-      <div class="day-title">Cheerleader Rhythm Rally</div>
-    </a>
-    <a class="card" href="game-10/index.html">
-      <div class="day-number">10</div>
-      <div class="day-label">Beat-em-up</div>
-      <div class="day-title">Mascot Mayhem</div>
-    </a>
-    <a class="card" href="game-11/index.html">
-      <div class="day-number">11</div>
-      <div class="day-label">Atari</div>
-      <div class="day-title">Blitz Breakout</div>
-    </a>
-    <a class="card" href="game-12/index.html">
-      <div class="day-number">12</div>
-      <div class="day-label">Stealth</div>
-      <div class="day-title">Quarterback Sneak</div>
-    </a>
-    <a class="card" href="game-13/index.html">
-      <div class="day-number">13</div>
-      <div class="day-label">Roguelike</div>
-      <div class="day-title">Fantasy Football Dungeon</div>
-    </a>
-    <a class="card" href="game-14/index.html">
-      <div class="day-number">14</div>
-      <div class="day-label">Tycoon</div>
-      <div class="day-title">Tailgate Tycoon</div>
-    </a>
-    <a class="card" href="game-15/index.html">
-      <div class="day-number">15</div>
-      <div class="day-label">Pinball</div>
-      <div class="day-title">Hail Mary Pinball</div>
-    </a>
-    <a class="card" href="game-16/index.html">
-      <div class="day-number">16</div>
-      <div class="day-label">Puzzle</div>
-      <div class="day-title">Marching Band Commander</div>
-    </a>
-    <a class="card" href="game-17/index.html">
-      <div class="day-number">17</div>
-      <div class="day-label">Bullet Hell</div>
-      <div class="day-title">Punt Returner</div>
-    </a>
-    <a class="card" href="game-18/index.html">
-      <div class="day-number">18</div>
-      <div class="day-label">Simulation</div>
-      <div class="day-title">Ref's Revenge</div>
-    </a>
-    <a class="card" href="game-19/index.html">
-      <div class="day-number">19</div>
-      <div class="day-label">Cyberpunk</div>
-      <div class="day-title">Cyborg League 2099</div>
-    </a>
-    <a class="card" href="game-20/index.html">
-      <div class="day-number">20</div>
-      <div class="day-label">Comedy</div>
-      <div class="day-title">Couch Coach</div>
-    </a>
-    <a class="card" href="game-21/index.html">
-      <div class="day-number">21</div>
-      <div class="day-label">Tower Defense</div>
-      <div class="day-title">Endzone Tower Defense</div>
-    </a>
-    <a class="card" href="game-22/index.html">
-      <div class="day-number">22</div>
-      <div class="day-label">Fantasy</div>
-      <div class="day-title">Viking Gridiron Saga</div>
-    </a>
-    <a class="card" href="game-23/index.html">
-      <div class="day-number">23</div>
-      <div class="day-label">Action</div>
-      <div class="day-title">Stadium Food Fight</div>
-    </a>
-    <a class="card" href="game-24/index.html">
-      <div class="day-number">24</div>
-      <div class="day-label">Party</div>
-      <div class="day-title">Fumble Frenzy</div>
-    </a>
-    <a class="card" href="game-25/index.html">
-      <div class="day-number">25</div>
-      <div class="day-label">Card Game</div>
-      <div class="day-title">Draft Day Poker</div>
-    </a>
-    <a class="card" href="game-26/index.html">
-      <div class="day-number">26</div>
-      <div class="day-label">Space</div>
-      <div class="day-title">Gridiron Galaxies</div>
-    </a>
-    <a class="card" href="game-27/index.html">
-      <div class="day-number">27</div>
-      <div class="day-label">Time Mgmt</div>
-      <div class="day-title">Concession Stand Chaos</div>
-    </a>
-    <a class="card" href="game-28/index.html">
-      <div class="day-number">28</div>
-      <div class="day-label">Puzzle</div>
-      <div class="day-title">Playbook Puzzle</div>
-    </a>
-    <a class="card" href="game-29/index.html">
-      <div class="day-number">29</div>
-      <div class="day-label">Horror</div>
-      <div class="day-title">Zombie Bowl</div>
-    </a>
-    <a class="card" href="game-30/index.html">
-      <div class="day-number">30</div>
-      <div class="day-label">Detective</div>
-      <div class="day-title">Instant Replay Detective</div>
-    </a>
-    <a class="card" href="game-31/index.html">
-      <div class="day-number">31</div>
-      <div class="day-label">Retro</div>
-      <div class="day-title">Pixel Punt</div>
-    </a>
-    <a class="card" href="game-32/index.html">
-      <div class="day-number">32</div>
-      <div class="day-label">Typing</div>
-      <div class="day-title">Football Typing Blitz</div>
-    </a>
-    <a class="card" href="game-33/index.html">
-      <div class="day-number">33</div>
-      <div class="day-label">Historical</div>
-      <div class="day-title">Ancient Gridiron</div>
-    </a>
-    <a class="card" href="game-34/index.html">
-      <div class="day-number">34</div>
-      <div class="day-label">Strategy</div>
-      <div class="day-title">Weather War Football</div>
-    </a>
-    <a class="card" href="game-35/index.html">
-      <div class="day-number">35</div>
-      <div class="day-label">Stealth</div>
-      <div class="day-title">Halftime Heist</div>
-    </a>
-    <a class="card" href="game-36/index.html">
-      <div class="day-number">36</div>
-      <div class="day-label">Racing</div>
-      <div class="day-title">Rocket League Gridiron</div>
-    </a>
-    <a class="card" href="game-37/index.html">
-      <div class="day-number">37</div>
-      <div class="day-label">Reaction</div>
-      <div class="day-title">Commentator Chaos</div>
-    </a>
-    <a class="card" href="game-38/index.html">
-      <div class="day-number">38</div>
-      <div class="day-label">Pirate</div>
-      <div class="day-title">Pirate Football</div>
-    </a>
-    <a class="card" href="game-39/index.html">
-      <div class="day-number">39</div>
-      <div class="day-label">Idle</div>
-      <div class="day-title">Training Camp Clicker</div>
-    </a>
-    <a class="card" href="game-40/index.html">
-      <div class="day-number">40</div>
-      <div class="day-label">Puzzle</div>
-      <div class="day-title">Football Tetris</div>
-    </a>
-    <a class="card" href="game-41/index.html">
-      <div class="day-number">41</div>
-      <div class="day-label">Match-3</div>
-      <div class="day-title">Gridiron Match-3</div>
-    </a>
-    <a class="card" href="game-42/index.html">
-      <div class="day-number">42</div>
-      <div class="day-label">Comedy</div>
-      <div class="day-title">Madden Glitch Simulator</div>
-    </a>
-    <a class="card" href="game-43/index.html">
-      <div class="day-number">43</div>
-      <div class="day-label">Time Travel</div>
-      <div class="day-title">Time Travel Touchdown</div>
-    </a>
-    <a class="card" href="game-44/index.html">
-      <div class="day-number">44</div>
-      <div class="day-label">Arcade</div>
-      <div class="day-title">Football Frogger</div>
-    </a>
-    <a class="card" href="game-45/index.html">
-      <div class="day-number">45</div>
-      <div class="day-label">Cooking</div>
-      <div class="day-title">QB Cooking Show</div>
-    </a>
-    <a class="card" href="game-46/index.html">
-      <div class="day-number">46</div>
-      <div class="day-label">Social</div>
-      <div class="day-title">Gridiron Diplomacy</div>
-    </a>
-    <a class="card" href="game-47/index.html">
-      <div class="day-number">47</div>
-      <div class="day-label">NES</div>
-      <div class="day-title">Retro Bowl Runner</div>
-    </a>
-    <a class="card" href="game-48/index.html">
-      <div class="day-number">48</div>
-      <div class="day-label">Classic</div>
-      <div class="day-title">Football Pong</div>
-    </a>
-    <a class="card" href="game-49/index.html">
-      <div class="day-number">49</div>
-      <div class="day-label">Kaiju</div>
-      <div class="day-title">Kaiju Bowl</div>
-    </a>
-    <a class="card" href="game-50/index.html">
-      <div class="day-number">50</div>
-      <div class="day-label">Simulation</div>
-      <div class="day-title">The Waterboy</div>
-    </a>
-  </div>
+  <script>
+    (function () {
+      var currentFilter = 'all';
+
+      var SECTIONS = [
+        { series: 'daily',    title: 'Daily Games',            labelFn: function(i, g) { return 'Day ' + (i + 1); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } },
+        { series: 'ufo-like', title: 'UFO-Like Games',          labelFn: function(i, g) { return 'UFO ' + (i + 1); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } },
+        { series: 'football', title: 'Football Games Collection', labelFn: function(i, g) { return g.genre || ('Game ' + (i + 1)); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } }
+      ];
+
+      var BADGE = {
+        touch:    { cls: 'touch',    text: '📱 Mobile' },
+        keyboard: { cls: 'keyboard', text: '⌨️ Desktop' },
+        both:     { cls: 'both',     text: '📱 / ⌨️' }
+      };
+
+      function matchesFilter(input, filter) {
+        if (filter === 'all') return true;
+        if (filter === 'mobile') return input === 'touch' || input === 'both';
+        if (filter === 'keyboard') return input === 'keyboard';
+        return true;
+      }
+
+      function applyFilter() {
+        var cards = document.querySelectorAll('.card[data-input]');
+        cards.forEach(function (card) {
+          var input = card.getAttribute('data-input');
+          if (matchesFilter(input, currentFilter)) {
+            card.classList.remove('hidden');
+          } else {
+            card.classList.add('hidden');
+          }
+        });
+
+        // Update empty messages per section
+        document.querySelectorAll('.gallery').forEach(function (gallery) {
+          var emptyMsg = gallery.querySelector('.section-empty-msg');
+          var visibleCount = gallery.querySelectorAll('.card:not(.hidden)').length;
+          if (visibleCount === 0) {
+            if (!emptyMsg) {
+              emptyMsg = document.createElement('p');
+              emptyMsg.className = 'section-empty-msg';
+              emptyMsg.textContent = 'No games match this filter in this section.';
+              gallery.appendChild(emptyMsg);
+            }
+            emptyMsg.style.display = '';
+          } else {
+            if (emptyMsg) emptyMsg.style.display = 'none';
+          }
+        });
+      }
+
+      function buildGalleries(games) {
+        var container = document.getElementById('galleries');
+
+        SECTIONS.forEach(function (section) {
+          var sectionGames = games.filter(function (g) { return g.series === section.series; });
+          if (sectionGames.length === 0) return;
+
+          var block = document.createElement('div');
+          block.className = 'section-block';
+
+          var heading = document.createElement('h2');
+          heading.className = 'section-title';
+          heading.textContent = section.title + ' (' + sectionGames.length + ' Games)';
+          block.appendChild(heading);
+
+          var gallery = document.createElement('div');
+          gallery.className = 'gallery';
+
+          sectionGames.forEach(function (game, i) {
+            var badge = BADGE[game.input] || BADGE['both'];
+
+            var card = document.createElement('a');
+            card.className = 'card';
+            card.href = game.dir + '/index.html';
+            card.setAttribute('data-input', game.input);
+
+            var numDiv = document.createElement('div');
+            numDiv.className = 'day-number';
+            numDiv.textContent = section.numFn(i, game);
+
+            var labelDiv = document.createElement('div');
+            labelDiv.className = 'day-label';
+            labelDiv.textContent = section.labelFn(i, game);
+
+            var titleDiv = document.createElement('div');
+            titleDiv.className = 'day-title';
+            titleDiv.textContent = game.title;
+
+            var badgeSpan = document.createElement('span');
+            badgeSpan.className = 'input-badge ' + badge.cls;
+            badgeSpan.textContent = badge.text;
+
+            card.appendChild(numDiv);
+            card.appendChild(labelDiv);
+            card.appendChild(titleDiv);
+            card.appendChild(badgeSpan);
+            gallery.appendChild(card);
+          });
+
+          block.appendChild(gallery);
+          container.appendChild(block);
+        });
+
+        applyFilter();
+      }
+
+      // Filter button logic
+      document.querySelectorAll('.filter-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          document.querySelectorAll('.filter-btn').forEach(function (b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          currentFilter = btn.getAttribute('data-filter');
+          applyFilter();
+        });
+      });
+
+      // Load games
+      fetch('games.json')
+        .then(function (r) { return r.json(); })
+        .then(buildGalleries)
+        .catch(function () {
+          document.getElementById('galleries').innerHTML =
+            '<p style="text-align:center;color:#9ca3af;margin-top:2rem">Failed to load games.</p>';
+        });
+    })();
+  </script>
 </body>
 </html>
