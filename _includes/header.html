@@ -10,7 +10,7 @@
       <ul class="site-nav__list">
         {% for item in site.navigation %}
         <li class="site-nav__item">
-          <a class="site-nav__link{% if page.url == item.url %} site-nav__link--active{% endif %}"
+          <a class="site-nav__link{% if page.url == item.url or item.url != '/' and page.url contains item.url %} site-nav__link--active{% endif %}"
              href="{{ item.url | relative_url }}">{{ item.title }}</a>
         </li>
         {% endfor %}
