@@ -46,6 +46,8 @@ navigation:
     url: /blog/
   - title: Videogames Ishkur
     url: /videogames-ishkur/
+  - title: AI-Generated Games
+    url: /AIGeneratedGames/
 
 future: true
 
