@@ -101,5 +101,6 @@
   { "dir": "game-47", "title": "Retro Bowl Runner", "input": "both", "series": "football" },
   { "dir": "game-48", "title": "Football Pong", "input": "keyboard", "series": "football" },
   { "dir": "game-49", "title": "Kaiju Bowl", "input": "keyboard", "series": "football" },
-  { "dir": "game-50", "title": "The Waterboy", "input": "keyboard", "series": "football" }
+  { "dir": "game-50", "title": "The Waterboy", "input": "keyboard", "series": "football" },
+  { "dir": "game-51", "title": "Uptown Charlotte 3D", "input": "keyboard", "series": "charlotte" }
 ]
