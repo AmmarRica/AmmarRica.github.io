@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concession Stand Chaos</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; user-select: none; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; cursor: pointer; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const C = document.getElementById('c');
+const ctx = C.getContext('2d');
+let W, H;
+function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+const TITLE = 0, PLAYING = 1, QUARTER_BREAK = 2, GAMEOVER = 3, WIN = 4;
+let state = TITLE;
+let mouseX = 0, mouseY = 0, mouseDown = false, clicked = false;
+let dragItem = null, dragOffX = 0, dragOffY = 0;
+
+C.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; if (dragItem) { dragItem.x = mouseX; dragItem.y = mouseY; } });
+C.addEventListener('mousedown', e => { mouseX = e.clientX; mouseY = e.clientY; mouseDown = true; clicked = true; });
+C.addEventListener('mouseup', e => { mouseDown = false; if (dragItem) { dropItem(); dragItem = null; } });
+C.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; mouseX = t.clientX; mouseY = t.clientY; mouseDown = true; clicked = true; }, {passive: false});
+C.addEventListener('touchmove', e => { e.preventDefault(); const t = e.touches[0]; mouseX = t.clientX; mouseY = t.clientY; if (dragItem) { dragItem.x = mouseX; dragItem.y = mouseY; } }, {passive: false});
+C.addEventListener('touchend', e => { mouseDown = false; if (dragItem) { dropItem(); dragItem = null; } });
+
+// Food items config
+const FOODS = [
+  { name: 'Hot Dog', icon: '🌭', color: '#e74c3c', prepTime: 60, price: 4 },
+  { name: 'Nachos', icon: '🧀', color: '#f1c40f', prepTime: 90, price: 5 },
+  { name: 'Beer', icon: '🍺', color: '#e67e22', prepTime: 45, price: 6 },
+  { name: 'Pretzel', icon: '🥨', color: '#8B4513', prepTime: 50, price: 3 }
+];
+
+let money = 0, tips = 0, quarter = 1;
+let quarterTime = 0, maxQuarterTime = 45 * 60; // 45 sec per quarter
+let customers = [], foodStations = [], preparedItems = [];
+let customerId = 0;
+let servedCount = 0, lostCount = 0;
+let rushMode = false, rushTimer = 0;
+let message = '', messageTimer = 0;
+let comboMsg = '', comboTimer = 0;
+
+// Upgrades
+let speedUpgrade = 0, capacityUpgrade = 0;
+
+function initGame() {
+  money = 0; tips = 0; quarter = 1; quarterTime = 0;
+  customers = []; preparedItems = [];
+  servedCount = 0; lostCount = 0;
+  speedUpgrade = 0; capacityUpgrade = 0;
+  rushMode = false;
+  setupStations();
+  state = PLAYING;
+}
+
+function setupStations() {
+  foodStations = [];
+  const stationY = H - 120;
+  const stationW = 100;
+  const totalW = FOODS.length * (stationW + 20);
+  const startX = (W - totalW) / 2;
+
+  FOODS.forEach((food, i) => {
+    foodStations.push({
+      x: startX + i * (stationW + 20), y: stationY,
+      w: stationW, h: 80,
+      food: food, cooking: false, cookTimer: 0,
+      ready: false, readyCount: 0, maxReady: 2 + capacityUpgrade
+    });
+  });
+}
+
+function spawnCustomer() {
+  const numWants = Math.random() < 0.3 ? 2 : 1;
+  const wants = [];
+  for (let i = 0; i < numWants; i++) {
+    wants.push(Math.floor(Math.random() * FOODS.length));
+  }
+  const maxPatience = rushMode ? 600 : 900;
+  customers.push({
+    id: customerId++,
+    x: 0, targetX: 0, y: 0,
+    wants: wants, received: [],
+    patience: maxPatience, maxPatience: maxPatience,
+    happy: false, angry: false, leaving: false,
+    tip: 0, slot: -1
+  });
+  assignSlots();
+}
+
+function assignSlots() {
+  const maxSlots = 6;
+  const slotW = Math.min(100, (W - 100) / maxSlots);
+  const startX = (W - maxSlots * slotW) / 2;
+  const lineY = H * 0.35;
+
+  let slot = 0;
+  customers.forEach(c => {
+    if (!c.leaving && slot < maxSlots) {
+      c.slot = slot;
+      c.targetX = startX + slot * slotW + slotW / 2;
+      c.y = lineY;
+      slot++;
+    }
+  });
+}
+
+function dropItem() {
+  if (!dragItem) return;
+  // Check if dropped on a customer
+  for (const c of customers) {
+    if (c.leaving) continue;
+    const dx = dragItem.x - c.targetX;
+    const dy = dragItem.y - c.y;
+    if (Math.abs(dx) < 50 && Math.abs(dy) < 50) {
+      // Check if customer wants this
+      const foodIdx = dragItem.foodIdx;
+      if (c.wants.includes(foodIdx) && !c.received.includes(foodIdx)) {
+        c.received.push(foodIdx);
+        // Check combo: hot dog + beer
+        if (c.received.includes(0) && c.received.includes(2)) {
+          comboMsg = 'COMBO! Hot Dog + Beer = Happy Fan! +$5 bonus';
+          comboTimer = 120;
+          tips += 5;
+        }
+        // Check if order complete
+        if (c.received.length >= c.wants.length) {
+          const speedBonus = Math.max(0, Math.floor(c.patience / c.maxPatience * 5));
+          c.tip = speedBonus;
+          tips += speedBonus;
+          c.wants.forEach(w => money += FOODS[w].price);
+          c.happy = true;
+          c.leaving = true;
+          servedCount++;
+          showMessage('Served! +$' + (c.wants.reduce((s, w) => s + FOODS[w].price, 0)) + ' +$' + speedBonus + ' tip');
+        }
+        return;
+      }
+    }
+  }
+  // Item dropped nowhere useful, it's lost
+}
+
+function update() {
+  if (state !== PLAYING) return;
+
+  quarterTime++;
+
+  // Rush periods
+  if (!rushMode && Math.random() < 0.002) {
+    rushMode = true;
+    rushTimer = 300;
+    showMessage('RUSH HOUR! Halftime rush!');
+  }
+  if (rushMode) {
+    rushTimer--;
+    if (rushTimer <= 0) rushMode = false;
+  }
+
+  // Spawn customers
+  const spawnRate = rushMode ? 0.03 : 0.012;
+  if (Math.random() < spawnRate && customers.filter(c => !c.leaving).length < 6) {
+    spawnCustomer();
+  }
+
+  // Update customers
+  for (const c of customers) {
+    // Move to slot
+    c.x += (c.targetX - c.x) * 0.1;
+
+    if (!c.leaving) {
+      c.patience--;
+      if (c.patience <= 0) {
+        c.angry = true;
+        c.leaving = true;
+        lostCount++;
+        showMessage('Customer left angry!');
+      }
+    }
+  }
+
+  // Remove customers who left
+  customers = customers.filter(c => {
+    if (c.leaving && c.happy) return false;
+    if (c.leaving && c.angry) return false;
+    return true;
+  });
+  assignSlots();
+
+  // Cook food
+  for (const s of foodStations) {
+    if (s.cooking) {
+      s.cookTimer--;
+      const speedMult = 1 + speedUpgrade * 0.3;
+      if (s.cookTimer <= 0) {
+        s.cooking = false;
+        if (s.readyCount < s.maxReady) {
+          s.readyCount++;
+          s.ready = true;
+        }
+      }
+    }
+  }
+
+  if (messageTimer > 0) messageTimer--;
+  if (comboTimer > 0) comboTimer--;
+
+  // Quarter end
+  if (quarterTime >= maxQuarterTime) {
+    if (quarter >= 4) {
+      state = lostCount < servedCount ? WIN : GAMEOVER;
+    } else {
+      state = QUARTER_BREAK;
+    }
+  }
+}
+
+function showMessage(msg) { message = msg; messageTimer = 90; }
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#f1c40f';
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CONCESSION STAND', W / 2, H * 0.2);
+  ctx.fillText('CHAOS', W / 2, H * 0.27);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px monospace';
+  const lines = [
+    'Serve hungry fans at the stadium!',
+    '',
+    'Click food stations to prepare items',
+    'Drag prepared food to matching customers',
+    'Hot Dog + Beer combo = bonus tips!',
+    'Don\'t let customers wait too long!',
+    'Survive 4 quarters to win!'
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.38 + i * 24));
+
+  // Food icons
+  ctx.font = '40px serif';
+  FOODS.forEach((f, i) => {
+    ctx.fillText(f.icon, W / 2 - 90 + i * 60, H * 0.65);
+  });
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.75, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('START', W / 2, H * 0.75 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.75 && mouseY < H * 0.75 + 45) {
+    initGame();
+  }
+}
+
+function drawPlaying() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Counter/kitchen background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, H * 0.6, W, H * 0.4);
+  ctx.fillStyle = '#2a2a4e';
+  ctx.fillRect(0, H * 0.6, W, 4);
+
+  // "MENU" sign
+  ctx.fillStyle = '#2c3e50';
+  ctx.fillRect(W / 2 - 150, 10, 300, 40);
+  ctx.fillStyle = '#f1c40f';
+  ctx.font = 'bold 20px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('STADIUM CONCESSIONS', W / 2, 37);
+
+  // HUD
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`$${money + tips} | Tips: $${tips} | Q${quarter} | Served: ${servedCount} | Lost: ${lostCount}`, 80, 30);
+
+  const timeLeft = Math.max(0, Math.ceil((maxQuarterTime - quarterTime) / 60));
+  ctx.textAlign = 'right';
+  ctx.fillText(`Time: ${timeLeft}s`, W - 20, 30);
+  if (rushMode) {
+    ctx.fillStyle = '#e74c3c';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText('RUSH HOUR!', W - 20, 50);
+  }
+
+  // Draw customers
+  for (const c of customers) {
+    if (c.leaving) continue;
+    const cx = c.x, cy = c.y;
+
+    // Patience bar
+    const pw = 60;
+    const pRatio = c.patience / c.maxPatience;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(cx - pw / 2, cy - 50, pw, 8);
+    ctx.fillStyle = pRatio > 0.5 ? '#2ecc71' : pRatio > 0.25 ? '#f1c40f' : '#e74c3c';
+    ctx.fillRect(cx - pw / 2, cy - 50, pw * pRatio, 8);
+
+    // Customer body (pixel art style)
+    ctx.fillStyle = `hsl(${(c.id * 67) % 360}, 50%, 50%)`;
+    ctx.fillRect(cx - 12, cy - 35, 24, 30);
+    // Head
+    ctx.fillStyle = '#deb887';
+    ctx.beginPath();
+    ctx.arc(cx, cy - 45, 12, 0, Math.PI * 2);
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#000';
+    ctx.fillRect(cx - 5, cy - 48, 3, 3);
+    ctx.fillRect(cx + 2, cy - 48, 3, 3);
+    // Mood mouth
+    if (pRatio < 0.25) {
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy - 38, 5, Math.PI, 0);
+      ctx.stroke();
+    }
+
+    // Want bubbles
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    const bubbleW = c.wants.length * 30 + 10;
+    ctx.beginPath();
+    ctx.roundRect(cx - bubbleW / 2, cy - 85, bubbleW, 30, 8);
+    ctx.fill();
+
+    ctx.font = '20px serif';
+    ctx.textAlign = 'center';
+    c.wants.forEach((w, i) => {
+      const received = c.received.includes(w);
+      if (received) {
+        ctx.globalAlpha = 0.3;
+      }
+      ctx.fillText(FOODS[w].icon, cx - bubbleW / 2 + 20 + i * 30, cy - 62);
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  // Draw food stations
+  for (const s of foodStations) {
+    // Station bg
+    ctx.fillStyle = '#2c3e50';
+    ctx.fillRect(s.x, s.y, s.w, s.h);
+    ctx.strokeStyle = '#34495e';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(s.x, s.y, s.w, s.h);
+
+    // Food icon
+    ctx.font = '28px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(s.food.icon, s.x + s.w / 2, s.y + 35);
+
+    // Name
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '10px monospace';
+    ctx.fillText(s.food.name, s.x + s.w / 2, s.y + 55);
+    ctx.fillText(`Ready: ${s.readyCount}/${s.maxReady}`, s.x + s.w / 2, s.y + 68);
+
+    // Cooking progress
+    if (s.cooking) {
+      const prog = 1 - s.cookTimer / (s.food.prepTime * (1 / (1 + speedUpgrade * 0.3)));
+      ctx.fillStyle = '#333';
+      ctx.fillRect(s.x + 5, s.y + s.h - 12, s.w - 10, 8);
+      ctx.fillStyle = '#2ecc71';
+      ctx.fillRect(s.x + 5, s.y + s.h - 12, (s.w - 10) * prog, 8);
+    }
+
+    // Highlight on hover
+    if (mouseX > s.x && mouseX < s.x + s.w && mouseY > s.y && mouseY < s.y + s.h) {
+      ctx.strokeStyle = '#f1c40f';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(s.x, s.y, s.w, s.h);
+    }
+
+    // Click to cook or pick up
+    if (clicked && mouseX > s.x && mouseX < s.x + s.w && mouseY > s.y && mouseY < s.y + s.h) {
+      if (s.readyCount > 0 && !dragItem) {
+        // Pick up ready item
+        dragItem = { x: mouseX, y: mouseY, foodIdx: FOODS.indexOf(s.food), icon: s.food.icon };
+        s.readyCount--;
+        if (s.readyCount === 0) s.ready = false;
+      } else if (!s.cooking && s.readyCount < s.maxReady) {
+        // Start cooking
+        s.cooking = true;
+        s.cookTimer = Math.floor(s.food.prepTime / (1 + speedUpgrade * 0.3));
+      }
+    }
+  }
+
+  // Draw dragged item
+  if (dragItem) {
+    ctx.font = '36px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(dragItem.icon, dragItem.x, dragItem.y);
+  }
+
+  // Messages
+  if (messageTimer > 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(W / 2 - 200, H * 0.5 - 20, 400, 40);
+    ctx.fillStyle = '#f1c40f';
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(message, W / 2, H * 0.5 + 6);
+  }
+  if (comboTimer > 0) {
+    ctx.fillStyle = '#2ecc71';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(comboMsg, W / 2, H * 0.55 + 6);
+  }
+}
+
+function drawQuarterBreak() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#f1c40f';
+  ctx.font = 'bold 36px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`END OF QUARTER ${quarter}`, W / 2, H * 0.15);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px monospace';
+  ctx.fillText(`Money: $${money + tips} | Served: ${servedCount} | Lost: ${lostCount}`, W / 2, H * 0.25);
+
+  // Upgrades
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText('UPGRADES', W / 2, H * 0.35);
+
+  const upgrades = [
+    { name: 'Faster Cooking (Lv ' + (speedUpgrade + 1) + ')', cost: 15 + speedUpgrade * 10, type: 'speed' },
+    { name: 'More Capacity (Lv ' + (capacityUpgrade + 1) + ')', cost: 20 + capacityUpgrade * 10, type: 'capacity' }
+  ];
+
+  upgrades.forEach((u, i) => {
+    const bx = W / 2 - 150, by = H * 0.4 + i * 60;
+    const canAfford = (money + tips) >= u.cost;
+    ctx.fillStyle = canAfford ? '#2c3e50' : '#1a1a2e';
+    ctx.fillRect(bx, by, 300, 45);
+    ctx.strokeStyle = canAfford ? '#a78bfa' : '#333';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, 300, 45);
+
+    ctx.fillStyle = canAfford ? '#e0e0ff' : '#666';
+    ctx.font = '14px monospace';
+    ctx.fillText(`${u.name} - $${u.cost}`, W / 2, by + 28);
+
+    if (clicked && canAfford && mouseX > bx && mouseX < bx + 300 && mouseY > by && mouseY < by + 45) {
+      if (u.type === 'speed') { speedUpgrade++; money -= u.cost; }
+      if (u.type === 'capacity') { capacityUpgrade++; money -= u.cost; }
+      setupStations();
+    }
+  });
+
+  // Continue button
+  const cy = H * 0.7;
+  ctx.fillStyle = '#2ecc71';
+  ctx.fillRect(W / 2 - 100, cy, 200, 50);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('NEXT QUARTER', W / 2, cy + 32);
+
+  if (clicked && mouseX > W / 2 - 100 && mouseX < W / 2 + 100 && mouseY > cy && mouseY < cy + 50) {
+    quarter++;
+    quarterTime = 0;
+    customers = [];
+    state = PLAYING;
+  }
+}
+
+function drawEnd(won) {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = won ? '#2ecc71' : '#e74c3c';
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(won ? 'GAME COMPLETE!' : 'GAME OVER', W / 2, H * 0.25);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px monospace';
+  ctx.fillText(`Total Earnings: $${money + tips}`, W / 2, H * 0.38);
+  ctx.fillText(`Fans Served: ${servedCount}`, W / 2, H * 0.44);
+  ctx.fillText(`Fans Lost: ${lostCount}`, W / 2, H * 0.50);
+
+  if (won) {
+    ctx.fillStyle = '#f1c40f';
+    ctx.font = '16px monospace';
+    ctx.fillText('You survived the full game! Great job!', W / 2, H * 0.58);
+  }
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.7, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('RETRY', W / 2, H * 0.7 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.7 && mouseY < H * 0.7 + 45) {
+    state = TITLE;
+  }
+}
+
+function gameLoop() {
+  update();
+  switch (state) {
+    case TITLE: drawTitle(); break;
+    case PLAYING: drawPlaying(); break;
+    case QUARTER_BREAK: drawQuarterBreak(); break;
+    case GAMEOVER: drawEnd(false); break;
+    case WIN: drawEnd(true); break;
+  }
+  clicked = false;
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

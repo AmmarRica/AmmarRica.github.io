@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Auto Chess</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-y: auto; }
+nav { width: 100%; padding: 12px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+h1 { font-size: 22px; color: #f8d830; margin: 5px 0; }
+.container { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; padding: 10px; max-width: 900px; }
+.panel { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 8px; padding: 12px; }
+.grid { display: grid; grid-template-columns: repeat(7, 48px); grid-template-rows: repeat(7, 48px); gap: 2px; background: #0a3d0a; padding: 4px; border-radius: 4px; }
+.cell { width: 48px; height: 48px; background: #1a5c1a; border: 1px solid #0a3d0a; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; cursor: pointer; position: relative; border-radius: 2px; }
+.cell.highlight { background: #2a7c2a; }
+.cell.player { border: 2px solid #f8d830; }
+.roster { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.roster-item { width: 52px; height: 52px; background: #2a2a4a; border: 2px solid #4a4a6a; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: grab; font-size: 10px; user-select: none; }
+.roster-item:hover { border-color: #a78bfa; }
+.roster-item.dragging { opacity: 0.5; }
+.roster-item .icon { font-size: 20px; }
+.roster-item .label { font-size: 8px; margin-top: 2px; color: #a0a0c0; }
+.btn { background: #a78bfa; color: #0f0f1a; border: none; padding: 10px 24px; font-family: monospace; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 6px; margin: 6px; }
+.btn:hover { background: #c4b5fd; }
+.btn:disabled { background: #4a4a6a; cursor: default; }
+.log { max-height: 150px; overflow-y: auto; font-size: 11px; color: #a0a0c0; background: #0a0a15; padding: 8px; border-radius: 4px; margin-top: 8px; min-width: 200px; }
+.log div { margin: 2px 0; }
+.log .good { color: #40e040; }
+.log .bad { color: #e04040; }
+.log .ability { color: #f8d830; }
+.status { font-size: 13px; margin: 6px 0; text-align: center; }
+.status .round { color: #f8d830; }
+.status .score { color: #40e040; }
+#simCanvas { border: 1px solid #2a2a4a; border-radius: 4px; }
+.phase-label { font-size: 18px; color: #a78bfa; text-align: center; margin: 4px 0; }
+.ability-desc { font-size: 9px; color: #c0c0e0; }
+.tooltip { display: none; position: absolute; background: #1a1a2e; border: 1px solid #a78bfa; padding: 6px; border-radius: 4px; z-index: 100; font-size: 10px; width: 130px; pointer-events: none; }
+</style>
+</head>
+<body>
+<h1>FOOTBALL AUTO CHESS</h1>
+<div class="status">
+  <span class="round" id="roundLabel">Round 1</span> |
+  <span class="score" id="scoreLabel">You 0 - 0 Enemy</span> |
+  <span id="phaseLabel">Offense Phase</span>
+</div>
+<div class="container">
+  <div class="panel" id="setupPanel">
+    <div class="phase-label" id="phaseTitle">PLACE YOUR OFFENSE</div>
+    <div id="rosterArea">
+      <div class="roster" id="roster"></div>
+    </div>
+    <div style="font-size:10px;color:#808090;margin:4px 0;">Drag players onto the field. Click placed player to remove.</div>
+    <div class="grid" id="grid"></div>
+    <div style="text-align:center;margin-top:8px;">
+      <button class="btn" id="snapBtn" disabled>SNAP!</button>
+      <button class="btn" id="autoBtn" style="font-size:12px;padding:8px 14px;">AUTO-FILL</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="phase-label">SIMULATION</div>
+    <canvas id="simCanvas" width="340" height="480"></canvas>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+<div id="titleScreen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#0f0f1a;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;">
+  <h1 style="font-size:32px;color:#f8d830;">FOOTBALL AUTO CHESS</h1>
+  <p style="color:#a0a0c0;margin:15px;text-align:center;max-width:500px;font-size:13px;">
+    Place 11 players on offense to score a touchdown.<br>
+    Then place 11 defenders to stop the enemy.<br>
+    Each player class has a Dota-inspired ability!<br><br>
+    <strong style="color:#f8d830;">Offense:</strong> QB (Long Throw), RB (Sprint Burst), WR (Phase Shift), OL (Fortify), TE (Hook)<br>
+    <strong style="color:#e04040;">Defense:</strong> DE (Rupture), LB (Berserker Call), CB (Windwalk), S (Track), DT (Ravage)
+  </p>
+  <button class="btn" onclick="document.getElementById('titleScreen').style.display='none';startGame();" style="font-size:20px;padding:14px 40px;">PLAY</button>
+</div>
+<script>
+const CLASSES = {
+  offense: [
+    { id: 'QB', name: 'QB', icon: '🏈', ability: 'Long Throw', desc: 'Pass ball far downfield', count: 1, speed: 2, power: 3 },
+    { id: 'RB', name: 'RB', icon: '🏃', ability: 'Sprint Burst', desc: 'Burst of speed', count: 2, speed: 4, power: 3 },
+    { id: 'WR', name: 'WR', icon: '📡', ability: 'Phase Shift', desc: 'Dodge tackles', count: 3, speed: 5, power: 1 },
+    { id: 'OL', name: 'OL', icon: '🛡️', ability: 'Fortify', desc: 'Immovable block', count: 3, speed: 1, power: 5 },
+    { id: 'TE', name: 'TE', icon: '🪝', ability: 'Hook', desc: 'Pull defender away', count: 2, speed: 3, power: 4 }
+  ],
+  defense: [
+    { id: 'DE', name: 'DE', icon: '⚔️', ability: 'Rupture', desc: 'Damage on move', count: 2, speed: 4, power: 4 },
+    { id: 'LB', name: 'LB', icon: '🔥', ability: 'Berserker Call', desc: 'Taunt nearby', count: 3, speed: 3, power: 4 },
+    { id: 'CB', name: 'CB', icon: '👻', ability: 'Windwalk', desc: 'Go invisible', count: 3, speed: 5, power: 2 },
+    { id: 'S', name: 'S', icon: '🔍', ability: 'Track', desc: 'Reveal & slow', count: 2, speed: 4, power: 3 },
+    { id: 'DT', name: 'DT', icon: '💥', ability: 'Ravage', desc: 'Stun area', count: 1, speed: 2, power: 5 }
+  ]
+};
+
+let gameState = { round: 1, playerScore: 0, enemyScore: 0, phase: 'offense' };
+let placedPlayers = [];
+let rosterItems = [];
+let dragging = null;
+let simRunning = false;
+const gridEl = document.getElementById('grid');
+const rosterEl = document.getElementById('roster');
+const snapBtn = document.getElementById('snapBtn');
+const autoBtn = document.getElementById('autoBtn');
+const logEl = document.getElementById('log');
+const simCanvas = document.getElementById('simCanvas');
+const simCtx = simCanvas.getContext('2d');
+
+function buildGrid() {
+  gridEl.innerHTML = '';
+  for (let r = 0; r < 7; r++) {
+    for (let c = 0; c < 7; c++) {
+      let cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.row = r;
+      cell.dataset.col = c;
+      // Line of scrimmage
+      if (r === 3) cell.style.borderTop = '2px solid #f8d830';
+      // Offense can only place in rows 4-6 (bottom), defense in 0-2 (top)
+      let placed = placedPlayers.find(p => p.row === r && p.col === c);
+      if (placed) {
+        cell.textContent = placed.icon;
+        cell.classList.add('player');
+        cell.title = placed.name + ': ' + placed.ability;
+        cell.addEventListener('click', () => removePlayer(r, c));
+      }
+      cell.addEventListener('dragover', e => { e.preventDefault(); cell.classList.add('highlight'); });
+      cell.addEventListener('dragleave', () => cell.classList.remove('highlight'));
+      cell.addEventListener('drop', e => {
+        e.preventDefault();
+        cell.classList.remove('highlight');
+        placePlayer(r, c);
+      });
+      gridEl.appendChild(cell);
+    }
+  }
+}
+
+function buildRoster() {
+  rosterEl.innerHTML = '';
+  let classes = gameState.phase === 'offense' ? CLASSES.offense : CLASSES.defense;
+  rosterItems = [];
+  classes.forEach(cl => {
+    let placed = placedPlayers.filter(p => p.id === cl.id).length;
+    let remaining = cl.count - placed;
+    for (let i = 0; i < remaining; i++) {
+      let item = document.createElement('div');
+      item.className = 'roster-item';
+      item.draggable = true;
+      item.innerHTML = `<span class="icon">${cl.icon}</span><span class="label">${cl.name}</span><span class="ability-desc">${cl.ability}</span>`;
+      item.dataset.classId = cl.id;
+      item.addEventListener('dragstart', e => {
+        dragging = cl;
+        item.classList.add('dragging');
+      });
+      item.addEventListener('dragend', () => {
+        dragging = null;
+        item.classList.remove('dragging');
+      });
+      rosterEl.appendChild(item);
+    }
+  });
+  updateSnapBtn();
+}
+
+function placePlayer(row, col) {
+  if (!dragging) return;
+  let validRows = gameState.phase === 'offense' ? [3, 4, 5, 6] : [0, 1, 2, 3];
+  if (!validRows.includes(row)) return;
+  if (placedPlayers.find(p => p.row === row && p.col === col)) return;
+  placedPlayers.push({ ...dragging, row, col });
+  dragging = null;
+  buildGrid();
+  buildRoster();
+}
+
+function removePlayer(row, col) {
+  placedPlayers = placedPlayers.filter(p => !(p.row === row && p.col === col));
+  buildGrid();
+  buildRoster();
+}
+
+function updateSnapBtn() {
+  snapBtn.disabled = placedPlayers.length < 11;
+}
+
+function autoFill() {
+  placedPlayers = [];
+  let classes = gameState.phase === 'offense' ? CLASSES.offense : CLASSES.defense;
+  let validRows = gameState.phase === 'offense' ? [4, 5, 6, 3] : [0, 1, 2, 3];
+  let allUnits = [];
+  classes.forEach(cl => { for (let i = 0; i < cl.count; i++) allUnits.push({ ...cl }); });
+  // Shuffle
+  for (let i = allUnits.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1)); [allUnits[i], allUnits[j]] = [allUnits[j], allUnits[i]]; }
+  let idx = 0;
+  outer: for (let r of validRows) {
+    for (let c = 0; c < 7; c++) {
+      if (idx >= allUnits.length) break outer;
+      if (!placedPlayers.find(p => p.row === r && p.col === c)) {
+        allUnits[idx].row = r;
+        allUnits[idx].col = c;
+        placedPlayers.push(allUnits[idx]);
+        idx++;
+      }
+    }
+  }
+  buildGrid();
+  buildRoster();
+}
+
+function generateEnemyTeam(type) {
+  let classes = type === 'offense' ? CLASSES.offense : CLASSES.defense;
+  let validRows = type === 'defense' ? [0, 1, 2, 3] : [4, 5, 6, 3];
+  let allUnits = [];
+  classes.forEach(cl => { for (let i = 0; i < cl.count; i++) allUnits.push({ ...cl }); });
+  for (let i = allUnits.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1)); [allUnits[i], allUnits[j]] = [allUnits[j], allUnits[i]]; }
+  let team = [];
+  let idx = 0;
+  for (let r of validRows) {
+    for (let c = 0; c < 7; c++) {
+      if (idx >= allUnits.length) break;
+      allUnits[idx].row = r;
+      allUnits[idx].col = c;
+      team.push(allUnits[idx]);
+      idx++;
+    }
+  }
+  return team;
+}
+
+function addLog(text, cls) {
+  let d = document.createElement('div');
+  d.textContent = text;
+  if (cls) d.className = cls;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// Simulation
+let simPlayers = [];
+let simTick = 0;
+let simBall = null;
+let simDone = false;
+let simResult = '';
+
+function startSimulation() {
+  simRunning = true;
+  logEl.innerHTML = '';
+  simTick = 0;
+  simDone = false;
+  simResult = '';
+  snapBtn.disabled = true;
+  autoBtn.disabled = true;
+
+  let offense, defense;
+  if (gameState.phase === 'offense') {
+    offense = placedPlayers.map(p => ({ ...p, team: 'player', hp: 10 + p.power * 2, maxHp: 10 + p.power * 2, stunned: 0, phased: 0, sprinting: 0, abilityCd: 0 }));
+    let enemyDef = generateEnemyTeam('defense');
+    defense = enemyDef.map(p => ({ ...p, team: 'enemy', hp: 10 + p.power * 2, maxHp: 10 + p.power * 2, stunned: 0, invisible: 0, abilityCd: 0 }));
+  } else {
+    defense = placedPlayers.map(p => ({ ...p, team: 'player', hp: 10 + p.power * 2, maxHp: 10 + p.power * 2, stunned: 0, invisible: 0, abilityCd: 0 }));
+    let enemyOff = generateEnemyTeam('offense');
+    offense = enemyOff.map(p => ({ ...p, team: 'enemy', hp: 10 + p.power * 2, maxHp: 10 + p.power * 2, stunned: 0, phased: 0, sprinting: 0, abilityCd: 0 }));
+  }
+
+  simPlayers = [...offense.map(p => ({ ...p, side: 'offense' })), ...defense.map(p => ({ ...p, side: 'defense' }))];
+  simBall = { carrier: simPlayers.find(p => p.side === 'offense' && p.id === 'QB') || simPlayers.find(p => p.side === 'offense'), thrown: false, x: 0, y: 0, targetX: 0, targetY: 0 };
+  if (simBall.carrier) simBall.carrier.hasBall = true;
+
+  addLog('=== SNAP! ===', 'ability');
+  runSimulation();
+}
+
+function dist(a, b) {
+  return Math.sqrt((a.row - b.row) ** 2 + (a.col - b.col) ** 2);
+}
+
+function runSimulation() {
+  if (simDone) return;
+
+  let simInterval = setInterval(() => {
+    if (simDone) { clearInterval(simInterval); return; }
+    simTick++;
+
+    let offensePlayers = simPlayers.filter(p => p.side === 'offense' && p.hp > 0);
+    let defensePlayers = simPlayers.filter(p => p.side === 'defense' && p.hp > 0);
+
+    if (offensePlayers.length === 0) {
+      simDone = true;
+      simResult = gameState.phase === 'offense' ? 'lose' : 'win';
+      addLog('Offense eliminated!', simResult === 'win' ? 'good' : 'bad');
+      finishSimulation();
+      return;
+    }
+
+    let ballCarrier = simPlayers.find(p => p.hasBall && p.hp > 0);
+    if (ballCarrier && ballCarrier.row <= 0) {
+      simDone = true;
+      simResult = gameState.phase === 'offense' ? 'win' : 'lose';
+      addLog('TOUCHDOWN!', simResult === 'win' ? 'good' : 'bad');
+      finishSimulation();
+      return;
+    }
+
+    if (simTick > 80) {
+      simDone = true;
+      simResult = gameState.phase === 'offense' ? 'lose' : 'win';
+      addLog('Time expired - offense stopped!', simResult === 'win' ? 'good' : 'bad');
+      finishSimulation();
+      return;
+    }
+
+    // Process each player
+    simPlayers.forEach(p => {
+      if (p.hp <= 0) return;
+      if (p.stunned > 0) { p.stunned--; return; }
+      if (p.abilityCd > 0) p.abilityCd--;
+      if (p.phased > 0) p.phased--;
+      if (p.sprinting > 0) p.sprinting--;
+      if (p.invisible > 0) p.invisible--;
+
+      if (p.side === 'offense') {
+        // Offense AI: move towards endzone (row 0), avoid defenders
+        let target = p.hasBall ? { row: -1, col: p.col } : { row: Math.max(0, p.row - 2), col: p.col };
+        let nearestDef = defensePlayers.filter(d => d.hp > 0 && d.invisible <= 0).sort((a, b) => dist(a, p) - dist(b, p))[0];
+
+        // Use abilities
+        if (p.abilityCd <= 0) {
+          if (p.id === 'QB' && nearestDef && dist(nearestDef, p) < 2.5 && p.hasBall) {
+            // Long Throw - find a WR or RB ahead
+            let receivers = offensePlayers.filter(r => r !== p && r.row < p.row && r.hp > 0);
+            if (receivers.length > 0) {
+              let best = receivers.sort((a, b) => a.row - b.row)[0];
+              p.hasBall = false;
+              best.hasBall = true;
+              addLog(`QB Long Throw to ${best.name}!`, 'ability');
+              p.abilityCd = 8;
+            }
+          } else if (p.id === 'RB' && p.hasBall && nearestDef && dist(nearestDef, p) < 3) {
+            p.sprinting = 4;
+            addLog('RB Sprint Burst!', 'ability');
+            p.abilityCd = 10;
+          } else if (p.id === 'WR' && nearestDef && dist(nearestDef, p) < 2) {
+            p.phased = 3;
+            addLog('WR Phase Shift!', 'ability');
+            p.abilityCd = 8;
+          } else if (p.id === 'OL' && nearestDef && dist(nearestDef, p) < 2) {
+            p.hp = Math.min(p.maxHp, p.hp + 5);
+            p.power += 2;
+            addLog('OL Fortify!', 'ability');
+            p.abilityCd = 6;
+          } else if (p.id === 'TE' && nearestDef && dist(nearestDef, p) < 3) {
+            nearestDef.row = Math.min(6, nearestDef.row + 1);
+            addLog(`TE Hook on ${nearestDef.name}!`, 'ability');
+            p.abilityCd = 8;
+          }
+        }
+
+        // Movement
+        let moveSpeed = p.sprinting > 0 ? 2 : 1;
+        let moved = false;
+        if (p.hasBall || p.id !== 'OL') {
+          if (nearestDef && dist(nearestDef, p) < 1.5 && p.id === 'OL') {
+            // OL stays to block
+          } else {
+            if (p.row > 0 && Math.random() < 0.6 * moveSpeed) {
+              let newRow = Math.max(0, p.row - 1);
+              if (!simPlayers.find(o => o.row === newRow && o.col === p.col && o.hp > 0 && o !== p)) {
+                p.row = newRow;
+                moved = true;
+              }
+            }
+            if (!moved && Math.random() < 0.3) {
+              let dc = Math.random() < 0.5 ? -1 : 1;
+              let newCol = Math.max(0, Math.min(6, p.col + dc));
+              if (!simPlayers.find(o => o.row === p.row && o.col === newCol && o.hp > 0 && o !== p)) {
+                p.col = newCol;
+              }
+            }
+          }
+        }
+      } else {
+        // Defense AI: move towards ball carrier or nearest offense
+        let target = simPlayers.find(t => t.hasBall && t.hp > 0) || offensePlayers[0];
+        if (!target) return;
+
+        // Use abilities
+        if (p.abilityCd <= 0) {
+          let nearestOff = offensePlayers.filter(o => o.hp > 0).sort((a, b) => dist(a, p) - dist(b, p))[0];
+          if (p.id === 'DE' && nearestOff && dist(nearestOff, p) < 2) {
+            nearestOff.hp -= 3;
+            addLog(`DE Rupture on ${nearestOff.name}! (-3 HP)`, 'bad');
+            p.abilityCd = 6;
+          } else if (p.id === 'LB' && nearestOff && dist(nearestOff, p) < 2.5) {
+            offensePlayers.filter(o => dist(o, p) < 2.5 && o.hp > 0).forEach(o => { o.stunned = 1; });
+            addLog('LB Berserker Call!', 'ability');
+            p.abilityCd = 8;
+          } else if (p.id === 'CB' && (!nearestOff || dist(nearestOff, p) > 2)) {
+            p.invisible = 3;
+            addLog('CB Windwalk!', 'ability');
+            p.abilityCd = 10;
+          } else if (p.id === 'S' && nearestOff) {
+            offensePlayers.filter(o => o.phased > 0 || o.invisible > 0).forEach(o => { o.phased = 0; o.invisible = 0; });
+            if (nearestOff.sprinting > 0) nearestOff.sprinting = 0;
+            addLog('S Track - revealed enemies!', 'ability');
+            p.abilityCd = 8;
+          } else if (p.id === 'DT') {
+            let stunned = offensePlayers.filter(o => dist(o, p) < 2 && o.hp > 0);
+            stunned.forEach(o => { o.stunned = 2; o.hp -= 2; });
+            if (stunned.length > 0) {
+              addLog(`DT Ravage! Stunned ${stunned.length} players!`, 'ability');
+              p.abilityCd = 12;
+            }
+          }
+        }
+
+        // Movement towards target
+        if (Math.random() < 0.5) {
+          let dr = target.row > p.row ? 1 : target.row < p.row ? -1 : 0;
+          let dc = target.col > p.col ? 1 : target.col < p.col ? -1 : 0;
+          let newRow = p.row + dr;
+          let newCol = p.col + dc;
+          if (newRow >= 0 && newRow <= 6 && newCol >= 0 && newCol <= 6) {
+            if (!simPlayers.find(o => o.row === newRow && o.col === newCol && o.hp > 0 && o !== p && o.side === 'defense')) {
+              p.row = newRow;
+              p.col = newCol;
+            }
+          }
+        }
+
+        // Tackle
+        let adjacent = offensePlayers.filter(o => dist(o, p) < 1.5 && o.hp > 0 && o.phased <= 0);
+        adjacent.forEach(o => {
+          let dmg = Math.ceil(p.power * (0.5 + Math.random() * 0.5));
+          o.hp -= dmg;
+          if (o.hasBall && o.hp <= 0) {
+            addLog(`${p.name} sacks the ball carrier!`, 'bad');
+          }
+        });
+      }
+    });
+
+    // Remove dead, check ball
+    let deadCarrier = simPlayers.find(p => p.hasBall && p.hp <= 0);
+    if (deadCarrier) {
+      deadCarrier.hasBall = false;
+      let newCarrier = offensePlayers.filter(p => p.hp > 0).sort((a, b) => a.row - b.row)[0];
+      if (newCarrier) {
+        newCarrier.hasBall = true;
+        addLog(`Ball fumbled! ${newCarrier.name} recovers.`, 'bad');
+      }
+    }
+
+    drawSim();
+  }, 250);
+}
+
+function drawSim() {
+  let sw = simCanvas.width, sh = simCanvas.height;
+  simCtx.fillStyle = '#1a5c1a';
+  simCtx.fillRect(0, 0, sw, sh);
+
+  // Yard lines
+  for (let i = 0; i <= 7; i++) {
+    let y = i * (sh / 7);
+    simCtx.strokeStyle = '#ffffff30';
+    simCtx.beginPath();
+    simCtx.moveTo(0, y);
+    simCtx.lineTo(sw, y);
+    simCtx.stroke();
+  }
+  // Endzone
+  simCtx.fillStyle = '#e0404040';
+  simCtx.fillRect(0, 0, sw, sh / 7);
+
+  // LOS
+  let losY = 3 * (sh / 7);
+  simCtx.strokeStyle = '#f8d830';
+  simCtx.lineWidth = 2;
+  simCtx.beginPath();
+  simCtx.moveTo(0, losY);
+  simCtx.lineTo(sw, losY);
+  simCtx.stroke();
+  simCtx.lineWidth = 1;
+
+  // Players
+  let cellW = sw / 7, cellH = sh / 7;
+  simPlayers.forEach(p => {
+    if (p.hp <= 0) return;
+    let cx = p.col * cellW + cellW / 2;
+    let cy = p.row * cellH + cellH / 2;
+
+    // Invisible
+    if (p.invisible > 0 && p.team !== 'player') return;
+
+    let alpha = p.invisible > 0 ? 0.4 : 1;
+    simCtx.globalAlpha = alpha;
+
+    // Circle
+    let color = p.side === 'offense' ? '#4040e0' : '#e04040';
+    if (p.team === 'player') color = p.side === 'offense' ? '#4080ff' : '#40e040';
+    if (p.stunned > 0) color = '#808080';
+    if (p.phased > 0) color = '#c0c0ff';
+    if (p.sprinting > 0) color = '#f8d830';
+
+    simCtx.fillStyle = color;
+    simCtx.beginPath();
+    simCtx.arc(cx, cy, 16, 0, Math.PI * 2);
+    simCtx.fill();
+    simCtx.strokeStyle = p.hasBall ? '#f8d830' : '#00000060';
+    simCtx.lineWidth = p.hasBall ? 3 : 1;
+    simCtx.stroke();
+    simCtx.lineWidth = 1;
+
+    // Label
+    simCtx.fillStyle = '#fff';
+    simCtx.font = '10px monospace';
+    simCtx.textAlign = 'center';
+    simCtx.fillText(p.name, cx, cy + 4);
+
+    // HP bar
+    let hpW = 24;
+    let hpFrac = Math.max(0, p.hp / p.maxHp);
+    simCtx.fillStyle = '#000';
+    simCtx.fillRect(cx - hpW / 2, cy - 22, hpW, 4);
+    simCtx.fillStyle = hpFrac > 0.5 ? '#40e040' : hpFrac > 0.25 ? '#e0e040' : '#e04040';
+    simCtx.fillRect(cx - hpW / 2, cy - 22, hpW * hpFrac, 4);
+
+    simCtx.globalAlpha = 1;
+  });
+
+  // Tick counter
+  simCtx.fillStyle = '#fff';
+  simCtx.font = '12px monospace';
+  simCtx.textAlign = 'right';
+  simCtx.fillText('Tick: ' + simTick, sw - 5, sh - 5);
+
+  if (simDone && simResult) {
+    simCtx.fillStyle = 'rgba(0,0,0,0.6)';
+    simCtx.fillRect(0, sh / 2 - 30, sw, 60);
+    simCtx.fillStyle = simResult === 'win' ? '#40e040' : '#e04040';
+    simCtx.font = '24px monospace';
+    simCtx.textAlign = 'center';
+    simCtx.fillText(simResult === 'win' ? 'YOU WIN!' : 'YOU LOSE!', sw / 2, sh / 2 + 8);
+  }
+}
+
+function finishSimulation() {
+  if (simResult === 'win') {
+    if (gameState.phase === 'offense') gameState.playerScore += 7;
+    else gameState.playerScore += 3;
+  } else {
+    if (gameState.phase === 'offense') gameState.enemyScore += 3;
+    else gameState.enemyScore += 7;
+  }
+  updateLabels();
+
+  setTimeout(() => {
+    if (gameState.phase === 'offense') {
+      gameState.phase = 'defense';
+    } else {
+      gameState.phase = 'offense';
+      gameState.round++;
+    }
+    if (gameState.round > 4) {
+      let msg = gameState.playerScore > gameState.enemyScore ? 'YOU WIN THE GAME!' : gameState.playerScore < gameState.enemyScore ? 'YOU LOST THE GAME!' : 'TIE GAME!';
+      addLog('=== ' + msg + ' ===', gameState.playerScore >= gameState.enemyScore ? 'good' : 'bad');
+      addLog('Click Auto-Fill + SNAP to play again.', 'ability');
+      gameState.round = 1;
+      gameState.playerScore = 0;
+      gameState.enemyScore = 0;
+    }
+    placedPlayers = [];
+    simRunning = false;
+    updateLabels();
+    buildGrid();
+    buildRoster();
+    snapBtn.disabled = true;
+    autoBtn.disabled = false;
+  }, 2500);
+}
+
+function updateLabels() {
+  document.getElementById('roundLabel').textContent = 'Round ' + gameState.round;
+  document.getElementById('scoreLabel').textContent = `You ${gameState.playerScore} - ${gameState.enemyScore} Enemy`;
+  document.getElementById('phaseLabel').textContent = gameState.phase === 'offense' ? 'Offense Phase' : 'Defense Phase';
+  document.getElementById('phaseTitle').textContent = gameState.phase === 'offense' ? 'PLACE YOUR OFFENSE' : 'PLACE YOUR DEFENSE';
+}
+
+function startGame() {
+  gameState = { round: 1, playerScore: 0, enemyScore: 0, phase: 'offense' };
+  placedPlayers = [];
+  updateLabels();
+  buildGrid();
+  buildRoster();
+  drawSim();
+}
+
+snapBtn.addEventListener('click', () => {
+  if (placedPlayers.length >= 11 && !simRunning) startSimulation();
+});
+autoBtn.addEventListener('click', () => {
+  if (!simRunning) autoFill();
+});
+
+// Init sim canvas
+drawSim();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Punt</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #a78bfa; margin-top: 10px; image-rendering: pixelated; }
+#info { color: #a78bfa; margin-top: 8px; font-size: 14px; text-align: center; }
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="320"></canvas>
+<div id="info"></div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const info = document.getElementById('info');
+
+// Pixel scale for retro look
+const PX = 4;
+const W = canvas.width;
+const H = canvas.height;
+
+// Colors - Atari 2600 palette
+const COL = {
+  field: '#1a6b1a', lines: '#2a8a2a', ball: '#c8a020',
+  punter: '#4040ff', coverage: '#6060ff',
+  returner: '#ff4040', blockers: '#cc3030',
+  sky: '#0f0f1a', text: '#e0e0ff', highlight: '#ffff40'
+};
+
+let state = 'title'; // title, aiming, flight, coverage, returning, scoring, gameover
+let score = 0;
+let puntsLeft = 5;
+let aimAngle = 45;
+let aimDir = 1;
+let power = 0;
+let powerDir = 1;
+let aimPhase = 'angle'; // angle, power
+
+// Field positions (yard line 0 = left endzone, 100 = right endzone)
+// Punter starts at own 30 (yard 30)
+let ballX, ballY, ballVx, ballVy;
+let ballYardLine;
+let hangTime, maxHang;
+let puntDist;
+
+// Coverage players
+let coveragePlayers = [];
+let returner = { x: 0, y: 0, vx: 0, vy: 0, active: false, hasball: false };
+let blockers = [];
+let tackled = false;
+let touchback = false;
+let fairCatch = false;
+
+// Field drawing
+function yardToX(yard) { return (yard / 100) * W; }
+function drawField() {
+  ctx.fillStyle = COL.field;
+  ctx.fillRect(0, 60, W, H - 60);
+  // Yard lines every 10
+  ctx.strokeStyle = COL.lines;
+  ctx.lineWidth = 1;
+  for (let y = 0; y <= 100; y += 10) {
+    let x = yardToX(y);
+    ctx.beginPath();
+    ctx.moveTo(x, 60);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+  // Endzones
+  ctx.fillStyle = '#0d4d0d';
+  ctx.fillRect(0, 60, yardToX(10), H - 60);
+  ctx.fillRect(yardToX(90), 60, yardToX(10), H - 60);
+  // Yard numbers
+  ctx.fillStyle = '#e0e0ff88';
+  ctx.font = '10px monospace';
+  for (let y = 10; y <= 90; y += 10) {
+    let num = y <= 50 ? y : 100 - y;
+    ctx.fillText(num, yardToX(y) - 5, H - 5);
+  }
+}
+
+function drawPixelRect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  let px = Math.round(x / PX) * PX;
+  let py = Math.round(y / PX) * PX;
+  ctx.fillRect(px, py, Math.max(w, PX), Math.max(h, PX));
+}
+
+function drawPlayer(x, y, color, hasHelmet) {
+  // Chunky pixel player
+  drawPixelRect(x - 2, y - 8, PX, PX, hasHelmet ? '#ffffff' : color); // head
+  drawPixelRect(x - 4, y - 4, PX * 2, PX * 2, color); // body
+  drawPixelRect(x - 4, y + 4, PX, PX, color); // left leg
+  drawPixelRect(x, y + 4, PX, PX, color); // right leg
+}
+
+function drawBall(x, y) {
+  drawPixelRect(x - 2, y - 2, PX, PX, COL.ball);
+}
+
+function initPunt() {
+  aimAngle = 45;
+  aimDir = 1;
+  power = 50;
+  powerDir = 1;
+  aimPhase = 'angle';
+  tackled = false;
+  touchback = false;
+  fairCatch = false;
+  coveragePlayers = [];
+  blockers = [];
+  returner.active = false;
+  returner.hasball = false;
+  ballX = yardToX(30);
+  ballY = H / 2;
+  state = 'aiming';
+}
+
+function launchPunt() {
+  let radAngle = (aimAngle * Math.PI) / 180;
+  let spd = power * 0.06;
+  ballVx = Math.cos(radAngle) * spd;
+  ballVy = -Math.sin(radAngle) * spd * 0.3; // vertical component for hang
+  maxHang = (aimAngle / 45) * (power / 100) * 180; // frames of hang time
+  hangTime = 0;
+  puntDist = 0;
+
+  // Spawn coverage players
+  for (let i = 0; i < 5; i++) {
+    coveragePlayers.push({
+      x: yardToX(30) + Math.random() * 20 - 10,
+      y: 80 + i * 40 + Math.random() * 20,
+      speed: 1.5 + Math.random() * 0.8
+    });
+  }
+
+  // Returner waits deep
+  returner.x = yardToX(80);
+  returner.y = H / 2;
+  returner.vx = 0;
+  returner.vy = 0;
+  returner.active = true;
+  returner.hasball = false;
+
+  // Blockers
+  for (let i = 0; i < 4; i++) {
+    blockers.push({
+      x: yardToX(65) + Math.random() * 30,
+      y: 80 + i * 50 + Math.random() * 20,
+      speed: 0.8 + Math.random() * 0.4
+    });
+  }
+
+  state = 'flight';
+}
+
+let controlledPlayer = 0; // which coverage player you control
+let keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (state === 'aiming' && e.key === ' ') {
+    e.preventDefault();
+    if (aimPhase === 'angle') {
+      aimPhase = 'power';
+    } else {
+      launchPunt();
+    }
+  }
+  if (state === 'title' && e.key === ' ') {
+    e.preventDefault();
+    score = 0;
+    puntsLeft = 5;
+    initPunt();
+  }
+  if (state === 'gameover' && e.key === ' ') {
+    e.preventDefault();
+    state = 'title';
+  }
+  if (state === 'scoring' && e.key === ' ') {
+    e.preventDefault();
+    if (puntsLeft <= 0) {
+      state = 'gameover';
+    } else {
+      initPunt();
+    }
+  }
+  if ((state === 'coverage' || state === 'returning') && e.key === 'Tab') {
+    e.preventDefault();
+    controlledPlayer = (controlledPlayer + 1) % coveragePlayers.length;
+  }
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+let puntResult = '';
+let puntScore = 0;
+
+function updateAiming(dt) {
+  if (aimPhase === 'angle') {
+    aimAngle += aimDir * 1.2;
+    if (aimAngle > 70) aimDir = -1;
+    if (aimAngle < 15) aimDir = 1;
+  } else {
+    power += powerDir * 1.5;
+    if (power > 100) powerDir = -1;
+    if (power < 10) powerDir = 1;
+  }
+}
+
+function updateFlight(dt) {
+  hangTime++;
+  ballX += ballVx;
+  // Ball arc
+  let progress = hangTime / maxHang;
+  ballY = H / 2 - Math.sin(progress * Math.PI) * 100;
+
+  // Move coverage downfield
+  for (let cp of coveragePlayers) {
+    cp.x += cp.speed;
+  }
+
+  if (hangTime >= maxHang) {
+    // Ball lands
+    let landYard = (ballX / W) * 100;
+    if (landYard >= 100) {
+      // Touchback
+      touchback = true;
+      returner.x = yardToX(80);
+      returner.hasball = true;
+      state = 'scoring';
+      puntResult = 'TOUCHBACK! -5 pts';
+      puntScore = -5;
+      score += puntScore;
+      puntsLeft--;
+    } else {
+      // Returner catches
+      returner.x = ballX;
+      returner.y = ballY;
+      returner.hasball = true;
+      returner.vx = -2;
+      returner.vy = 0;
+      controlledPlayer = 0;
+      state = 'returning';
+    }
+  }
+}
+
+function updateReturning(dt) {
+  // Player controls coverage unit
+  let cp = coveragePlayers[controlledPlayer];
+  if (cp) {
+    let spd = 2.5;
+    if (keys['ArrowRight'] || keys['d']) cp.x += spd;
+    if (keys['ArrowLeft'] || keys['a']) cp.x -= spd;
+    if (keys['ArrowUp'] || keys['w']) cp.y -= spd;
+    if (keys['ArrowDown'] || keys['s']) cp.y += spd;
+    cp.x = Math.max(0, Math.min(W, cp.x));
+    cp.y = Math.max(60, Math.min(H, cp.y));
+  }
+
+  // AI coverage players move toward returner
+  for (let i = 0; i < coveragePlayers.length; i++) {
+    if (i === controlledPlayer) continue;
+    let c = coveragePlayers[i];
+    let dx = returner.x - c.x;
+    let dy = returner.y - c.y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 1) {
+      c.x += (dx / dist) * c.speed * 0.7;
+      c.y += (dy / dist) * c.speed * 0.7;
+    }
+  }
+
+  // Returner AI - tries to run left (toward own endzone), avoids coverage
+  let bestVy = 0;
+  let closestDist = 999;
+  for (let c of coveragePlayers) {
+    let dx = returner.x - c.x;
+    let dy = returner.y - c.y;
+    let d = Math.sqrt(dx * dx + dy * dy);
+    if (d < closestDist) {
+      closestDist = d;
+      bestVy = dy < 0 ? 2 : -2;
+    }
+  }
+  returner.vx = -2.2;
+  returner.vy = bestVy * 0.5;
+
+  // Blockers try to block coverage
+  for (let b of blockers) {
+    let nearestC = null;
+    let nd = 999;
+    for (let c of coveragePlayers) {
+      let dx = c.x - b.x;
+      let dy = c.y - b.y;
+      let d = Math.sqrt(dx * dx + dy * dy);
+      if (d < nd) { nd = d; nearestC = c; }
+    }
+    if (nearestC && nd < 60) {
+      let dx = nearestC.x - b.x;
+      let dy = nearestC.y - b.y;
+      let d = Math.sqrt(dx * dx + dy * dy);
+      b.x += (dx / d) * b.speed;
+      b.y += (dy / d) * b.speed;
+      // If close, slow down coverage
+      if (nd < 12) {
+        nearestC.speed = Math.max(0.3, nearestC.speed - 0.01);
+      }
+    }
+  }
+
+  returner.x += returner.vx;
+  returner.y += returner.vy;
+  returner.y = Math.max(80, Math.min(H - 20, returner.y));
+
+  // Check tackle
+  for (let c of coveragePlayers) {
+    let dx = returner.x - c.x;
+    let dy = returner.y - c.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 12) {
+      tackled = true;
+      state = 'scoring';
+      calcScore();
+      return;
+    }
+  }
+
+  // Returner reaches endzone (left side)?
+  if (returner.x < yardToX(10)) {
+    // Returned for TD - bad!
+    state = 'scoring';
+    puntResult = 'RETURNED FOR TD! -20 pts';
+    puntScore = -20;
+    score += puntScore;
+    puntsLeft--;
+  }
+}
+
+function calcScore() {
+  let landYard = (ballX / W) * 100;
+  let returnedTo = (returner.x / W) * 100;
+  let netYards = landYard - 30; // from punt line
+  let netAfterReturn = returnedTo - 30;
+  let hangBonus = Math.floor(hangTime / 30);
+
+  puntScore = 0;
+  puntResult = '';
+
+  // Distance points
+  puntScore += Math.floor(netAfterReturn * 0.5);
+
+  // Hang time bonus
+  puntScore += hangBonus;
+
+  // Inside the 20 bonus
+  if (returnedTo >= 80) {
+    puntScore += 15;
+    puntResult = 'INSIDE THE 20! ';
+  }
+
+  // Tackle bonus
+  if (tackled) {
+    puntScore += 10;
+    puntResult += 'TACKLED! ';
+  }
+
+  puntResult += '+' + puntScore + ' pts';
+  score += puntScore;
+  puntsLeft--;
+}
+
+function drawTitle() {
+  ctx.fillStyle = COL.sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // Retro title
+  ctx.fillStyle = COL.highlight;
+  ctx.font = 'bold 32px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PIXEL PUNT', W / 2, 80);
+
+  ctx.fillStyle = COL.text;
+  ctx.font = '12px monospace';
+  ctx.fillText('Atari-Style Punting Game', W / 2, 110);
+
+  ctx.font = '11px monospace';
+  ctx.fillStyle = '#a78bfa';
+  let y = 150;
+  ctx.fillText('SPACE to set angle, then power', W / 2, y);
+  ctx.fillText('Arrow keys to control coverage player', W / 2, y + 20);
+  ctx.fillText('TAB to switch coverage player', W / 2, y + 40);
+  ctx.fillText('Tackle the returner for bonus!', W / 2, y + 60);
+  ctx.fillText('Inside-the-20 bonus | Touchback penalty', W / 2, y + 80);
+
+  ctx.fillStyle = COL.highlight;
+  ctx.font = '14px monospace';
+  ctx.fillText('PRESS SPACE TO START', W / 2, 280);
+  ctx.textAlign = 'left';
+}
+
+function drawGame() {
+  ctx.fillStyle = COL.sky;
+  ctx.fillRect(0, 0, W, 60);
+  drawField();
+
+  // HUD
+  ctx.fillStyle = COL.text;
+  ctx.font = '12px monospace';
+  ctx.fillText('Score: ' + score, 10, 20);
+  ctx.fillText('Punts: ' + puntsLeft, 10, 36);
+
+  if (state === 'aiming') {
+    // Draw punter
+    drawPlayer(yardToX(30), H / 2, COL.punter, true);
+
+    // Aim arrow
+    let rad = (aimAngle * Math.PI) / 180;
+    let len = aimPhase === 'power' ? power * 0.8 : 60;
+    ctx.strokeStyle = COL.highlight;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(yardToX(30), H / 2);
+    ctx.lineTo(yardToX(30) + Math.cos(rad) * len, H / 2 - Math.sin(rad) * len);
+    ctx.stroke();
+
+    // Meters
+    ctx.fillStyle = COL.text;
+    ctx.font = '11px monospace';
+    if (aimPhase === 'angle') {
+      ctx.fillText('Angle: ' + Math.round(aimAngle) + '°  [SPACE to set]', W / 2 - 80, 52);
+    } else {
+      ctx.fillText('Angle: ' + Math.round(aimAngle) + '°  Power: ' + Math.round(power) + '%  [SPACE to punt]', W / 2 - 140, 52);
+    }
+
+    // Power bar
+    if (aimPhase === 'power') {
+      ctx.fillStyle = '#333';
+      ctx.fillRect(W - 30, 65, 15, H - 70);
+      let barH = ((H - 70) * power) / 100;
+      ctx.fillStyle = power > 80 ? '#ff4040' : power > 50 ? '#ffff40' : '#40ff40';
+      ctx.fillRect(W - 30, 65 + (H - 70) - barH, 15, barH);
+    }
+  }
+
+  if (state === 'flight' || state === 'returning') {
+    // Draw ball
+    if (state === 'flight') {
+      drawBall(ballX, ballY);
+      // Ball shadow
+      drawPixelRect(ballX - 1, H / 2, PX, 2, '#00000066');
+    }
+
+    // Coverage
+    for (let i = 0; i < coveragePlayers.length; i++) {
+      let c = coveragePlayers[i];
+      drawPlayer(c.x, c.y, i === controlledPlayer ? '#8080ff' : COL.coverage, true);
+      if (i === controlledPlayer && state === 'returning') {
+        // Highlight
+        ctx.strokeStyle = COL.highlight;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(c.x - 6, c.y - 10, 12, 18);
+      }
+    }
+
+    // Blockers
+    for (let b of blockers) {
+      drawPlayer(b.x, b.y, COL.blockers, false);
+    }
+
+    // Returner
+    if (returner.active) {
+      drawPlayer(returner.x, returner.y, COL.returner, true);
+      if (returner.hasball) {
+        drawBall(returner.x + 3, returner.y - 2);
+      }
+    }
+
+    // Hang time display
+    if (state === 'flight') {
+      ctx.fillStyle = COL.text;
+      ctx.font = '11px monospace';
+      ctx.fillText('Hang: ' + (hangTime / 30).toFixed(1) + 's', W / 2 - 30, 52);
+    }
+    if (state === 'returning') {
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = '10px monospace';
+      ctx.fillText('Tackle the returner! (Arrows/WASD, TAB switch)', W / 2 - 140, 52);
+    }
+  }
+
+  if (state === 'scoring') {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = puntScore >= 0 ? COL.highlight : '#ff4040';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(puntResult, W / 2, H / 2 - 10);
+    ctx.fillStyle = COL.text;
+    ctx.font = '12px monospace';
+    ctx.fillText('Total Score: ' + score, W / 2, H / 2 + 20);
+    ctx.fillText(puntsLeft > 0 ? 'SPACE for next punt' : 'SPACE for results', W / 2, H / 2 + 45);
+    ctx.textAlign = 'left';
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = COL.highlight;
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', W / 2, H / 2 - 30);
+    ctx.fillStyle = COL.text;
+    ctx.font = '16px monospace';
+    ctx.fillText('Final Score: ' + score, W / 2, H / 2 + 10);
+    ctx.font = '12px monospace';
+    let grade = score >= 100 ? 'ALL-PRO PUNTER!' : score >= 60 ? 'Pro Bowler' : score >= 30 ? 'Starter' : score >= 0 ? 'Benchwarmer' : 'Cut from team';
+    ctx.fillText('Rating: ' + grade, W / 2, H / 2 + 35);
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillText('SPACE to play again', W / 2, H / 2 + 65);
+    ctx.textAlign = 'left';
+  }
+}
+
+function gameLoop() {
+  if (state === 'title') {
+    drawTitle();
+  } else if (state === 'aiming') {
+    updateAiming();
+    drawGame();
+  } else if (state === 'flight') {
+    updateFlight();
+    drawGame();
+  } else if (state === 'returning') {
+    updateReturning();
+    drawGame();
+  } else {
+    drawGame();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+info.textContent = 'SPACE: set angle/power | Arrows/WASD: move coverage | TAB: switch player';
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

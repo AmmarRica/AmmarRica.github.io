@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tailgate Tycoon</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 14px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; cursor: pointer; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 750, H = 700;
+canvas.width = W; canvas.height = H;
+
+const GRID_SIZE = 12;
+const TILE = 40;
+const GRID_X = 20;
+const GRID_Y = 80;
+
+let state = 'title';
+let money, satisfaction, timer, grid, fans, events, selectedItem, particles;
+let eventMessage = '', eventTimer = 0;
+let gameTime = 0;
+
+const ITEMS = [
+  { id: 'grill', name: 'Grill', cost: 50, icon: 'G', color: '#ff6644', provides: 'food', range: 2, capacity: 3 },
+  { id: 'cooler', name: 'Cooler', cost: 30, icon: 'C', color: '#44aaff', provides: 'drinks', range: 2, capacity: 4 },
+  { id: 'tv', name: 'TV', cost: 80, icon: 'T', color: '#aaaaaa', provides: 'entertainment', range: 3, capacity: 5 },
+  { id: 'tent', name: 'Tent', cost: 60, icon: 'N', color: '#44cc44', provides: 'seating', range: 2, capacity: 4 },
+  { id: 'speaker', name: 'Speaker', cost: 40, icon: 'S', color: '#ff44ff', provides: 'entertainment', range: 3, capacity: 6 },
+  { id: 'security', name: 'Security', cost: 100, icon: '!', color: '#ffcc00', provides: 'security', range: 4, capacity: 0 },
+];
+
+const EVENTS_LIST = [
+  { name: 'Rain!', desc: 'Fans without tents are unhappy!', effect: 'rain', duration: 300 },
+  { name: 'Rival Fans!', desc: 'Need security or lose satisfaction!', effect: 'rivals', duration: 200 },
+  { name: 'Health Inspector!', desc: 'Grills need spacing! -$50 if adjacent', effect: 'inspector', duration: 100 },
+  { name: 'Halftime Show!', desc: 'Entertainment items give double!', effect: 'halftime', duration: 250 },
+  { name: 'VIP Arrival!', desc: 'Big tipper! +$100 if satisfaction > 70%', effect: 'vip', duration: 150 },
+];
+
+function initGame() {
+  money = 200;
+  satisfaction = 50;
+  timer = 3600; // 60 seconds at 60fps
+  grid = [];
+  fans = [];
+  events = [];
+  particles = [];
+  selectedItem = null;
+  gameTime = 0;
+
+  for (let y = 0; y < GRID_SIZE; y++) {
+    grid[y] = [];
+    for (let x = 0; x < GRID_SIZE; x++) {
+      grid[y][x] = null;
+    }
+  }
+
+  // Pre-place some parking lot lines
+  // Spawn initial fans
+  for (let i = 0; i < 5; i++) spawnFan();
+}
+
+function spawnFan() {
+  let needs = ['food', 'drinks', 'entertainment', 'seating'];
+  let need = needs[Math.floor(Math.random() * needs.length)];
+  let fan = {
+    x: GRID_X + Math.random() * (GRID_SIZE * TILE),
+    y: GRID_Y + Math.random() * (GRID_SIZE * TILE),
+    targetX: 0, targetY: 0,
+    need, satisfied: false, patience: 300 + Math.random() * 300,
+    speed: 0.5 + Math.random() * 0.5,
+    wanderTimer: 0, color: '#e0e0ff',
+    wallet: 5 + Math.floor(Math.random() * 15)
+  };
+  fan.targetX = fan.x; fan.targetY = fan.y;
+  fans.push(fan);
+}
+
+function getItemsInRange(fx, fy, need) {
+  let found = [];
+  for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      let item = grid[y][x];
+      if (!item) continue;
+      let def = ITEMS.find(i => i.id === item.id);
+      if (def.provides !== need) continue;
+      let ix = GRID_X + x * TILE + TILE/2;
+      let iy = GRID_Y + y * TILE + TILE/2;
+      let dist = Math.sqrt((fx - ix) ** 2 + (fy - iy) ** 2);
+      if (dist < def.range * TILE) {
+        found.push({ x: ix, y: iy, dist });
+      }
+    }
+  }
+  return found;
+}
+
+function placeItem(gridX, gridY) {
+  if (!selectedItem) return;
+  if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) return;
+  if (grid[gridY][gridX]) return;
+  let def = ITEMS.find(i => i.id === selectedItem);
+  if (money < def.cost) return;
+  money -= def.cost;
+  grid[gridY][gridX] = { id: selectedItem, age: 0 };
+  spawnParticles(GRID_X + gridX * TILE + TILE/2, GRID_Y + gridY * TILE + TILE/2, def.color, 8);
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, dx: (Math.random() - 0.5) * 4, dy: (Math.random() - 0.5) * 4,
+      life: 20 + Math.random() * 20, color, r: 2
+    });
+  }
+}
+
+canvas.addEventListener('click', e => {
+  let rect = canvas.getBoundingClientRect();
+  let mx = (e.clientX - rect.left) * (W / rect.width);
+  let my = (e.clientY - rect.top) * (H / rect.height);
+
+  if (state === 'title') { state = 'playing'; initGame(); return; }
+  if (state === 'gameover' || state === 'win') { state = 'title'; return; }
+
+  // Check shop buttons
+  let shopY = GRID_Y + GRID_SIZE * TILE + 15;
+  for (let i = 0; i < ITEMS.length; i++) {
+    let bx = 20 + i * 120;
+    if (mx >= bx && mx <= bx + 110 && my >= shopY && my <= shopY + 55) {
+      selectedItem = ITEMS[i].id;
+      return;
+    }
+  }
+
+  // Place on grid
+  if (selectedItem) {
+    let gx = Math.floor((mx - GRID_X) / TILE);
+    let gy = Math.floor((my - GRID_Y) / TILE);
+    placeItem(gx, gy);
+  }
+});
+
+// Right click to deselect
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  selectedItem = null;
+});
+
+function update() {
+  if (state !== 'playing') return;
+
+  gameTime++;
+  timer--;
+  if (timer <= 0) {
+    state = satisfaction >= 70 ? 'win' : 'gameover';
+    return;
+  }
+
+  // Spawn fans periodically
+  if (gameTime % 120 === 0 && fans.length < 25) spawnFan();
+
+  // Random events
+  if (gameTime % 600 === 300 && events.length === 0) {
+    let ev = EVENTS_LIST[Math.floor(Math.random() * EVENTS_LIST.length)];
+    events.push({ ...ev, timer: ev.duration });
+    eventMessage = `EVENT: ${ev.name} ${ev.desc}`;
+    eventTimer = 180;
+  }
+
+  // Process events
+  for (let i = events.length - 1; i >= 0; i--) {
+    events[i].timer--;
+    if (events[i].timer <= 0) {
+      events.splice(i, 1);
+      continue;
+    }
+    let ev = events[i];
+    if (ev.effect === 'rain' && gameTime % 60 === 0) {
+      // Fans not near tents lose satisfaction
+      let hasTent = false;
+      for (let f of fans) {
+        let tents = getItemsInRange(f.x, f.y, 'seating');
+        if (tents.length === 0 && !f.satisfied) satisfaction = Math.max(0, satisfaction - 0.5);
+        else hasTent = true;
+      }
+    }
+    if (ev.effect === 'rivals' && gameTime % 60 === 0) {
+      let hasSec = false;
+      for (let y = 0; y < GRID_SIZE; y++)
+        for (let x = 0; x < GRID_SIZE; x++)
+          if (grid[y][x] && grid[y][x].id === 'security') hasSec = true;
+      if (!hasSec) satisfaction = Math.max(0, satisfaction - 1);
+    }
+    if (ev.effect === 'inspector') {
+      // Check once
+      if (events[i].timer === ev.duration - 1) {
+        for (let y = 0; y < GRID_SIZE; y++) {
+          for (let x = 0; x < GRID_SIZE; x++) {
+            if (grid[y][x] && grid[y][x].id === 'grill') {
+              let adj = [[0,1],[0,-1],[1,0],[-1,0]];
+              for (let [dx, dy] of adj) {
+                let nx = x+dx, ny = y+dy;
+                if (nx>=0&&nx<GRID_SIZE&&ny>=0&&ny<GRID_SIZE&&grid[ny][nx]&&grid[ny][nx].id==='grill') {
+                  money = Math.max(0, money - 50);
+                  eventMessage = 'Inspector fined you $50!';
+                  eventTimer = 120;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (ev.effect === 'vip') {
+      if (events[i].timer === 1 && satisfaction > 70) {
+        money += 100;
+        eventMessage = 'VIP tipped $100!';
+        eventTimer = 120;
+      }
+    }
+  }
+
+  // Update fans
+  for (let f of fans) {
+    f.patience--;
+    f.wanderTimer--;
+
+    if (f.wanderTimer <= 0) {
+      // Find something that matches need
+      let providers = getItemsInRange(f.x, f.y, f.need);
+      if (providers.length > 0) {
+        let closest = providers.sort((a,b) => a.dist - b.dist)[0];
+        f.targetX = closest.x + (Math.random() - 0.5) * 20;
+        f.targetY = closest.y + (Math.random() - 0.5) * 20;
+        if (closest.dist < TILE) {
+          if (!f.satisfied) {
+            f.satisfied = true;
+            money += f.wallet;
+            satisfaction = Math.min(100, satisfaction + 2);
+            f.color = '#44ff44';
+            spawnParticles(f.x, f.y, '#44ff44', 5);
+          }
+        }
+      } else {
+        f.targetX = GRID_X + Math.random() * (GRID_SIZE * TILE);
+        f.targetY = GRID_Y + Math.random() * (GRID_SIZE * TILE);
+      }
+      f.wanderTimer = 60 + Math.random() * 60;
+    }
+
+    // Move toward target
+    let dx = f.targetX - f.x, dy = f.targetY - f.y;
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist > 2) {
+      f.x += (dx / dist) * f.speed;
+      f.y += (dy / dist) * f.speed;
+    }
+
+    // Patience ran out
+    if (f.patience <= 0 && !f.satisfied) {
+      satisfaction = Math.max(0, satisfaction - 1);
+      f.patience = 200;
+      f.color = '#ff4444';
+    }
+  }
+
+  // Remove fans that have been satisfied for a while and spawn new ones
+  if (gameTime % 300 === 0) {
+    fans = fans.filter(f => {
+      if (f.satisfied && Math.random() > 0.5) {
+        spawnFan();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // Earn passive income from satisfaction
+  if (gameTime % 180 === 0) {
+    money += Math.floor(satisfaction / 10);
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].x += particles[i].dx;
+    particles[i].y += particles[i].dy;
+    particles[i].life--;
+    if (particles[i].life <= 0) particles.splice(i, 1);
+  }
+
+  if (eventTimer > 0) eventTimer--;
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 42px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#a78bfa'; ctx.shadowBlur = 20;
+    ctx.fillText('TAILGATE TYCOON', W/2, 160);
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '14px Courier New';
+    let y = 220;
+    ctx.fillText('Run the ultimate tailgate party!', W/2, y); y += 30;
+    ctx.fillText('Click items in the shop, then click the grid to place.', W/2, y); y += 22;
+    ctx.fillText('Right-click to deselect.', W/2, y); y += 30;
+    ctx.fillText('Fans arrive with needs: food, drinks,', W/2, y); y += 20;
+    ctx.fillText('entertainment, and seating.', W/2, y); y += 30;
+    ctx.fillText('Place grills, coolers, TVs, tents & more!', W/2, y); y += 22;
+    ctx.fillText('Keep satisfaction high before kickoff!', W/2, y); y += 30;
+    ctx.fillText('Watch out for random events!', W/2, y); y += 40;
+
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 20px Courier New';
+    let blink = Math.sin(Date.now() / 300) > 0;
+    if (blink) ctx.fillText('CLICK TO START', W/2, y);
+    return;
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 42px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 20;
+    ctx.fillText('PARTY FAILED!', W/2, 260);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '20px Courier New';
+    ctx.fillText(`Satisfaction: ${Math.floor(satisfaction)}% (needed 70%)`, W/2, 320);
+    ctx.font = '16px Courier New';
+    let blink = Math.sin(Date.now() / 300) > 0;
+    if (blink) ctx.fillText('CLICK TO RETRY', W/2, 380);
+    return;
+  }
+
+  if (state === 'win') {
+    ctx.fillStyle = '#44ff44';
+    ctx.font = 'bold 36px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#00ff00'; ctx.shadowBlur = 20;
+    ctx.fillText('EPIC TAILGATE!', W/2, 240);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '20px Courier New';
+    ctx.fillText(`Final Satisfaction: ${Math.floor(satisfaction)}%`, W/2, 290);
+    ctx.fillText(`Money Earned: $${money}`, W/2, 320);
+    ctx.font = '16px Courier New';
+    let blink = Math.sin(Date.now() / 300) > 0;
+    if (blink) ctx.fillText('CLICK TO PLAY AGAIN', W/2, 400);
+    return;
+  }
+
+  // Draw parking lot grid
+  for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      let sx = GRID_X + x * TILE, sy = GRID_Y + y * TILE;
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(sx, sy, TILE - 1, TILE - 1);
+
+      // Parking lot lines
+      if (x % 3 === 0) {
+        ctx.strokeStyle = '#333355';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx, sy + TILE);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      let item = grid[y][x];
+      if (item) {
+        let def = ITEMS.find(i => i.id === item.id);
+        // Item background
+        ctx.fillStyle = def.color + '33';
+        ctx.fillRect(sx + 2, sy + 2, TILE - 5, TILE - 5);
+        // Item icon
+        ctx.fillStyle = def.color;
+        ctx.font = 'bold 20px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(def.icon, sx + TILE/2, sy + TILE/2 + 7);
+
+        // Range indicator (subtle)
+        if (selectedItem === item.id) {
+          ctx.strokeStyle = def.color + '44';
+          ctx.beginPath();
+          ctx.arc(sx + TILE/2, sy + TILE/2, def.range * TILE, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  // Draw fans
+  for (let f of fans) {
+    // Need indicator
+    let needColors = { food: '#ff6644', drinks: '#44aaff', entertainment: '#ff44ff', seating: '#44cc44' };
+    ctx.fillStyle = f.color;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    // Need bubble
+    if (!f.satisfied) {
+      ctx.fillStyle = needColors[f.need] || '#fff';
+      ctx.font = '8px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(f.need[0].toUpperCase(), f.x, f.y - 10);
+    }
+  }
+
+  // Rain effect
+  if (events.some(e => e.effect === 'rain')) {
+    ctx.strokeStyle = 'rgba(100,150,255,0.3)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 50; i++) {
+      let rx = Math.random() * W;
+      let ry = (gameTime * 3 + i * 47) % H;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(rx - 2, ry + 10);
+      ctx.stroke();
+    }
+  }
+
+  // Particles
+  for (let p of particles) {
+    ctx.globalAlpha = p.life / 40;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = 'rgba(15,15,26,0.9)';
+  ctx.fillRect(0, 0, W, 75);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 16px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Money: $${money}`, 15, 25);
+
+  // Satisfaction bar
+  ctx.fillText('Satisfaction:', 15, 50);
+  ctx.fillStyle = '#333';
+  ctx.fillRect(160, 38, 200, 16);
+  let satColor = satisfaction >= 70 ? '#44cc44' : satisfaction >= 40 ? '#cccc44' : '#cc4444';
+  ctx.fillStyle = satColor;
+  ctx.fillRect(160, 38, 200 * (satisfaction / 100), 16);
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px Courier New';
+  ctx.fillText(`${Math.floor(satisfaction)}%`, 250, 50);
+
+  // Timer
+  let secs = Math.floor(timer / 60);
+  ctx.fillStyle = secs <= 10 ? '#ff4444' : '#e0e0ff';
+  ctx.font = 'bold 18px Courier New';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Kickoff: ${secs}s`, W - 15, 25);
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '11px Courier New';
+  ctx.fillText(`Fans: ${fans.length} | Satisfied: ${fans.filter(f=>f.satisfied).length}`, W - 15, 50);
+
+  // Shop
+  let shopY = GRID_Y + GRID_SIZE * TILE + 15;
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 13px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText('SHOP (click to select, then click grid):', 20, shopY - 3);
+
+  for (let i = 0; i < ITEMS.length; i++) {
+    let item = ITEMS[i];
+    let bx = 20 + i * 120;
+    ctx.fillStyle = selectedItem === item.id ? '#2a2a4e' : '#1a1a2e';
+    ctx.fillRect(bx, shopY, 110, 55);
+    ctx.strokeStyle = selectedItem === item.id ? '#a78bfa' : '#333';
+    ctx.lineWidth = selectedItem === item.id ? 2 : 1;
+    ctx.strokeRect(bx, shopY, 110, 55);
+
+    ctx.fillStyle = item.color;
+    ctx.font = 'bold 11px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText(item.name, bx + 5, shopY + 15);
+    ctx.fillStyle = money >= item.cost ? '#44cc44' : '#cc4444';
+    ctx.font = '10px Courier New';
+    ctx.fillText(`$${item.cost}`, bx + 5, shopY + 30);
+    ctx.fillStyle = '#aaa';
+    ctx.fillText(item.provides, bx + 5, shopY + 44);
+  }
+
+  // Event message
+  if (eventTimer > 0) {
+    ctx.fillStyle = 'rgba(167,139,250,0.9)';
+    ctx.font = 'bold 14px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(eventMessage, W/2, GRID_Y + GRID_SIZE * TILE + 82);
+  }
+
+  // Active events indicator
+  if (events.length > 0) {
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Active: ${events.map(e=>e.name).join(', ')}`, 15, 68);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

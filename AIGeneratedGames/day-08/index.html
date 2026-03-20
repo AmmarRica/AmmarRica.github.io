@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 08 – Magic Garden – Game a Day</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas {
+      border: 2px solid #3b3b5c;
+      border-radius: 8px;
+      background: #1a2e1a;
+      max-width: 480px;
+      width: 100%;
+      touch-action: none;
+    }
+    #ui { color: #9ca3af; margin-top: 0.5rem; font-size: 0.8rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Magic Garden</h1>
+  <p class="subtitle">Tap to plant seeds, swipe to water. Match 3+ flowers to score!</p>
+  <canvas id="game"></canvas>
+  <div id="ui">Score: 0 | Seeds: 10 | Level: 1</div>
+  <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+
+let W, H, scale;
+function resize() {
+  const maxW = 480, maxH = 520;
+  const ratio = maxW / maxH;
+  let w = Math.min(window.innerWidth - 20, maxW);
+  let h = w / ratio;
+  if (h > window.innerHeight - 140) { h = window.innerHeight - 140; w = h * ratio; }
+  canvas.width = maxW; canvas.height = maxH;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  W = maxW; H = maxH;
+  scale = w / maxW;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const COLS = 8, ROWS = 8;
+const TILE = 52;
+const OFFSET_X = (W - COLS * TILE) / 2;
+const OFFSET_Y = (H - ROWS * TILE) / 2 + 20;
+
+const FLOWER_COLORS = [
+  { name: 'rose', petal: '#ef4444', center: '#fbbf24', seed: '#7f1d1d' },
+  { name: 'violet', petal: '#a78bfa', center: '#e0e0ff', seed: '#4c1d95' },
+  { name: 'sunflower', petal: '#fbbf24', center: '#92400e', seed: '#78350f' },
+  { name: 'bluebell', petal: '#60a5fa', center: '#dbeafe', seed: '#1e3a5f' },
+  { name: 'tulip', petal: '#f472b6', center: '#fce7f3', seed: '#831843' },
+];
+
+// Cell states: 0=empty, 1=seed, 2=sprout, 3=flower
+let grid, score, seeds, level, gameState, combo, animTimer;
+let particles, floatingTexts, selectedCell, waterDir;
+let matchAnimations, growQueue;
+
+function createCell(type, colorIdx) {
+  return {
+    type, // 0=empty, 1=seed, 2=sprout, 3=flower
+    colorIdx: colorIdx !== undefined ? colorIdx : Math.floor(Math.random() * FLOWER_COLORS.length),
+    growTimer: 0, growMax: 0,
+    animScale: 0, removing: false, removeTimer: 0,
+    shakeX: 0, shakeY: 0,
+  };
+}
+
+function init() {
+  grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = createCell(0);
+    }
+  }
+  score = 0; seeds = 12; level = 1; gameState = 'play';
+  combo = 0; animTimer = 0;
+  particles = []; floatingTexts = [];
+  matchAnimations = []; growQueue = [];
+  selectedCell = null; waterDir = null;
+}
+
+function getGridPos(tx, ty) {
+  const c = Math.floor((tx - OFFSET_X) / TILE);
+  const r = Math.floor((ty - OFFSET_Y) / TILE);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) return { r, c };
+  return null;
+}
+
+function plantSeed(r, c) {
+  if (grid[r][c].type !== 0 || seeds <= 0) return false;
+  const colorIdx = Math.floor(Math.random() * FLOWER_COLORS.length);
+  grid[r][c] = createCell(1, colorIdx);
+  grid[r][c].animScale = 0;
+  seeds--;
+  return true;
+}
+
+function waterArea(r, c, dr, dc) {
+  // Water a line of cells in the given direction, growing them one stage
+  const cells = [];
+  // Water the cell itself plus neighbors in direction
+  for (let i = -1; i <= 1; i++) {
+    for (let j = -1; j <= 1; j++) {
+      const nr = r + i, nc = c + j;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+        const cell = grid[nr][nc];
+        if (cell.type >= 1 && cell.type < 3) {
+          cells.push({ r: nr, c: nc });
+        }
+      }
+    }
+  }
+  // Also water in swipe direction for 2 more tiles
+  let cr = r + dr, cc = c + dc;
+  for (let i = 0; i < 2; i++) {
+    if (cr >= 0 && cr < ROWS && cc >= 0 && cc < COLS) {
+      const cell = grid[cr][cc];
+      if (cell.type >= 1 && cell.type < 3) {
+        cells.push({ r: cr, c: cc });
+      }
+    }
+    cr += dr; cc += dc;
+  }
+
+  // Grow cells
+  cells.forEach(({r, c}) => {
+    const cell = grid[r][c];
+    cell.type++;
+    cell.animScale = 0.5;
+    spawnParticles(
+      OFFSET_X + c * TILE + TILE/2,
+      OFFSET_Y + r * TILE + TILE/2,
+      '#60a5fa', 5
+    );
+  });
+
+  // Check matches after growing
+  setTimeout(() => checkMatches(), 100);
+}
+
+function checkMatches() {
+  const matched = new Set();
+
+  // Check horizontal
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS - 2; c++) {
+      if (grid[r][c].type === 3 && grid[r][c+1].type === 3 && grid[r][c+2].type === 3) {
+        if (grid[r][c].colorIdx === grid[r][c+1].colorIdx && grid[r][c+1].colorIdx === grid[r][c+2].colorIdx) {
+          matched.add(`${r},${c}`); matched.add(`${r},${c+1}`); matched.add(`${r},${c+2}`);
+          // Check 4+ in a row
+          let nc = c + 3;
+          while (nc < COLS && grid[r][nc].type === 3 && grid[r][nc].colorIdx === grid[r][c].colorIdx) {
+            matched.add(`${r},${nc}`); nc++;
+          }
+        }
+      }
+    }
+  }
+
+  // Check vertical
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < ROWS - 2; r++) {
+      if (grid[r][c].type === 3 && grid[r+1][c].type === 3 && grid[r+2][c].type === 3) {
+        if (grid[r][c].colorIdx === grid[r+1][c].colorIdx && grid[r+1][c].colorIdx === grid[r+2][c].colorIdx) {
+          matched.add(`${r},${c}`); matched.add(`${r+1},${c}`); matched.add(`${r+2},${c}`);
+          let nr = r + 3;
+          while (nr < ROWS && grid[nr][c].type === 3 && grid[nr][c].colorIdx === grid[r][c].colorIdx) {
+            matched.add(`${nr},${c}`); nr++;
+          }
+        }
+      }
+    }
+  }
+
+  // Check diagonal (down-right)
+  for (let r = 0; r < ROWS - 2; r++) {
+    for (let c = 0; c < COLS - 2; c++) {
+      if (grid[r][c].type === 3 && grid[r+1][c+1].type === 3 && grid[r+2][c+2].type === 3) {
+        if (grid[r][c].colorIdx === grid[r+1][c+1].colorIdx && grid[r+1][c+1].colorIdx === grid[r+2][c+2].colorIdx) {
+          matched.add(`${r},${c}`); matched.add(`${r+1},${c+1}`); matched.add(`${r+2},${c+2}`);
+        }
+      }
+    }
+  }
+
+  // Check diagonal (down-left)
+  for (let r = 0; r < ROWS - 2; r++) {
+    for (let c = 2; c < COLS; c++) {
+      if (grid[r][c].type === 3 && grid[r+1][c-1].type === 3 && grid[r+2][c-2].type === 3) {
+        if (grid[r][c].colorIdx === grid[r+1][c-1].colorIdx && grid[r+1][c-1].colorIdx === grid[r+2][c-2].colorIdx) {
+          matched.add(`${r},${c}`); matched.add(`${r+1},${c-1}`); matched.add(`${r+2},${c-2}`);
+        }
+      }
+    }
+  }
+
+  if (matched.size > 0) {
+    combo++;
+    const points = matched.size * 10 * combo;
+    score += points;
+    seeds += Math.floor(matched.size / 2) + 1; // Earn seeds from matches
+
+    matched.forEach(key => {
+      const [r, c] = key.split(',').map(Number);
+      const x = OFFSET_X + c * TILE + TILE/2;
+      const y = OFFSET_Y + r * TILE + TILE/2;
+      spawnParticles(x, y, FLOWER_COLORS[grid[r][c].colorIdx].petal, 10);
+      grid[r][c] = createCell(0);
+    });
+
+    floatingTexts.push({
+      x: W / 2, y: OFFSET_Y - 10,
+      text: `+${points}${combo > 1 ? ' x' + combo : ''}`,
+      life: 60, color: '#fbbf24'
+    });
+
+    // Level up
+    if (score >= level * 200) {
+      level++;
+      seeds += 5;
+      floatingTexts.push({ x: W/2, y: H/2, text: `Level ${level}!`, life: 90, color: '#a78bfa' });
+    }
+
+    // Chain check
+    setTimeout(() => checkMatches(), 200);
+  } else {
+    combo = 0;
+  }
+}
+
+function isGameOver() {
+  if (seeds > 0) return false;
+  // Check if any seeds/sprouts exist that can still grow
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (grid[r][c].type === 1 || grid[r][c].type === 2) return false;
+  // Check if there are any matches possible
+  // Check if there are any empty cells (to plant)
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (grid[r][c].type === 0) return false; // could plant if had seeds
+
+  return true;
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6 - 2,
+      life: 25 + Math.random() * 20, maxLife: 45, color, size: 2 + Math.random() * 4
+    });
+  }
+}
+
+function update() {
+  animTimer += 0.03;
+
+  // Animate cells
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = grid[r][c];
+      if (cell.animScale < 1) cell.animScale = Math.min(1, cell.animScale + 0.08);
+      cell.shakeX *= 0.9;
+      cell.shakeY *= 0.9;
+    }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Floating texts
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+    ft.y -= 1; ft.life--;
+    if (ft.life <= 0) floatingTexts.splice(i, 1);
+  }
+
+  // Check game over
+  if (gameState === 'play') {
+    // Check if garden is full (all cells are flowers)
+    let fullFlowers = true, hasGrowable = false;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c].type !== 3) fullFlowers = false;
+        if (grid[r][c].type === 1 || grid[r][c].type === 2) hasGrowable = true;
+      }
+    }
+    if (fullFlowers) {
+      // Check if any matches exist
+      const backup = JSON.parse(JSON.stringify(grid));
+      checkMatches(); // This will clear matches
+      // If nothing cleared, game over
+      let stillFull = true;
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          if (grid[r][c].type !== 3) stillFull = false;
+      if (stillFull) gameState = 'gameover';
+    }
+
+    // No seeds, no growable, and all cells occupied
+    if (seeds <= 0 && !hasGrowable) {
+      let hasEmpty = false;
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          if (grid[r][c].type === 0) hasEmpty = true;
+      if (!hasEmpty) gameState = 'gameover';
+    }
+  }
+
+  ui.textContent = `Score: ${score} | Seeds: ${seeds} | Level: ${level} | Combo: x${combo}`;
+}
+
+function drawFlower(x, y, colorIdx, size, type) {
+  const fc = FLOWER_COLORS[colorIdx];
+
+  if (type === 1) {
+    // Seed
+    ctx.fillStyle = fc.seed;
+    ctx.beginPath();
+    ctx.arc(x, y + 4, 5 * size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4a7a4a';
+    ctx.fillRect(x - 1, y - 4 * size, 2, 8 * size);
+  } else if (type === 2) {
+    // Sprout
+    ctx.fillStyle = '#22c55e';
+    ctx.fillRect(x - 1, y + 6, 2, -14 * size);
+    // Leaves
+    ctx.beginPath();
+    ctx.ellipse(x - 6, y - 2, 6 * size, 3 * size, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + 6, y - 6, 6 * size, 3 * size, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Bud
+    ctx.fillStyle = fc.petal;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(x, y - 10 * size, 5 * size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (type === 3) {
+    // Full flower
+    ctx.fillStyle = '#22c55e';
+    ctx.fillRect(x - 1, y + 10, 2, -16 * size);
+    // Leaves
+    ctx.beginPath();
+    ctx.ellipse(x - 7, y + 2, 6, 3, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + 7, y - 2, 6, 3, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Petals
+    ctx.fillStyle = fc.petal;
+    const petalCount = 6;
+    for (let i = 0; i < petalCount; i++) {
+      const a = (i / petalCount) * Math.PI * 2 + animTimer * 0.3;
+      const px = x + Math.cos(a) * 9 * size;
+      const py = (y - 10) + Math.sin(a) * 9 * size;
+      ctx.beginPath();
+      ctx.arc(px, py, 6 * size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Center
+    ctx.fillStyle = fc.center;
+    ctx.beginPath();
+    ctx.arc(x, y - 10, 5 * size, 0, Math.PI * 2);
+    ctx.fill();
+    // Sparkle
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.4 + Math.sin(animTimer * 2 + x + y) * 0.3;
+    ctx.fillRect(x - 1, y - 12, 3, 3);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#1a2e1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Garden background
+  ctx.fillStyle = '#1e3320';
+  ctx.fillRect(OFFSET_X - 4, OFFSET_Y - 4, COLS * TILE + 8, ROWS * TILE + 8);
+
+  // Grid cells
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = OFFSET_X + c * TILE;
+      const y = OFFSET_Y + r * TILE;
+      const cell = grid[r][c];
+
+      // Cell background
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#243824' : '#1e3320';
+      ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+
+      // Soil pattern for empty
+      if (cell.type === 0) {
+        ctx.fillStyle = '#2a3a2a';
+        ctx.fillRect(x + 8, y + TILE - 10, TILE - 16, 4);
+        ctx.fillRect(x + 12, y + TILE - 14, TILE - 24, 3);
+      }
+
+      if (cell.type > 0) {
+        const cx = x + TILE / 2 + cell.shakeX;
+        const cy = y + TILE / 2 + cell.shakeY;
+        drawFlower(cx, cy, cell.colorIdx, cell.animScale, cell.type);
+      }
+    }
+  }
+
+  // Selected cell highlight
+  if (selectedCell) {
+    const x = OFFSET_X + selectedCell.c * TILE;
+    const y = OFFSET_Y + selectedCell.r * TILE;
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 2, y + 2, TILE - 4, TILE - 4);
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // Floating texts
+  floatingTexts.forEach(ft => {
+    ctx.globalAlpha = ft.life / 60;
+    ctx.fillStyle = ft.color;
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.text, ft.x, ft.y);
+  });
+  ctx.globalAlpha = 1;
+
+  // Seed indicator at top
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '14px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('Seeds:', 10, 20);
+  for (let i = 0; i < Math.min(seeds, 20); i++) {
+    ctx.fillStyle = '#4a2e1a';
+    ctx.beginPath();
+    ctx.arc(60 + i * 14, 16, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (seeds > 20) {
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText(`+${seeds - 20}`, 60 + 20 * 14, 20);
+  }
+
+  // Overlays
+  if (gameState === 'gameover') {
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 44px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('GARDEN FULL!', W/2, H/2 - 40);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '24px system-ui';
+    ctx.fillText(`Score: ${score}`, W/2, H/2);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '18px system-ui';
+    ctx.fillText(`Level ${level} reached`, W/2, H/2 + 30);
+    ctx.fillText('Tap to play again', W/2, H/2 + 60);
+  }
+}
+
+// Touch
+let touchSX, touchSY, touchCell;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (gameState === 'gameover') { init(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.touches[0].clientX - rect.left) / scale;
+  const ty = (e.touches[0].clientY - rect.top) / scale;
+  touchSX = tx; touchSY = ty;
+  touchCell = getGridPos(tx, ty);
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (gameState !== 'play' || !touchCell) return;
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.changedTouches[0].clientX - rect.left) / scale;
+  const ty = (e.changedTouches[0].clientY - rect.top) / scale;
+  const dx = tx - touchSX, dy = ty - touchSY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist < 15) {
+    // Tap: plant seed
+    plantSeed(touchCell.r, touchCell.c);
+  } else {
+    // Swipe: water area
+    let dr = 0, dc = 0;
+    if (Math.abs(dx) > Math.abs(dy)) dc = dx > 0 ? 1 : -1;
+    else dr = dy > 0 ? 1 : -1;
+    waterArea(touchCell.r, touchCell.c, dr, dc);
+  }
+  touchCell = null;
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+// Mouse fallback
+let mouseDown = false, mouseSX, mouseSY, mouseCell;
+canvas.addEventListener('mousedown', e => {
+  if (gameState === 'gameover') { init(); return; }
+  const rect = canvas.getBoundingClientRect();
+  mouseSX = (e.clientX - rect.left) / scale;
+  mouseSY = (e.clientY - rect.top) / scale;
+  mouseCell = getGridPos(mouseSX, mouseSY);
+  mouseDown = true;
+});
+canvas.addEventListener('mouseup', e => {
+  if (!mouseDown || gameState !== 'play' || !mouseCell) { mouseDown = false; return; }
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.clientX - rect.left) / scale;
+  const ty = (e.clientY - rect.top) / scale;
+  const dx = tx - mouseSX, dy = ty - mouseSY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist < 15) {
+    plantSeed(mouseCell.r, mouseCell.c);
+  } else {
+    let dr = 0, dc = 0;
+    if (Math.abs(dx) > Math.abs(dy)) dc = dx > 0 ? 1 : -1;
+    else dr = dy > 0 ? 1 : -1;
+    waterArea(mouseCell.r, mouseCell.c, dr, dc);
+  }
+  mouseDown = false; mouseCell = null;
+});
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+init();
+loop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

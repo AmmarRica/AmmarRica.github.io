@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fantasy Football Dungeon Crawler</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 14px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 700, H = 700;
+canvas.width = W; canvas.height = H;
+const TILE = 28;
+const GRID = 20;
+const OFFSET_X = (W - GRID * TILE) / 2;
+const OFFSET_Y = 60;
+
+let state = 'title';
+let floor = 1;
+let party = [];
+let map = [];
+let enemies = [];
+let items = [];
+let playerPos = { x: 1, y: 1 };
+let selectedPartyMember = 0;
+let combatState = null; // null or { enemy, turn, log }
+let message = '';
+let messageTimer = 0;
+let moveTimer = 0;
+let explored = [];
+
+const POSITIONS = [
+  { name: 'Sir Mahomes', pos: 'QB', hp: 80, maxHp: 80, atk: 25, def: 5, spd: 8, color: '#ff4444', icon: 'Q' },
+  { name: 'Lord Henry', pos: 'RB', hp: 100, maxHp: 100, atk: 18, def: 12, spd: 6, color: '#44cc44', icon: 'R' },
+  { name: 'Duke Tyreek', pos: 'WR', hp: 60, maxHp: 60, atk: 20, def: 4, spd: 12, color: '#4488ff', icon: 'W' },
+  { name: 'Baron Kelce', pos: 'TE', hp: 90, maxHp: 90, atk: 16, def: 10, spd: 5, color: '#ff8844', icon: 'T' },
+];
+
+const ENEMY_TYPES = [
+  { name: 'Goblin Safety', hp: 40, atk: 12, def: 4, xp: 10, color: '#886644', icon: 'S' },
+  { name: 'Orc Linebacker', hp: 70, atk: 18, def: 8, xp: 20, color: '#668844', icon: 'L' },
+  { name: 'Dragon D-End', hp: 100, atk: 25, def: 12, xp: 35, color: '#cc4444', icon: 'D' },
+  { name: 'Troll Cornerback', hp: 55, atk: 15, def: 6, xp: 15, color: '#448888', icon: 'C' },
+  { name: 'Dark Knight Blitzer', hp: 120, atk: 30, def: 15, xp: 50, color: '#aa44aa', icon: 'B' },
+];
+
+const ITEM_TYPES = [
+  { name: 'Helmet of Valor', stat: 'def', bonus: 5, color: '#aaaaaa', icon: 'H' },
+  { name: 'Cleats of Speed', stat: 'spd', bonus: 4, color: '#44ff44', icon: 'C' },
+  { name: 'Gauntlets of Power', stat: 'atk', bonus: 6, color: '#ff4444', icon: 'G' },
+  { name: 'Mead of Healing', stat: 'heal', bonus: 40, color: '#ff88ff', icon: 'M' },
+  { name: 'Shield of Blocking', stat: 'def', bonus: 8, color: '#4444ff', icon: 'S' },
+  { name: 'Sword of Touchdowns', stat: 'atk', bonus: 10, color: '#ffff44', icon: 'T' },
+];
+
+function initGame() {
+  party = POSITIONS.map(p => ({ ...p }));
+  floor = 1;
+  selectedPartyMember = 0;
+  generateFloor();
+}
+
+function generateFloor() {
+  map = [];
+  enemies = [];
+  items = [];
+  explored = [];
+
+  for (let y = 0; y < GRID; y++) {
+    map[y] = [];
+    explored[y] = [];
+    for (let x = 0; x < GRID; x++) {
+      map[y][x] = 1; // wall
+      explored[y][x] = false;
+    }
+  }
+
+  // Carve rooms using BSP-like approach
+  let rooms = [];
+  function carveRoom(rx, ry, rw, rh) {
+    for (let y = ry; y < ry + rh && y < GRID - 1; y++) {
+      for (let x = rx; x < rx + rw && x < GRID - 1; x++) {
+        map[y][x] = 0;
+      }
+    }
+    rooms.push({ x: rx, y: ry, w: rw, h: rh, cx: Math.floor(rx + rw/2), cy: Math.floor(ry + rh/2) });
+  }
+
+  // Generate 5-8 rooms
+  let numRooms = 5 + Math.min(floor, 3);
+  for (let i = 0; i < numRooms; i++) {
+    let rw = 3 + Math.floor(Math.random() * 4);
+    let rh = 3 + Math.floor(Math.random() * 4);
+    let rx = 1 + Math.floor(Math.random() * (GRID - rw - 2));
+    let ry = 1 + Math.floor(Math.random() * (GRID - rh - 2));
+    carveRoom(rx, ry, rw, rh);
+  }
+
+  // Connect rooms with corridors
+  for (let i = 1; i < rooms.length; i++) {
+    let a = rooms[i - 1], b = rooms[i];
+    let cx = a.cx, cy = a.cy;
+    while (cx !== b.cx) {
+      if (cy >= 0 && cy < GRID && cx >= 0 && cx < GRID) map[cy][cx] = 0;
+      cx += cx < b.cx ? 1 : -1;
+    }
+    while (cy !== b.cy) {
+      if (cy >= 0 && cy < GRID && cx >= 0 && cx < GRID) map[cy][cx] = 0;
+      cy += cy < b.cy ? 1 : -1;
+    }
+  }
+
+  // Place player in first room
+  playerPos = { x: rooms[0].cx, y: rooms[0].cy };
+
+  // Place stairs in last room
+  let lastRoom = rooms[rooms.length - 1];
+  map[lastRoom.cy][lastRoom.cx] = 2; // stairs
+
+  // Place enemies
+  let numEnemies = 3 + floor * 2;
+  for (let i = 0; i < numEnemies; i++) {
+    let room = rooms[1 + Math.floor(Math.random() * (rooms.length - 1))];
+    let ex = room.x + Math.floor(Math.random() * room.w);
+    let ey = room.y + Math.floor(Math.random() * room.h);
+    if (map[ey][ex] === 0 && !(ex === playerPos.x && ey === playerPos.y)) {
+      let typeIdx = Math.min(Math.floor(Math.random() * (1 + floor)), ENEMY_TYPES.length - 1);
+      let et = ENEMY_TYPES[typeIdx];
+      let hpMult = 1 + (floor - 1) * 0.3;
+      enemies.push({ ...et, hp: Math.floor(et.hp * hpMult), maxHp: Math.floor(et.hp * hpMult), x: ex, y: ey, alive: true });
+    }
+  }
+
+  // Place items
+  let numItems = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < numItems; i++) {
+    let room = rooms[Math.floor(Math.random() * rooms.length)];
+    let ix = room.x + Math.floor(Math.random() * room.w);
+    let iy = room.y + Math.floor(Math.random() * room.h);
+    if (map[iy][ix] === 0) {
+      let it = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
+      items.push({ ...it, x: ix, y: iy });
+    }
+  }
+
+  revealAround(playerPos.x, playerPos.y);
+  showMessage(`Floor ${floor} - ${floor <= 2 ? 'The Training Grounds' : floor <= 4 ? 'The Arena' : 'The Championship'}`);
+}
+
+function revealAround(px, py) {
+  for (let dy = -3; dy <= 3; dy++) {
+    for (let dx = -3; dx <= 3; dx++) {
+      let nx = px + dx, ny = py + dy;
+      if (nx >= 0 && nx < GRID && ny >= 0 && ny < GRID) {
+        explored[ny][nx] = true;
+      }
+    }
+  }
+}
+
+function showMessage(msg) { message = msg; messageTimer = 120; }
+
+function tryMove(dx, dy) {
+  if (combatState) return;
+  let nx = playerPos.x + dx, ny = playerPos.y + dy;
+  if (nx < 0 || nx >= GRID || ny < 0 || ny >= GRID) return;
+  if (map[ny][nx] === 1) return;
+
+  playerPos.x = nx; playerPos.y = ny;
+  revealAround(nx, ny);
+
+  // Check enemy
+  for (let e of enemies) {
+    if (e.alive && e.x === nx && e.y === ny) {
+      startCombat(e);
+      return;
+    }
+  }
+
+  // Check items
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].x === nx && items[i].y === ny) {
+      let item = items[i];
+      if (item.stat === 'heal') {
+        party.forEach(p => { p.hp = Math.min(p.maxHp, p.hp + item.bonus); });
+        showMessage(`${item.name}! Party healed +${item.bonus}HP!`);
+      } else {
+        let member = party[selectedPartyMember];
+        member[item.stat] += item.bonus;
+        showMessage(`${member.name} equipped ${item.name}! +${item.bonus} ${item.stat.toUpperCase()}`);
+      }
+      items.splice(i, 1);
+    }
+  }
+
+  // Check stairs
+  if (map[ny][nx] === 2) {
+    floor++;
+    if (floor > 6) {
+      state = 'win';
+    } else {
+      generateFloor();
+    }
+  }
+}
+
+function startCombat(enemy) {
+  combatState = { enemy, turn: 'player', log: [`A ${enemy.name} blocks your path!`], selectedAction: 0 };
+}
+
+function playerAttack() {
+  if (!combatState || combatState.turn !== 'player') return;
+  let p = party[selectedPartyMember];
+  if (p.hp <= 0) { showMessage('That knight has fallen!'); return; }
+  let e = combatState.enemy;
+  let dmg = Math.max(1, p.atk - e.def + Math.floor(Math.random() * 6));
+  // Touchdown bonus: if damage kills, heal party
+  e.hp -= dmg;
+  combatState.log.push(`${p.name} strikes for ${dmg} damage!`);
+  if (e.hp <= 0) {
+    combatState.log.push(`${e.name} defeated! TOUCHDOWN!`);
+    e.alive = false;
+    // Touchdown heals
+    party.forEach(m => { m.hp = Math.min(m.maxHp, m.hp + 10); });
+    combatState.log.push('Party healed +10 HP!');
+    setTimeout(() => { combatState = null; }, 800);
+  } else {
+    combatState.turn = 'enemy';
+    setTimeout(enemyAttack, 600);
+  }
+}
+
+function enemyAttack() {
+  if (!combatState) return;
+  let e = combatState.enemy;
+  // Enemy attacks random alive party member
+  let alive = party.filter(p => p.hp > 0);
+  if (alive.length === 0) { state = 'gameover'; return; }
+  let target = alive[Math.floor(Math.random() * alive.length)];
+  let dmg = Math.max(1, e.atk - target.def + Math.floor(Math.random() * 4));
+  // Chance of "turnover" - extra damage
+  if (Math.random() < 0.15) {
+    dmg = Math.floor(dmg * 1.5);
+    combatState.log.push(`TURNOVER! ${e.name} intercepts!`);
+  }
+  target.hp -= dmg;
+  combatState.log.push(`${e.name} hits ${target.name} for ${dmg}!`);
+  if (target.hp <= 0) {
+    target.hp = 0;
+    combatState.log.push(`${target.name} is down!`);
+    if (party.every(p => p.hp <= 0)) {
+      state = 'gameover';
+      return;
+    }
+    // Auto-select next alive member
+    for (let i = 0; i < party.length; i++) {
+      if (party[i].hp > 0) { selectedPartyMember = i; break; }
+    }
+  }
+  combatState.turn = 'player';
+}
+
+let keys = {};
+document.addEventListener('keydown', e => {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','1','2','3','4'].includes(e.key)) e.preventDefault();
+
+  if (state === 'title' && e.key === ' ') { state = 'playing'; initGame(); return; }
+  if ((state === 'gameover' || state === 'win') && e.key === ' ') { state = 'title'; return; }
+
+  if (state !== 'playing') return;
+
+  if (combatState && combatState.turn === 'player') {
+    if (e.key === ' ' || e.key === 'Enter') playerAttack();
+    if (e.key >= '1' && e.key <= '4') {
+      let idx = parseInt(e.key) - 1;
+      if (idx < party.length && party[idx].hp > 0) selectedPartyMember = idx;
+    }
+    return;
+  }
+
+  if (!combatState) {
+    moveTimer = 0;
+    if (e.key === 'ArrowUp') tryMove(0, -1);
+    if (e.key === 'ArrowDown') tryMove(0, 1);
+    if (e.key === 'ArrowLeft') tryMove(-1, 0);
+    if (e.key === 'ArrowRight') tryMove(1, 0);
+    if (e.key >= '1' && e.key <= '4') {
+      let idx = parseInt(e.key) - 1;
+      if (idx < party.length) selectedPartyMember = idx;
+    }
+  }
+});
+
+function update() {
+  if (messageTimer > 0) messageTimer--;
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    drawTitle();
+    return;
+  }
+  if (state === 'gameover') {
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 42px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 20;
+    ctx.fillText('PARTY DEFEATED', W/2, 280);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '20px Courier New';
+    ctx.fillText(`Reached Floor ${floor}`, W/2, 330);
+    let blink = Math.sin(Date.now()/300) > 0;
+    if (blink) ctx.fillText('PRESS SPACE', W/2, 400);
+    return;
+  }
+  if (state === 'win') {
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 36px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ffcc00'; ctx.shadowBlur = 20;
+    ctx.fillText('CHAMPIONSHIP WON!', W/2, 250);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '18px Courier New';
+    ctx.fillText('Your medieval knights conquered', W/2, 300);
+    ctx.fillText('the Fantasy Football Dungeon!', W/2, 325);
+    let blink = Math.sin(Date.now()/300) > 0;
+    if (blink) ctx.fillText('PRESS SPACE', W/2, 400);
+    return;
+  }
+
+  // Draw map
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      let sx = OFFSET_X + x * TILE, sy = OFFSET_Y + y * TILE;
+      if (!explored[y][x]) {
+        ctx.fillStyle = '#080812';
+        ctx.fillRect(sx, sy, TILE, TILE);
+        continue;
+      }
+      if (map[y][x] === 1) {
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(sx, sy, TILE, TILE);
+        ctx.strokeStyle = '#2a2a4e';
+        ctx.strokeRect(sx, sy, TILE, TILE);
+      } else if (map[y][x] === 0) {
+        ctx.fillStyle = '#12121f';
+        ctx.fillRect(sx, sy, TILE, TILE);
+        // Grid lines
+        ctx.strokeStyle = '#1a1a2a';
+        ctx.strokeRect(sx, sy, TILE, TILE);
+      } else if (map[y][x] === 2) {
+        ctx.fillStyle = '#332200';
+        ctx.fillRect(sx, sy, TILE, TILE);
+        ctx.fillStyle = '#ffcc00';
+        ctx.font = 'bold 16px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('>', sx + TILE/2, sy + TILE/2 + 5);
+      }
+    }
+  }
+
+  // Draw items
+  for (let item of items) {
+    if (!explored[item.y][item.x]) continue;
+    let sx = OFFSET_X + item.x * TILE, sy = OFFSET_Y + item.y * TILE;
+    ctx.fillStyle = item.color;
+    ctx.shadowColor = item.color;
+    ctx.shadowBlur = 6;
+    ctx.font = 'bold 18px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(item.icon, sx + TILE/2, sy + TILE/2 + 6);
+    ctx.shadowBlur = 0;
+  }
+
+  // Draw enemies
+  for (let e of enemies) {
+    if (!e.alive || !explored[e.y][e.x]) continue;
+    let sx = OFFSET_X + e.x * TILE, sy = OFFSET_Y + e.y * TILE;
+    ctx.fillStyle = e.color;
+    ctx.shadowColor = e.color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(sx + TILE/2, sy + TILE/2, TILE/2 - 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(e.icon, sx + TILE/2, sy + TILE/2 + 4);
+  }
+
+  // Draw player
+  let px = OFFSET_X + playerPos.x * TILE, py = OFFSET_Y + playerPos.y * TILE;
+  ctx.fillStyle = '#a78bfa';
+  ctx.shadowColor = '#a78bfa';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(px + TILE/2, py + TILE/2, TILE/2 - 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText(party[selectedPartyMember].icon, px + TILE/2, py + TILE/2 + 4);
+
+  // HUD - Floor info
+  ctx.fillStyle = 'rgba(15,15,26,0.9)';
+  ctx.fillRect(0, 0, W, 55);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 16px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Floor ${floor}/6`, 10, 20);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '11px Courier New';
+  ctx.fillText('Arrow Keys: Move | 1-4: Select Knight | Find stairs (>) to descend', 10, 42);
+
+  // Party panel at bottom
+  let panelY = OFFSET_Y + GRID * TILE + 5;
+  ctx.fillStyle = 'rgba(15,15,26,0.9)';
+  ctx.fillRect(0, panelY, W, H - panelY);
+
+  for (let i = 0; i < party.length; i++) {
+    let p = party[i];
+    let bx = 10 + i * 172;
+    let by = panelY + 8;
+
+    ctx.strokeStyle = i === selectedPartyMember ? '#a78bfa' : '#333';
+    ctx.lineWidth = i === selectedPartyMember ? 2 : 1;
+    ctx.strokeRect(bx, by, 165, 60);
+
+    ctx.fillStyle = p.hp > 0 ? p.color : '#444';
+    ctx.font = 'bold 11px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText(`[${i+1}] ${p.name}`, bx + 5, by + 14);
+
+    // HP bar
+    let hpPct = p.hp / p.maxHp;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(bx + 5, by + 20, 155, 8);
+    ctx.fillStyle = hpPct > 0.5 ? '#44cc44' : hpPct > 0.25 ? '#cccc44' : '#cc4444';
+    ctx.fillRect(bx + 5, by + 20, 155 * hpPct, 8);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '9px Courier New';
+    ctx.fillText(`HP:${p.hp}/${p.maxHp}`, bx + 5, by + 40);
+    ctx.fillText(`ATK:${p.atk} DEF:${p.def} SPD:${p.spd}`, bx + 5, by + 52);
+  }
+
+  // Combat overlay
+  if (combatState) {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(50, 120, W - 100, 300);
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(50, 120, W - 100, 300);
+
+    let e = combatState.enemy;
+    ctx.fillStyle = e.color;
+    ctx.font = 'bold 20px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(e.name, W/2, 155);
+
+    // Enemy HP
+    ctx.fillStyle = '#333';
+    ctx.fillRect(150, 165, W - 300, 12);
+    ctx.fillStyle = '#cc4444';
+    ctx.fillRect(150, 165, (W - 300) * (e.hp / e.maxHp), 12);
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px Courier New';
+    ctx.fillText(`${e.hp}/${e.maxHp}`, W/2, 175);
+
+    // Combat log
+    ctx.textAlign = 'left';
+    ctx.font = '12px Courier New';
+    let logStart = Math.max(0, combatState.log.length - 5);
+    for (let i = logStart; i < combatState.log.length; i++) {
+      ctx.fillStyle = '#e0e0ff';
+      ctx.fillText(combatState.log[i], 70, 200 + (i - logStart) * 18);
+    }
+
+    if (combatState.turn === 'player') {
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(`[SPACE] Attack with ${party[selectedPartyMember].name} | [1-4] Switch Knight`, W/2, 400);
+    }
+  }
+
+  // Message
+  if (messageTimer > 0 && !combatState) {
+    ctx.fillStyle = `rgba(167,139,250,${messageTimer / 120})`;
+    ctx.font = '14px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(message, W/2, OFFSET_Y + GRID * TILE - 5);
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 28px Courier New';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#a78bfa'; ctx.shadowBlur = 20;
+  ctx.fillText('FANTASY FOOTBALL', W/2, 120);
+  ctx.fillText('DUNGEON CRAWLER', W/2, 155);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '13px Courier New';
+  let y = 200;
+  ctx.fillText('Medieval knights on a quest through', W/2, y); y += 20;
+  ctx.fillText('the Fantasy Football Dungeon!', W/2, y); y += 35;
+
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText('Sir Mahomes (QB) - High Attack', W/2, y); y += 20;
+  ctx.fillStyle = '#44cc44';
+  ctx.fillText('Lord Henry (RB) - High HP & Defense', W/2, y); y += 20;
+  ctx.fillStyle = '#4488ff';
+  ctx.fillText('Duke Tyreek (WR) - Fast & Agile', W/2, y); y += 20;
+  ctx.fillStyle = '#ff8844';
+  ctx.fillText('Baron Kelce (TE) - Balanced', W/2, y); y += 35;
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText('Arrow Keys: Move through dungeon', W/2, y); y += 20;
+  ctx.fillText('1-4: Select active knight', W/2, y); y += 20;
+  ctx.fillText('SPACE: Attack in combat', W/2, y); y += 20;
+  ctx.fillText('Find items, fight monsters, reach Floor 6!', W/2, y); y += 20;
+  ctx.fillText('Touchdowns (kills) heal the party!', W/2, y); y += 40;
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 18px Courier New';
+  let blink = Math.sin(Date.now() / 300) > 0;
+  if (blink) ctx.fillText('PRESS SPACE TO BEGIN', W/2, y);
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

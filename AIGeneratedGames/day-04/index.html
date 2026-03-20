@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 04 – Chess Football Tactics</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      user-select: none;
+    }
+
+    nav { width: 100%; max-width: 1100px; margin-bottom: 1rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+
+    h1 { font-size: 1.8rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    .subtitle { color: #9ca3af; font-size: 0.95rem; margin-bottom: 1rem; }
+
+    .game-container {
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .board-wrapper { position: relative; }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(10, 56px);
+      grid-template-rows: repeat(10, 56px);
+      border: 2px solid #a78bfa;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .cell {
+      width: 56px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.1s;
+    }
+
+    .cell.light { background: #2a4a2a; }
+    .cell.dark { background: #1a3a1a; }
+
+    /* End zones */
+    .cell.endzone-top { background: #3a1a1a !important; }
+    .cell.endzone-bottom { background: #1a1a3a !important; }
+
+    .cell.highlight-move {
+      background: rgba(100, 200, 100, 0.35) !important;
+      cursor: pointer;
+    }
+    .cell.highlight-move::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: rgba(100, 255, 100, 0.5);
+    }
+
+    .cell.highlight-pass {
+      background: rgba(100, 100, 255, 0.35) !important;
+      cursor: pointer;
+    }
+    .cell.highlight-pass::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: rgba(100, 150, 255, 0.6);
+    }
+
+    .cell.highlight-tackle {
+      background: rgba(255, 80, 80, 0.35) !important;
+      cursor: pointer;
+    }
+    .cell.highlight-tackle::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: rgba(255, 80, 80, 0.6);
+    }
+
+    .cell.selected { outline: 3px solid #fbbf24; outline-offset: -3px; z-index: 2; }
+
+    .cell .piece {
+      font-size: 1.7rem;
+      line-height: 1;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+      position: relative;
+      z-index: 1;
+    }
+
+    .cell .ball-indicator {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      font-size: 0.7rem;
+      z-index: 2;
+    }
+
+    .cell .moved-indicator {
+      position: absolute;
+      top: 1px;
+      right: 2px;
+      font-size: 0.55rem;
+      opacity: 0.6;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: #1e1e2e;
+      border: 1px solid #3b3b5c;
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .sidebar h2 { font-size: 1.1rem; color: #a78bfa; margin-bottom: 0.75rem; }
+    .sidebar h3 { font-size: 0.95rem; color: #c4b5fd; margin: 0.75rem 0 0.4rem; }
+
+    .info-block {
+      background: #2a2a3e;
+      border-radius: 6px;
+      padding: 0.6rem 0.8rem;
+      margin-bottom: 0.5rem;
+      line-height: 1.5;
+    }
+
+    .info-block .piece-name { font-weight: 700; color: #fbbf24; }
+    .info-block .role { color: #9ca3af; font-style: italic; }
+    .info-block .stat { color: #a5b4fc; }
+
+    .turn-banner {
+      font-size: 1.1rem;
+      font-weight: 700;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+      text-align: center;
+    }
+    .turn-banner.player { background: #1a1a4a; color: #818cf8; }
+    .turn-banner.enemy { background: #4a1a1a; color: #f87171; }
+
+    .btn {
+      display: inline-block;
+      padding: 0.45rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: background 0.15s;
+      margin: 0.2rem;
+    }
+    .btn-primary { background: #6366f1; color: white; }
+    .btn-primary:hover { background: #818cf8; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover { background: #ef4444; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-success:hover { background: #22c55e; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .dice-result {
+      font-size: 1.8rem;
+      text-align: center;
+      padding: 0.5rem;
+      background: #2a2a3e;
+      border-radius: 8px;
+      margin: 0.5rem 0;
+    }
+
+    .log {
+      max-height: 180px;
+      overflow-y: auto;
+      font-size: 0.8rem;
+      color: #9ca3af;
+      border-top: 1px solid #3b3b5c;
+      padding-top: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .log div { padding: 2px 0; }
+    .log .event-good { color: #4ade80; }
+    .log .event-bad { color: #f87171; }
+    .log .event-info { color: #60a5fa; }
+
+    .score-bar {
+      display: flex;
+      justify-content: space-between;
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    .score-bar .player-score { color: #818cf8; }
+    .score-bar .enemy-score { color: #f87171; }
+
+    .actions { margin: 0.5rem 0; }
+
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    .modal {
+      background: #1e1e2e;
+      border: 2px solid #a78bfa;
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+      max-width: 360px;
+    }
+    .modal h2 { color: #a78bfa; margin-bottom: 1rem; font-size: 1.5rem; }
+    .modal p { margin-bottom: 1rem; color: #c4b5fd; }
+
+    .help-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin: 0.5rem 0;
+    }
+    .help-card {
+      background: #2a2a3e;
+      border-radius: 6px;
+      padding: 0.5rem;
+      text-align: center;
+    }
+    .help-card .emoji { font-size: 1.5rem; }
+    .help-card .name { font-weight: 700; color: #fbbf24; font-size: 0.85rem; }
+    .help-card .desc { font-size: 0.75rem; color: #9ca3af; margin-top: 0.2rem; }
+</style>
+</head>
+<body>
+  <h1>Chess Football Tactics</h1>
+  <div class="subtitle">What if chess was a football game?</div>
+
+  <div class="game-container">
+    <div class="board-wrapper">
+      <div class="board" id="board"></div>
+    </div>
+    <div class="sidebar" id="sidebar">
+      <div class="score-bar">
+        <span class="player-score" id="playerScore">Blue: 0</span>
+        <span class="enemy-score" id="enemyScore">Red: 0</span>
+      </div>
+      <div class="turn-banner player" id="turnBanner">Your Turn</div>
+      <div class="actions" id="actions">
+        <button class="btn btn-primary" id="btnEndTurn">End Turn</button>
+        <button class="btn btn-success" id="btnPass" disabled>Pass Ball</button>
+        <button class="btn btn-danger" id="btnTackle" disabled>Tackle</button>
+      </div>
+      <div id="diceArea"></div>
+      <div id="pieceInfo"></div>
+      <h3>Game Log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="helpModal">
+    <div class="modal">
+      <h2>Chess Football Tactics</h2>
+      <p>Get the ball to the opponent's end zone to score!</p>
+      <div class="help-grid">
+        <div class="help-card">
+          <div class="emoji">♛</div>
+          <div class="name">Queen (QB)</div>
+          <div class="desc">Moves 3 any dir. Best passer (range 5).</div>
+        </div>
+        <div class="help-card">
+          <div class="emoji">♞</div>
+          <div class="name">Knight (WR)</div>
+          <div class="desc">L-shaped move. Best catcher. Quick.</div>
+        </div>
+        <div class="help-card">
+          <div class="emoji">♜</div>
+          <div class="name">Rook (Blocker)</div>
+          <div class="desc">Moves 3 straight. Can tackle adj enemies.</div>
+        </div>
+        <div class="help-card">
+          <div class="emoji">♝</div>
+          <div class="name">Bishop (Safety)</div>
+          <div class="desc">Moves 3 diagonal. Good interceptor.</div>
+        </div>
+      </div>
+      <p style="font-size:0.8rem; color:#9ca3af;">Click a piece to see moves. Green = move, Blue = pass, Red = tackle. First to 3 wins!</p>
+      <button class="btn btn-primary" id="btnStartGame">Start Game</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="scoreModal" style="display:none;">
+    <div class="modal">
+      <h2 id="scoreTitle">Touchdown!</h2>
+      <p id="scoreText"></p>
+      <button class="btn btn-primary" id="btnContinue">Continue</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="winModal" style="display:none;">
+    <div class="modal">
+      <h2 id="winTitle">Game Over</h2>
+      <p id="winText"></p>
+      <button class="btn btn-primary" id="btnRestart">Play Again</button>
+    </div>
+  </div>
+
+<script>
+// ============================================================
+// CHESS FOOTBALL TACTICS
+// ============================================================
+
+const COLS = 10, ROWS = 10;
+const WIN_SCORE = 3;
+
+// Piece types
+const QUEEN  = 'queen';
+const KNIGHT = 'knight';
+const ROOK   = 'rook';
+const BISHOP = 'bishop';
+
+const PIECE_DATA = {
+  [QUEEN]:  { name: 'Queen',  role: 'Quarterback',    emoji: { blue: '♛', red: '♛' }, moveRange: 3, passRange: 5, catchBonus: 0, tackleRange: 0, movePattern: 'any' },
+  [KNIGHT]: { name: 'Knight', role: 'Wide Receiver',   emoji: { blue: '♞', red: '♞' }, moveRange: 0, passRange: 2, catchBonus: 3, tackleRange: 0, movePattern: 'L' },
+  [ROOK]:   { name: 'Rook',   role: 'Blocker/Lineman', emoji: { blue: '♜', red: '♜' }, moveRange: 3, passRange: 1, catchBonus: 0, tackleRange: 1, movePattern: 'straight' },
+  [BISHOP]: { name: 'Bishop', role: 'Safety/Defender',  emoji: { blue: '♝', red: '♝' }, moveRange: 3, passRange: 2, catchBonus: 1, tackleRange: 0, movePattern: 'diagonal' },
+};
+
+// Game state
+let state = {};
+
+function initState() {
+  state = {
+    board: Array.from({ length: ROWS }, () => Array(COLS).fill(null)),
+    turn: 'blue',        // 'blue' (player) or 'red' (enemy)
+    phase: 'select',     // 'select', 'move', 'pass', 'tackle', 'enemy', 'animating'
+    selected: null,      // { r, c }
+    highlights: [],      // [{ r, c, type }]
+    ballCarrier: null,   // { r, c }
+    movedPieces: new Set(),
+    score: { blue: 0, red: 0 },
+    passMode: false,
+    tackleMode: false,
+    diceResult: null,
+    logs: [],
+  };
+
+  // Place blue pieces (player) — bottom rows 7-9
+  const bluePieces = [
+    { type: QUEEN,  r: 8, c: 4 },
+    { type: QUEEN,  r: 8, c: 5 },
+    { type: KNIGHT, r: 9, c: 1 },
+    { type: KNIGHT, r: 9, c: 8 },
+    { type: ROOK,   r: 7, c: 3 },
+    { type: ROOK,   r: 7, c: 6 },
+    { type: BISHOP, r: 8, c: 2 },
+    { type: BISHOP, r: 8, c: 7 },
+  ];
+
+  // Place red pieces (enemy) — top rows 0-2
+  const redPieces = [
+    { type: QUEEN,  r: 1, c: 4 },
+    { type: QUEEN,  r: 1, c: 5 },
+    { type: KNIGHT, r: 0, c: 1 },
+    { type: KNIGHT, r: 0, c: 8 },
+    { type: ROOK,   r: 2, c: 3 },
+    { type: ROOK,   r: 2, c: 6 },
+    { type: BISHOP, r: 1, c: 2 },
+    { type: BISHOP, r: 1, c: 7 },
+  ];
+
+  bluePieces.forEach(p => {
+    state.board[p.r][p.c] = { type: p.type, team: 'blue' };
+  });
+  redPieces.forEach(p => {
+    state.board[p.r][p.c] = { type: p.type, team: 'red' };
+  });
+
+  // Blue queen at (8,4) starts with ball
+  state.ballCarrier = { r: 8, c: 4 };
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+
+const boardEl = document.getElementById('board');
+const sidebarEl = document.getElementById('sidebar');
+const logEl = document.getElementById('log');
+const turnBanner = document.getElementById('turnBanner');
+const btnEndTurn = document.getElementById('btnEndTurn');
+const btnPass = document.getElementById('btnPass');
+const btnTackle = document.getElementById('btnTackle');
+const diceArea = document.getElementById('diceArea');
+const pieceInfoEl = document.getElementById('pieceInfo');
+
+function render() {
+  boardEl.innerHTML = '';
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+
+      // Checkerboard
+      cell.classList.add((r + c) % 2 === 0 ? 'light' : 'dark');
+
+      // End zones
+      if (r === 0) cell.classList.add('endzone-top');
+      if (r === 9) cell.classList.add('endzone-bottom');
+
+      // Highlights
+      const hl = state.highlights.find(h => h.r === r && h.c === c);
+      if (hl) {
+        cell.classList.add('highlight-' + hl.type);
+      }
+
+      // Selected
+      if (state.selected && state.selected.r === r && state.selected.c === c) {
+        cell.classList.add('selected');
+      }
+
+      // Piece
+      const piece = state.board[r][c];
+      if (piece) {
+        const pd = PIECE_DATA[piece.type];
+        const span = document.createElement('span');
+        span.className = 'piece';
+        span.textContent = pd.emoji[piece.team];
+        span.style.color = piece.team === 'blue' ? '#60a5fa' : '#f87171';
+        cell.appendChild(span);
+
+        // Moved indicator
+        const key = r + ',' + c;
+        if (state.movedPieces.has(key) && piece.team === state.turn) {
+          const mi = document.createElement('span');
+          mi.className = 'moved-indicator';
+          mi.textContent = '✓';
+          cell.appendChild(mi);
+        }
+      }
+
+      // Ball indicator
+      if (state.ballCarrier && state.ballCarrier.r === r && state.ballCarrier.c === c) {
+        const bi = document.createElement('span');
+        bi.className = 'ball-indicator';
+        bi.textContent = '🏈';
+        cell.appendChild(bi);
+      }
+
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      cell.addEventListener('click', () => onCellClick(r, c));
+      boardEl.appendChild(cell);
+    }
+  }
+
+  // Turn banner
+  if (state.turn === 'blue') {
+    turnBanner.className = 'turn-banner player';
+    turnBanner.textContent = state.passMode ? '🏈 Select Pass Target' : state.tackleMode ? '💥 Select Tackle Target' : 'Your Turn — Select a Piece';
+  } else {
+    turnBanner.className = 'turn-banner enemy';
+    turnBanner.textContent = 'Enemy Turn...';
+  }
+
+  // Buttons
+  btnEndTurn.disabled = state.turn !== 'blue' || state.phase === 'animating';
+  const carrierIsBlue = state.ballCarrier && state.board[state.ballCarrier.r][state.ballCarrier.c]?.team === 'blue';
+  btnPass.disabled = !carrierIsBlue || state.turn !== 'blue' || state.phase === 'animating';
+  btnTackle.disabled = state.turn !== 'blue' || state.phase === 'animating';
+
+  if (state.passMode) {
+    btnPass.textContent = '✕ Cancel Pass';
+    btnPass.className = 'btn btn-danger';
+  } else {
+    btnPass.textContent = '🏈 Pass Ball';
+    btnPass.className = 'btn btn-success';
+  }
+  if (state.tackleMode) {
+    btnTackle.textContent = '✕ Cancel Tackle';
+    btnTackle.className = 'btn btn-danger';
+  } else {
+    btnTackle.textContent = '💥 Tackle';
+    btnTackle.className = 'btn btn-danger';
+  }
+
+  // Score
+  document.getElementById('playerScore').textContent = 'Blue: ' + state.score.blue;
+  document.getElementById('enemyScore').textContent = 'Red: ' + state.score.red;
+
+  // Log
+  renderLog();
+}
+
+function renderLog() {
+  logEl.innerHTML = '';
+  state.logs.slice(-30).forEach(entry => {
+    const div = document.createElement('div');
+    div.className = entry.cls || '';
+    div.textContent = entry.text;
+    logEl.appendChild(div);
+  });
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function showPieceInfo(r, c) {
+  const piece = state.board[r][c];
+  if (!piece) { pieceInfoEl.innerHTML = ''; return; }
+  const pd = PIECE_DATA[piece.type];
+  const hasBall = state.ballCarrier && state.ballCarrier.r === r && state.ballCarrier.c === c;
+  const key = r + ',' + c;
+  const moved = state.movedPieces.has(key);
+
+  pieceInfoEl.innerHTML = `
+    <div class="info-block">
+      <span class="piece-name" style="color:${piece.team === 'blue' ? '#60a5fa' : '#f87171'}">${pd.emoji[piece.team]} ${pd.name}</span>
+      <span class="role"> — ${pd.role}</span><br>
+      <span class="stat">Team: ${piece.team === 'blue' ? 'Blue (You)' : 'Red (Enemy)'}</span><br>
+      <span class="stat">Move: ${pd.movePattern === 'L' ? 'L-shape' : pd.moveRange + ' (' + pd.movePattern + ')'}</span><br>
+      <span class="stat">Pass Range: ${pd.passRange}</span><br>
+      <span class="stat">Catch Bonus: +${pd.catchBonus}</span><br>
+      ${pd.tackleRange ? '<span class="stat">Tackle Range: ' + pd.tackleRange + '</span><br>' : ''}
+      ${hasBall ? '<span style="color:#fbbf24;">🏈 Has the ball!</span><br>' : ''}
+      ${moved ? '<span style="color:#9ca3af;">Already moved this turn</span>' : ''}
+    </div>
+  `;
+}
+
+// ============================================================
+// MOVEMENT LOGIC
+// ============================================================
+
+function getMoveTargets(r, c) {
+  const piece = state.board[r][c];
+  if (!piece) return [];
+  const pd = PIECE_DATA[piece.type];
+  const targets = [];
+
+  if (pd.movePattern === 'L') {
+    // Knight L-shape moves
+    const offsets = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+    offsets.forEach(([dr, dc]) => {
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !state.board[nr][nc]) {
+        targets.push({ r: nr, c: nc });
+      }
+    });
+  } else {
+    const dirs = [];
+    if (pd.movePattern === 'any' || pd.movePattern === 'straight') {
+      dirs.push([0,1],[0,-1],[1,0],[-1,0]);
+    }
+    if (pd.movePattern === 'any' || pd.movePattern === 'diagonal') {
+      dirs.push([1,1],[1,-1],[-1,1],[-1,-1]);
+    }
+
+    dirs.forEach(([dr, dc]) => {
+      for (let step = 1; step <= pd.moveRange; step++) {
+        const nr = r + dr * step, nc = c + dc * step;
+        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) break;
+        if (state.board[nr][nc]) break; // blocked
+        targets.push({ r: nr, c: nc });
+      }
+    });
+  }
+
+  return targets;
+}
+
+function getPassTargets(r, c) {
+  const piece = state.board[r][c];
+  if (!piece) return [];
+  const pd = PIECE_DATA[piece.type];
+  const range = pd.passRange;
+  const targets = [];
+
+  for (let dr = -range; dr <= range; dr++) {
+    for (let dc = -range; dc <= range; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const target = state.board[nr][nc];
+      if (target && target.team === piece.team) {
+        targets.push({ r: nr, c: nc });
+      }
+    }
+  }
+  return targets;
+}
+
+function getTackleTargets(r, c) {
+  const piece = state.board[r][c];
+  if (!piece) return [];
+  const pd = PIECE_DATA[piece.type];
+  if (pd.tackleRange === 0) return [];
+  const targets = [];
+
+  for (let dr = -pd.tackleRange; dr <= pd.tackleRange; dr++) {
+    for (let dc = -pd.tackleRange; dc <= pd.tackleRange; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const target = state.board[nr][nc];
+      if (target && target.team !== piece.team) {
+        targets.push({ r: nr, c: nc });
+      }
+    }
+  }
+  return targets;
+}
+
+// ============================================================
+// DICE
+// ============================================================
+
+function rollDice(sides = 6) {
+  return Math.floor(Math.random() * sides) + 1;
+}
+
+function showDice(value, label) {
+  const dieFaces = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+  diceArea.innerHTML = `
+    <div class="dice-result">
+      <div>${dieFaces[value] || '🎲'} ${value}</div>
+      <div style="font-size:0.75rem;color:#9ca3af;">${label}</div>
+    </div>
+  `;
+  setTimeout(() => { diceArea.innerHTML = ''; }, 2000);
+}
+
+// ============================================================
+// CLICK HANDLING
+// ============================================================
+
+function onCellClick(r, c) {
+  if (state.turn !== 'blue' || state.phase === 'animating') return;
+
+  // Check if clicking a highlight
+  const hl = state.highlights.find(h => h.r === r && h.c === c);
+
+  if (hl && hl.type === 'move') {
+    executeMove(state.selected.r, state.selected.c, r, c);
+    return;
+  }
+
+  if (hl && hl.type === 'pass') {
+    executePass(state.selected.r, state.selected.c, r, c);
+    return;
+  }
+
+  if (hl && hl.type === 'tackle') {
+    executeTackle(state.selected.r, state.selected.c, r, c);
+    return;
+  }
+
+  // If in pass mode, clicking non-target cancels
+  if (state.passMode || state.tackleMode) {
+    cancelModes();
+    return;
+  }
+
+  // Select a piece
+  const piece = state.board[r][c];
+  if (piece && piece.team === 'blue') {
+    state.selected = { r, c };
+    const key = r + ',' + c;
+    const moved = state.movedPieces.has(key);
+
+    // Show move highlights if not moved
+    if (!moved) {
+      const moves = getMoveTargets(r, c);
+      state.highlights = moves.map(m => ({ ...m, type: 'move' }));
+    } else {
+      state.highlights = [];
+    }
+
+    showPieceInfo(r, c);
+    render();
+    return;
+  }
+
+  // Clicking enemy piece for info
+  if (piece && piece.team === 'red') {
+    state.selected = null;
+    state.highlights = [];
+    showPieceInfo(r, c);
+    render();
+    return;
+  }
+
+  // Clicking empty — deselect
+  state.selected = null;
+  state.highlights = [];
+  pieceInfoEl.innerHTML = '';
+  render();
+}
+
+function cancelModes() {
+  state.passMode = false;
+  state.tackleMode = false;
+  state.highlights = [];
+  state.selected = null;
+  render();
+}
+
+// ============================================================
+// ACTIONS
+// ============================================================
+
+function executeMove(fromR, fromC, toR, toC) {
+  const piece = state.board[fromR][fromC];
+  state.board[toR][toC] = piece;
+  state.board[fromR][fromC] = null;
+
+  // Move ball with carrier
+  if (state.ballCarrier && state.ballCarrier.r === fromR && state.ballCarrier.c === fromC) {
+    state.ballCarrier = { r: toR, c: toC };
+  }
+
+  state.movedPieces.add(toR + ',' + toC);
+  state.selected = null;
+  state.highlights = [];
+  addLog(`${PIECE_DATA[piece.type].name} moved to (${toC},${toR})`, 'event-info');
+
+  // Check touchdown
+  if (checkTouchdown()) return;
+
+  render();
+}
+
+function executePass(fromR, fromC, toR, toC) {
+  const thrower = state.board[fromR][fromC];
+  const receiver = state.board[toR][toC];
+  const dist = Math.max(Math.abs(toR - fromR), Math.abs(toC - fromC));
+
+  // Roll dice for pass success
+  const roll = rollDice(6);
+  const catchBonus = PIECE_DATA[receiver.type].catchBonus;
+  const needed = Math.max(2, dist + 1 - catchBonus); // need to roll >= needed
+
+  showDice(roll, `Need ${needed}+ to complete pass`);
+
+  if (roll >= needed) {
+    // Successful pass
+    state.ballCarrier = { r: toR, c: toC };
+    addLog(`🏈 ${PIECE_DATA[thrower.type].name} passes to ${PIECE_DATA[receiver.type].name} — SUCCESS! (rolled ${roll}, needed ${needed}+)`, 'event-good');
+  } else {
+    // Fumble — ball goes to a random adjacent empty cell
+    addLog(`🏈 ${PIECE_DATA[thrower.type].name} passes to ${PIECE_DATA[receiver.type].name} — FUMBLE! (rolled ${roll}, needed ${needed}+)`, 'event-bad');
+    fumbleBall(toR, toC);
+  }
+
+  state.passMode = false;
+  state.selected = null;
+  state.highlights = [];
+
+  if (checkTouchdown()) return;
+  render();
+}
+
+function fumbleBall(nearR, nearC) {
+  // Ball lands on a random empty adjacent cell
+  const candidates = [];
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      const nr = nearR + dr, nc = nearC + dc;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !state.board[nr][nc]) {
+        candidates.push({ r: nr, c: nc });
+      }
+    }
+  }
+  if (candidates.length > 0) {
+    const spot = candidates[Math.floor(Math.random() * candidates.length)];
+    state.ballCarrier = { r: spot.r, c: spot.c, loose: true };
+    addLog(`Ball is loose at (${spot.c},${spot.r})!`, 'event-bad');
+  } else {
+    // No empty space, stays with thrower-ish area
+    state.ballCarrier = { r: nearR, c: nearC, loose: true };
+  }
+}
+
+function executeTackle(fromR, fromC, toR, toC) {
+  const attacker = state.board[fromR][fromC];
+  const defender = state.board[toR][toC];
+
+  const roll = rollDice(6);
+  const needed = 3; // need 3+ to succeed
+  showDice(roll, `Tackle: need ${needed}+ to succeed`);
+
+  if (roll >= needed) {
+    addLog(`💥 ${PIECE_DATA[attacker.type].name} tackles ${PIECE_DATA[defender.type].name}! (rolled ${roll})`, 'event-good');
+
+    // If tackled piece had ball, fumble
+    if (state.ballCarrier && state.ballCarrier.r === toR && state.ballCarrier.c === toC) {
+      addLog('Ball knocked loose!', 'event-good');
+      fumbleBall(toR, toC);
+    }
+
+    // Tackled piece is pushed back or removed temporarily
+    // Push the defender back one cell away from attacker
+    const pushR = toR + Math.sign(toR - fromR);
+    const pushC = toC + Math.sign(toC - fromC);
+    if (pushR >= 0 && pushR < ROWS && pushC >= 0 && pushC < COLS && !state.board[pushR][pushC]) {
+      state.board[pushR][pushC] = defender;
+      state.board[toR][toC] = null;
+      addLog(`${PIECE_DATA[defender.type].name} pushed to (${pushC},${pushR})`, 'event-info');
+    }
+    // If can't push, defender stays but is "stunned" (we just note it)
+  } else {
+    addLog(`💥 ${PIECE_DATA[attacker.type].name} tackle attempt fails! (rolled ${roll})`, 'event-bad');
+  }
+
+  state.tackleMode = false;
+  state.movedPieces.add(fromR + ',' + fromC); // Tackling uses your action
+  state.selected = null;
+  state.highlights = [];
+  render();
+}
+
+// ============================================================
+// PASS / TACKLE MODES
+// ============================================================
+
+btnPass.addEventListener('click', () => {
+  if (state.turn !== 'blue') return;
+
+  if (state.passMode) {
+    cancelModes();
+    return;
+  }
+
+  state.tackleMode = false;
+
+  if (!state.ballCarrier || state.ballCarrier.loose) {
+    addLog('No one has the ball to pass!', 'event-bad');
+    render();
+    return;
+  }
+
+  const carrier = state.board[state.ballCarrier.r]?.[state.ballCarrier.c];
+  if (!carrier || carrier.team !== 'blue') {
+    addLog('Your team doesn\'t have the ball!', 'event-bad');
+    render();
+    return;
+  }
+
+  state.passMode = true;
+  state.selected = { r: state.ballCarrier.r, c: state.ballCarrier.c };
+  const targets = getPassTargets(state.ballCarrier.r, state.ballCarrier.c);
+  state.highlights = targets.map(t => ({ ...t, type: 'pass' }));
+
+  if (targets.length === 0) {
+    addLog('No valid pass targets in range!', 'event-bad');
+    state.passMode = false;
+  }
+
+  render();
+});
+
+btnTackle.addEventListener('click', () => {
+  if (state.turn !== 'blue') return;
+
+  if (state.tackleMode) {
+    cancelModes();
+    return;
+  }
+
+  state.passMode = false;
+
+  // Find all blue rooks that haven't acted and have tackle targets
+  const tacklers = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const p = state.board[r][c];
+      if (p && p.team === 'blue' && PIECE_DATA[p.type].tackleRange > 0 && !state.movedPieces.has(r + ',' + c)) {
+        const tgts = getTackleTargets(r, c);
+        if (tgts.length > 0) tacklers.push({ r, c, targets: tgts });
+      }
+    }
+  }
+
+  if (tacklers.length === 0) {
+    addLog('No pieces can tackle right now!', 'event-bad');
+    render();
+    return;
+  }
+
+  // If only one tackler, auto-select it
+  if (tacklers.length === 1) {
+    state.tackleMode = true;
+    state.selected = { r: tacklers[0].r, c: tacklers[0].c };
+    state.highlights = tacklers[0].targets.map(t => ({ ...t, type: 'tackle' }));
+  } else {
+    // Highlight all tacklers for selection — user clicks one
+    state.tackleMode = true;
+    addLog('Click a Rook to tackle with.', 'event-info');
+    // Show tackle targets for all rooks
+    const allTargets = [];
+    tacklers.forEach(tk => {
+      tk.targets.forEach(t => {
+        if (!allTargets.find(a => a.r === t.r && a.c === t.c)) {
+          allTargets.push(t);
+        }
+      });
+    });
+    // Select first tackler by default
+    state.selected = { r: tacklers[0].r, c: tacklers[0].c };
+    state.highlights = tacklers[0].targets.map(t => ({ ...t, type: 'tackle' }));
+  }
+
+  render();
+});
+
+// ============================================================
+// LOOSE BALL PICKUP
+// ============================================================
+
+function checkLooseBallPickup(r, c) {
+  if (!state.ballCarrier || !state.ballCarrier.loose) return;
+  const dist = Math.abs(r - state.ballCarrier.r) + Math.abs(c - state.ballCarrier.c);
+  if (dist <= 1) {
+    const piece = state.board[r][c];
+    if (piece) {
+      state.ballCarrier = { r, c };
+      addLog(`${PIECE_DATA[piece.type].name} (${piece.team}) picks up the loose ball!`, 'event-info');
+    }
+  }
+}
+
+// ============================================================
+// TOUCHDOWN CHECK
+// ============================================================
+
+function checkTouchdown() {
+  if (!state.ballCarrier || state.ballCarrier.loose) return false;
+  const carrier = state.board[state.ballCarrier.r]?.[state.ballCarrier.c];
+  if (!carrier) return false;
+
+  // Blue scores at row 0, Red scores at row 9
+  if (carrier.team === 'blue' && state.ballCarrier.r === 0) {
+    state.score.blue++;
+    addLog('🎉 TOUCHDOWN for Blue!', 'event-good');
+    showScoreModal('Blue Touchdown!', `Blue scores! (${state.score.blue} - ${state.score.red})`);
+    return true;
+  }
+  if (carrier.team === 'red' && state.ballCarrier.r === 9) {
+    state.score.red++;
+    addLog('😱 TOUCHDOWN for Red!', 'event-bad');
+    showScoreModal('Red Touchdown!', `Red scores! (${state.score.blue} - ${state.score.red})`);
+    return true;
+  }
+  return false;
+}
+
+function showScoreModal(title, text) {
+  document.getElementById('scoreTitle').textContent = title;
+  document.getElementById('scoreText').textContent = text;
+  document.getElementById('scoreModal').style.display = 'flex';
+  render();
+}
+
+document.getElementById('btnContinue').addEventListener('click', () => {
+  document.getElementById('scoreModal').style.display = 'none';
+  if (state.score.blue >= WIN_SCORE) {
+    showWinModal('You Win!', `Blue wins ${state.score.blue}-${state.score.red}! Congratulations!`);
+    return;
+  }
+  if (state.score.red >= WIN_SCORE) {
+    showWinModal('You Lose!', `Red wins ${state.score.red}-${state.score.blue}. Better luck next time!`);
+    return;
+  }
+  // Reset positions for next drive
+  resetDrive();
+});
+
+function resetDrive() {
+  // Clear board and re-place pieces
+  state.board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  state.movedPieces.clear();
+  state.selected = null;
+  state.highlights = [];
+  state.passMode = false;
+  state.tackleMode = false;
+  state.phase = 'select';
+  state.turn = 'blue';
+
+  // Alternate who gets the ball based on last scorer
+  const bluePieces = [
+    { type: QUEEN,  r: 8, c: 4 },
+    { type: QUEEN,  r: 8, c: 5 },
+    { type: KNIGHT, r: 9, c: 1 },
+    { type: KNIGHT, r: 9, c: 8 },
+    { type: ROOK,   r: 7, c: 3 },
+    { type: ROOK,   r: 7, c: 6 },
+    { type: BISHOP, r: 8, c: 2 },
+    { type: BISHOP, r: 8, c: 7 },
+  ];
+  const redPieces = [
+    { type: QUEEN,  r: 1, c: 4 },
+    { type: QUEEN,  r: 1, c: 5 },
+    { type: KNIGHT, r: 0, c: 1 },
+    { type: KNIGHT, r: 0, c: 8 },
+    { type: ROOK,   r: 2, c: 3 },
+    { type: ROOK,   r: 2, c: 6 },
+    { type: BISHOP, r: 1, c: 2 },
+    { type: BISHOP, r: 1, c: 7 },
+  ];
+
+  bluePieces.forEach(p => state.board[p.r][p.c] = { type: p.type, team: 'blue' });
+  redPieces.forEach(p => state.board[p.r][p.c] = { type: p.type, team: 'red' });
+  state.ballCarrier = { r: 8, c: 4 };
+
+  addLog('--- New drive ---', 'event-info');
+  render();
+}
+
+function showWinModal(title, text) {
+  document.getElementById('winTitle').textContent = title;
+  document.getElementById('winText').textContent = text;
+  document.getElementById('winModal').style.display = 'flex';
+}
+
+document.getElementById('btnRestart').addEventListener('click', () => {
+  document.getElementById('winModal').style.display = 'none';
+  initState();
+  render();
+});
+
+// ============================================================
+// END TURN / ENEMY AI
+// ============================================================
+
+btnEndTurn.addEventListener('click', () => {
+  if (state.turn !== 'blue') return;
+  endTurn();
+});
+
+function endTurn() {
+  state.turn = 'red';
+  state.movedPieces.clear();
+  state.selected = null;
+  state.highlights = [];
+  state.passMode = false;
+  state.tackleMode = false;
+  addLog('--- Red\'s turn ---', 'event-info');
+  render();
+
+  // AI takes its turn after a short delay
+  setTimeout(doEnemyTurn, 600);
+}
+
+function doEnemyTurn() {
+  // Simple AI: move each red piece toward the ball or toward row 9
+  const redPieces = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (state.board[r][c] && state.board[r][c].team === 'red') {
+        redPieces.push({ r, c, piece: state.board[r][c] });
+      }
+    }
+  }
+
+  // Shuffle for variety
+  redPieces.sort(() => Math.random() - 0.5);
+
+  let moveIndex = 0;
+
+  function doNextMove() {
+    if (moveIndex >= redPieces.length) {
+      // AI tries to pass if it has the ball
+      aiTryPass();
+      return;
+    }
+
+    const rp = redPieces[moveIndex];
+    moveIndex++;
+
+    // Check piece still exists at that position (might have been pushed)
+    if (!state.board[rp.r]?.[rp.c] || state.board[rp.r][rp.c].team !== 'red') {
+      doNextMove();
+      return;
+    }
+
+    const moves = getMoveTargets(rp.r, rp.c);
+    if (moves.length === 0) {
+      doNextMove();
+      return;
+    }
+
+    // Pick best move: if has ball, go toward row 9; otherwise go toward ball or closest blue piece
+    const hasBall = state.ballCarrier && state.ballCarrier.r === rp.r && state.ballCarrier.c === rp.c && !state.ballCarrier.loose;
+    let best = null;
+    let bestScore = -Infinity;
+
+    moves.forEach(m => {
+      let score = 0;
+      if (hasBall) {
+        // Move toward row 9
+        score = m.r - rp.r; // prefer moving down
+        score += (m.r === 9 ? 100 : 0); // huge bonus for scoring
+      } else if (state.ballCarrier && state.ballCarrier.loose) {
+        // Go toward loose ball
+        const dist = Math.abs(m.r - state.ballCarrier.r) + Math.abs(m.c - state.ballCarrier.c);
+        score = -dist;
+      } else {
+        // Move toward blue pieces or forward
+        score = m.r * 0.5; // slight preference to move forward (down)
+        // Check if near any blue piece
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = m.r + dr, nc = m.c + dc;
+            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+              const adj = state.board[nr][nc];
+              if (adj && adj.team === 'blue') {
+                score += 2; // near blue is good for defense
+              }
+            }
+          }
+        }
+      }
+      // Small random factor
+      score += Math.random() * 0.5;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = m;
+      }
+    });
+
+    if (best) {
+      const piece = state.board[rp.r][rp.c];
+      state.board[best.r][best.c] = piece;
+      state.board[rp.r][rp.c] = null;
+
+      if (state.ballCarrier && state.ballCarrier.r === rp.r && state.ballCarrier.c === rp.c) {
+        state.ballCarrier = { r: best.r, c: best.c };
+      }
+
+      addLog(`Red ${PIECE_DATA[piece.type].name} moves to (${best.c},${best.r})`, 'event-info');
+
+      // Check loose ball pickup
+      checkLooseBallPickup(best.r, best.c);
+
+      // Check touchdown
+      if (checkTouchdown()) return;
+
+      // AI tackle attempt: if rook and adjacent to blue
+      if (PIECE_DATA[piece.type].tackleRange > 0) {
+        const tgts = getTackleTargets(best.r, best.c);
+        tgts.forEach(t => {
+          // Check if target has ball
+          const hasBallT = state.ballCarrier && state.ballCarrier.r === t.r && state.ballCarrier.c === t.c;
+          if (hasBallT && Math.random() < 0.5) {
+            const roll = rollDice(6);
+            if (roll >= 3) {
+              const defender = state.board[t.r][t.c];
+              addLog(`💥 Red Rook tackles ${PIECE_DATA[defender.type].name}! (rolled ${roll})`, 'event-bad');
+              fumbleBall(t.r, t.c);
+            }
+          }
+        });
+      }
+    }
+
+    render();
+    setTimeout(doNextMove, 350);
+  }
+
+  doNextMove();
+}
+
+function aiTryPass() {
+  // If red has the ball, try to pass to a piece closer to row 9
+  if (!state.ballCarrier || state.ballCarrier.loose) {
+    finishEnemyTurn();
+    return;
+  }
+
+  const carrier = state.board[state.ballCarrier.r]?.[state.ballCarrier.c];
+  if (!carrier || carrier.team !== 'red') {
+    finishEnemyTurn();
+    return;
+  }
+
+  const targets = getPassTargets(state.ballCarrier.r, state.ballCarrier.c);
+  // Find target closest to row 9
+  const goodTargets = targets.filter(t => t.r > state.ballCarrier.r);
+
+  if (goodTargets.length > 0 && Math.random() < 0.6) {
+    const target = goodTargets.reduce((best, t) => t.r > best.r ? t : best, goodTargets[0]);
+    const receiver = state.board[target.r][target.c];
+    const dist = Math.max(Math.abs(target.r - state.ballCarrier.r), Math.abs(target.c - state.ballCarrier.c));
+    const roll = rollDice(6);
+    const catchBonus = PIECE_DATA[receiver.type].catchBonus;
+    const needed = Math.max(2, dist + 1 - catchBonus);
+
+    if (roll >= needed) {
+      addLog(`🏈 Red ${PIECE_DATA[carrier.type].name} passes to ${PIECE_DATA[receiver.type].name} — SUCCESS! (rolled ${roll})`, 'event-bad');
+      state.ballCarrier = { r: target.r, c: target.c };
+    } else {
+      addLog(`🏈 Red ${PIECE_DATA[carrier.type].name} pass FUMBLED! (rolled ${roll})`, 'event-good');
+      fumbleBall(target.r, target.c);
+    }
+
+    if (checkTouchdown()) return;
+    render();
+  }
+
+  setTimeout(finishEnemyTurn, 400);
+}
+
+function finishEnemyTurn() {
+  state.turn = 'blue';
+  state.movedPieces.clear();
+  state.selected = null;
+  state.highlights = [];
+  addLog('--- Your turn ---', 'event-info');
+
+  // Check if any blue piece is adjacent to loose ball
+  if (state.ballCarrier && state.ballCarrier.loose) {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (state.board[r][c] && state.board[r][c].team === 'blue') {
+          checkLooseBallPickup(r, c);
+        }
+      }
+    }
+  }
+
+  render();
+}
+
+// ============================================================
+// LOGGING
+// ============================================================
+
+function addLog(text, cls) {
+  state.logs.push({ text, cls });
+}
+
+// ============================================================
+// INIT
+// ============================================================
+
+document.getElementById('btnStartGame').addEventListener('click', () => {
+  document.getElementById('helpModal').style.display = 'none';
+});
+
+initState();
+render();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

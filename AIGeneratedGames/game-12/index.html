@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quarterback Sneak: Stealth Game</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 14px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 640, H = 640;
+canvas.width = W; canvas.height = H;
+const TILE = 32;
+const COLS = W / TILE, ROWS = H / TILE;
+
+let state = 'title';
+let currentRoom = 0;
+let player, guards, items, walls, doors, goal, alert, alertTimer;
+let inventory = { smoke: 1, decoy: 1, sprint: 1 };
+let sprintActive = 0;
+let detectedTimer = 0;
+let scanlineOffset = 0;
+let message = '';
+let messageTimer = 0;
+
+const ROOMS = [
+  { name: 'Lobby', guards: 2, items: ['smoke'], furniture: 8 },
+  { name: 'Locker Room', guards: 3, items: ['decoy'], furniture: 12 },
+  { name: 'Film Room', guards: 3, items: ['sprint'], furniture: 10 },
+  { name: 'Coach Office', guards: 4, items: ['smoke','decoy'], furniture: 14 },
+  { name: 'Playbook Vault', guards: 5, items: ['sprint'], furniture: 16 },
+];
+
+function generateRoom(roomIdx) {
+  let room = ROOMS[roomIdx];
+  walls = [];
+  doors = [];
+  items = [];
+  guards = [];
+
+  // Border walls
+  for (let x = 0; x < COLS; x++) {
+    walls.push({ x, y: 0 }); walls.push({ x, y: ROWS - 1 });
+  }
+  for (let y = 0; y < ROWS; y++) {
+    walls.push({ x: 0, y }); walls.push({ x: COLS - 1, y });
+  }
+
+  // Interior walls - create corridors
+  let occupied = new Set();
+  walls.forEach(w => occupied.add(`${w.x},${w.y}`));
+
+  // Add some interior structure
+  for (let i = 0; i < 3; i++) {
+    let wx = 4 + Math.floor(Math.random() * (COLS - 8));
+    let wy = 4 + Math.floor(Math.random() * (ROWS - 8));
+    let horizontal = Math.random() > 0.5;
+    let len = 3 + Math.floor(Math.random() * 4);
+    for (let j = 0; j < len; j++) {
+      let nx = horizontal ? wx + j : wx;
+      let ny = horizontal ? wy : wy + j;
+      if (nx > 0 && nx < COLS-1 && ny > 0 && ny < ROWS-1) {
+        walls.push({ x: nx, y: ny });
+        occupied.add(`${nx},${ny}`);
+      }
+    }
+  }
+
+  // Furniture (hiding spots)
+  for (let i = 0; i < room.furniture; i++) {
+    let fx, fy;
+    do {
+      fx = 2 + Math.floor(Math.random() * (COLS - 4));
+      fy = 2 + Math.floor(Math.random() * (ROWS - 4));
+    } while (occupied.has(`${fx},${fy}`));
+    walls.push({ x: fx, y: fy, furniture: true });
+    occupied.add(`${fx},${fy}`);
+  }
+
+  // Player start
+  player = { x: 1, y: ROWS - 2, speed: 1, hidden: false, detected: false };
+  occupied.add(`${player.x},${player.y}`);
+
+  // Goal (door to next room or playbook)
+  goal = { x: COLS - 2, y: 1 };
+  occupied.add(`${goal.x},${goal.y}`);
+
+  // Guards
+  for (let i = 0; i < room.guards; i++) {
+    let gx, gy;
+    do {
+      gx = 3 + Math.floor(Math.random() * (COLS - 6));
+      gy = 3 + Math.floor(Math.random() * (ROWS - 6));
+    } while (occupied.has(`${gx},${gy}`));
+    occupied.add(`${gx},${gy}`);
+    let dir = Math.floor(Math.random() * 4); // 0=up,1=right,2=down,3=left
+    guards.push({
+      x: gx, y: gy, dir, patrolDir: 1,
+      patrolSteps: 0, maxPatrol: 3 + Math.floor(Math.random() * 4),
+      alerted: false, coneLen: 4 + roomIdx
+    });
+  }
+
+  // Items
+  for (let itemType of room.items) {
+    let ix, iy;
+    do {
+      ix = 2 + Math.floor(Math.random() * (COLS - 4));
+      iy = 2 + Math.floor(Math.random() * (ROWS - 4));
+    } while (occupied.has(`${ix},${iy}`));
+    items.push({ x: ix, y: iy, type: itemType });
+    occupied.add(`${ix},${iy}`);
+  }
+
+  alert = false;
+  alertTimer = 0;
+  detectedTimer = 0;
+  sprintActive = 0;
+}
+
+function isWall(x, y) {
+  return walls.some(w => w.x === x && w.y === y);
+}
+
+function isFurniture(x, y) {
+  return walls.some(w => w.x === x && w.y === y && w.furniture);
+}
+
+const DX = [0, 1, 0, -1];
+const DY = [-1, 0, 1, 0];
+
+function hasLineOfSight(x1, y1, x2, y2) {
+  let dx = x2 - x1, dy = y2 - y1;
+  let steps = Math.max(Math.abs(dx), Math.abs(dy));
+  if (steps === 0) return true;
+  for (let i = 1; i <= steps; i++) {
+    let cx = Math.round(x1 + (dx * i) / steps);
+    let cy = Math.round(y1 + (dy * i) / steps);
+    if (walls.some(w => w.x === cx && w.y === cy && !w.furniture)) return false;
+  }
+  return true;
+}
+
+function getVisionCone(guard) {
+  let tiles = [];
+  let dx = DX[guard.dir], dy = DY[guard.dir];
+  for (let dist = 1; dist <= guard.coneLen; dist++) {
+    let spread = Math.floor(dist / 2);
+    for (let s = -spread; s <= spread; s++) {
+      let tx, ty;
+      if (dx !== 0) { tx = guard.x + dx * dist; ty = guard.y + s; }
+      else { tx = guard.x + s; ty = guard.y + dy * dist; }
+      if (tx >= 0 && tx < COLS && ty >= 0 && ty < ROWS) {
+        if (hasLineOfSight(guard.x, guard.y, tx, ty)) {
+          tiles.push({ x: tx, y: ty, dist });
+        }
+      }
+    }
+  }
+  return tiles;
+}
+
+let moveTimer = 0;
+const MOVE_INTERVAL = 12;
+let guardTimer = 0;
+const GUARD_INTERVAL = 30;
+
+function showMessage(msg) {
+  message = msg;
+  messageTimer = 120;
+}
+
+let keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+
+  if (state === 'title' && e.key === ' ') {
+    state = 'playing';
+    currentRoom = 0;
+    inventory = { smoke: 1, decoy: 1, sprint: 1 };
+    generateRoom(0);
+    showMessage('Sneak to the EXIT (top-right)');
+  }
+  if ((state === 'gameover' || state === 'win') && e.key === ' ') { state = 'title'; }
+
+  if (state === 'playing') {
+    if (e.key === '1' && inventory.smoke > 0) {
+      inventory.smoke--;
+      guards.forEach(g => { g.alerted = false; g.dir = (g.dir + 2) % 4; });
+      alert = false;
+      showMessage('SMOKE BOMB! Guards confused!');
+    }
+    if (e.key === '2' && inventory.decoy > 0) {
+      inventory.decoy--;
+      // Decoy: all guards look toward a random corner
+      let corner = Math.floor(Math.random() * 4);
+      guards.forEach(g => { g.dir = corner; g.alerted = false; });
+      alert = false;
+      showMessage('PLAY-ACTION DECOY! Guards distracted!');
+    }
+    if (e.key === '3' && inventory.sprint > 0) {
+      inventory.sprint--;
+      sprintActive = 120;
+      showMessage('SPRINT SHOES! Move fast!');
+    }
+  }
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+function movePlayer(dx, dy) {
+  let nx = player.x + dx, ny = player.y + dy;
+  if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return;
+  if (isWall(nx, ny) && !isFurniture(nx, ny)) return;
+
+  // Check if adjacent to furniture - can hide
+  player.x = nx;
+  player.y = ny;
+  player.hidden = isFurniture(nx, ny);
+
+  // Pick up items
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].x === nx && items[i].y === ny) {
+      inventory[items[i].type]++;
+      showMessage(`Picked up ${items[i].type.toUpperCase()}!`);
+      items.splice(i, 1);
+    }
+  }
+
+  // Check goal
+  if (nx === goal.x && ny === goal.y) {
+    currentRoom++;
+    if (currentRoom >= ROOMS.length) {
+      state = 'win';
+    } else {
+      generateRoom(currentRoom);
+      showMessage(`Entering: ${ROOMS[currentRoom].name}`);
+    }
+  }
+
+  // Check guard collision
+  for (let g of guards) {
+    if (g.x === nx && g.y === ny) {
+      state = 'gameover';
+    }
+  }
+}
+
+function update() {
+  if (state !== 'playing') return;
+
+  if (messageTimer > 0) messageTimer--;
+  if (sprintActive > 0) sprintActive--;
+
+  let moveRate = sprintActive > 0 ? 4 : MOVE_INTERVAL;
+  moveTimer++;
+  if (moveTimer >= moveRate) {
+    moveTimer = 0;
+    if (keys['ArrowUp']) movePlayer(0, -1);
+    else if (keys['ArrowDown']) movePlayer(0, 1);
+    else if (keys['ArrowLeft']) movePlayer(-1, 0);
+    else if (keys['ArrowRight']) movePlayer(1, 0);
+  }
+
+  // Guard AI
+  guardTimer++;
+  if (guardTimer >= GUARD_INTERVAL) {
+    guardTimer = 0;
+    for (let g of guards) {
+      if (g.alerted) {
+        // Chase player
+        let dx = Math.sign(player.x - g.x);
+        let dy = Math.sign(player.y - g.y);
+        let nx = g.x + dx, ny = g.y + dy;
+        if (!isWall(nx, ny) || isFurniture(nx, ny)) {
+          // Prefer axis with larger distance
+          if (Math.abs(player.x - g.x) > Math.abs(player.y - g.y)) {
+            if (!isWall(g.x + dx, g.y)) { g.x += dx; }
+            else if (!isWall(g.x, g.y + dy)) { g.y += dy; }
+          } else {
+            if (!isWall(g.x, g.y + dy)) { g.y += dy; }
+            else if (!isWall(g.x + dx, g.y)) { g.x += dx; }
+          }
+        }
+        // Update facing
+        if (dx !== 0 || dy !== 0) {
+          if (Math.abs(dx) >= Math.abs(dy)) g.dir = dx > 0 ? 1 : 3;
+          else g.dir = dy > 0 ? 2 : 0;
+        }
+        // Catch player
+        if (g.x === player.x && g.y === player.y) {
+          state = 'gameover';
+        }
+      } else {
+        // Patrol
+        let nx = g.x + DX[g.dir] * g.patrolDir;
+        let ny = g.y + DY[g.dir] * g.patrolDir;
+        g.patrolSteps++;
+        if (g.patrolSteps >= g.maxPatrol || isWall(nx, ny)) {
+          g.patrolDir *= -1;
+          g.patrolSteps = 0;
+          g.dir = (g.dir + 1) % 4;
+        } else {
+          g.x = nx; g.y = ny;
+        }
+      }
+
+      // Vision check
+      if (!player.hidden) {
+        let cone = getVisionCone(g);
+        for (let t of cone) {
+          if (t.x === player.x && t.y === player.y) {
+            g.alerted = true;
+            alert = true;
+            detectedTimer = 60;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (detectedTimer > 0) detectedTimer--;
+
+  scanlineOffset = (scanlineOffset + 0.5) % 4;
+}
+
+function draw() {
+  // Green-tint security camera aesthetic
+  ctx.fillStyle = '#0a1a0a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    ctx.fillStyle = '#00ff41';
+    ctx.font = 'bold 36px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#00ff41';
+    ctx.shadowBlur = 20;
+    ctx.fillText('QUARTERBACK SNEAK', W/2, 160);
+    ctx.font = '20px Courier New';
+    ctx.fillText('STEALTH MISSION', W/2, 200);
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#00cc33';
+    ctx.font = '14px Courier New';
+    let y = 260;
+    ctx.fillText('Steal the opposing team\'s playbook!', W/2, y); y += 30;
+    ctx.fillText('Sneak past linebacker guards.', W/2, y); y += 30;
+    ctx.fillText('Arrow Keys: Move', W/2, y); y += 25;
+    ctx.fillText('Stand on furniture (lockers) to hide', W/2, y); y += 25;
+    ctx.fillText('Avoid guard vision cones!', W/2, y); y += 40;
+
+    ctx.fillStyle = '#00ff41';
+    ctx.fillText('ITEMS:', W/2, y); y += 25;
+    ctx.fillStyle = '#ff4444';
+    ctx.fillText('[1] Smoke Bomb - Confuse all guards', W/2, y); y += 22;
+    ctx.fillStyle = '#4488ff';
+    ctx.fillText('[2] Play-Action Decoy - Distract guards', W/2, y); y += 22;
+    ctx.fillStyle = '#ffff44';
+    ctx.fillText('[3] Sprint Shoes - Move fast temporarily', W/2, y); y += 40;
+
+    ctx.fillStyle = '#00ff41';
+    ctx.font = 'bold 18px Courier New';
+    let blink = Math.sin(Date.now() / 300) > 0;
+    if (blink) ctx.fillText('PRESS SPACE TO INFILTRATE', W/2, y);
+
+    drawScanlines();
+    return;
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = '#ff0000';
+    ctx.font = 'bold 42px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 20;
+    ctx.fillText('SACKED!', W/2, 280);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ff4444';
+    ctx.font = '20px Courier New';
+    ctx.fillText(`Made it to Room ${currentRoom + 1}: ${ROOMS[currentRoom].name}`, W/2, 340);
+    ctx.font = '16px Courier New';
+    let blink = Math.sin(Date.now() / 300) > 0;
+    if (blink) ctx.fillText('PRESS SPACE TO RETRY', W/2, 400);
+    drawScanlines();
+    return;
+  }
+
+  if (state === 'win') {
+    ctx.fillStyle = '#00ff41';
+    ctx.font = 'bold 36px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#00ff41'; ctx.shadowBlur = 20;
+    ctx.fillText('PLAYBOOK STOLEN!', W/2, 260);
+    ctx.shadowBlur = 0;
+    ctx.font = '20px Courier New';
+    ctx.fillText('Mission Complete!', W/2, 310);
+    ctx.fillText('The season is ours!', W/2, 340);
+    ctx.font = '16px Courier New';
+    let blink = Math.sin(Date.now() / 300) > 0;
+    if (blink) ctx.fillText('PRESS SPACE TO CONTINUE', W/2, 410);
+    drawScanlines();
+    return;
+  }
+
+  // Draw floor
+  for (let x = 0; x < COLS; x++) {
+    for (let y = 0; y < ROWS; y++) {
+      ctx.fillStyle = (x + y) % 2 === 0 ? '#0a1a0a' : '#0d1f0d';
+      ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+    }
+  }
+
+  // Draw guard vision cones
+  for (let g of guards) {
+    let cone = getVisionCone(g);
+    for (let t of cone) {
+      let alpha = g.alerted ? 0.25 : 0.1;
+      ctx.fillStyle = g.alerted ? `rgba(255,0,0,${alpha})` : `rgba(255,255,0,${alpha})`;
+      ctx.fillRect(t.x * TILE, t.y * TILE, TILE, TILE);
+    }
+  }
+
+  // Draw walls
+  for (let w of walls) {
+    if (w.furniture) {
+      ctx.fillStyle = '#1a3a1a';
+      ctx.fillRect(w.x * TILE, w.y * TILE, TILE, TILE);
+      ctx.strokeStyle = '#2a5a2a';
+      ctx.strokeRect(w.x * TILE + 2, w.y * TILE + 2, TILE - 4, TILE - 4);
+      // Locker icon
+      ctx.fillStyle = '#3a6a3a';
+      ctx.fillRect(w.x * TILE + 6, w.y * TILE + 4, TILE - 12, TILE - 8);
+    } else {
+      ctx.fillStyle = '#1a331a';
+      ctx.fillRect(w.x * TILE, w.y * TILE, TILE, TILE);
+      ctx.strokeStyle = '#2a4a2a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(w.x * TILE, w.y * TILE, TILE, TILE);
+    }
+  }
+
+  // Draw items
+  for (let item of items) {
+    let colors = { smoke: '#ff4444', decoy: '#4488ff', sprint: '#ffff44' };
+    ctx.fillStyle = colors[item.type];
+    ctx.shadowColor = colors[item.type];
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(item.x * TILE + TILE/2, item.y * TILE + TILE/2, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(item.type[0].toUpperCase(), item.x * TILE + TILE/2, item.y * TILE + TILE/2 + 4);
+  }
+
+  // Draw goal
+  ctx.fillStyle = '#00ff41';
+  ctx.shadowColor = '#00ff41';
+  ctx.shadowBlur = 12;
+  ctx.fillRect(goal.x * TILE + 4, goal.y * TILE + 4, TILE - 8, TILE - 8);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 9px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('EXIT', goal.x * TILE + TILE/2, goal.y * TILE + TILE/2 + 3);
+
+  // Draw guards
+  for (let g of guards) {
+    ctx.fillStyle = g.alerted ? '#ff4444' : '#ff8800';
+    ctx.shadowColor = g.alerted ? '#ff0000' : '#ff8800';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(g.x * TILE + TILE/2, g.y * TILE + TILE/2, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // Direction indicator
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    let arrowX = g.x * TILE + TILE/2 + DX[g.dir] * 8;
+    let arrowY = g.y * TILE + TILE/2 + DY[g.dir] * 8;
+    ctx.arc(arrowX, arrowY, 3, 0, Math.PI * 2);
+    ctx.fill();
+    // Label
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 8px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('LB', g.x * TILE + TILE/2, g.y * TILE + TILE/2 + 3);
+  }
+
+  // Draw player
+  if (!player.hidden || Math.floor(Date.now() / 200) % 2 === 0) {
+    ctx.fillStyle = player.hidden ? '#005522' : (sprintActive > 0 ? '#ffff00' : '#00ff41');
+    ctx.shadowColor = '#00ff41';
+    ctx.shadowBlur = player.hidden ? 4 : 10;
+    ctx.beginPath();
+    ctx.arc(player.x * TILE + TILE/2, player.y * TILE + TILE/2, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('QB', player.x * TILE + TILE/2, player.y * TILE + TILE/2 + 3);
+  }
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, W, 30);
+  ctx.fillStyle = '#00ff41';
+  ctx.font = '12px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Room ${currentRoom + 1}/5: ${ROOMS[currentRoom].name}`, 10, 20);
+  ctx.textAlign = 'right';
+  ctx.fillText(`[1]Smoke:${inventory.smoke} [2]Decoy:${inventory.decoy} [3]Sprint:${inventory.sprint}`, W - 10, 20);
+
+  // Alert!
+  if (alert || detectedTimer > 0) {
+    ctx.fillStyle = `rgba(255,0,0,${0.1 + Math.sin(Date.now()/100) * 0.1})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff0000';
+    ctx.font = 'bold 20px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('! DETECTED !', W/2, 55);
+  }
+
+  if (player.hidden) {
+    ctx.fillStyle = '#00cc33';
+    ctx.font = '12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('HIDDEN', W/2, 55);
+  }
+
+  // Message
+  if (messageTimer > 0) {
+    ctx.fillStyle = `rgba(0,255,65,${messageTimer / 120})`;
+    ctx.font = '14px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(message, W/2, H - 20);
+  }
+
+  drawScanlines();
+}
+
+function drawScanlines() {
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  for (let y = scanlineOffset; y < H; y += 4) {
+    ctx.fillRect(0, y, W, 2);
+  }
+  // Vignette
+  let grad = ctx.createRadialGradient(W/2, H/2, H * 0.3, W/2, H/2, H * 0.7);
+  grad.addColorStop(0, 'transparent');
+  grad.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  // Timestamp
+  ctx.fillStyle = '#00aa33';
+  ctx.font = '10px Courier New';
+  ctx.textAlign = 'right';
+  let d = new Date();
+  ctx.fillText(`CAM-${currentRoom + 1} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`, W - 10, H - 10);
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

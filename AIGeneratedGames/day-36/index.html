@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 36 – Fist Hell</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; }
+    #ui { color: #e0e0ff; font-size: 0.85rem; max-width: 480px; width: 100%; display: flex; justify-content: space-between; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+  <h1>Fist Hell</h1>
+  <p class="subtitle">Beat-em-up: Tap sides to move, swipe to attack (up=uppercut, side=punch, down=sweep)</p>
+  <canvas id="gc"></canvas>
+  <div id="ui"><span id="waveInfo">Wave 1</span><span id="comboInfo">Combo: 0</span></div>
+<script>
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = 480, H = 400;
+
+function resize() {
+  const s = Math.min(window.innerWidth - 20, W) / W;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+resize(); window.addEventListener('resize', resize);
+
+const GROUND_Y = H - 60;
+const GRAVITY = 0.5;
+
+// Player
+let player = {
+  x: 100, y: GROUND_Y, vx: 0, vy: 0, w: 32, h: 48,
+  hp: 100, maxHp: 100,
+  facing: 1, // 1=right, -1=left
+  state: 'idle', // idle, walk, punch, uppercut, sweep, hurt, dead
+  stateTimer: 0,
+  combo: 0, comboTimer: 0,
+  attackBox: null
+};
+
+let enemies = [];
+let particles = [];
+let screenShake = 0;
+let wave = 1;
+let waveEnemies = 0;
+let waveSpawned = 0;
+let spawnTimer = 0;
+let gameState = 'play'; // play, waveComplete, bossWave, gameover, win
+let waveCompleteTimer = 0;
+let score = 0;
+let cameraX = 0;
+let levelWidth = 1200;
+
+// Touch
+let touchStart = null;
+let touchCurrent = null;
+let movingLeft = false;
+let movingRight = false;
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const t = e.changedTouches[0];
+  const tx = (t.clientX - rect.left) * scaleX;
+  const ty = (t.clientY - rect.top) * scaleY;
+
+  if (gameState === 'gameover' || gameState === 'win') { restartGame(); return; }
+
+  touchStart = { x: tx, y: ty, time: Date.now() };
+  touchCurrent = { x: tx, y: ty };
+
+  // Start moving based on tap side
+  if (tx < W * 0.35) { movingLeft = true; movingRight = false; }
+  else if (tx > W * 0.65) { movingRight = true; movingLeft = false; }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const t = e.changedTouches[0];
+  touchCurrent = { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  movingLeft = false;
+  movingRight = false;
+
+  if (touchStart && touchCurrent) {
+    const dx = touchCurrent.x - touchStart.x;
+    const dy = touchCurrent.y - touchStart.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const elapsed = Date.now() - touchStart.time;
+
+    if (dist > 25 && elapsed < 500) {
+      // Swipe detected
+      const angle = Math.atan2(dy, dx);
+      if (angle < -Math.PI / 4 && angle > -3 * Math.PI / 4) {
+        doAttack('uppercut');
+      } else if (angle > Math.PI / 4 && angle < 3 * Math.PI / 4) {
+        doAttack('sweep');
+      } else {
+        if (dx > 0) player.facing = 1; else player.facing = -1;
+        doAttack('punch');
+      }
+    } else if (dist < 15 && elapsed < 300) {
+      // Quick tap = punch
+      if (touchStart.x > W / 2) player.facing = 1; else player.facing = -1;
+      doAttack('punch');
+    }
+  }
+  touchStart = null;
+  touchCurrent = null;
+}, { passive: false });
+
+// Mouse fallback
+canvas.addEventListener('mousedown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.clientX - rect.left) * (W / rect.width);
+  const ty = (e.clientY - rect.top) * (H / rect.height);
+  if (gameState === 'gameover' || gameState === 'win') { restartGame(); return; }
+  touchStart = { x: tx, y: ty, time: Date.now() };
+  touchCurrent = { x: tx, y: ty };
+  if (tx < W * 0.35) { movingLeft = true; } else if (tx > W * 0.65) { movingRight = true; }
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (!touchStart) return;
+  const rect = canvas.getBoundingClientRect();
+  touchCurrent = { x: (e.clientX - rect.left) * (W / rect.width), y: (e.clientY - rect.top) * (H / rect.height) };
+});
+canvas.addEventListener('mouseup', (e) => {
+  movingLeft = false; movingRight = false;
+  if (touchStart && touchCurrent) {
+    const dx = touchCurrent.x - touchStart.x, dy = touchCurrent.y - touchStart.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 25) {
+      const angle = Math.atan2(dy, dx);
+      if (angle < -Math.PI / 4 && angle > -3 * Math.PI / 4) doAttack('uppercut');
+      else if (angle > Math.PI / 4 && angle < 3 * Math.PI / 4) doAttack('sweep');
+      else { if (dx > 0) player.facing = 1; else player.facing = -1; doAttack('punch'); }
+    } else {
+      if (touchStart.x > W / 2) player.facing = 1; else player.facing = -1;
+      doAttack('punch');
+    }
+  }
+  touchStart = null; touchCurrent = null;
+});
+
+function doAttack(type) {
+  if (player.state !== 'idle' && player.state !== 'walk') return;
+  if (player.state === 'hurt' || player.state === 'dead') return;
+
+  player.state = type;
+  const range = type === 'sweep' ? 50 : 40;
+  const damage = type === 'uppercut' ? 25 : type === 'sweep' ? 15 : 18;
+
+  if (type === 'punch') player.stateTimer = 12;
+  else if (type === 'uppercut') { player.stateTimer = 18; player.vy = -4; }
+  else if (type === 'sweep') player.stateTimer = 15;
+
+  // Create attack hitbox
+  player.attackBox = {
+    x: player.x + (player.facing === 1 ? player.w : -range),
+    y: type === 'uppercut' ? player.y - 20 : type === 'sweep' ? player.y + player.h - 15 : player.y + 10,
+    w: range, h: type === 'sweep' ? 15 : 30,
+    damage: damage, type: type, active: 6
+  };
+}
+
+function spawnEnemy(type) {
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const e = {
+    x: side === 1 ? cameraX + W + 20 : cameraX - 40,
+    y: GROUND_Y,
+    vx: 0, vy: 0,
+    w: type === 'boss' ? 48 : 28,
+    h: type === 'boss' ? 56 : 44,
+    hp: type === 'boss' ? 150 : type === 'heavy' ? 40 : 20,
+    maxHp: type === 'boss' ? 150 : type === 'heavy' ? 40 : 20,
+    type: type, // grunt, heavy, fast, boss
+    speed: type === 'fast' ? 2.5 : type === 'heavy' ? 0.8 : type === 'boss' ? 1.2 : 1.5,
+    state: 'walk',
+    stateTimer: 0,
+    attackCooldown: 0,
+    damage: type === 'boss' ? 20 : type === 'heavy' ? 12 : 8,
+    facing: side === 1 ? -1 : 1
+  };
+  enemies.push(e);
+}
+
+function setupWave(w) {
+  wave = w;
+  waveSpawned = 0;
+  spawnTimer = 0;
+  if (w <= 3) {
+    waveEnemies = 3 + w * 2;
+  } else if (w <= 5) {
+    waveEnemies = 6 + w;
+  } else {
+    waveEnemies = 1; // Boss
+    gameState = 'bossWave';
+  }
+}
+
+function update() {
+  if (gameState === 'gameover' || gameState === 'win') return;
+
+  if (gameState === 'waveComplete') {
+    waveCompleteTimer--;
+    if (waveCompleteTimer <= 0) {
+      setupWave(wave + 1);
+      gameState = 'play';
+    }
+    return;
+  }
+
+  // Spawn enemies
+  if (waveSpawned < waveEnemies) {
+    spawnTimer--;
+    if (spawnTimer <= 0) {
+      if (wave === 6) {
+        spawnEnemy('boss');
+      } else {
+        const r = Math.random();
+        if (wave >= 4 && r < 0.2) spawnEnemy('heavy');
+        else if (wave >= 3 && r < 0.4) spawnEnemy('fast');
+        else spawnEnemy('grunt');
+      }
+      waveSpawned++;
+      spawnTimer = 40 + Math.random() * 30;
+    }
+  }
+
+  // Check wave complete
+  if (waveSpawned >= waveEnemies && enemies.length === 0) {
+    if (wave >= 6) {
+      gameState = 'win';
+    } else {
+      gameState = 'waveComplete';
+      waveCompleteTimer = 90;
+    }
+  }
+
+  // Player movement
+  if (player.state !== 'hurt' && player.state !== 'dead') {
+    if (movingLeft) { player.vx = -3; player.facing = -1; if (player.state === 'idle') player.state = 'walk'; }
+    else if (movingRight) { player.vx = 3; player.facing = 1; if (player.state === 'idle') player.state = 'walk'; }
+    else if (player.state === 'walk') { player.state = 'idle'; player.vx *= 0.5; }
+    else { player.vx *= 0.8; }
+  }
+
+  // Player state timer
+  if (player.stateTimer > 0) {
+    player.stateTimer--;
+    if (player.stateTimer <= 0 && (player.state === 'punch' || player.state === 'uppercut' || player.state === 'sweep' || player.state === 'hurt')) {
+      player.state = 'idle';
+    }
+  }
+
+  // Attack box
+  if (player.attackBox) {
+    player.attackBox.active--;
+    if (player.attackBox.active <= 0) player.attackBox = null;
+  }
+
+  // Gravity
+  player.vy += GRAVITY;
+  player.y += player.vy;
+  if (player.y >= GROUND_Y) { player.y = GROUND_Y; player.vy = 0; }
+  player.x += player.vx;
+  player.x = Math.max(cameraX + 10, Math.min(cameraX + W - player.w - 10, player.x));
+
+  // Combo timer
+  if (player.comboTimer > 0) { player.comboTimer--; if (player.comboTimer <= 0) player.combo = 0; }
+
+  // Camera
+  const targetCam = player.x - W * 0.35;
+  cameraX += (targetCam - cameraX) * 0.1;
+  cameraX = Math.max(0, Math.min(levelWidth - W, cameraX));
+
+  // Check attack hits
+  if (player.attackBox) {
+    const ab = player.attackBox;
+    for (let e of enemies) {
+      if (e.state === 'dead') continue;
+      if (ab.x < e.x + e.w && ab.x + ab.w > e.x && ab.y < e.y + e.h && ab.y + ab.h > e.y) {
+        if (!e.wasHit) {
+          const comboDmg = ab.damage + player.combo * 2;
+          e.hp -= comboDmg;
+          e.wasHit = true;
+          player.combo++;
+          player.comboTimer = 90;
+          score += 10 * player.combo;
+          screenShake = 4;
+
+          // Knockback
+          e.vx = player.facing * (ab.type === 'uppercut' ? 4 : ab.type === 'sweep' ? 6 : 3);
+          if (ab.type === 'uppercut') e.vy = -8;
+          e.state = 'hurt';
+          e.stateTimer = 15;
+
+          // Hit particles
+          for (let i = 0; i < 6; i++) {
+            particles.push({
+              x: (ab.x + ab.w / 2), y: (ab.y + ab.h / 2),
+              vx: (Math.random() - 0.5) * 8, vy: -Math.random() * 5,
+              life: 15 + Math.random() * 10, color: '#fbbf24', size: 3 + Math.random() * 3
+            });
+          }
+
+          if (e.hp <= 0) {
+            e.state = 'dead';
+            e.stateTimer = 30;
+            score += 50;
+          }
+        }
+      }
+    }
+  } else {
+    for (let e of enemies) e.wasHit = false;
+  }
+
+  // Enemy AI
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+
+    if (e.state === 'dead') {
+      e.stateTimer--;
+      e.vy += GRAVITY;
+      e.y += e.vy;
+      e.x += e.vx;
+      e.vx *= 0.95;
+      if (e.stateTimer <= 0) { enemies.splice(i, 1); }
+      continue;
+    }
+
+    if (e.state === 'hurt') {
+      e.stateTimer--;
+      e.x += e.vx;
+      e.vx *= 0.9;
+      e.vy += GRAVITY;
+      e.y += e.vy;
+      if (e.y >= GROUND_Y) { e.y = GROUND_Y; e.vy = 0; }
+      if (e.stateTimer <= 0) e.state = 'walk';
+      continue;
+    }
+
+    // Move toward player
+    const dx = player.x - e.x;
+    e.facing = dx > 0 ? 1 : -1;
+    const dist = Math.abs(dx);
+
+    if (e.attackCooldown > 0) e.attackCooldown--;
+
+    if (dist < 35 && e.attackCooldown <= 0) {
+      // Attack
+      e.state = 'attack';
+      e.stateTimer = 20;
+      e.attackCooldown = 40 + Math.random() * 30;
+      e.vx = 0;
+    } else if (e.state !== 'attack') {
+      e.x += e.facing * e.speed;
+      e.state = 'walk';
+    }
+
+    if (e.state === 'attack') {
+      e.stateTimer--;
+      if (e.stateTimer === 8) {
+        // Deal damage
+        if (Math.abs(player.x - e.x) < 45 && player.state !== 'dead') {
+          player.hp -= e.damage;
+          player.state = 'hurt';
+          player.stateTimer = 12;
+          player.vx = -e.facing * 5;
+          screenShake = 6;
+          player.combo = 0;
+          if (player.hp <= 0) { player.hp = 0; player.state = 'dead'; gameState = 'gameover'; }
+        }
+      }
+      if (e.stateTimer <= 0) e.state = 'walk';
+    }
+
+    // Gravity
+    e.vy += GRAVITY;
+    e.y += e.vy;
+    if (e.y >= GROUND_Y) { e.y = GROUND_Y; e.vy = 0; }
+
+    // Bounds
+    e.x = Math.max(0, Math.min(levelWidth - e.w, e.x));
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  if (screenShake > 0) screenShake--;
+}
+
+function drawHealthBar(x, y, w, h, hp, maxHp, color) {
+  ctx.fillStyle = '#333';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w * (hp / maxHp), h);
+  ctx.strokeStyle = '#666';
+  ctx.strokeRect(x, y, w, h);
+}
+
+function drawCharacter(x, y, w, h, color, facing, state, isEnemy) {
+  ctx.save();
+  const cx = x + w / 2;
+  ctx.translate(cx, 0);
+  ctx.scale(facing, 1);
+  ctx.translate(-cx, 0);
+
+  // Body
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 4, y + 14, w - 8, h - 14);
+
+  // Head
+  ctx.fillStyle = isEnemy ? '#8b0000' : '#e0c8a0';
+  ctx.fillRect(x + 6, y, w - 12, 16);
+
+  // Eyes
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(x + 10, y + 4, 4, 4);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x + 11, y + 5, 2, 2);
+
+  // Attack animations
+  if (state === 'punch') {
+    ctx.fillStyle = isEnemy ? '#ff4444' : '#e0c8a0';
+    ctx.fillRect(x + w, y + 18, 16, 8);
+  } else if (state === 'uppercut') {
+    ctx.fillStyle = '#e0c8a0';
+    ctx.fillRect(x + w - 4, y - 10, 8, 18);
+  } else if (state === 'sweep') {
+    ctx.fillStyle = '#e0c8a0';
+    ctx.fillRect(x + w - 4, y + h - 8, 20, 6);
+  } else if (state === 'attack' && isEnemy) {
+    ctx.fillStyle = '#ff4444';
+    ctx.fillRect(x + w, y + 18, 14, 8);
+  }
+
+  if (state === 'hurt') {
+    ctx.fillStyle = 'rgba(255,0,0,0.3)';
+    ctx.fillRect(x, y, w, h);
+  }
+
+  ctx.restore();
+}
+
+function draw() {
+  ctx.save();
+
+  // Screen shake
+  if (screenShake > 0) {
+    ctx.translate((Math.random() - 0.5) * screenShake * 2, (Math.random() - 0.5) * screenShake * 2);
+  }
+
+  // Background
+  ctx.fillStyle = '#12101f';
+  ctx.fillRect(0, 0, W, H);
+
+  // Parallax city bg
+  const bgScroll = cameraX * 0.3;
+  ctx.fillStyle = '#1a1830';
+  for (let i = -1; i < 8; i++) {
+    const bx = i * 100 - (bgScroll % 100);
+    const bh = 60 + Math.sin(i * 2.3) * 30;
+    ctx.fillRect(bx, GROUND_Y - bh + 48, 80, bh);
+  }
+  const bgScroll2 = cameraX * 0.5;
+  ctx.fillStyle = '#222040';
+  for (let i = -1; i < 10; i++) {
+    const bx = i * 70 - (bgScroll2 % 70);
+    const bh = 40 + Math.sin(i * 1.7) * 20;
+    ctx.fillRect(bx, GROUND_Y - bh + 48, 55, bh);
+  }
+
+  ctx.save();
+  ctx.translate(-cameraX, 0);
+
+  // Ground
+  ctx.fillStyle = '#2a2a4a';
+  ctx.fillRect(0, GROUND_Y + 48, levelWidth, H - GROUND_Y);
+  ctx.fillStyle = '#3b3b5c';
+  ctx.fillRect(0, GROUND_Y + 48, levelWidth, 3);
+
+  // Enemies
+  for (let e of enemies) {
+    const colors = { grunt: '#6b2222', heavy: '#4a2a6b', fast: '#2a4a2a', boss: '#6b0000' };
+    drawCharacter(e.x, e.y, e.w, e.h, colors[e.type] || '#6b2222', e.facing, e.state, true);
+    if (e.state !== 'dead') {
+      drawHealthBar(e.x - 5, e.y - 10, e.w + 10, 5, e.hp, e.maxHp, '#ef4444');
+    }
+  }
+
+  // Player
+  if (player.state !== 'dead' || Math.floor(Date.now() / 100) % 2) {
+    drawCharacter(player.x, player.y, player.w, player.h, '#3b2a7a', player.facing, player.state, false);
+  }
+
+  // Particles
+  for (let p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = Math.min(1, p.life / 10);
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.restore(); // camera
+  ctx.restore(); // shake
+
+  // HUD
+  drawHealthBar(10, 10, 150, 16, player.hp, player.maxHp, '#4ade80');
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`HP: ${player.hp}/${player.maxHp}`, 12, 23);
+
+  // Combo display
+  if (player.combo > 1) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = `bold ${16 + player.combo * 2}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${player.combo}x COMBO!`, W / 2, 30);
+  }
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '14px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Score: ${score}`, W - 10, 23);
+
+  // Wave complete
+  if (gameState === 'waveComplete') {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, H / 2 - 30, W, 60);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Wave ${wave} Complete!`, W / 2, H / 2 + 8);
+  }
+
+  if (gameState === 'gameover') {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('K.O.', W / 2, H / 2 - 30);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '20px system-ui';
+    ctx.fillText(`Score: ${score} | Wave: ${wave}`, W / 2, H / 2 + 10);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '16px system-ui';
+    ctx.fillText('Tap to retry', W / 2, H / 2 + 45);
+  }
+
+  if (gameState === 'win') {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('VICTORY!', W / 2, H / 2 - 30);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '20px system-ui';
+    ctx.fillText(`Final Score: ${score}`, W / 2, H / 2 + 10);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '16px system-ui';
+    ctx.fillText('Tap to play again', W / 2, H / 2 + 45);
+  }
+
+  document.getElementById('waveInfo').textContent = `Wave ${wave}/6 | Score: ${score}`;
+  document.getElementById('comboInfo').textContent = `Combo: ${player.combo}x`;
+}
+
+function restartGame() {
+  player.x = 100; player.y = GROUND_Y; player.vx = 0; player.vy = 0;
+  player.hp = player.maxHp; player.state = 'idle'; player.combo = 0;
+  enemies = []; particles = []; score = 0; screenShake = 0; cameraX = 0;
+  gameState = 'play';
+  setupWave(1);
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+setupWave(1);
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 25 – Porgy</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 1rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 1rem; font-size: 0.9rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #0a1628; display: block; }
+</style>
+</head>
+<body>
+  <h1>Porgy</h1>
+  <p class="subtitle">Drag to steer. Tap to fire sonar. Collect treasure before oxygen runs out!</p>
+  <canvas id="game"></canvas>
+  <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = Math.min(480, window.innerWidth - 20);
+  H = Math.floor(W * 1.4);
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const WORLD_W = 1600;
+const WORLD_H = 2400;
+const DEPTH_ZONES = ['Shallows', 'Twilight Zone', 'Midnight Zone', 'Abyss'];
+
+let state = 'title';
+let sub = { x: WORLD_W / 2, y: 100, vx: 0, vy: 0, angle: Math.PI / 2, w: 32, h: 18, health: 100, oxygen: 100, score: 0, depth: 0, sonarCooldown: 0, torpedoCooldown: 0 };
+let cameraX = 0, cameraY = 0;
+let treasures = [];
+let creatures = [];
+let terrain = [];
+let sonarPulses = [];
+let torpedoes = [];
+let bubbles = [];
+let particles = [];
+let discovered = new Set();
+let dragTarget = null;
+let dragStartX = 0, dragStartY = 0;
+let totalTreasure = 0;
+let oxygenStations = [];
+let gameTimer = 0;
+
+function generateWorld() {
+  treasures = [];
+  creatures = [];
+  terrain = [];
+  oxygenStations = [];
+  sonarPulses = [];
+  torpedoes = [];
+  bubbles = [];
+  particles = [];
+  discovered = new Set();
+
+  // Terrain walls
+  for (let y = 0; y < WORLD_H; y += 40) {
+    const leftW = 30 + Math.sin(y * 0.01) * 50 + Math.sin(y * 0.005) * 30;
+    const rightW = 30 + Math.cos(y * 0.012) * 50 + Math.sin(y * 0.007) * 30;
+    terrain.push({ x: 0, y: y, w: Math.max(20, leftW), h: 42, side: 'left' });
+    terrain.push({ x: WORLD_W - Math.max(20, rightW), y: y, w: Math.max(20, rightW), h: 42, side: 'right' });
+  }
+
+  // Floor
+  for (let x = 0; x < WORLD_W; x += 40) {
+    terrain.push({ x: x, y: WORLD_H - 40, w: 42, h: 40, side: 'floor' });
+  }
+
+  // Treasure
+  for (let i = 0; i < 30; i++) {
+    const tx = 100 + Math.random() * (WORLD_W - 200);
+    const ty = 200 + Math.random() * (WORLD_H - 300);
+    const value = Math.floor(ty / (WORLD_H / 4)) * 25 + 25;
+    treasures.push({ x: tx, y: ty, value, collected: false, revealed: false, w: 16, h: 16 });
+  }
+  totalTreasure = treasures.reduce((s, t) => s + t.value, 0);
+
+  // Oxygen stations
+  for (let i = 0; i < 6; i++) {
+    oxygenStations.push({
+      x: 100 + Math.random() * (WORLD_W - 200),
+      y: 150 + i * (WORLD_H / 7),
+      used: false
+    });
+  }
+
+  // Sea creatures
+  for (let i = 0; i < 20; i++) {
+    const cy = 200 + Math.random() * (WORLD_H - 300);
+    const depthZone = Math.floor(cy / (WORLD_H / 4));
+    let type, speed, size;
+    if (depthZone === 0) { type = 'fish'; speed = 0.8; size = 12; }
+    else if (depthZone === 1) { type = 'jellyfish'; speed = 0.3; size = 18; }
+    else if (depthZone === 2) { type = 'shark'; speed = 1.5; size = 30; }
+    else { type = 'anglerfish'; speed = 1.0; size = 24; }
+    creatures.push({
+      x: 100 + Math.random() * (WORLD_W - 200),
+      y: cy, vx: (Math.random() - 0.5) * speed * 2, vy: (Math.random() - 0.5) * speed,
+      type, size, health: type === 'shark' ? 3 : type === 'anglerfish' ? 2 : 1,
+      timer: Math.random() * 100
+    });
+  }
+
+  sub.x = WORLD_W / 2;
+  sub.y = 100;
+  sub.vx = 0; sub.vy = 0;
+  sub.health = 100; sub.oxygen = 100; sub.score = 0;
+  sub.sonarCooldown = 0; sub.torpedoCooldown = 0;
+  gameTimer = 0;
+}
+
+// Touch handling
+let touchDragging = false;
+let touchX = 0, touchY = 0;
+let tapAction = null;
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (state === 'title') { state = 'playing'; generateWorld(); return; }
+  if (state === 'win' || state === 'gameover') { state = 'title'; return; }
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  touchX = t.clientX - rect.left;
+  touchY = t.clientY - rect.top;
+
+  if (e.touches.length === 1) {
+    touchDragging = true;
+    dragStartX = touchX;
+    dragStartY = touchY;
+    tapAction = 'potential';
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!touchDragging) return;
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  touchX = t.clientX - rect.left;
+  touchY = t.clientY - rect.top;
+  const dx = touchX - dragStartX;
+  const dy = touchY - dragStartY;
+  if (Math.sqrt(dx * dx + dy * dy) > 10) tapAction = null;
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (tapAction === 'potential') {
+    // Tap = sonar
+    fireSonar();
+  }
+  touchDragging = false;
+  tapAction = null;
+}, { passive: false });
+
+// Keyboard fallback
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.key] = true;
+  if (state === 'title') { state = 'playing'; generateWorld(); }
+  if (state === 'win' || state === 'gameover') { state = 'title'; }
+  if (e.key === ' ') fireSonar();
+  if (e.key === 'f') fireTorpedo();
+});
+window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+function fireSonar() {
+  if (sub.sonarCooldown > 0) return;
+  sub.sonarCooldown = 60;
+  sonarPulses.push({ x: sub.x, y: sub.y, radius: 0, maxRadius: 200, life: 60 });
+}
+
+function fireTorpedo() {
+  if (sub.torpedoCooldown > 0) return;
+  sub.torpedoCooldown = 30;
+  const a = sub.angle;
+  torpedoes.push({ x: sub.x, y: sub.y, vx: Math.cos(a) * 5, vy: Math.sin(a) * 5, life: 90 });
+}
+
+function update() {
+  if (state !== 'playing') return;
+  gameTimer++;
+
+  // Steering from drag
+  if (touchDragging && tapAction === null) {
+    const dx = touchX - dragStartX;
+    const dy = touchY - dragStartY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 5) {
+      sub.angle = Math.atan2(dy, dx);
+      const thrust = Math.min(dist / 80, 1) * 0.25;
+      sub.vx += Math.cos(sub.angle) * thrust;
+      sub.vy += Math.sin(sub.angle) * thrust;
+    }
+  }
+
+  // Keyboard movement
+  if (keys['ArrowLeft'] || keys['a']) sub.vx -= 0.2;
+  if (keys['ArrowRight'] || keys['d']) sub.vx += 0.2;
+  if (keys['ArrowUp'] || keys['w']) sub.vy -= 0.2;
+  if (keys['ArrowDown'] || keys['s']) sub.vy += 0.2;
+
+  // Physics
+  sub.vx *= 0.96;
+  sub.vy *= 0.96;
+  sub.vy += 0.02; // slight sinking
+
+  const speed = Math.sqrt(sub.vx * sub.vx + sub.vy * sub.vy);
+  if (speed > 4) { sub.vx *= 4 / speed; sub.vy *= 4 / speed; }
+
+  sub.x += sub.vx;
+  sub.y += sub.vy;
+
+  // Terrain collision
+  for (const t of terrain) {
+    if (sub.x + sub.w / 2 > t.x && sub.x - sub.w / 2 < t.x + t.w &&
+        sub.y + sub.h / 2 > t.y && sub.y - sub.h / 2 < t.y + t.h) {
+      if (t.side === 'left') sub.x = t.x + t.w + sub.w / 2;
+      else if (t.side === 'right') sub.x = t.x - sub.w / 2;
+      else { sub.y = t.y - sub.h / 2; sub.vy = 0; }
+      sub.vx *= 0.5;
+    }
+  }
+
+  // Bounds
+  sub.x = Math.max(sub.w, Math.min(WORLD_W - sub.w, sub.x));
+  sub.y = Math.max(sub.h, Math.min(WORLD_H - sub.h * 2, sub.y));
+
+  sub.depth = sub.y;
+
+  // Oxygen
+  const depthDrain = 0.005 + (sub.y / WORLD_H) * 0.01;
+  sub.oxygen -= depthDrain;
+  if (sub.y < 50) sub.oxygen = Math.min(100, sub.oxygen + 0.3); // surface refill
+
+  // Oxygen stations
+  for (const o of oxygenStations) {
+    if (o.used) continue;
+    const dx = sub.x - o.x, dy = sub.y - o.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 30) {
+      o.used = true;
+      sub.oxygen = Math.min(100, sub.oxygen + 40);
+      for (let i = 0; i < 10; i++) bubbles.push({ x: o.x, y: o.y, vy: -1 - Math.random() * 2, life: 40 });
+    }
+  }
+
+  if (sub.oxygen <= 0) { state = 'gameover'; return; }
+  if (sub.health <= 0) { state = 'gameover'; return; }
+
+  // Cooldowns
+  if (sub.sonarCooldown > 0) sub.sonarCooldown--;
+  if (sub.torpedoCooldown > 0) sub.torpedoCooldown--;
+
+  // Sonar pulses
+  for (let i = sonarPulses.length - 1; i >= 0; i--) {
+    const p = sonarPulses[i];
+    p.radius += 4;
+    p.life--;
+    // Reveal treasures
+    for (const t of treasures) {
+      if (!t.revealed) {
+        const dx = t.x - p.x, dy = t.y - p.y;
+        if (Math.sqrt(dx * dx + dy * dy) < p.radius + 10) t.revealed = true;
+      }
+    }
+    if (p.life <= 0) sonarPulses.splice(i, 1);
+  }
+
+  // Torpedoes
+  for (let i = torpedoes.length - 1; i >= 0; i--) {
+    const t = torpedoes[i];
+    t.x += t.vx; t.y += t.vy; t.life--;
+    // Hit creatures
+    for (let j = creatures.length - 1; j >= 0; j--) {
+      const c = creatures[j];
+      const dx = t.x - c.x, dy = t.y - c.y;
+      if (Math.sqrt(dx * dx + dy * dy) < c.size) {
+        c.health--;
+        if (c.health <= 0) {
+          sub.score += 20;
+          for (let k = 0; k < 8; k++) particles.push({ x: c.x, y: c.y, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30, color: '#ff6644' });
+          creatures.splice(j, 1);
+        }
+        torpedoes.splice(i, 1);
+        break;
+      }
+    }
+    if (t.life <= 0 && torpedoes[i]) torpedoes.splice(i, 1);
+  }
+
+  // Treasure collection
+  for (const t of treasures) {
+    if (t.collected) continue;
+    const dx = sub.x - t.x, dy = sub.y - t.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 25) {
+      t.collected = true;
+      sub.score += t.value;
+      for (let i = 0; i < 8; i++) particles.push({ x: t.x, y: t.y, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30, color: '#ffd700' });
+    }
+  }
+
+  // Win check
+  const allCollected = treasures.every(t => t.collected);
+  if (allCollected) { state = 'win'; }
+
+  // Creatures AI
+  for (const c of creatures) {
+    c.timer++;
+    if (c.type === 'fish') {
+      c.x += c.vx; c.y += Math.sin(c.timer * 0.05) * 0.5;
+      if (c.x < 80 || c.x > WORLD_W - 80) c.vx *= -1;
+    } else if (c.type === 'jellyfish') {
+      c.y += Math.sin(c.timer * 0.03) * 0.8;
+      c.x += Math.sin(c.timer * 0.02) * 0.3;
+    } else if (c.type === 'shark') {
+      const dx = sub.x - c.x, dy = sub.y - c.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 250) {
+        c.vx += (dx / dist) * 0.08;
+        c.vy += (dy / dist) * 0.08;
+      }
+      c.x += c.vx; c.y += c.vy;
+      c.vx *= 0.98; c.vy *= 0.98;
+      if (c.x < 80 || c.x > WORLD_W - 80) c.vx *= -1;
+      if (c.y < 50 || c.y > WORLD_H - 80) c.vy *= -1;
+    } else if (c.type === 'anglerfish') {
+      const dx = sub.x - c.x, dy = sub.y - c.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 180) {
+        c.vx += (dx / dist) * 0.05;
+        c.vy += (dy / dist) * 0.05;
+      }
+      c.x += c.vx + Math.sin(c.timer * 0.04) * 0.3;
+      c.y += c.vy;
+      c.vx *= 0.97; c.vy *= 0.97;
+    }
+
+    // Creature-sub collision
+    const cdx = sub.x - c.x, cdy = sub.y - c.y;
+    if (Math.sqrt(cdx * cdx + cdy * cdy) < c.size + 12) {
+      sub.health -= (c.type === 'shark' ? 0.4 : c.type === 'anglerfish' ? 0.3 : 0.15);
+      sub.vx += cdx * 0.05;
+      sub.vy += cdy * 0.05;
+    }
+  }
+
+  // Bubbles from sub
+  if (Math.random() < 0.15) {
+    bubbles.push({ x: sub.x - sub.vx * 3, y: sub.y, vy: -0.5 - Math.random(), life: 60 + Math.random() * 40 });
+  }
+
+  // Update bubbles
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const b = bubbles[i];
+    b.y += b.vy; b.x += Math.sin(b.life * 0.1) * 0.3; b.life--;
+    if (b.life <= 0) bubbles.splice(i, 1);
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Camera
+  cameraX += (sub.x - W / 2 - cameraX) * 0.08;
+  cameraY += (sub.y - H / 3 - cameraY) * 0.08;
+  cameraX = Math.max(0, Math.min(WORLD_W - W, cameraX));
+  cameraY = Math.max(0, Math.min(WORLD_H - H, cameraY));
+}
+
+function draw() {
+  // Background gradient based on depth
+  const depthRatio = Math.min(1, (state === 'playing' ? sub.y : 0) / WORLD_H);
+  const r = Math.floor(10 - depthRatio * 8);
+  const g = Math.floor(22 - depthRatio * 18);
+  const b = Math.floor(40 - depthRatio * 20);
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    // Ocean background
+    for (let y = 0; y < H; y += 2) {
+      const ratio = y / H;
+      const cr = Math.floor(10 + ratio * 5);
+      const cg = Math.floor(30 + ratio * -20);
+      const cb = Math.floor(80 + ratio * -50);
+      ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
+      ctx.fillRect(0, y, W, 2);
+    }
+    // Bubbles decorative
+    ctx.fillStyle = '#ffffff22';
+    for (let i = 0; i < 20; i++) {
+      const bx = Math.sin(Date.now() * 0.001 + i) * W * 0.3 + W / 2;
+      const by = (Date.now() * 0.02 + i * 100) % H;
+      ctx.beginPath(); ctx.arc(bx, H - by, 3 + i % 5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 32px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Porgy', W / 2, H * 0.3);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '15px system-ui';
+    ctx.fillText('Deep sea submarine exploration', W / 2, H * 0.3 + 30);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '13px system-ui';
+    ctx.fillText('Drag to steer submarine', W / 2, H * 0.5);
+    ctx.fillText('Tap to fire sonar (reveals treasure)', W / 2, H * 0.5 + 22);
+    ctx.fillText('Collect all 30 treasures!', W / 2, H * 0.5 + 44);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 18px system-ui';
+    ctx.fillText('[ Tap to Dive ]', W / 2, H * 0.75);
+    return;
+  }
+
+  if (state === 'win') {
+    ctx.fillStyle = '#0a1628';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Treasure Hunter!', W / 2, H * 0.3);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '18px system-ui';
+    ctx.fillText('All treasures collected!', W / 2, H * 0.4);
+    ctx.fillText('Score: ' + sub.score, W / 2, H * 0.48);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Time: ' + Math.floor(gameTimer / 60) + 's', W / 2, H * 0.56);
+    ctx.fillText('Tap to play again', W / 2, H * 0.7);
+    return;
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = '#0a1628';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff6666';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Lost at Sea', W / 2, H * 0.35);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '16px system-ui';
+    ctx.fillText(sub.oxygen <= 0 ? 'Oxygen depleted!' : 'Hull breached!', W / 2, H * 0.45);
+    ctx.fillText('Score: ' + sub.score, W / 2, H * 0.53);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to try again', W / 2, H * 0.65);
+    return;
+  }
+
+  const ox = cameraX, oy = cameraY;
+
+  // Light rays near surface
+  if (sub.y < 400) {
+    ctx.globalAlpha = 0.06 * (1 - sub.y / 400);
+    ctx.fillStyle = '#88ccff';
+    for (let i = 0; i < 5; i++) {
+      const rx = (i * 130 + Math.sin(gameTimer * 0.01 + i) * 40) - ox % 200;
+      ctx.beginPath();
+      ctx.moveTo(rx, 0);
+      ctx.lineTo(rx + 30, 0);
+      ctx.lineTo(rx + 60, H);
+      ctx.lineTo(rx - 30, H);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Terrain
+  for (const t of terrain) {
+    const sx = t.x - ox, sy = t.y - oy;
+    if (sx > W + 50 || sx + t.w < -50 || sy > H + 50 || sy + t.h < -50) continue;
+    const depthColor = Math.floor(t.y / WORLD_H * 40);
+    ctx.fillStyle = `rgb(${40 - depthColor},${50 - depthColor},${35 - depthColor})`;
+    ctx.fillRect(sx, sy, t.w, t.h);
+    ctx.fillStyle = `rgb(${55 - depthColor},${65 - depthColor},${50 - depthColor})`;
+    if (t.side === 'left') ctx.fillRect(sx + t.w - 3, sy, 3, t.h);
+    else if (t.side === 'right') ctx.fillRect(sx, sy, 3, t.h);
+    else ctx.fillRect(sx, sy, t.w, 3);
+  }
+
+  // Oxygen stations
+  for (const o of oxygenStations) {
+    const sx = o.x - ox, sy = o.y - oy;
+    if (sx < -30 || sx > W + 30 || sy < -30 || sy > H + 30) continue;
+    if (o.used) {
+      ctx.fillStyle = '#33445566';
+      ctx.fillRect(sx - 10, sy - 15, 20, 30);
+    } else {
+      ctx.fillStyle = '#44aaff';
+      ctx.fillRect(sx - 10, sy - 15, 20, 30);
+      ctx.fillStyle = '#88ccff';
+      ctx.font = 'bold 12px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('O2', sx, sy + 4);
+      // Glow
+      ctx.globalAlpha = 0.15 + Math.sin(gameTimer * 0.08) * 0.1;
+      ctx.fillStyle = '#44aaff';
+      ctx.beginPath(); ctx.arc(sx, sy, 20, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Treasures
+  for (const t of treasures) {
+    if (t.collected) continue;
+    const sx = t.x - ox, sy = t.y - oy;
+    if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) continue;
+    if (t.revealed) {
+      ctx.fillStyle = '#ffd700';
+      ctx.fillRect(sx - 8, sy - 6, 16, 12);
+      ctx.fillStyle = '#ffaa00';
+      ctx.fillRect(sx - 6, sy - 4, 12, 8);
+      ctx.fillStyle = '#fff8';
+      ctx.fillRect(sx - 3, sy - 2, 2, 2);
+      // Sparkle
+      ctx.globalAlpha = 0.5 + Math.sin(gameTimer * 0.1 + t.x) * 0.3;
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    } else {
+      // Hidden treasure hint (very faint)
+      ctx.globalAlpha = 0.08;
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Creatures
+  for (const c of creatures) {
+    const sx = c.x - ox, sy = c.y - oy;
+    if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) continue;
+
+    if (c.type === 'fish') {
+      ctx.fillStyle = '#66bb88';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, c.size, c.size * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#44aa66';
+      // Tail
+      const tailDir = c.vx > 0 ? -1 : 1;
+      ctx.beginPath();
+      ctx.moveTo(sx + tailDir * c.size, sy);
+      ctx.lineTo(sx + tailDir * (c.size + 8), sy - 5);
+      ctx.lineTo(sx + tailDir * (c.size + 8), sy + 5);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(sx + (c.vx > 0 ? 4 : -4), sy - 2, 2, 0, Math.PI * 2); ctx.fill();
+    } else if (c.type === 'jellyfish') {
+      ctx.fillStyle = '#cc66ff44';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, c.size, c.size * 0.7, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.strokeStyle = '#cc66ff44';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.moveTo(sx - c.size + i * c.size * 0.5, sy);
+        ctx.quadraticCurveTo(sx - c.size + i * c.size * 0.5 + Math.sin(c.timer * 0.1 + i) * 5, sy + c.size, sx - c.size + i * c.size * 0.5, sy + c.size * 1.5);
+        ctx.stroke();
+      }
+    } else if (c.type === 'shark') {
+      ctx.fillStyle = '#667788';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, c.size, c.size * 0.35, Math.atan2(c.vy, c.vx), 0, Math.PI * 2);
+      ctx.fill();
+      // Fin
+      ctx.fillStyle = '#556677';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - c.size * 0.3);
+      ctx.lineTo(sx - 5, sy - c.size * 0.8);
+      ctx.lineTo(sx + 8, sy - c.size * 0.3);
+      ctx.fill();
+      // Eye
+      ctx.fillStyle = '#ff4444';
+      const eyeDir = c.vx > 0 ? 1 : -1;
+      ctx.beginPath(); ctx.arc(sx + eyeDir * c.size * 0.5, sy - 3, 2, 0, Math.PI * 2); ctx.fill();
+    } else if (c.type === 'anglerfish') {
+      ctx.fillStyle = '#443322';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, c.size, c.size * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Light lure
+      ctx.fillStyle = '#ffff44';
+      ctx.globalAlpha = 0.5 + Math.sin(c.timer * 0.15) * 0.5;
+      ctx.beginPath(); ctx.arc(sx, sy - c.size - 8, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      // Stalk
+      ctx.strokeStyle = '#554433';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(sx, sy - c.size * 0.5); ctx.lineTo(sx, sy - c.size - 8); ctx.stroke();
+      // Teeth
+      ctx.fillStyle = '#ccccaa';
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(sx - 8 + i * 5, sy + c.size * 0.3, 2, 4);
+      }
+    }
+  }
+
+  // Sonar pulses
+  for (const p of sonarPulses) {
+    const sx = p.x - ox, sy = p.y - oy;
+    ctx.strokeStyle = `rgba(100,200,255,${p.life / 60 * 0.6})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, p.radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Torpedoes
+  ctx.fillStyle = '#ff8844';
+  for (const t of torpedoes) {
+    const sx = t.x - ox, sy = t.y - oy;
+    ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Bubbles
+  for (const b of bubbles) {
+    const sx = b.x - ox, sy = b.y - oy;
+    ctx.globalAlpha = b.life / 60;
+    ctx.strokeStyle = '#88ccff';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(sx, sy, 2 + (60 - b.life) * 0.05, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 30;
+    ctx.fillRect(p.x - ox, p.y - oy, 3, 3);
+    ctx.globalAlpha = 1;
+  }
+
+  // Submarine
+  const sx = sub.x - ox, sy = sub.y - oy;
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(Math.atan2(sub.vy, sub.vx || 0.01));
+  // Hull
+  ctx.fillStyle = '#a78bfa';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, sub.w / 2, sub.h / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Window
+  ctx.fillStyle = '#e0e0ff';
+  ctx.beginPath();
+  ctx.arc(sub.w * 0.2, -2, 5, 0, Math.PI * 2);
+  ctx.fill();
+  // Periscope
+  ctx.fillStyle = '#8b7bca';
+  ctx.fillRect(-2, -sub.h / 2 - 6, 4, 8);
+  // Propeller
+  ctx.fillStyle = '#6b5baa';
+  ctx.fillRect(-sub.w / 2 - 6, -4, 8, 3);
+  ctx.fillRect(-sub.w / 2 - 6, 1, 8, 3);
+  ctx.restore();
+
+  // Sub light cone in deep water
+  if (sub.y > 800) {
+    const lightAlpha = Math.min(0.2, (sub.y - 800) / 2000 * 0.2);
+    ctx.globalAlpha = lightAlpha;
+    ctx.fillStyle = '#ffff88';
+    ctx.beginPath();
+    const lAngle = Math.atan2(sub.vy, sub.vx || 0.01);
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + Math.cos(lAngle - 0.3) * 120, sy + Math.sin(lAngle - 0.3) * 120);
+    ctx.lineTo(sx + Math.cos(lAngle + 0.3) * 120, sy + Math.sin(lAngle + 0.3) * 120);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // HUD
+  ctx.fillStyle = '#0a162888';
+  ctx.fillRect(0, 0, W, 60);
+
+  // Oxygen bar
+  ctx.fillStyle = '#334';
+  ctx.fillRect(10, 8, 120, 12);
+  const o2Color = sub.oxygen > 30 ? '#44aaff' : sub.oxygen > 15 ? '#ffaa44' : '#ff4444';
+  ctx.fillStyle = o2Color;
+  ctx.fillRect(10, 8, 120 * (sub.oxygen / 100), 12);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('O2', 14, 17);
+
+  // Health bar
+  ctx.fillStyle = '#334';
+  ctx.fillRect(10, 24, 120, 12);
+  ctx.fillStyle = sub.health > 30 ? '#44ff66' : '#ff4444';
+  ctx.fillRect(10, 24, 120 * (sub.health / 100), 12);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText('HP', 14, 33);
+
+  // Score and depth
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 14px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText('$' + sub.score, W - 10, 18);
+
+  const zoneIdx = Math.min(3, Math.floor(sub.y / (WORLD_H / 4)));
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '11px system-ui';
+  ctx.fillText(DEPTH_ZONES[zoneIdx] + ' - ' + Math.floor(sub.y / 10) + 'm', W - 10, 34);
+
+  // Treasure counter
+  const collected = treasures.filter(t => t.collected).length;
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Treasure: ' + collected + '/30', W / 2, 50);
+
+  // Sonar cooldown indicator
+  if (sub.sonarCooldown > 0) {
+    ctx.fillStyle = '#44aaff44';
+    ctx.fillRect(W / 2 - 30, H - 30, 60 * (1 - sub.sonarCooldown / 60), 6);
+  } else {
+    ctx.fillStyle = '#44aaff';
+    ctx.font = '10px system-ui';
+    ctx.fillText('TAP: Sonar', W / 2, H - 12);
+  }
+
+  // Mini-map
+  const mmW = 60, mmH = 90;
+  const mmX = W - mmW - 8, mmY = H - mmH - 8;
+  ctx.fillStyle = '#0a162888';
+  ctx.fillRect(mmX, mmY, mmW, mmH);
+  ctx.strokeStyle = '#3b3b5c';
+  ctx.strokeRect(mmX, mmY, mmW, mmH);
+  // Sub position on minimap
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(mmX + (sub.x / WORLD_W) * mmW - 2, mmY + (sub.y / WORLD_H) * mmH - 2, 4, 4);
+  // Revealed treasures on minimap
+  for (const t of treasures) {
+    if (t.collected) continue;
+    if (t.revealed) {
+      ctx.fillStyle = '#ffd700';
+      ctx.fillRect(mmX + (t.x / WORLD_W) * mmW - 1, mmY + (t.y / WORLD_H) * mmH - 1, 2, 2);
+    }
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

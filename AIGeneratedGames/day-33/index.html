@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 33 – Rock On Island</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    .sub { color: #9ca3af; font-size: 0.85rem; margin-bottom: 0.5rem; }
+    canvas {
+      border: 1px solid #3b3b5c;
+      border-radius: 8px;
+      max-width: 480px;
+      width: 100%;
+      touch-action: none;
+    }
+    #ui { color: #9ca3af; font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Rock On Island</h1>
+  <p class="sub">Tap the beat! Hit notes as they reach the zone.</p>
+  <canvas id="game" width="480" height="640"></canvas>
+  <div id="ui"></div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+
+const W = 480, H = 640;
+function resize() {
+  const s = Math.min(window.innerWidth / W, (window.innerHeight - 120) / H, 1);
+  canvas.style.width = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const STATE = { MENU: 0, PLAY: 1, OVER: 2, WIN: 3 };
+let state = STATE.MENU;
+
+// Rhythm config
+const NUM_LANES = 4;
+const LANE_W = W / NUM_LANES;
+const HIT_Y = H - 120;
+const NOTE_SPEED_BASE = 200;
+const HIT_WINDOW_PERFECT = 25;
+const HIT_WINDOW_GOOD = 50;
+const HIT_WINDOW_OK = 80;
+
+const LANE_COLORS = ['#ff4466', '#44bbff', '#44ff88', '#ffaa44'];
+const LANE_LABELS = ['A', 'B', 'C', 'D'];
+
+let notes = [];
+let score = 0;
+let combo = 0;
+let maxCombo = 0;
+let multiplier = 1;
+let hp = 100;
+let songTime = 0;
+let songIdx = 0;
+let noteSpeed = NOTE_SPEED_BASE;
+let hitEffects = [];
+let particles = [];
+let totalNotes = 0;
+let hitNotes = 0;
+let missedNotes = 0;
+let perfects = 0;
+let songName = '';
+let targetScore = 0;
+let time = 0;
+let beatPulse = 0;
+
+// Songs: arrays of [time_in_beats, lane(0-3)]
+// BPM determines speed
+const SONGS = [
+  {
+    name: 'Island Breeze',
+    bpm: 100,
+    target: 2000,
+    notes: generateSong(100, 60, 0.6)
+  },
+  {
+    name: 'Tidal Wave',
+    bpm: 120,
+    target: 3500,
+    notes: generateSong(120, 80, 0.7)
+  },
+  {
+    name: 'Volcano Fury',
+    bpm: 140,
+    target: 5000,
+    notes: generateSong(140, 100, 0.8)
+  },
+  {
+    name: 'Cosmic Storm',
+    bpm: 160,
+    target: 7000,
+    notes: generateSong(160, 120, 0.85)
+  },
+  {
+    name: 'Rock Legend',
+    bpm: 180,
+    target: 9000,
+    notes: generateSong(180, 140, 0.9)
+  }
+];
+
+function generateSong(bpm, numNotes, density) {
+  const result = [];
+  const beatDur = 60 / bpm;
+  let t = 2; // start after 2 beats
+
+  // Generate musical patterns
+  const patterns = [
+    [0], [1], [2], [3],
+    [0, 2], [1, 3],
+    [0, 1], [2, 3],
+    [0], [1], [2], [3], [1], [2],
+  ];
+
+  for (let i = 0; i < numNotes; i++) {
+    const pattern = patterns[Math.floor(Math.random() * patterns.length)];
+    pattern.forEach(lane => {
+      result.push([t, lane]);
+    });
+
+    // Vary timing for musical feel
+    if (Math.random() < 0.3) t += 0.5; // eighth note
+    else if (Math.random() < 0.2) t += 0.25; // sixteenth
+    else t += 1; // quarter note
+
+    // Occasional rest
+    if (Math.random() > density) t += 1;
+  }
+
+  return result;
+}
+
+function loadSong(idx) {
+  const song = SONGS[idx];
+  songName = song.name;
+  targetScore = song.target;
+  const beatDur = 60 / song.bpm;
+  noteSpeed = NOTE_SPEED_BASE + song.bpm * 0.5;
+
+  notes = song.notes.map(([beat, lane]) => ({
+    lane,
+    targetTime: beat * beatDur,
+    y: 0,
+    active: true,
+    hit: false
+  }));
+
+  totalNotes = notes.length;
+  hitNotes = 0;
+  missedNotes = 0;
+  perfects = 0;
+}
+
+function initGame() {
+  score = 0;
+  combo = 0;
+  maxCombo = 0;
+  multiplier = 1;
+  hp = 100;
+  songTime = 0;
+  songIdx = 0;
+  hitEffects = [];
+  particles = [];
+  loadSong(0);
+}
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = W / rect.width, sy = H / rect.height;
+  const t = e.touches ? e.touches[0] || e.changedTouches[0] : e;
+  return { x: (t.clientX - rect.left) * sx, y: (t.clientY - rect.top) * sy };
+}
+
+canvas.addEventListener('touchstart', onTap, { passive: false });
+canvas.addEventListener('mousedown', onTap);
+
+function onTap(e) {
+  e.preventDefault();
+
+  if (state === STATE.MENU) { state = STATE.PLAY; initGame(); return; }
+  if (state === STATE.OVER || state === STATE.WIN) { state = STATE.MENU; return; }
+
+  // Handle multi-touch
+  if (e.touches) {
+    for (const touch of e.changedTouches) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (touch.clientX - rect.left) * (W / rect.width);
+      const lane = Math.floor(x / LANE_W);
+      hitLane(Math.max(0, Math.min(NUM_LANES - 1, lane)));
+    }
+  } else {
+    const pos = getCanvasPos(e);
+    const lane = Math.floor(pos.x / LANE_W);
+    hitLane(Math.max(0, Math.min(NUM_LANES - 1, lane)));
+  }
+}
+
+function hitLane(lane) {
+  // Find closest active note in this lane near the hit zone
+  let bestNote = null;
+  let bestDist = Infinity;
+
+  notes.forEach(n => {
+    if (!n.active || n.hit || n.lane !== lane) return;
+    const noteScreenY = HIT_Y - (n.targetTime - songTime) * noteSpeed;
+    const dist = Math.abs(noteScreenY - HIT_Y);
+    if (dist < HIT_WINDOW_OK && dist < bestDist) {
+      bestDist = dist;
+      bestNote = n;
+    }
+  });
+
+  if (bestNote) {
+    bestNote.hit = true;
+    bestNote.active = false;
+    hitNotes++;
+
+    let rating, pts, color;
+    if (bestDist < HIT_WINDOW_PERFECT) {
+      rating = 'PERFECT!';
+      pts = 100;
+      color = '#ffd700';
+      perfects++;
+      beatPulse = 1;
+    } else if (bestDist < HIT_WINDOW_GOOD) {
+      rating = 'GREAT!';
+      pts = 60;
+      color = '#44ff88';
+      beatPulse = 0.7;
+    } else {
+      rating = 'OK';
+      pts = 30;
+      color = '#44bbff';
+      beatPulse = 0.4;
+    }
+
+    combo++;
+    maxCombo = Math.max(maxCombo, combo);
+    multiplier = 1 + Math.floor(combo / 10);
+    pts *= multiplier;
+    score += pts;
+    hp = Math.min(100, hp + 2);
+
+    hitEffects.push({ lane, y: HIT_Y, text: rating, color, timer: 0.6, pts });
+
+    // Particles
+    const cx = lane * LANE_W + LANE_W / 2;
+    for (let i = 0; i < 8; i++) {
+      particles.push({
+        x: cx, y: HIT_Y,
+        vx: (Math.random() - 0.5) * 150,
+        vy: -Math.random() * 200 - 50,
+        life: 0.4 + Math.random() * 0.3,
+        color: LANE_COLORS[lane],
+        size: 3 + Math.random() * 4
+      });
+    }
+  } else {
+    // Miss tap - small penalty
+    combo = 0;
+    multiplier = 1;
+  }
+}
+
+function update(dt) {
+  if (state !== STATE.PLAY) return;
+  time += dt;
+  songTime += dt;
+  beatPulse = Math.max(0, beatPulse - dt * 3);
+
+  // Check for missed notes
+  notes.forEach(n => {
+    if (!n.active) return;
+    const noteScreenY = HIT_Y - (n.targetTime - songTime) * noteSpeed;
+    if (noteScreenY > HIT_Y + HIT_WINDOW_OK + 30) {
+      n.active = false;
+      missedNotes++;
+      combo = 0;
+      multiplier = 1;
+      hp -= 5;
+      hitEffects.push({
+        lane: n.lane, y: HIT_Y, text: 'MISS', color: '#ff4444', timer: 0.4, pts: 0
+      });
+    }
+  });
+
+  // Check HP
+  if (hp <= 0) {
+    hp = 0;
+    state = STATE.OVER;
+    return;
+  }
+
+  // Check song complete
+  const allDone = notes.every(n => !n.active);
+  if (allDone && notes.length > 0) {
+    // Next song or win
+    songIdx++;
+    if (songIdx >= SONGS.length) {
+      state = STATE.WIN;
+    } else if (score >= targetScore) {
+      loadSong(songIdx);
+      songTime = 0;
+      hp = Math.min(100, hp + 20);
+    } else {
+      state = STATE.OVER; // didn't meet target
+    }
+    return;
+  }
+
+  // Update effects
+  hitEffects.forEach(e => e.timer -= dt);
+  hitEffects = hitEffects.filter(e => e.timer > 0);
+
+  // Update particles
+  particles.forEach(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 300 * dt;
+    p.life -= dt;
+  });
+  particles = particles.filter(p => p.life > 0);
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === STATE.MENU) { drawMenu(); return; }
+  if (state === STATE.OVER) { drawOver(); return; }
+  if (state === STATE.WIN) { drawWin(); return; }
+
+  // Lane backgrounds
+  for (let i = 0; i < NUM_LANES; i++) {
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)';
+    ctx.fillRect(i * LANE_W, 0, LANE_W, H);
+
+    // Lane dividers
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(i * LANE_W, 0);
+    ctx.lineTo(i * LANE_W, H);
+    ctx.stroke();
+  }
+
+  // Hit zone
+  const pulseW = beatPulse * 8;
+  ctx.fillStyle = 'rgba(167,139,250,0.15)';
+  ctx.fillRect(0, HIT_Y - 15 - pulseW, W, 30 + pulseW * 2);
+  ctx.strokeStyle = 'rgba(167,139,250,0.6)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, HIT_Y);
+  ctx.lineTo(W, HIT_Y);
+  ctx.stroke();
+
+  // Hit zone circles
+  for (let i = 0; i < NUM_LANES; i++) {
+    const cx = i * LANE_W + LANE_W / 2;
+    ctx.strokeStyle = LANE_COLORS[i];
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, HIT_Y, 22 + pulseW * 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw notes
+  notes.forEach(n => {
+    if (!n.active) return;
+    const noteY = HIT_Y - (n.targetTime - songTime) * noteSpeed;
+    if (noteY < -40 || noteY > H + 40) return;
+
+    const cx = n.lane * LANE_W + LANE_W / 2;
+    const approaching = Math.max(0, 1 - Math.abs(noteY - HIT_Y) / 300);
+
+    // Note glow
+    if (approaching > 0.5) {
+      ctx.fillStyle = LANE_COLORS[n.lane];
+      ctx.globalAlpha = approaching * 0.2;
+      ctx.beginPath();
+      ctx.arc(cx, noteY, 30, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Note body
+    const noteSize = 18 + approaching * 6;
+    ctx.fillStyle = LANE_COLORS[n.lane];
+    ctx.beginPath();
+    ctx.arc(cx, noteY, noteSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.beginPath();
+    ctx.arc(cx - 3, noteY - 3, noteSize * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Note outline
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, noteY, noteSize, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  // Hit effects
+  hitEffects.forEach(e => {
+    const cx = e.lane * LANE_W + LANE_W / 2;
+    const alpha = e.timer / 0.6;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = e.color;
+    ctx.font = 'bold 18px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(e.text, cx, HIT_Y - 40 - (1 - alpha) * 20);
+    if (e.pts > 0) {
+      ctx.font = '12px system-ui';
+      ctx.fillText(`+${e.pts}`, cx, HIT_Y - 55 - (1 - alpha) * 20);
+    }
+    ctx.globalAlpha = 1;
+
+    // Ring effect
+    const ring = (1 - e.timer / 0.6) * 40;
+    ctx.strokeStyle = e.color;
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, HIT_Y, 20 + ring, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  // Draw particles
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.life * 2);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // Bottom touch zones
+  for (let i = 0; i < NUM_LANES; i++) {
+    const cx = i * LANE_W + LANE_W / 2;
+    ctx.fillStyle = LANE_COLORS[i];
+    ctx.globalAlpha = 0.15;
+    ctx.beginPath();
+    ctx.arc(cx, H - 50, 35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = LANE_COLORS[i];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, H - 50, 35, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = LANE_COLORS[i];
+    ctx.font = 'bold 16px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(LANE_LABELS[i], cx, H - 45);
+  }
+
+  // HUD
+  // Score
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 20px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`${score}`, 10, 30);
+
+  // Target
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '12px system-ui';
+  ctx.fillText(`Target: ${targetScore}`, 10, 48);
+
+  // Song name
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 14px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(songName, W / 2, 25);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '11px system-ui';
+  ctx.fillText(`Song ${songIdx + 1}/${SONGS.length}`, W / 2, 42);
+
+  // Combo
+  if (combo > 0) {
+    ctx.fillStyle = combo >= 20 ? '#ffd700' : combo >= 10 ? '#44ff88' : '#e0e0ff';
+    ctx.font = `bold ${16 + Math.min(combo, 20)}px system-ui`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${combo}x`, W - 10, 30);
+    if (multiplier > 1) {
+      ctx.font = '12px system-ui';
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText(`x${multiplier}`, W - 10, 48);
+    }
+  }
+
+  // HP bar
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(10, 55, W - 20, 10);
+  const hpCol = hp > 50 ? '#a78bfa' : hp > 25 ? '#ffaa00' : '#ff4444';
+  ctx.fillStyle = hpCol;
+  ctx.fillRect(12, 57, (W - 24) * (hp / 100), 6);
+
+  // Progress bar
+  const notesProcessed = hitNotes + missedNotes;
+  const progress = totalNotes > 0 ? notesProcessed / totalNotes : 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.fillRect(10, 70, W - 20, 4);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(10, 70, (W - 20) * progress, 4);
+
+  ui.textContent = `Tap lanes when notes hit the line! Combo: ${combo} | Max: ${maxCombo}`;
+}
+
+function drawMenu() {
+  // Background rhythm visual
+  const t = Date.now() / 1000;
+  for (let i = 0; i < NUM_LANES; i++) {
+    ctx.fillStyle = LANE_COLORS[i];
+    ctx.globalAlpha = 0.1 + Math.sin(t * 2 + i) * 0.05;
+    ctx.fillRect(i * LANE_W, 0, LANE_W, H);
+  }
+  ctx.globalAlpha = 1;
+
+  // Animated notes falling in background
+  for (let i = 0; i < 8; i++) {
+    const lane = i % NUM_LANES;
+    const ny = ((t * 100 + i * 200) % (H + 60)) - 30;
+    ctx.fillStyle = LANE_COLORS[lane];
+    ctx.globalAlpha = 0.2;
+    ctx.beginPath();
+    ctx.arc(lane * LANE_W + LANE_W / 2, ny, 15, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 32px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('ROCK ON ISLAND', W / 2, H / 2 - 80);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap the beat!', W / 2, H / 2 - 40);
+  ctx.fillText('Hit notes as they reach the line.', W / 2, H / 2 - 15);
+
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '14px system-ui';
+  ctx.fillText('5 songs, each faster than the last!', W / 2, H / 2 + 20);
+  ctx.fillText('Reach the target score to advance.', W / 2, H / 2 + 45);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillText('Tap to Rock!', W / 2, H / 2 + 100);
+
+  // Note legend
+  for (let i = 0; i < NUM_LANES; i++) {
+    ctx.fillStyle = LANE_COLORS[i];
+    ctx.beginPath();
+    ctx.arc(W / 2 - 60 + i * 40, H / 2 + 140, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px system-ui';
+    ctx.fillText(LANE_LABELS[i], W / 2 - 60 + i * 40, H / 2 + 144);
+  }
+}
+
+function drawOver() {
+  ctx.fillStyle = '#ff4040';
+  ctx.font = 'bold 32px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('SHOW OVER!', W / 2, H / 2 - 80);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px system-ui';
+  ctx.fillText(`Score: ${score}`, W / 2, H / 2 - 30);
+  ctx.fillText(`Max Combo: ${maxCombo}`, W / 2, H / 2);
+  ctx.fillText(`Perfects: ${perfects}`, W / 2, H / 2 + 30);
+
+  const accuracy = totalNotes > 0 ? Math.floor((hitNotes / totalNotes) * 100) : 0;
+  ctx.fillText(`Accuracy: ${accuracy}%`, W / 2, H / 2 + 60);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap to try again', W / 2, H / 2 + 110);
+}
+
+function drawWin() {
+  // Celebration particles
+  const t = Date.now() / 1000;
+  for (let i = 0; i < 20; i++) {
+    ctx.fillStyle = LANE_COLORS[i % 4];
+    ctx.globalAlpha = 0.3;
+    const px = W / 2 + Math.cos(t + i * 0.7) * (100 + i * 10);
+    const py = H / 2 + Math.sin(t * 1.3 + i * 0.5) * (80 + i * 8);
+    ctx.beginPath();
+    ctx.arc(px, py, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('ROCK LEGEND!', W / 2, H / 2 - 80);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px system-ui';
+  ctx.fillText(`Final Score: ${score}`, W / 2, H / 2 - 30);
+  ctx.fillText(`Max Combo: ${maxCombo}`, W / 2, H / 2);
+  ctx.fillText(`Perfects: ${perfects}`, W / 2, H / 2 + 30);
+
+  const accuracy = totalNotes > 0 ? Math.floor((hitNotes / (hitNotes + missedNotes)) * 100) : 0;
+  ctx.fillText(`Accuracy: ${accuracy}%`, W / 2, H / 2 + 60);
+
+  // Rating
+  let rating = 'C';
+  if (accuracy >= 95 && perfects / hitNotes > 0.5) rating = 'S';
+  else if (accuracy >= 85) rating = 'A';
+  else if (accuracy >= 70) rating = 'B';
+  ctx.fillStyle = rating === 'S' ? '#ffd700' : rating === 'A' ? '#44ff88' : '#44bbff';
+  ctx.font = 'bold 48px system-ui';
+  ctx.fillText(rating, W / 2, H / 2 + 120);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap to play again', W / 2, H / 2 + 160);
+}
+
+let lastT = performance.now();
+function gameLoop(ts) {
+  const dt = Math.min((ts - lastT) / 1000, 0.05);
+  lastT = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

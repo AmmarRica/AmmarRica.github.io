@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Tetris</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 1.1em; }
+nav a:hover { color: #c4b5fd; }
+#container { display: flex; gap: 20px; align-items: flex-start; margin-top: 10px; }
+canvas { display: block; border: 2px solid #2a2a4a; }
+#sidebar { width: 180px; }
+.info-panel { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+.info-panel h3 { color: #a78bfa; margin-bottom: 8px; font-size: 0.9em; }
+.info-panel .stat { display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 4px; }
+.info-panel .stat .label { color: #8888cc; }
+.info-panel .stat .value { color: #ffcc00; font-weight: bold; }
+#nextPiece { width: 120px; height: 100px; margin: 0 auto; }
+#fieldProgress { width: 100%; height: 12px; background: #111; border-radius: 6px; overflow: hidden; margin: 8px 0; }
+#fieldBar { height: 100%; background: linear-gradient(90deg, #22c55e, #4ade80); border-radius: 6px; width: 0%; transition: width 0.3s; }
+#overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15,15,26,0.94); z-index: 20; }
+#overlay h1 { font-size: 2.8em; color: #a78bfa; margin-bottom: 10px; text-shadow: 0 0 20px #7c3aed; }
+#overlay h2 { font-size: 1.2em; color: #e0e0ff; margin-bottom: 15px; }
+#overlay .sub { color: #8888cc; margin-bottom: 5px; font-size: 0.9em; max-width: 500px; text-align: center; }
+#overlay button { padding: 14px 36px; font-size: 1.2em; background: #7c3aed; color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-top: 15px; }
+#overlay button:hover { background: #6d28d9; }
+.hidden { display: none !important; }
+#instructions { font-size: 0.8em; color: #666; text-align: center; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div id="container">
+  <canvas id="c" width="300" height="600"></canvas>
+  <div id="sidebar">
+    <div class="info-panel">
+      <h3>Score</h3>
+      <div class="stat"><span class="label">Points</span><span class="value" id="sScore">0</span></div>
+      <div class="stat"><span class="label">Touchdowns</span><span class="value" id="sTD">0</span></div>
+      <div class="stat"><span class="label">Drive</span><span class="value" id="sDrive">1</span></div>
+      <div class="stat"><span class="label">Level</span><span class="value" id="sLevel">1</span></div>
+      <div class="stat"><span class="label">Lines</span><span class="value" id="sLines">0</span></div>
+    </div>
+    <div class="info-panel">
+      <h3>Field Position</h3>
+      <div style="display:flex;justify-content:space-between;font-size:0.75em;color:#666;">
+        <span>Own 0</span><span>50</span><span>TD!</span>
+      </div>
+      <div id="fieldProgress"><div id="fieldBar"></div></div>
+      <div style="text-align:center;font-size:0.85em;color:#8888cc;" id="yardLine">Own 0 yard line</div>
+    </div>
+    <div class="info-panel">
+      <h3>Next Formation</h3>
+      <canvas id="nextPiece" width="120" height="100"></canvas>
+      <div id="nextName" style="text-align:center;font-size:0.8em;color:#a78bfa;margin-top:4px;"></div>
+    </div>
+    <div class="info-panel">
+      <h3>Controls</h3>
+      <div style="font-size:0.78em;color:#666;line-height:1.6;">
+        Left/Right: Move<br>
+        Up: Rotate<br>
+        Down: Soft drop<br>
+        Space: Hard drop<br>
+        H: Hail Mary!
+      </div>
+    </div>
+  </div>
+</div>
+<div id="overlay">
+  <h1>Football Tetris</h1>
+  <h2>Clear Lines to Gain Yards!</h2>
+  <div class="sub">Pieces are football formations: I-Formation, Shotgun, Spread, etc.</div>
+  <div class="sub">Clear lines = gain yards. 10 lines = Touchdown!</div>
+  <div class="sub">Press H for Hail Mary - clears random blocks! (once per drive)</div>
+  <div class="sub">Speed increases each drive. How many TDs can you score?</div>
+  <button id="startBtn">KICK OFF!</button>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const nextCanvas = document.getElementById('nextPiece');
+const nctx = nextCanvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+
+const COLS = 10, ROWS = 20, CELL = 30;
+const W = COLS * CELL, H = ROWS * CELL;
+
+// NES Tetris inspired colors
+const COLORS = [
+  null,
+  '#0341AE', // I - I-Formation (blue)
+  '#72CB3B', // O - Goal Line (green)
+  '#FFD500', // T - Shotgun (yellow)
+  '#FF971C', // S - Spread Left (orange)
+  '#FF3213', // Z - Spread Right (red)
+  '#A000F0', // L - Trips Left (purple)
+  '#00E5FF', // J - Trips Right (cyan)
+  '#FF69B4'  // Hail Mary (pink)
+];
+
+const PIECE_NAMES = [null, 'I-Formation', 'Goal Line', 'Shotgun', 'Spread Left', 'Spread Right', 'Trips Left', 'Trips Right', 'Hail Mary'];
+
+// Standard Tetris pieces
+const PIECES = [
+  null,
+  [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], // I
+  [[2,2],[2,2]], // O
+  [[0,3,0],[3,3,3],[0,0,0]], // T
+  [[0,4,4],[4,4,0],[0,0,0]], // S
+  [[5,5,0],[0,5,5],[0,0,0]], // Z
+  [[6,0,0],[6,6,6],[0,0,0]], // L
+  [[0,0,7],[7,7,7],[0,0,0]]  // J
+];
+
+let board = [];
+let currentPiece, currentX, currentY, currentType;
+let nextType;
+let score = 0, totalLines = 0, driveLines = 0, touchdowns = 0, drive = 1, level = 1;
+let dropInterval, dropTimer;
+let gameState = 'title';
+let hailMaryAvailable = true;
+let flashLines = [];
+let flashTimer = 0;
+let fieldScroll = 0;
+let lastTime = 0;
+let paused = false;
+
+function createBoard() {
+  board = [];
+  for (let r = 0; r < ROWS; r++) {
+    board.push(new Array(COLS).fill(0));
+  }
+}
+
+function randomType() {
+  return 1 + Math.floor(Math.random() * 7);
+}
+
+function getShape(type) {
+  return PIECES[type].map(row => [...row]);
+}
+
+function rotate(shape) {
+  const N = shape.length;
+  const rotated = [];
+  for (let r = 0; r < N; r++) {
+    rotated.push([]);
+    for (let c = 0; c < N; c++) {
+      rotated[r].push(shape[N - 1 - c][r]);
+    }
+  }
+  return rotated;
+}
+
+function canPlace(shape, px, py) {
+  for (let r = 0; r < shape.length; r++) {
+    for (let c = 0; c < shape[r].length; c++) {
+      if (!shape[r][c]) continue;
+      const nx = px + c, ny = py + r;
+      if (nx < 0 || nx >= COLS || ny >= ROWS) return false;
+      if (ny >= 0 && board[ny][nx]) return false;
+    }
+  }
+  return true;
+}
+
+function placePiece() {
+  const shape = currentPiece;
+  for (let r = 0; r < shape.length; r++) {
+    for (let c = 0; c < shape[r].length; c++) {
+      if (!shape[r][c]) continue;
+      const ny = currentY + r, nx = currentX + c;
+      if (ny >= 0 && ny < ROWS && nx >= 0 && nx < COLS) {
+        board[ny][nx] = shape[r][c];
+      }
+    }
+  }
+}
+
+function clearLines() {
+  let cleared = 0;
+  flashLines = [];
+  for (let r = ROWS - 1; r >= 0; r--) {
+    if (board[r].every(cell => cell !== 0)) {
+      flashLines.push(r);
+      cleared++;
+    }
+  }
+  if (cleared > 0) {
+    flashTimer = 0.3;
+    setTimeout(() => {
+      for (let i = flashLines.length - 1; i >= 0; i--) {
+        board.splice(flashLines[i], 1);
+        board.unshift(new Array(COLS).fill(0));
+      }
+      flashLines = [];
+    }, 300);
+
+    // Scoring (NES Tetris style)
+    const points = [0, 40, 100, 300, 1200][cleared] * level;
+    score += points;
+    totalLines += cleared;
+    driveLines += cleared;
+
+    // Check touchdown
+    if (driveLines >= 10) {
+      touchdowns++;
+      score += 700; // Touchdown bonus
+      driveLines = 0;
+      drive++;
+      level = Math.min(20, drive);
+      hailMaryAvailable = true;
+      dropInterval = Math.max(50, 500 - (level - 1) * 25);
+    }
+  }
+  return cleared;
+}
+
+function spawnPiece() {
+  currentType = nextType || randomType();
+  nextType = randomType();
+  currentPiece = getShape(currentType);
+  currentX = Math.floor((COLS - currentPiece[0].length) / 2);
+  currentY = -1;
+
+  if (!canPlace(currentPiece, currentX, currentY)) {
+    gameState = 'gameover';
+    showGameOver();
+  }
+  drawNext();
+}
+
+function hailMary() {
+  if (!hailMaryAvailable || gameState !== 'playing') return;
+  hailMaryAvailable = false;
+  // Clear random blocks across the board
+  let cleared = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (board[r][c] && Math.random() < 0.4) {
+        board[r][c] = 0;
+        cleared++;
+      }
+    }
+  }
+  // Compact - remove empty rows
+  for (let r = ROWS - 1; r >= 0; r--) {
+    if (board[r].every(cell => cell === 0)) {
+      board.splice(r, 1);
+      board.unshift(new Array(COLS).fill(0));
+    }
+  }
+  score += cleared * 10;
+}
+
+function hardDrop() {
+  while (canPlace(currentPiece, currentX, currentY + 1)) {
+    currentY++;
+    score += 2;
+  }
+  placePiece();
+  clearLines();
+  spawnPiece();
+}
+
+function moveDown() {
+  if (canPlace(currentPiece, currentX, currentY + 1)) {
+    currentY++;
+    return true;
+  }
+  placePiece();
+  clearLines();
+  spawnPiece();
+  return false;
+}
+
+document.addEventListener('keydown', e => {
+  if (gameState !== 'playing') return;
+  switch (e.code) {
+    case 'ArrowLeft':
+      if (canPlace(currentPiece, currentX - 1, currentY)) currentX--;
+      e.preventDefault(); break;
+    case 'ArrowRight':
+      if (canPlace(currentPiece, currentX + 1, currentY)) currentX++;
+      e.preventDefault(); break;
+    case 'ArrowDown':
+      moveDown(); score += 1;
+      e.preventDefault(); break;
+    case 'ArrowUp':
+      const rotated = rotate(currentPiece);
+      if (canPlace(rotated, currentX, currentY)) currentPiece = rotated;
+      else if (canPlace(rotated, currentX - 1, currentY)) { currentPiece = rotated; currentX--; }
+      else if (canPlace(rotated, currentX + 1, currentY)) { currentPiece = rotated; currentX++; }
+      e.preventDefault(); break;
+    case 'Space':
+      hardDrop();
+      e.preventDefault(); break;
+    case 'KeyH':
+      hailMary();
+      e.preventDefault(); break;
+  }
+});
+
+function drawCell(context, x, y, colorIdx, size) {
+  const color = COLORS[colorIdx];
+  if (!color) return;
+  const px = x * size, py = y * size;
+
+  // NES-style block rendering
+  context.fillStyle = color;
+  context.fillRect(px + 1, py + 1, size - 2, size - 2);
+
+  // Highlight
+  context.fillStyle = 'rgba(255,255,255,0.25)';
+  context.fillRect(px + 1, py + 1, size - 2, 3);
+  context.fillRect(px + 1, py + 1, 3, size - 2);
+
+  // Shadow
+  context.fillStyle = 'rgba(0,0,0,0.3)';
+  context.fillRect(px + size - 3, py + 1, 2, size - 2);
+  context.fillRect(px + 1, py + size - 3, size - 2, 2);
+}
+
+function drawBoard() {
+  // Football field background
+  ctx.fillStyle = '#0a3a0a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Yard lines (scrolling based on field position)
+  const yardOffset = (fieldScroll * 30) % 60;
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  for (let y = -60 + yardOffset; y < H; y += 60) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // Hash marks
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  for (let y = -60 + yardOffset; y < H; y += 30) {
+    ctx.beginPath(); ctx.moveTo(W*0.3, y); ctx.lineTo(W*0.3 + 5, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W*0.7, y); ctx.lineTo(W*0.7 + 5, y); ctx.stroke();
+  }
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  for (let c = 0; c <= COLS; c++) {
+    ctx.beginPath(); ctx.moveTo(c*CELL, 0); ctx.lineTo(c*CELL, H); ctx.stroke();
+  }
+  for (let r = 0; r <= ROWS; r++) {
+    ctx.beginPath(); ctx.moveTo(0, r*CELL); ctx.lineTo(W, r*CELL); ctx.stroke();
+  }
+
+  // Board cells
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (board[r][c]) {
+        // Flash effect for clearing lines
+        if (flashLines.includes(r)) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+        } else {
+          drawCell(ctx, c, r, board[r][c], CELL);
+        }
+      }
+    }
+  }
+
+  // Current piece
+  if (currentPiece && gameState === 'playing') {
+    // Ghost piece
+    let ghostY = currentY;
+    while (canPlace(currentPiece, currentX, ghostY + 1)) ghostY++;
+    for (let r = 0; r < currentPiece.length; r++) {
+      for (let c = 0; c < currentPiece[r].length; c++) {
+        if (!currentPiece[r][c]) continue;
+        const px = (currentX + c) * CELL, py = (ghostY + r) * CELL;
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + 1, py + 1, CELL - 2, CELL - 2);
+      }
+    }
+
+    // Actual piece
+    for (let r = 0; r < currentPiece.length; r++) {
+      for (let c = 0; c < currentPiece[r].length; c++) {
+        if (!currentPiece[r][c]) continue;
+        if (currentY + r >= 0) {
+          drawCell(ctx, currentX + c, currentY + r, currentPiece[r][c], CELL);
+        }
+      }
+    }
+  }
+
+  // Endzone at top when close to TD
+  if (driveLines >= 7) {
+    const tdProximity = (driveLines - 7) / 3;
+    ctx.fillStyle = `rgba(200,0,0,${0.1 + tdProximity * 0.1})`;
+    ctx.fillRect(0, 0, W, CELL * 2);
+    ctx.fillStyle = `rgba(255,255,255,${0.3 + tdProximity * 0.2})`;
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('ENDZONE', W/2, CELL + 5);
+  }
+}
+
+function drawNext() {
+  nctx.fillStyle = '#1a1a2e';
+  nctx.fillRect(0, 0, 120, 100);
+  if (!nextType) return;
+  const shape = getShape(nextType);
+  const cellSize = 20;
+  const offsetX = (120 - shape[0].length * cellSize) / 2;
+  const offsetY = (80 - shape.length * cellSize) / 2;
+  for (let r = 0; r < shape.length; r++) {
+    for (let c = 0; c < shape[r].length; c++) {
+      if (shape[r][c]) {
+        const color = COLORS[shape[r][c]];
+        nctx.fillStyle = color;
+        nctx.fillRect(offsetX + c * cellSize + 1, offsetY + r * cellSize + 1, cellSize - 2, cellSize - 2);
+        nctx.fillStyle = 'rgba(255,255,255,0.2)';
+        nctx.fillRect(offsetX + c * cellSize + 1, offsetY + r * cellSize + 1, cellSize - 2, 3);
+      }
+    }
+  }
+  document.getElementById('nextName').textContent = PIECE_NAMES[nextType] || '';
+}
+
+function updateUI() {
+  document.getElementById('sScore').textContent = score.toLocaleString();
+  document.getElementById('sTD').textContent = touchdowns;
+  document.getElementById('sDrive').textContent = drive;
+  document.getElementById('sLevel').textContent = level;
+  document.getElementById('sLines').textContent = totalLines;
+  document.getElementById('fieldBar').style.width = (driveLines / 10 * 100) + '%';
+  document.getElementById('yardLine').textContent = driveLines >= 10 ? 'TOUCHDOWN!' : `${driveLines * 10} yards gained (${10 - driveLines} lines to TD)`;
+  fieldScroll = driveLines;
+}
+
+function showGameOver() {
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `
+    <h1>GAME OVER!</h1>
+    <h2>Final Score: ${score.toLocaleString()}</h2>
+    <div class="sub">Touchdowns: ${touchdowns}</div>
+    <div class="sub">Total Lines: ${totalLines}</div>
+    <div class="sub">Drives: ${drive}</div>
+    <button id="restartBtn">PLAY AGAIN</button>
+  `;
+  document.getElementById('restartBtn').onclick = startGame;
+}
+
+function startGame() {
+  createBoard();
+  score = 0; totalLines = 0; driveLines = 0;
+  touchdowns = 0; drive = 1; level = 1;
+  hailMaryAvailable = true;
+  dropInterval = 500;
+  dropTimer = 0;
+  nextType = randomType();
+  spawnPiece();
+  gameState = 'playing';
+  overlay.classList.add('hidden');
+}
+
+function gameLoop(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.1);
+  lastTime = time;
+
+  if (gameState === 'playing') {
+    dropTimer += dt * 1000;
+    if (dropTimer >= dropInterval) {
+      dropTimer = 0;
+      moveDown();
+    }
+    if (flashTimer > 0) flashTimer -= dt;
+    else flashLines = [];
+  }
+
+  drawBoard();
+  updateUI();
+  requestAnimationFrame(gameLoop);
+}
+
+startBtn.onclick = startGame;
+lastTime = performance.now();
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

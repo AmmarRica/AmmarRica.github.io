@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cheerleader Rhythm Rally</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #2a2a4a; border-radius: 4px; margin-top: 5px; }
+h1 { color: #ff69b4; font-size: 22px; margin: 5px 0; }
+</style>
+</head>
+<body>
+<h1>📣 Cheerleader Rhythm Rally 🎵</h1>
+<canvas id="c" width="700" height="600"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+const W = 700, H = 600;
+
+let state = 'title';
+let score = 0;
+let combo = 0;
+let maxCombo = 0;
+let crowdMeter = 50; // 0-100
+let misses = 0;
+let maxMisses = 20;
+let hits = 0;
+let perfects = 0;
+let level = 1;
+let noteSpeed = 3;
+let spawnRate = 40;
+let frameCount = 0;
+let particles = [];
+let notes = []; // falling arrows
+let flash = { left: 0, down: 0, up: 0, right: 0 };
+let hitZoneY = H - 120;
+let message = '';
+let msgTimer = 0;
+let pompoms = [];
+let beatPulse = 0;
+
+// Audio context for beats
+let audioCtx = null;
+function playNote(freq, duration) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.frequency.value = freq;
+  osc.type = 'square';
+  gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+const DIRS = ['left', 'down', 'up', 'right'];
+const DIR_KEYS = { left: 'ArrowLeft', down: 'ArrowDown', up: 'ArrowUp', right: 'ArrowRight' };
+const DIR_X = { left: W/2 - 120, down: W/2 - 40, up: W/2 + 40, right: W/2 + 120 };
+const DIR_ARROWS = {
+  left: '←', down: '↓', up: '↑', right: '→'
+};
+const DIR_COLORS = {
+  left: '#ff4466', down: '#44aaff', up: '#44ff88', right: '#ffaa44'
+};
+
+class Note {
+  constructor(dir) {
+    this.dir = dir;
+    this.x = DIR_X[dir];
+    this.y = -30;
+    this.speed = noteSpeed;
+    this.alive = true;
+    this.hit = false;
+    this.missed = false;
+    this.size = 30;
+  }
+  update() {
+    this.y += this.speed;
+    if (this.y > H + 30 && !this.hit) {
+      this.missed = true;
+      this.alive = false;
+    }
+  }
+  draw() {
+    if (!this.alive) return;
+    const alpha = this.hit ? 0.3 : 1;
+    ctx.globalAlpha = alpha;
+
+    // Arrow background
+    ctx.fillStyle = DIR_COLORS[this.dir] + '33';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size / 2 + 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Arrow
+    ctx.fillStyle = DIR_COLORS[this.dir];
+    ctx.font = 'bold 28px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(DIR_ARROWS[this.dir], this.x, this.y);
+
+    ctx.globalAlpha = 1;
+  }
+}
+
+function spawnPompom(x, y, color) {
+  for (let i = 0; i < 12; i++) {
+    pompoms.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 8,
+      vy: -Math.random() * 6 - 2,
+      life: 30 + Math.random() * 20,
+      color,
+      size: 3 + Math.random() * 5,
+      type: 'pompom'
+    });
+  }
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6 - 2,
+      life: 20 + Math.random() * 15,
+      color, size: 2 + Math.random() * 3
+    });
+  }
+}
+
+function generateNotes() {
+  frameCount++;
+
+  // Auto-generate rhythm patterns
+  const rate = Math.max(15, spawnRate - level * 3);
+
+  if (frameCount % rate === 0) {
+    // Single note
+    const dir = DIRS[Math.floor(Math.random() * 4)];
+    notes.push(new Note(dir));
+  }
+
+  // Doubles at higher levels
+  if (level >= 2 && frameCount % (rate * 3) === 0) {
+    const dirs = [...DIRS].sort(() => Math.random() - 0.5);
+    notes.push(new Note(dirs[0]));
+    setTimeout(() => notes.push(new Note(dirs[1])), 150);
+  }
+
+  // Triples at level 3+
+  if (level >= 3 && frameCount % (rate * 5) === 0) {
+    const dirs = [...DIRS].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => notes.push(new Note(dirs[i])), i * 120);
+    }
+  }
+
+  // Streams at level 4+
+  if (level >= 4 && frameCount % (rate * 7) === 0) {
+    const dir = DIRS[Math.floor(Math.random() * 4)];
+    for (let i = 0; i < 5; i++) {
+      setTimeout(() => notes.push(new Note(dir)), i * 80);
+    }
+  }
+}
+
+function checkHit(dir) {
+  flash[dir] = 10;
+
+  const closeNotes = notes.filter(n => n.dir === dir && n.alive && !n.hit &&
+    Math.abs(n.y - hitZoneY) < 50);
+
+  if (closeNotes.length === 0) {
+    // Miss
+    combo = 0;
+    crowdMeter = Math.max(0, crowdMeter - 3);
+    misses++;
+    spawnParticles(DIR_X[dir], hitZoneY, '#ff000088', 5);
+    return;
+  }
+
+  // Sort by closest to hit zone
+  closeNotes.sort((a, b) => Math.abs(a.y - hitZoneY) - Math.abs(b.y - hitZoneY));
+  const note = closeNotes[0];
+  const dist = Math.abs(note.y - hitZoneY);
+
+  note.hit = true;
+  note.alive = false;
+  hits++;
+
+  let rating = '';
+  let points = 0;
+  let freq = 440;
+
+  if (dist < 10) {
+    rating = 'PERFECT!';
+    points = 100;
+    perfects++;
+    freq = 880;
+    spawnPompom(DIR_X[dir], hitZoneY, DIR_COLORS[dir]);
+    beatPulse = 1;
+  } else if (dist < 25) {
+    rating = 'GREAT!';
+    points = 75;
+    freq = 660;
+    spawnParticles(DIR_X[dir], hitZoneY, DIR_COLORS[dir], 8);
+  } else {
+    rating = 'OK';
+    points = 30;
+    freq = 330;
+    spawnParticles(DIR_X[dir], hitZoneY, DIR_COLORS[dir], 4);
+  }
+
+  combo++;
+  if (combo > maxCombo) maxCombo = combo;
+  const multiplier = Math.min(8, 1 + Math.floor(combo / 5));
+  points *= multiplier;
+  score += points;
+  crowdMeter = Math.min(100, crowdMeter + 2);
+
+  playNote(freq, 0.1);
+
+  message = `${rating} x${multiplier}`;
+  msgTimer = 25;
+
+  // Level up based on score
+  const newLevel = Math.floor(score / 2000) + 1;
+  if (newLevel > level) {
+    level = newLevel;
+    noteSpeed = 3 + level * 0.5;
+    showBanner(`LEVEL ${level}!`, 60);
+  }
+}
+
+let bannerText = '';
+let bannerTimer = 0;
+function showBanner(t, d) { bannerText = t; bannerTimer = d; }
+
+function drawStadium() {
+  // Stadium background - crowd
+  const crowdHue = crowdMeter > 70 ? 340 : crowdMeter > 40 ? 30 : 220;
+  for (let row = 0; row < 3; row++) {
+    for (let i = 0; i < 40; i++) {
+      const x = i * 18 + 5;
+      const y = 10 + row * 22;
+      const bounce = crowdMeter > 60 ? Math.sin(frameCount * 0.1 + i * 0.5 + row) * 3 : 0;
+      ctx.fillStyle = `hsl(${crowdHue + Math.random() * 30}, ${50 + crowdMeter * 0.3}%, ${30 + Math.random() * 20}%)`;
+      ctx.beginPath();
+      ctx.arc(x, y + bounce, 6, 0, Math.PI * 2);
+      ctx.fill();
+      // Head
+      ctx.fillStyle = '#ffccaa';
+      ctx.beginPath();
+      ctx.arc(x, y - 6 + bounce, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Stadium wall
+  ctx.fillStyle = '#1a1a2a';
+  ctx.fillRect(0, 70, W, 4);
+
+  // Field
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(0, 74, W, H - 74);
+
+  // Field lines
+  ctx.strokeStyle = '#ffffff11';
+  for (let x = 0; x < W; x += 50) {
+    ctx.beginPath();
+    ctx.moveTo(x, 74);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+}
+
+function drawHitZone() {
+  // Lane backgrounds
+  for (const dir of DIRS) {
+    const x = DIR_X[dir];
+
+    // Lane line
+    ctx.strokeStyle = DIR_COLORS[dir] + '22';
+    ctx.lineWidth = 30;
+    ctx.beginPath();
+    ctx.moveTo(x, 80);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+
+    // Hit zone target
+    const f = flash[dir] > 0 ? 1 : 0.3;
+    ctx.globalAlpha = f;
+    ctx.strokeStyle = DIR_COLORS[dir];
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, hitZoneY, 22, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Arrow outline in hit zone
+    ctx.fillStyle = DIR_COLORS[dir] + (flash[dir] > 0 ? 'cc' : '44');
+    ctx.font = 'bold 24px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(DIR_ARROWS[dir], x, hitZoneY);
+
+    ctx.globalAlpha = 1;
+    if (flash[dir] > 0) flash[dir]--;
+  }
+}
+
+function drawCheerleaders() {
+  // 3 cheerleaders at bottom
+  const cheerY = H - 50;
+  const poses = [
+    Math.sin(frameCount * 0.05) * 0.3,
+    Math.sin(frameCount * 0.05 + 2) * 0.3,
+    Math.sin(frameCount * 0.05 + 4) * 0.3
+  ];
+
+  for (let i = 0; i < 3; i++) {
+    const cx = W / 2 - 80 + i * 80;
+    const pose = poses[i];
+    const hype = crowdMeter / 100;
+
+    // Body
+    ctx.fillStyle = '#ff69b4';
+    ctx.fillRect(cx - 6, cheerY - 20, 12, 20);
+
+    // Head
+    ctx.fillStyle = '#ffccaa';
+    ctx.beginPath();
+    ctx.arc(cx, cheerY - 28, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hair
+    ctx.fillStyle = '#8B4513';
+    ctx.beginPath();
+    ctx.arc(cx, cheerY - 30, 7, Math.PI, 2 * Math.PI);
+    ctx.fill();
+
+    // Arms with pompoms
+    const armAngle = pose + hype * Math.sin(frameCount * 0.1 + i) * 0.5;
+    // Left arm
+    ctx.strokeStyle = '#ffccaa';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx - 6, cheerY - 15);
+    ctx.lineTo(cx - 20, cheerY - 25 - Math.sin(armAngle + 1) * 15);
+    ctx.stroke();
+    // Pompom
+    ctx.fillStyle = '#ff69b4';
+    ctx.beginPath();
+    ctx.arc(cx - 20, cheerY - 25 - Math.sin(armAngle + 1) * 15, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Right arm
+    ctx.beginPath();
+    ctx.moveTo(cx + 6, cheerY - 15);
+    ctx.lineTo(cx + 20, cheerY - 25 - Math.sin(armAngle) * 15);
+    ctx.stroke();
+    ctx.fillStyle = '#ff69b4';
+    ctx.beginPath();
+    ctx.arc(cx + 20, cheerY - 25 - Math.sin(armAngle) * 15, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Skirt
+    ctx.fillStyle = '#ff1493';
+    ctx.beginPath();
+    ctx.moveTo(cx - 10, cheerY);
+    ctx.lineTo(cx + 10, cheerY);
+    ctx.lineTo(cx + 14, cheerY + 12);
+    ctx.lineTo(cx - 14, cheerY + 12);
+    ctx.closePath();
+    ctx.fill();
+
+    // Legs
+    ctx.strokeStyle = '#ffccaa';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, cheerY + 12);
+    ctx.lineTo(cx - 6, cheerY + 25);
+    ctx.moveTo(cx + 4, cheerY + 12);
+    ctx.lineTo(cx + 6, cheerY + 25);
+    ctx.stroke();
+  }
+}
+
+function drawCrowdMeter() {
+  const x = 20, y = 90, w = 20, h = 200;
+  ctx.fillStyle = '#1a1a2a';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#555';
+  ctx.strokeRect(x, y, w, h);
+
+  const fillH = h * (crowdMeter / 100);
+  const color = crowdMeter > 70 ? '#ff4488' : crowdMeter > 40 ? '#ffaa44' : '#4444ff';
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y + h - fillH, w, fillH);
+
+  ctx.font = '10px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e0e0ff';
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('CROWD', 0, -2);
+  ctx.restore();
+
+  // Emoji based on crowd level
+  ctx.font = '18px serif';
+  if (crowdMeter > 80) ctx.fillText('🔥', x + w / 2, y - 10);
+  else if (crowdMeter > 50) ctx.fillText('😊', x + w / 2, y - 10);
+  else if (crowdMeter > 20) ctx.fillText('😐', x + w / 2, y - 10);
+  else ctx.fillText('👎', x + w / 2, y - 10);
+}
+
+function drawHUD() {
+  ctx.font = '16px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText(`Score: ${score}`, 60, 95);
+  ctx.fillStyle = combo >= 5 ? '#ff69b4' : '#a0a0c0';
+  ctx.fillText(`Combo: ${combo}`, 60, 115);
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText(`Level: ${level}`, 60, 135);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText(`Misses: ${misses}/${maxMisses}`, W - 20, 95);
+  ctx.fillStyle = '#44ff88';
+  ctx.fillText(`Perfects: ${perfects}`, W - 20, 115);
+
+  // Combo multiplier display
+  if (combo >= 5) {
+    const mult = Math.min(8, 1 + Math.floor(combo / 5));
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${20 + beatPulse * 10}px Courier New`;
+    ctx.fillStyle = '#ff69b4';
+    ctx.fillText(`x${mult} MULTIPLIER!`, W / 2, 110);
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = 'bold 42px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff69b4';
+  ctx.fillText('CHEERLEADER', W / 2, 110);
+  ctx.fillText('RHYTHM RALLY', W / 2, 160);
+
+  ctx.font = '20px serif';
+  ctx.fillText('📣🎵📣', W / 2, 200);
+
+  ctx.font = '14px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  const lines = [
+    'Hit the arrow keys in time with the falling arrows!',
+    '',
+    'Arrow keys: ← ↓ ↑ →',
+    '',
+    '• PERFECT: Hit when arrow is right on the target',
+    '• GREAT: Close to the target',
+    '• OK: Just barely in range',
+    '',
+    '• Build combos for score multipliers!',
+    '• Keep the crowd hyped with good performance!',
+    '• Miss too many and the crowd boos you off!',
+    '',
+    '• Difficulty increases as you score more!',
+    '',
+    'Press any arrow key to START!'
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, 240 + i * 20));
+}
+
+function drawGameOver() {
+  ctx.fillStyle = '#0f0f1aee';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = 'bold 44px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff69b4';
+  ctx.fillText('SHOW OVER!', W / 2, 130);
+
+  ctx.font = '20px Courier New';
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText(`Final Score: ${score}`, W / 2, 200);
+  ctx.fillText(`Max Combo: ${maxCombo}`, W / 2, 235);
+  ctx.fillText(`Perfects: ${perfects}`, W / 2, 270);
+  ctx.fillText(`Level Reached: ${level}`, W / 2, 305);
+
+  const grade = score > 10000 ? 'S' : score > 5000 ? 'A' : score > 2000 ? 'B' : score > 500 ? 'C' : 'D';
+  ctx.font = 'bold 60px Courier New';
+  ctx.fillStyle = grade === 'S' ? '#ff69b4' : grade === 'A' ? '#44ff88' : grade === 'B' ? '#44aaff' : '#ffaa44';
+  ctx.fillText(`Grade: ${grade}`, W / 2, 380);
+
+  ctx.font = '16px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText('Press any arrow key to try again!', W / 2, 440);
+}
+
+function update() {
+  if (state !== 'playing') return;
+
+  generateNotes();
+
+  notes.forEach(n => n.update());
+
+  // Remove dead notes and count misses
+  const beforeLen = notes.length;
+  notes = notes.filter(n => {
+    if (n.missed && !n.hit) {
+      misses++;
+      combo = 0;
+      crowdMeter = Math.max(0, crowdMeter - 2);
+      return false;
+    }
+    return n.alive || n.y < H + 50;
+  });
+
+  // Crowd decay
+  crowdMeter = Math.max(0, crowdMeter - 0.02);
+
+  // Beat pulse decay
+  if (beatPulse > 0) beatPulse *= 0.9;
+
+  // Game over
+  if (misses >= maxMisses) {
+    state = 'gameover';
+  }
+
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.1;
+    p.vx *= 0.98;
+    p.life--;
+    return p.life > 0;
+  });
+  pompoms = pompoms.filter(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.15;
+    p.vx *= 0.97;
+    p.life--;
+    return p.life > 0;
+  });
+
+  if (msgTimer > 0) msgTimer--;
+  if (bannerTimer > 0) bannerTimer--;
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') { drawTitle(); return; }
+  if (state === 'gameover') { drawGameOver(); return; }
+
+  drawStadium();
+  drawHitZone();
+
+  // Draw notes
+  notes.forEach(n => n.draw());
+
+  // Pompom particles
+  pompoms.forEach(p => {
+    ctx.globalAlpha = p.life / 50;
+    ctx.fillStyle = p.color;
+    // Star shape for pompom effect
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      const r1 = p.size;
+      const r2 = p.size * 0.4;
+      ctx.lineTo(p.x + Math.cos(a) * r1, p.y + Math.sin(a) * r1);
+      const a2 = a + Math.PI / 5;
+      ctx.lineTo(p.x + Math.cos(a2) * r2, p.y + Math.sin(a2) * r2);
+    }
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  // Regular particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 35;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  drawCheerleaders();
+  drawCrowdMeter();
+  drawHUD();
+
+  // Hit message
+  if (msgTimer > 0) {
+    ctx.font = 'bold 24px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffcc00';
+    ctx.globalAlpha = msgTimer / 25;
+    ctx.fillText(message, W / 2, hitZoneY - 40);
+    ctx.globalAlpha = 1;
+  }
+
+  // Banner
+  if (bannerTimer > 0) {
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(0, H / 2 - 30, W, 60);
+    ctx.font = 'bold 36px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff69b4';
+    ctx.fillText(bannerText, W / 2, H / 2 + 12);
+  }
+
+  // Controls reminder
+  ctx.font = '11px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#a0a0c044';
+  ctx.fillText('← ↓ ↑ → Arrow Keys', W / 2, H - 5);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!['ArrowLeft', 'ArrowDown', 'ArrowUp', 'ArrowRight'].includes(e.key)) return;
+  e.preventDefault();
+
+  if (state === 'title') {
+    state = 'playing';
+    score = 0;
+    combo = 0;
+    maxCombo = 0;
+    crowdMeter = 50;
+    misses = 0;
+    hits = 0;
+    perfects = 0;
+    level = 1;
+    noteSpeed = 3;
+    notes = [];
+    particles = [];
+    pompoms = [];
+    frameCount = 0;
+    return;
+  }
+
+  if (state === 'gameover') {
+    state = 'title';
+    return;
+  }
+
+  if (state === 'playing') {
+    const dirMap = {
+      ArrowLeft: 'left', ArrowDown: 'down',
+      ArrowUp: 'up', ArrowRight: 'right'
+    };
+    checkHit(dirMap[e.key]);
+  }
+});
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

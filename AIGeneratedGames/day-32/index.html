@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 32 – Vainger</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    .sub { color: #9ca3af; font-size: 0.85rem; margin-bottom: 0.5rem; }
+    canvas {
+      border: 1px solid #3b3b5c;
+      border-radius: 8px;
+      max-width: 480px;
+      width: 100%;
+      touch-action: none;
+    }
+    #ui { color: #9ca3af; font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Vainger</h1>
+  <p class="sub">Explore, gain abilities, defeat bosses!</p>
+  <canvas id="game" width="480" height="640"></canvas>
+  <div id="ui"></div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+
+const W = 480, H = 640;
+function resize() {
+  const s = Math.min(window.innerWidth / W, (window.innerHeight - 120) / H, 1);
+  canvas.style.width = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const TILE = 32;
+const STATE = { MENU: 0, PLAY: 1, OVER: 2, WIN: 3 };
+let state = STATE.MENU;
+
+// Map: grid of rooms, each room is a screen (15 tiles wide x 20 tiles tall)
+const ROOM_W = 15;
+const ROOM_H = 20;
+const MAP_ROOMS_X = 4;
+const MAP_ROOMS_Y = 3;
+
+// Room data: 0=empty, 1=solid, 2=platform, 3=spike, 4=door-needs-dash, 5=door-needs-doublejump
+let rooms = [];
+let player, camera, enemies, items, projectiles, particles;
+let abilities, hp, maxHp, score, time, currentRoom;
+let touchLeft = false, touchRight = false, touchJump = false, touchAttack = false;
+let touchStartX = 0, touchStartY = 0;
+let msgText = '', msgTimer = 0;
+let bossesDefeated = 0;
+
+// Room templates
+const ROOM_TEMPLATES = [
+  // 0,0 - Start room
+  { enemies: [], items: [], layout: 'start' },
+  // 1,0 - Corridor with enemies
+  { enemies: ['slime', 'slime'], items: [], layout: 'corridor' },
+  // 2,0 - Double jump room (blocked by high wall)
+  { enemies: ['bat'], items: ['doublejump'], layout: 'ability_high' },
+  // 3,0 - Boss room 1
+  { enemies: ['boss1'], items: [], layout: 'arena' },
+  // 0,1 - Vertical shaft
+  { enemies: ['bat', 'bat'], items: [], layout: 'shaft' },
+  // 1,1 - Hub room
+  { enemies: [], items: ['health'], layout: 'hub' },
+  // 2,1 - Spike corridor
+  { enemies: ['slime'], items: [], layout: 'spikes' },
+  // 3,1 - Dash room (blocked by narrow gap)
+  { enemies: ['bat'], items: ['dash'], layout: 'ability_dash' },
+  // 0,2 - Deep area (needs double jump)
+  { enemies: ['slime', 'bat'], items: [], layout: 'deep' },
+  // 1,2 - Deep hub
+  { enemies: ['slime'], items: ['health'], layout: 'deep_hub' },
+  // 2,2 - Final boss
+  { enemies: ['boss2'], items: [], layout: 'final_arena' },
+  // 3,2 - Treasure room (needs dash)
+  { enemies: [], items: ['win'], layout: 'treasure' },
+];
+
+function generateRoom(rx, ry) {
+  const idx = ry * MAP_ROOMS_X + rx;
+  const tmpl = ROOM_TEMPLATES[idx] || ROOM_TEMPLATES[0];
+  const tiles = [];
+
+  for (let y = 0; y < ROOM_H; y++) {
+    tiles[y] = [];
+    for (let x = 0; x < ROOM_W; x++) {
+      // Borders
+      if (y === 0 || y === ROOM_H - 1 || x === 0 || x === ROOM_W - 1) {
+        tiles[y][x] = 1;
+      } else {
+        tiles[y][x] = 0;
+      }
+    }
+  }
+
+  // Doors (openings in walls)
+  // Right door
+  if (rx < MAP_ROOMS_X - 1) {
+    tiles[ROOM_H - 4][ROOM_W - 1] = 0;
+    tiles[ROOM_H - 5][ROOM_W - 1] = 0;
+    tiles[ROOM_H - 6][ROOM_W - 1] = 0;
+  }
+  // Left door
+  if (rx > 0) {
+    tiles[ROOM_H - 4][0] = 0;
+    tiles[ROOM_H - 5][0] = 0;
+    tiles[ROOM_H - 6][0] = 0;
+  }
+  // Bottom door
+  if (ry < MAP_ROOMS_Y - 1) {
+    tiles[ROOM_H - 1][7] = 0;
+    tiles[ROOM_H - 1][8] = 0;
+  }
+  // Top door
+  if (ry > 0) {
+    tiles[0][7] = 0;
+    tiles[0][8] = 0;
+  }
+
+  // Layout-specific features
+  switch (tmpl.layout) {
+    case 'start':
+      // Simple room, platforms
+      for (let x = 3; x < 7; x++) tiles[ROOM_H - 8][x] = 2;
+      for (let x = 8; x < 12; x++) tiles[ROOM_H - 5][x] = 2;
+      break;
+    case 'corridor':
+      for (let x = 3; x < 6; x++) tiles[ROOM_H - 6][x] = 2;
+      for (let x = 9; x < 12; x++) tiles[ROOM_H - 8][x] = 2;
+      for (let x = 5; x < 10; x++) tiles[ROOM_H - 4][x] = 2;
+      break;
+    case 'ability_high':
+      // Item is up high, need double jump
+      for (let x = 2; x < 6; x++) tiles[ROOM_H - 6][x] = 2;
+      for (let x = 6; x < 10; x++) tiles[ROOM_H - 10][x] = 2;
+      for (let x = 3; x < 7; x++) tiles[ROOM_H - 14][x] = 2;
+      // Wall blocking without double jump
+      for (let y = ROOM_H - 13; y < ROOM_H - 6; y++) tiles[y][5] = 1;
+      break;
+    case 'arena':
+      for (let x = 2; x < ROOM_W - 2; x++) tiles[ROOM_H - 4][x] = 2;
+      for (let x = 4; x < 8; x++) tiles[ROOM_H - 8][x] = 2;
+      for (let x = 8; x < 12; x++) tiles[ROOM_H - 8][x] = 2;
+      break;
+    case 'shaft':
+      for (let x = 2; x < 6; x++) tiles[ROOM_H - 6][x] = 2;
+      for (let x = 9; x < 13; x++) tiles[ROOM_H - 10][x] = 2;
+      for (let x = 2; x < 6; x++) tiles[ROOM_H - 14][x] = 2;
+      break;
+    case 'hub':
+      for (let x = 3; x < 12; x++) tiles[ROOM_H - 5][x] = 2;
+      for (let x = 5; x < 10; x++) tiles[ROOM_H - 9][x] = 2;
+      break;
+    case 'spikes':
+      for (let x = 3; x < 12; x++) tiles[ROOM_H - 3][x] = 3; // spikes
+      for (let x = 3; x < 6; x++) tiles[ROOM_H - 6][x] = 2;
+      for (let x = 7; x < 9; x++) tiles[ROOM_H - 7][x] = 2;
+      for (let x = 10; x < 13; x++) tiles[ROOM_H - 6][x] = 2;
+      break;
+    case 'ability_dash':
+      for (let x = 2; x < 6; x++) tiles[ROOM_H - 5][x] = 2;
+      // Narrow gap - need dash to cross
+      for (let y = 2; y < ROOM_H - 5; y++) { tiles[y][6] = 1; tiles[y][9] = 1; }
+      // Small opening
+      tiles[ROOM_H - 6][6] = 0; tiles[ROOM_H - 6][9] = 0;
+      for (let x = 10; x < 13; x++) tiles[ROOM_H - 5][x] = 2;
+      break;
+    case 'deep':
+      for (let x = 2; x < 7; x++) tiles[ROOM_H - 5][x] = 2;
+      for (let x = 8; x < 13; x++) tiles[ROOM_H - 8][x] = 2;
+      for (let x = 3; x < 8; x++) tiles[ROOM_H - 11][x] = 2;
+      tiles[ROOM_H - 3][4] = 3; tiles[ROOM_H - 3][5] = 3;
+      break;
+    case 'deep_hub':
+      for (let x = 2; x < 13; x++) tiles[ROOM_H - 5][x] = 2;
+      break;
+    case 'final_arena':
+      for (let x = 2; x < ROOM_W - 2; x++) tiles[ROOM_H - 4][x] = 2;
+      for (let x = 3; x < 6; x++) tiles[ROOM_H - 9][x] = 2;
+      for (let x = 9; x < 12; x++) tiles[ROOM_H - 9][x] = 2;
+      for (let x = 5; x < 10; x++) tiles[ROOM_H - 13][x] = 2;
+      break;
+    case 'treasure':
+      for (let x = 3; x < 12; x++) tiles[ROOM_H - 5][x] = 2;
+      break;
+  }
+
+  return { tiles, rx, ry, template: tmpl };
+}
+
+function initGame() {
+  rooms = [];
+  for (let ry = 0; ry < MAP_ROOMS_Y; ry++) {
+    for (let rx = 0; rx < MAP_ROOMS_X; rx++) {
+      rooms.push(generateRoom(rx, ry));
+    }
+  }
+
+  abilities = { doubleJump: false, dash: false };
+  hp = 100; maxHp = 100;
+  score = 0; time = 0;
+  bossesDefeated = 0;
+  msgText = ''; msgTimer = 0;
+
+  currentRoom = { rx: 0, ry: 0 };
+  player = {
+    x: 3 * TILE, y: (ROOM_H - 3) * TILE,
+    vx: 0, vy: 0,
+    w: 20, h: 28,
+    onGround: false,
+    facing: 1,
+    jumps: 0, maxJumps: 1,
+    attacking: false, attackTimer: 0, attackCooldown: 0,
+    dashing: false, dashTimer: 0, dashCooldown: 0,
+    invuln: 0,
+    animFrame: 0
+  };
+
+  enemies = [];
+  items = [];
+  projectiles = [];
+  particles = [];
+
+  loadRoom(0, 0);
+}
+
+function loadRoom(rx, ry) {
+  currentRoom = { rx, ry };
+  const room = getRoom(rx, ry);
+  const tmpl = room.template;
+
+  enemies = [];
+  items = [];
+  projectiles = [];
+
+  // Spawn enemies
+  tmpl.enemies.forEach((type, i) => {
+    let ex, ey;
+    if (type === 'boss1' || type === 'boss2') {
+      ex = 7 * TILE; ey = (ROOM_H - 6) * TILE;
+    } else {
+      ex = (4 + i * 4) * TILE;
+      ey = (ROOM_H - 7) * TILE;
+    }
+    enemies.push(createEnemy(type, ex, ey));
+  });
+
+  // Spawn items
+  tmpl.items.forEach((type, i) => {
+    let ix, iy;
+    if (type === 'doublejump') { ix = 4 * TILE; iy = (ROOM_H - 15) * TILE; }
+    else if (type === 'dash') { ix = 11 * TILE; iy = (ROOM_H - 6) * TILE; }
+    else if (type === 'health') { ix = 7 * TILE; iy = (ROOM_H - 7) * TILE; }
+    else if (type === 'win') { ix = 7 * TILE; iy = (ROOM_H - 7) * TILE; }
+    else { ix = (5 + i * 3) * TILE; iy = (ROOM_H - 7) * TILE; }
+    items.push({ x: ix, y: iy, type, collected: false });
+  });
+}
+
+function createEnemy(type, x, y) {
+  if (type === 'slime') return { type, x, y, w: 24, h: 18, hp: 3, maxHp: 3, vx: 40, vy: 0, phase: 0, stunned: 0 };
+  if (type === 'bat') return { type, x, y, w: 22, h: 16, hp: 2, maxHp: 2, vx: 0, vy: 0, phase: Math.random() * Math.PI * 2, stunned: 0, baseY: y };
+  if (type === 'boss1') return { type, x, y, w: 36, h: 40, hp: 20, maxHp: 20, vx: 60, vy: 0, phase: 0, stunned: 0, attackTimer: 2 };
+  if (type === 'boss2') return { type, x, y, w: 40, h: 44, hp: 30, maxHp: 30, vx: 50, vy: 0, phase: 0, stunned: 0, attackTimer: 1.5 };
+  return { type: 'slime', x, y, w: 24, h: 18, hp: 2, maxHp: 2, vx: 30, vy: 0, phase: 0, stunned: 0 };
+}
+
+function getRoom(rx, ry) {
+  return rooms[ry * MAP_ROOMS_X + rx];
+}
+
+function getTile(x, y) {
+  const room = getRoom(currentRoom.rx, currentRoom.ry);
+  const tx = Math.floor(x / TILE);
+  const ty = Math.floor(y / TILE);
+  if (tx < 0 || tx >= ROOM_W || ty < 0 || ty >= ROOM_H) return 1;
+  return room.tiles[ty][tx];
+}
+
+function isSolid(x, y) {
+  const t = getTile(x, y);
+  return t === 1;
+}
+
+function isPlatform(x, y) {
+  const t = getTile(x, y);
+  return t === 2;
+}
+
+function isSpike(x, y) {
+  return getTile(x, y) === 3;
+}
+
+// Touch controls
+let activeTouches = {};
+
+canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+canvas.addEventListener('mousedown', onMouseDown);
+canvas.addEventListener('mouseup', onMouseUp);
+
+function onTouchStart(e) {
+  e.preventDefault();
+  if (state !== STATE.PLAY) {
+    if (state === STATE.MENU) { state = STATE.PLAY; initGame(); }
+    else state = STATE.MENU;
+    return;
+  }
+  for (const touch of e.changedTouches) {
+    const pos = getTouchPos(touch);
+    activeTouches[touch.identifier] = pos;
+    processTouch(pos, true);
+  }
+}
+
+function onTouchMove(e) {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    const pos = getTouchPos(touch);
+    activeTouches[touch.identifier] = pos;
+  }
+  updateTouchState();
+}
+
+function onTouchEnd(e) {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    delete activeTouches[touch.identifier];
+  }
+  updateTouchState();
+}
+
+function getTouchPos(touch) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: (touch.clientX - rect.left) * (W / rect.width), y: (touch.clientY - rect.top) * (H / rect.height) };
+}
+
+function processTouch(pos, isNew) {
+  // Right side tap = attack
+  if (isNew && pos.x > W * 0.6 && pos.y < H * 0.7) {
+    touchAttack = true;
+    setTimeout(() => touchAttack = false, 50);
+  }
+  // Top center = jump
+  if (isNew && pos.y < H * 0.4 && pos.x > W * 0.2 && pos.x < W * 0.8) {
+    touchJump = true;
+    setTimeout(() => touchJump = false, 50);
+  }
+  updateTouchState();
+}
+
+function updateTouchState() {
+  touchLeft = false;
+  touchRight = false;
+  for (const id in activeTouches) {
+    const p = activeTouches[id];
+    if (p.x < W * 0.25) touchLeft = true;
+    if (p.x > W * 0.25 && p.x < W * 0.55 && p.y > H * 0.5) touchRight = true;
+    // Also allow left side bottom for left, right side bottom for right
+    if (p.y > H * 0.7) {
+      if (p.x < W * 0.4) touchLeft = true;
+      else if (p.x < W * 0.6) {} // dead zone
+      else touchRight = true;
+    }
+  }
+}
+
+function onMouseDown(e) {
+  if (state !== STATE.PLAY) {
+    if (state === STATE.MENU) { state = STATE.PLAY; initGame(); }
+    else state = STATE.MENU;
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const pos = { x: (e.clientX - rect.left) * (W / rect.width), y: (e.clientY - rect.top) * (H / rect.height) };
+  processTouch(pos, true);
+  activeTouches['mouse'] = pos;
+}
+
+function onMouseUp(e) {
+  delete activeTouches['mouse'];
+  updateTouchState();
+}
+
+function showMsg(text, dur) {
+  msgText = text;
+  msgTimer = dur || 2;
+}
+
+function spawnParts(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 120, vy: -Math.random() * 100 - 30,
+      life: 0.3 + Math.random() * 0.3, color, size: 2 + Math.random() * 3
+    });
+  }
+}
+
+function update(dt) {
+  if (state !== STATE.PLAY) return;
+  time += dt;
+  msgTimer = Math.max(0, msgTimer - dt);
+
+  const GRAV = 600;
+  const SPEED = 140;
+  const JUMP = -280;
+  const DASH_SPEED = 350;
+
+  // Input
+  if (touchLeft) { player.vx = -SPEED; player.facing = -1; }
+  else if (touchRight) { player.vx = SPEED; player.facing = 1; }
+  else player.vx *= 0.7;
+
+  if (touchJump) {
+    touchJump = false;
+    if (player.onGround || (abilities.doubleJump && player.jumps < 2)) {
+      player.vy = JUMP;
+      player.jumps++;
+      player.onGround = false;
+      spawnParts(player.x + player.w / 2, player.y + player.h, '#a78bfa', 5);
+    }
+  }
+
+  if (touchAttack && player.attackCooldown <= 0) {
+    touchAttack = false;
+    player.attacking = true;
+    player.attackTimer = 0.2;
+    player.attackCooldown = 0.35;
+
+    // If dash ability and double-tap attack area: dash
+    if (abilities.dash && player.dashCooldown <= 0 && !player.dashing) {
+      player.dashing = true;
+      player.dashTimer = 0.15;
+      player.dashCooldown = 0.6;
+      player.vx = player.facing * DASH_SPEED;
+      player.invuln = 0.15;
+      spawnParts(player.x + player.w / 2, player.y + player.h / 2, '#7c3aed', 8);
+    }
+  }
+
+  player.attackCooldown = Math.max(0, player.attackCooldown - dt);
+  player.dashCooldown = Math.max(0, player.dashCooldown - dt);
+  player.invuln = Math.max(0, player.invuln - dt);
+
+  if (player.dashing) {
+    player.dashTimer -= dt;
+    if (player.dashTimer <= 0) player.dashing = false;
+  }
+
+  if (player.attacking) {
+    player.attackTimer -= dt;
+    if (player.attackTimer <= 0) player.attacking = false;
+  }
+
+  // Gravity
+  if (!player.dashing) player.vy += GRAV * dt;
+
+  // Move X
+  player.x += player.vx * dt;
+  // Collide X
+  const px1 = player.x, py1 = player.y;
+  if (isSolid(player.x, player.y + 2) || isSolid(player.x, player.y + player.h - 2) ||
+      isSolid(player.x + player.w, player.y + 2) || isSolid(player.x + player.w, player.y + player.h - 2)) {
+    player.x = px1 - player.vx * dt;
+    player.vx = 0;
+  }
+
+  // Move Y
+  player.y += player.vy * dt;
+  player.onGround = false;
+
+  // Collide Y floor
+  if (player.vy >= 0) {
+    // Check solid tiles
+    if (isSolid(player.x + 2, player.y + player.h) || isSolid(player.x + player.w - 2, player.y + player.h)) {
+      player.y = Math.floor((player.y + player.h) / TILE) * TILE - player.h;
+      player.vy = 0;
+      player.onGround = true;
+      player.jumps = 0;
+    }
+    // Check platforms (only from above)
+    if (!player.onGround) {
+      const ptx1 = Math.floor((player.x + 2) / TILE);
+      const ptx2 = Math.floor((player.x + player.w - 2) / TILE);
+      const pty = Math.floor((player.y + player.h) / TILE);
+      for (let tx = ptx1; tx <= ptx2; tx++) {
+        if (isPlatform(tx * TILE, pty * TILE)) {
+          const platTop = pty * TILE;
+          if (player.y + player.h >= platTop && player.y + player.h <= platTop + 10) {
+            player.y = platTop - player.h;
+            player.vy = 0;
+            player.onGround = true;
+            player.jumps = 0;
+          }
+        }
+      }
+    }
+  }
+
+  // Collide Y ceiling
+  if (player.vy < 0) {
+    if (isSolid(player.x + 2, player.y) || isSolid(player.x + player.w - 2, player.y)) {
+      player.y = Math.ceil(player.y / TILE) * TILE;
+      player.vy = 0;
+    }
+  }
+
+  // Spike check
+  if (isSpike(player.x + player.w / 2, player.y + player.h) ||
+      isSpike(player.x + 2, player.y + player.h) ||
+      isSpike(player.x + player.w - 2, player.y + player.h)) {
+    if (player.invuln <= 0) {
+      hp -= 20;
+      player.invuln = 1;
+      player.vy = -200;
+      spawnParts(player.x + player.w / 2, player.y + player.h, '#ff4444', 10);
+      if (hp <= 0) { state = STATE.OVER; return; }
+    }
+  }
+
+  // Room transitions
+  if (player.x + player.w > ROOM_W * TILE && currentRoom.rx < MAP_ROOMS_X - 1) {
+    currentRoom.rx++;
+    player.x = 5;
+    loadRoom(currentRoom.rx, currentRoom.ry);
+  } else if (player.x < 0 && currentRoom.rx > 0) {
+    currentRoom.rx--;
+    player.x = (ROOM_W - 1) * TILE - player.w - 5;
+    loadRoom(currentRoom.rx, currentRoom.ry);
+  } else if (player.y + player.h > ROOM_H * TILE && currentRoom.ry < MAP_ROOMS_Y - 1) {
+    currentRoom.ry++;
+    player.y = 5;
+    loadRoom(currentRoom.rx, currentRoom.ry);
+  } else if (player.y < 0 && currentRoom.ry > 0) {
+    currentRoom.ry--;
+    player.y = (ROOM_H - 1) * TILE - player.h - 5;
+    loadRoom(currentRoom.rx, currentRoom.ry);
+  }
+
+  // Clamp within room
+  player.x = Math.max(0, Math.min(ROOM_W * TILE - player.w, player.x));
+
+  // Attack hits enemies
+  if (player.attacking && player.attackTimer > 0.15) {
+    const atkX = player.x + player.w / 2 + player.facing * 20;
+    const atkY = player.y + player.h / 2;
+    enemies.forEach(en => {
+      if (en.hp <= 0 || en.stunned > 0) return;
+      if (Math.abs(atkX - (en.x + en.w / 2)) < 30 && Math.abs(atkY - (en.y + en.h / 2)) < 30) {
+        en.hp -= 3;
+        en.stunned = 0.3;
+        en.x += player.facing * 15;
+        spawnParts(en.x + en.w / 2, en.y + en.h / 2, '#ffd700', 6);
+        if (en.hp <= 0) {
+          score += en.type.startsWith('boss') ? 200 : 25;
+          spawnParts(en.x + en.w / 2, en.y + en.h / 2, '#ff8800', 15);
+          if (en.type.startsWith('boss')) {
+            bossesDefeated++;
+            showMsg('Boss defeated!', 2);
+          }
+        }
+      }
+    });
+  }
+
+  // Enemy AI
+  enemies.forEach(en => {
+    if (en.hp <= 0) return;
+    en.stunned = Math.max(0, en.stunned - dt);
+    if (en.stunned > 0) return;
+
+    if (en.type === 'slime') {
+      en.x += en.vx * dt;
+      en.vy += GRAV * dt;
+      en.y += en.vy * dt;
+      // Simple floor collision
+      if (isSolid(en.x + en.w / 2, en.y + en.h + 1) || isPlatform(en.x + en.w / 2, en.y + en.h + 1)) {
+        en.y = Math.floor((en.y + en.h) / TILE) * TILE - en.h;
+        en.vy = 0;
+      }
+      if (isSolid(en.x, en.y + en.h / 2) || isSolid(en.x + en.w, en.y + en.h / 2)) {
+        en.vx *= -1;
+      }
+      // Turn at edges
+      if (!isSolid(en.x + (en.vx > 0 ? en.w + 2 : -2), en.y + en.h + 2) &&
+          !isPlatform(en.x + (en.vx > 0 ? en.w + 2 : -2), en.y + en.h + 2)) {
+        en.vx *= -1;
+      }
+    } else if (en.type === 'bat') {
+      en.phase += dt * 2;
+      en.x += Math.cos(en.phase) * 50 * dt;
+      en.y = en.baseY + Math.sin(en.phase * 1.5) * 30;
+    } else if (en.type === 'boss1' || en.type === 'boss2') {
+      const dx = player.x - en.x;
+      en.vx = dx > 0 ? 60 : -60;
+      en.x += en.vx * dt;
+      en.vy += GRAV * dt;
+      en.y += en.vy * dt;
+      if (isSolid(en.x + en.w / 2, en.y + en.h + 1) || isPlatform(en.x + en.w / 2, en.y + en.h + 1)) {
+        en.y = Math.floor((en.y + en.h) / TILE) * TILE - en.h;
+        en.vy = 0;
+      }
+      en.attackTimer -= dt;
+      if (en.attackTimer <= 0) {
+        en.attackTimer = en.type === 'boss2' ? 1.0 : 1.5;
+        // Shoot projectile
+        const dir = dx > 0 ? 1 : -1;
+        projectiles.push({
+          x: en.x + en.w / 2, y: en.y + en.h / 2,
+          vx: dir * 180, vy: 0, life: 2, size: 6
+        });
+        if (en.type === 'boss2') {
+          projectiles.push({ x: en.x + en.w / 2, y: en.y + en.h / 4, vx: dir * 150, vy: -50, life: 2, size: 5 });
+        }
+      }
+    }
+
+    // Contact damage
+    if (player.invuln <= 0 && en.hp > 0) {
+      if (player.x + player.w > en.x && player.x < en.x + en.w &&
+          player.y + player.h > en.y && player.y < en.y + en.h) {
+        hp -= en.type.startsWith('boss') ? 15 : 10;
+        player.invuln = 0.8;
+        player.vy = -150;
+        player.vx = (player.x < en.x ? -1 : 1) * 100;
+        spawnParts(player.x + player.w / 2, player.y + player.h / 2, '#ff4444', 6);
+        if (hp <= 0) { state = STATE.OVER; return; }
+      }
+    }
+  });
+
+  // Projectiles
+  projectiles.forEach(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    if (player.invuln <= 0 &&
+        Math.abs(p.x - player.x - player.w / 2) < 15 &&
+        Math.abs(p.y - player.y - player.h / 2) < 15) {
+      hp -= 10;
+      player.invuln = 0.5;
+      p.life = 0;
+      spawnParts(player.x + player.w / 2, player.y + player.h / 2, '#ff4444', 5);
+      if (hp <= 0) { state = STATE.OVER; return; }
+    }
+  });
+  projectiles = projectiles.filter(p => p.life > 0);
+
+  // Item collection
+  items.forEach(it => {
+    if (it.collected) return;
+    if (Math.abs(player.x + player.w / 2 - it.x) < 20 && Math.abs(player.y + player.h / 2 - it.y) < 20) {
+      it.collected = true;
+      if (it.type === 'doublejump') {
+        abilities.doubleJump = true;
+        player.maxJumps = 2;
+        showMsg('Double Jump acquired! Jump again in mid-air.', 3);
+        spawnParts(it.x, it.y, '#44ddff', 20);
+      } else if (it.type === 'dash') {
+        abilities.dash = true;
+        showMsg('Dash acquired! Attack to dash forward.', 3);
+        spawnParts(it.x, it.y, '#ff44ff', 20);
+      } else if (it.type === 'health') {
+        hp = Math.min(maxHp, hp + 30);
+        showMsg('Health restored!', 1.5);
+        spawnParts(it.x, it.y, '#44ff88', 10);
+      } else if (it.type === 'win') {
+        score += 1000;
+        state = STATE.WIN;
+        return;
+      }
+    }
+  });
+
+  // Particles
+  particles.forEach(p => {
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += 200 * dt; p.life -= dt;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  player.animFrame += dt * 8;
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === STATE.MENU) { drawMenu(); return; }
+  if (state === STATE.OVER) { drawOver(); return; }
+  if (state === STATE.WIN) { drawWinScreen(); return; }
+
+  const room = getRoom(currentRoom.rx, currentRoom.ry);
+
+  // Draw tiles
+  for (let y = 0; y < ROOM_H; y++) {
+    for (let x = 0; x < ROOM_W; x++) {
+      const t = room.tiles[y][x];
+      const dx = x * TILE, dy = y * TILE;
+      if (t === 1) {
+        ctx.fillStyle = '#2a2a4a';
+        ctx.fillRect(dx, dy, TILE, TILE);
+        ctx.strokeStyle = '#3b3b5c';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(dx, dy, TILE, TILE);
+      } else if (t === 2) {
+        ctx.fillStyle = '#4a4a6a';
+        ctx.fillRect(dx, dy, TILE, 8);
+        ctx.fillStyle = '#5a5a7a';
+        ctx.fillRect(dx, dy, TILE, 3);
+      } else if (t === 3) {
+        ctx.fillStyle = '#ff4444';
+        for (let s = 0; s < 3; s++) {
+          ctx.beginPath();
+          ctx.moveTo(dx + s * TILE / 3 + 2, dy + TILE);
+          ctx.lineTo(dx + s * TILE / 3 + TILE / 6, dy + 4);
+          ctx.lineTo(dx + (s + 1) * TILE / 3 - 2, dy + TILE);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
+  // Draw items
+  items.forEach(it => {
+    if (it.collected) return;
+    const bob = Math.sin(time * 3) * 4;
+    if (it.type === 'doublejump') {
+      ctx.fillStyle = '#44ddff';
+      ctx.font = 'bold 20px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('W', it.x, it.y + bob);
+    } else if (it.type === 'dash') {
+      ctx.fillStyle = '#ff44ff';
+      ctx.font = 'bold 20px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('>', it.x, it.y + bob);
+    } else if (it.type === 'health') {
+      ctx.fillStyle = '#44ff88';
+      ctx.font = 'bold 18px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('+', it.x, it.y + bob);
+    } else if (it.type === 'win') {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 22px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('*', it.x, it.y + bob);
+      ctx.fillStyle = 'rgba(255,215,0,0.2)';
+      ctx.beginPath();
+      ctx.arc(it.x, it.y + bob - 6, 18 + Math.sin(time * 2) * 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+
+  // Draw enemies
+  enemies.forEach(en => {
+    if (en.hp <= 0) return;
+    if (en.stunned > 0 && Math.sin(en.stunned * 30) > 0) return;
+
+    if (en.type === 'slime') {
+      ctx.fillStyle = '#44cc44';
+      const squish = 1 + Math.sin(time * 5) * 0.1;
+      ctx.beginPath();
+      ctx.ellipse(en.x + en.w / 2, en.y + en.h - 4, en.w / 2 * squish, en.h / 2 / squish, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = '#226622';
+      ctx.fillRect(en.x + en.w / 2, en.y + en.h, en.w * squish, 2);
+      // Eyes
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 - 4, en.y + en.h / 2, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 + 4, en.y + en.h / 2, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 - 3, en.y + en.h / 2 + 1, 1.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 + 5, en.y + en.h / 2 + 1, 1.5, 0, Math.PI * 2); ctx.fill();
+    } else if (en.type === 'bat') {
+      ctx.fillStyle = '#884488';
+      ctx.beginPath();
+      ctx.ellipse(en.x + en.w / 2, en.y + en.h / 2, en.w / 2, en.h / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Wings
+      const wing = Math.sin(time * 10) * 8;
+      ctx.beginPath();
+      ctx.moveTo(en.x + en.w / 2 - 5, en.y + en.h / 2);
+      ctx.lineTo(en.x - 8, en.y + wing);
+      ctx.lineTo(en.x + 2, en.y + en.h / 2 + 3);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(en.x + en.w / 2 + 5, en.y + en.h / 2);
+      ctx.lineTo(en.x + en.w + 8, en.y + wing);
+      ctx.lineTo(en.x + en.w - 2, en.y + en.h / 2 + 3);
+      ctx.fill();
+      // Eyes
+      ctx.fillStyle = '#ff4444';
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 - 3, en.y + en.h / 2 - 1, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 + 3, en.y + en.h / 2 - 1, 2, 0, Math.PI * 2); ctx.fill();
+    } else if (en.type === 'boss1' || en.type === 'boss2') {
+      ctx.fillStyle = en.type === 'boss1' ? '#aa2222' : '#662288';
+      ctx.fillRect(en.x, en.y, en.w, en.h);
+      // Crown
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.moveTo(en.x + 4, en.y);
+      ctx.lineTo(en.x + 8, en.y - 10);
+      ctx.lineTo(en.x + en.w / 2, en.y - 4);
+      ctx.lineTo(en.x + en.w - 8, en.y - 10);
+      ctx.lineTo(en.x + en.w - 4, en.y);
+      ctx.fill();
+      // Face
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 - 6, en.y + 14, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 + 6, en.y + 14, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff0000';
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 - 5, en.y + 15, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(en.x + en.w / 2 + 7, en.y + 15, 2, 0, Math.PI * 2); ctx.fill();
+      // HP bar
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(en.x - 5, en.y - 18, en.w + 10, 6);
+      ctx.fillStyle = '#ff4444';
+      ctx.fillRect(en.x - 4, en.y - 17, (en.w + 8) * (en.hp / en.maxHp), 4);
+    }
+  });
+
+  // Draw projectiles
+  projectiles.forEach(p => {
+    ctx.fillStyle = '#ff6644';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffaa44';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Draw player
+  const flash = player.invuln > 0 && Math.sin(player.invuln * 20) > 0;
+  if (!flash) {
+    const px = player.x, py = player.y;
+    // Body
+    ctx.fillStyle = player.dashing ? '#ff88ff' : '#a78bfa';
+    ctx.fillRect(px, py, player.w, player.h);
+    // Head
+    ctx.fillStyle = '#d4c4fa';
+    ctx.fillRect(px + 2, py, player.w - 4, 12);
+    // Eyes
+    ctx.fillStyle = '#fff';
+    const eyeX = player.facing > 0 ? px + 12 : px + 4;
+    ctx.fillRect(eyeX, py + 4, 4, 4);
+    // Sword when attacking
+    if (player.attacking) {
+      ctx.fillStyle = '#ffd700';
+      const sx = player.facing > 0 ? px + player.w : px - 18;
+      ctx.fillRect(sx, py + 6, 18, 4);
+      ctx.fillRect(sx + (player.facing > 0 ? 14 : 0), py + 3, 4, 10);
+    }
+  }
+
+  // Draw particles
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.life * 2);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(8, H - 55, 150, 18);
+  ctx.fillStyle = hp > 50 ? '#44cc44' : hp > 25 ? '#ffaa00' : '#ff4444';
+  ctx.fillRect(10, H - 53, 146 * (hp / maxHp), 14);
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`HP: ${Math.ceil(hp)}`, 14, H - 43);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 14px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Score: ${score}`, W - 10, H - 42);
+
+  // Room indicator
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Room ${currentRoom.rx + 1},${currentRoom.ry + 1}`, W / 2, H - 42);
+
+  // Abilities
+  ctx.textAlign = 'left';
+  ctx.font = '11px system-ui';
+  let abY = H - 28;
+  if (abilities.doubleJump) { ctx.fillStyle = '#44ddff'; ctx.fillText('[Double Jump]', 10, abY); }
+  if (abilities.dash) { ctx.fillStyle = '#ff44ff'; ctx.fillText('[Dash]', 120, abY); }
+
+  // Message
+  if (msgTimer > 0) {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = Math.min(1, msgTimer);
+    ctx.fillText(msgText, W / 2, H / 2 - 80);
+    ctx.globalAlpha = 1;
+  }
+
+  // Touch control hints
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = '#fff';
+  ctx.font = '24px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('<', 40, H / 2);
+  ctx.fillText('>', W * 0.4, H * 0.85);
+  ctx.fillText('^', W / 2, 60);
+  ctx.font = '14px system-ui';
+  ctx.fillText('ATK', W * 0.8, H * 0.3);
+  ctx.globalAlpha = 1;
+
+  ui.textContent = 'Left edge=move left | Bottom right=move right | Top=jump | Right side=attack';
+}
+
+function drawMenu() {
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('VAINGER', W / 2, H / 2 - 100);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Explore, gain abilities, fight bosses!', W / 2, H / 2 - 50);
+
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '14px system-ui';
+  ctx.fillText('Left edge = move left', W / 2, H / 2 - 10);
+  ctx.fillText('Bottom center/right = move right', W / 2, H / 2 + 15);
+  ctx.fillText('Top area = jump', W / 2, H / 2 + 40);
+  ctx.fillText('Right side = attack/dash', W / 2, H / 2 + 65);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillText('Tap to Start', W / 2, H / 2 + 120);
+}
+
+function drawOver() {
+  ctx.fillStyle = '#ff4040';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('DEFEATED', W / 2, H / 2 - 40);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px system-ui';
+  ctx.fillText(`Score: ${score}`, W / 2, H / 2 + 10);
+  ctx.fillText(`Bosses: ${bossesDefeated}`, W / 2, H / 2 + 40);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap to try again', W / 2, H / 2 + 90);
+}
+
+function drawWinScreen() {
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('VICTORY!', W / 2, H / 2 - 40);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px system-ui';
+  ctx.fillText(`Score: ${score}`, W / 2, H / 2 + 10);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap to play again', W / 2, H / 2 + 60);
+}
+
+let lastT = performance.now();
+function gameLoop(ts) {
+  const dt = Math.min((ts - lastT) / 1000, 0.05);
+  lastT = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

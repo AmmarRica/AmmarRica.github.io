@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 11 – Planet Zoldath – Game a Day</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #0a0a14; display: block; }
+    #ui { color: #9ca3af; font-size: 0.8rem; margin-top: 0.5rem; max-width: 480px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Planet Zoldath</h1>
+  <p class="subtitle">Explore an alien world — find all artifacts to escape</p>
+  <canvas id="game"></canvas>
+  <div id="ui">Virtual joystick to move · Tap right side to interact · Find all artifacts</div>
+  <script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let W, H;
+
+  function resize() {
+    W = Math.min(480, window.innerWidth - 20);
+    H = Math.min(480, window.innerHeight - 160);
+    canvas.width = W;
+    canvas.height = H;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const TILE = 24;
+  const MAP_W = 40;
+  const MAP_H = 40;
+  const VIEW_RADIUS = 5; // fog of war radius in tiles
+  const TOTAL_ARTIFACTS = 6;
+  const SPEED = 2.5;
+
+  let state = 'title';
+  let map = [];
+  let revealed = [];
+  let player = { x: 0, y: 0, dir: 0 };
+  let artifacts = [];
+  let enemies = [];
+  let collectedCount = 0;
+  let escapeShip = null;
+  let particles = [];
+  let message = '';
+  let messageTimer = 0;
+  let hp = 5;
+  let maxHp = 5;
+  let invuln = 0;
+  let gameTime = 0;
+
+  // Joystick state
+  let joyActive = false, joyStartX = 0, joyStartY = 0, joyX = 0, joyY = 0;
+  let interactPressed = false;
+
+  // 0=floor, 1=wall, 2=water, 3=tree
+  function generateMap() {
+    map = [];
+    revealed = [];
+    for (let y = 0; y < MAP_H; y++) {
+      map[y] = [];
+      revealed[y] = [];
+      for (let x = 0; x < MAP_W; x++) {
+        revealed[y][x] = false;
+        // Border walls
+        if (x === 0 || y === 0 || x === MAP_W - 1 || y === MAP_H - 1) {
+          map[y][x] = 1; continue;
+        }
+        const n = Math.random();
+        if (n < 0.15) map[y][x] = 1;       // wall/rock
+        else if (n < 0.22) map[y][x] = 3;   // tree
+        else if (n < 0.27) map[y][x] = 2;   // water
+        else map[y][x] = 0;                  // floor
+      }
+    }
+    // Clear spawn area
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const sx = MAP_W >> 1, sy = MAP_H >> 1;
+        if (map[sy + dy]) map[sy + dy][sx + dx] = 0;
+      }
+    }
+  }
+
+  function isSolid(tx, ty) {
+    if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) return true;
+    return map[ty][tx] === 1 || map[ty][tx] === 3;
+  }
+
+  function placeArtifacts() {
+    artifacts = [];
+    let placed = 0;
+    let attempts = 0;
+    while (placed < TOTAL_ARTIFACTS && attempts < 1000) {
+      attempts++;
+      const ax = 3 + Math.floor(Math.random() * (MAP_W - 6));
+      const ay = 3 + Math.floor(Math.random() * (MAP_H - 6));
+      if (map[ay][ax] !== 0) continue;
+      const dist = Math.abs(ax - MAP_W / 2) + Math.abs(ay - MAP_H / 2);
+      if (dist < 5) continue;
+      artifacts.push({ x: ax * TILE + TILE / 2, y: ay * TILE + TILE / 2, collected: false, type: placed });
+      placed++;
+    }
+  }
+
+  function placeEnemies() {
+    enemies = [];
+    for (let i = 0; i < 15; i++) {
+      let attempts = 0;
+      while (attempts < 100) {
+        attempts++;
+        const ex = 2 + Math.floor(Math.random() * (MAP_W - 4));
+        const ey = 2 + Math.floor(Math.random() * (MAP_H - 4));
+        if (map[ey][ex] !== 0) continue;
+        const dist = Math.abs(ex - MAP_W / 2) + Math.abs(ey - MAP_H / 2);
+        if (dist < 6) continue;
+        enemies.push({
+          x: ex * TILE + TILE / 2, y: ey * TILE + TILE / 2,
+          vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5,
+          timer: Math.random() * 120, type: i % 3
+        });
+        break;
+      }
+    }
+  }
+
+  function init() {
+    generateMap();
+    player.x = (MAP_W >> 1) * TILE + TILE / 2;
+    player.y = (MAP_H >> 1) * TILE + TILE / 2;
+    placeArtifacts();
+    placeEnemies();
+    collectedCount = 0;
+    escapeShip = null;
+    hp = maxHp;
+    invuln = 0;
+    gameTime = 0;
+    particles = [];
+    showMessage('Explore the planet. Find all 6 artifacts.');
+  }
+
+  function showMessage(text) {
+    message = text;
+    messageTimer = 180;
+  }
+
+  // Touch
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (state === 'title') { state = 'playing'; init(); return; }
+    if (state === 'win' || state === 'gameover') { state = 'title'; return; }
+    for (const t of e.changedTouches) {
+      const rect = canvas.getBoundingClientRect();
+      const tx = t.clientX - rect.left;
+      const ty = t.clientY - rect.top;
+      if (tx < W * 0.6) {
+        // Joystick area
+        joyActive = true;
+        joyStartX = tx;
+        joyStartY = ty;
+        joyX = 0; joyY = 0;
+      } else {
+        interactPressed = true;
+      }
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!joyActive) return;
+    for (const t of e.changedTouches) {
+      const rect = canvas.getBoundingClientRect();
+      const tx = t.clientX - rect.left;
+      const ty = t.clientY - rect.top;
+      joyX = tx - joyStartX;
+      joyY = ty - joyStartY;
+      const mag = Math.sqrt(joyX * joyX + joyY * joyY);
+      if (mag > 40) { joyX = joyX / mag * 40; joyY = joyY / mag * 40; }
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    joyActive = false; joyX = 0; joyY = 0;
+    interactPressed = false;
+  }, { passive: false });
+
+  const keys = {};
+  window.addEventListener('keydown', (e) => {
+    keys[e.key] = true;
+    if (state === 'title') { state = 'playing'; init(); }
+    if (state === 'win' || state === 'gameover') state = 'title';
+    if (e.key === 'e' || e.key === ' ') interactPressed = true;
+  });
+  window.addEventListener('keyup', (e) => {
+    keys[e.key] = false;
+    if (e.key === 'e' || e.key === ' ') interactPressed = false;
+  });
+
+  function revealFog() {
+    const ptx = Math.floor(player.x / TILE);
+    const pty = Math.floor(player.y / TILE);
+    for (let dy = -VIEW_RADIUS; dy <= VIEW_RADIUS; dy++) {
+      for (let dx = -VIEW_RADIUS; dx <= VIEW_RADIUS; dx++) {
+        if (dx * dx + dy * dy > VIEW_RADIUS * VIEW_RADIUS) continue;
+        const rx = ptx + dx, ry = pty + dy;
+        if (rx >= 0 && ry >= 0 && rx < MAP_W && ry < MAP_H) {
+          revealed[ry][rx] = true;
+        }
+      }
+    }
+  }
+
+  function update() {
+    if (state !== 'playing') return;
+    gameTime++;
+
+    // Movement
+    let dx = 0, dy = 0;
+    if (joyActive) {
+      const mag = Math.sqrt(joyX * joyX + joyY * joyY);
+      if (mag > 8) { dx = joyX / mag; dy = joyY / mag; }
+    }
+    if (keys['ArrowLeft'] || keys['a']) dx = -1;
+    if (keys['ArrowRight'] || keys['d']) dx = 1;
+    if (keys['ArrowUp'] || keys['w']) dy = -1;
+    if (keys['ArrowDown'] || keys['s']) dy = 1;
+
+    if (dx !== 0 || dy !== 0) {
+      const mag = Math.sqrt(dx * dx + dy * dy) || 1;
+      dx = dx / mag * SPEED;
+      dy = dy / mag * SPEED;
+      player.dir = Math.atan2(dy, dx);
+
+      // Collision X
+      const nx = player.x + dx;
+      const tx1 = Math.floor((nx - 6) / TILE), tx2 = Math.floor((nx + 6) / TILE);
+      const ty1 = Math.floor((player.y - 6) / TILE), ty2 = Math.floor((player.y + 6) / TILE);
+      let blockedX = false;
+      for (let ty = ty1; ty <= ty2; ty++) {
+        for (let tx = tx1; tx <= tx2; tx++) {
+          if (isSolid(tx, ty)) blockedX = true;
+        }
+      }
+      if (!blockedX) player.x = nx;
+
+      // Collision Y
+      const ny = player.y + dy;
+      const tx3 = Math.floor((player.x - 6) / TILE), tx4 = Math.floor((player.x + 6) / TILE);
+      const ty3 = Math.floor((ny - 6) / TILE), ty4 = Math.floor((ny + 6) / TILE);
+      let blockedY = false;
+      for (let ty = ty3; ty <= ty4; ty++) {
+        for (let tx = tx3; tx <= tx4; tx++) {
+          if (isSolid(tx, ty)) blockedY = true;
+        }
+      }
+      if (!blockedY) player.y = ny;
+    }
+
+    revealFog();
+
+    // Artifact collection
+    for (const a of artifacts) {
+      if (a.collected) continue;
+      const adist = Math.abs(player.x - a.x) + Math.abs(player.y - a.y);
+      if (adist < 20) {
+        a.collected = true;
+        collectedCount++;
+        for (let i = 0; i < 15; i++) {
+          particles.push({
+            x: a.x, y: a.y,
+            vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+            life: 30 + Math.random() * 20, color: '#a78bfa'
+          });
+        }
+        if (collectedCount >= TOTAL_ARTIFACTS) {
+          showMessage('All artifacts found! Return to the ship!');
+          // Place escape ship at spawn
+          escapeShip = { x: (MAP_W >> 1) * TILE + TILE / 2, y: (MAP_H >> 1) * TILE + TILE / 2 };
+        } else {
+          showMessage(`Artifact ${collectedCount}/${TOTAL_ARTIFACTS} collected!`);
+        }
+      }
+    }
+
+    // Escape ship
+    if (escapeShip) {
+      const sdist = Math.abs(player.x - escapeShip.x) + Math.abs(player.y - escapeShip.y);
+      if (sdist < 24) {
+        state = 'win';
+      }
+    }
+
+    // Enemies
+    if (invuln > 0) invuln--;
+    for (const en of enemies) {
+      en.timer--;
+      if (en.timer <= 0) {
+        en.timer = 60 + Math.random() * 120;
+        en.vx = (Math.random() - 0.5) * 2;
+        en.vy = (Math.random() - 0.5) * 2;
+      }
+      // Chase if close
+      const edx = player.x - en.x, edy = player.y - en.y;
+      const edist = Math.sqrt(edx * edx + edy * edy);
+      if (edist < TILE * 5 && edist > 0) {
+        en.vx = edx / edist * 1.2;
+        en.vy = edy / edist * 1.2;
+      }
+
+      const enx = en.x + en.vx;
+      const etx = Math.floor(enx / TILE), ety = Math.floor(en.y / TILE);
+      if (!isSolid(etx, ety)) en.x = enx;
+      const eny = en.y + en.vy;
+      const etx2 = Math.floor(en.x / TILE), ety2 = Math.floor(eny / TILE);
+      if (!isSolid(etx2, ety2)) en.y = eny;
+
+      // Damage player
+      if (invuln <= 0 && edist < 14) {
+        hp--;
+        invuln = 60;
+        showMessage('Hit! Be careful!');
+        if (hp <= 0) {
+          state = 'gameover';
+        }
+      }
+    }
+
+    // Particles
+    particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.life--; return p.life > 0; });
+    if (messageTimer > 0) messageTimer--;
+  }
+
+  const TILE_COLORS = ['#1a2a1a', '#444', '#2244aa', '#225522'];
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    if (state === 'title') {
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = 'bold 28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('PLANET ZOLDATH', W / 2, H / 2 - 40);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '14px system-ui';
+      ctx.fillText('Explore an alien world', W / 2, H / 2);
+      ctx.fillText('Find all 6 artifacts to escape', W / 2, H / 2 + 25);
+      ctx.fillText('Joystick left side · Interact right side', W / 2, H / 2 + 55);
+      ctx.fillText('Tap to start', W / 2, H / 2 + 90);
+      return;
+    }
+
+    if (state === 'win') {
+      ctx.fillStyle = '#44ff44';
+      ctx.font = 'bold 28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('ESCAPED!', W / 2, H / 2 - 30);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '16px system-ui';
+      ctx.fillText(`Time: ${Math.floor(gameTime / 60)}s`, W / 2, H / 2 + 10);
+      ctx.fillText(`HP remaining: ${hp}/${maxHp}`, W / 2, H / 2 + 40);
+      ctx.fillText('Tap to play again', W / 2, H / 2 + 80);
+      return;
+    }
+
+    if (state === 'gameover') {
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('PERISHED', W / 2, H / 2 - 30);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '16px system-ui';
+      ctx.fillText(`Artifacts: ${collectedCount}/${TOTAL_ARTIFACTS}`, W / 2, H / 2 + 10);
+      ctx.fillText('The planet claims another explorer...', W / 2, H / 2 + 40);
+      ctx.fillText('Tap to retry', W / 2, H / 2 + 80);
+      return;
+    }
+
+    // Camera
+    const camX = player.x - W / 2;
+    const camY = player.y - H / 2;
+
+    // Draw map
+    const startTX = Math.max(0, Math.floor(camX / TILE));
+    const startTY = Math.max(0, Math.floor(camY / TILE));
+    const endTX = Math.min(MAP_W, Math.ceil((camX + W) / TILE) + 1);
+    const endTY = Math.min(MAP_H, Math.ceil((camY + H) / TILE) + 1);
+
+    for (let ty = startTY; ty < endTY; ty++) {
+      for (let tx = startTX; tx < endTX; tx++) {
+        const sx = tx * TILE - camX;
+        const sy = ty * TILE - camY;
+        if (!revealed[ty][tx]) {
+          ctx.fillStyle = '#0a0a0a';
+          ctx.fillRect(sx, sy, TILE + 1, TILE + 1);
+          continue;
+        }
+        const tile = map[ty][tx];
+        ctx.fillStyle = TILE_COLORS[tile];
+        ctx.fillRect(sx, sy, TILE + 1, TILE + 1);
+        if (tile === 1) {
+          ctx.fillStyle = '#555';
+          ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
+        }
+        if (tile === 3) {
+          ctx.fillStyle = '#114411';
+          ctx.beginPath();
+          ctx.arc(sx + TILE / 2, sy + TILE / 2 - 2, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#553311';
+          ctx.fillRect(sx + TILE / 2 - 2, sy + TILE / 2 + 4, 4, 6);
+        }
+        if (tile === 2) {
+          ctx.fillStyle = '#1133aa';
+          ctx.globalAlpha = 0.3 + 0.1 * Math.sin(gameTime * 0.05 + tx + ty);
+          ctx.fillRect(sx, sy, TILE, TILE);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+
+    // Fog of war edges - darken partially revealed areas
+    const ptx = Math.floor(player.x / TILE);
+    const pty = Math.floor(player.y / TILE);
+    for (let ty = startTY; ty < endTY; ty++) {
+      for (let tx = startTX; tx < endTX; tx++) {
+        if (!revealed[ty][tx]) continue;
+        const dx = tx - ptx, dy = ty - pty;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > VIEW_RADIUS - 1) {
+          const alpha = Math.min(0.6, (dist - VIEW_RADIUS + 2) * 0.3);
+          ctx.fillStyle = `rgba(10,10,10,${alpha})`;
+          ctx.fillRect(tx * TILE - camX, ty * TILE - camY, TILE + 1, TILE + 1);
+        }
+      }
+    }
+
+    // Artifacts
+    for (const a of artifacts) {
+      if (a.collected) continue;
+      const atx = Math.floor(a.x / TILE), aty = Math.floor(a.y / TILE);
+      if (!revealed[aty] || !revealed[aty][atx]) continue;
+      const sx = a.x - camX, sy = a.y - camY;
+      const bob = Math.sin(gameTime * 0.08 + a.type) * 3;
+      ctx.fillStyle = '#a78bfa';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - 8 + bob);
+      ctx.lineTo(sx - 6, sy + bob);
+      ctx.lineTo(sx, sy + 4 + bob);
+      ctx.lineTo(sx + 6, sy + bob);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(gameTime * 0.1);
+      ctx.beginPath();
+      ctx.arc(sx, sy + bob, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Escape ship
+    if (escapeShip) {
+      const sx = escapeShip.x - camX, sy = escapeShip.y - camY;
+      ctx.fillStyle = '#44ff44';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - 16);
+      ctx.lineTo(sx - 12, sy + 8);
+      ctx.lineTo(sx + 12, sy + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#88ffaa';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('SHIP', sx, sy + 20);
+    }
+
+    // Enemies
+    for (const en of enemies) {
+      const etx = Math.floor(en.x / TILE), ety = Math.floor(en.y / TILE);
+      if (!revealed[ety] || !revealed[ety][etx]) continue;
+      const edx = en.x - player.x, edy = en.y - player.y;
+      const edist = Math.sqrt(edx * edx + edy * edy);
+      if (edist > VIEW_RADIUS * TILE) continue;
+      const sx = en.x - camX, sy = en.y - camY;
+      const colors = ['#ff4444', '#ff8844', '#ff44aa'];
+      ctx.fillStyle = colors[en.type];
+      ctx.beginPath();
+      ctx.arc(sx, sy, 7, 0, Math.PI * 2);
+      ctx.fill();
+      // Eyes
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(sx - 4, sy - 3, 3, 3);
+      ctx.fillRect(sx + 1, sy - 3, 3, 3);
+    }
+
+    // Player
+    const px = player.x - camX, py = player.y - camY;
+    if (invuln <= 0 || Math.floor(invuln / 3) % 2 === 0) {
+      ctx.fillStyle = '#a78bfa';
+      ctx.beginPath();
+      ctx.arc(px, py, 8, 0, Math.PI * 2);
+      ctx.fill();
+      // Direction indicator
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(px + Math.cos(player.dir) * 5, py + Math.sin(player.dir) * 5, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Particles
+    for (const p of particles) {
+      ctx.globalAlpha = p.life / 50;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - camX - 2, p.y - camY - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    // HUD
+    ctx.fillStyle = 'rgba(15,15,26,0.7)';
+    ctx.fillRect(0, 0, W, 36);
+
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 13px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Artifacts: ${collectedCount}/${TOTAL_ARTIFACTS}`, 10, 15);
+
+    // HP
+    for (let i = 0; i < maxHp; i++) {
+      ctx.fillStyle = i < hp ? '#ff4466' : '#333';
+      ctx.fillRect(10 + i * 16, 22, 10, 8);
+    }
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '12px system-ui';
+    ctx.fillText(`${Math.floor(gameTime / 60)}s`, W - 10, 15);
+
+    // Minimap
+    const mmSize = 70;
+    const mmX = W - mmSize - 8, mmY = 42;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(mmX, mmY, mmSize, mmSize);
+    ctx.strokeStyle = '#3b3b5c';
+    ctx.strokeRect(mmX, mmY, mmSize, mmSize);
+    const mmScale = mmSize / MAP_W;
+    for (let ty = 0; ty < MAP_H; ty++) {
+      for (let tx = 0; tx < MAP_W; tx++) {
+        if (!revealed[ty][tx]) continue;
+        const c = TILE_COLORS[map[ty][tx]];
+        ctx.fillStyle = c;
+        ctx.fillRect(mmX + tx * mmScale, mmY + ty * mmScale, mmScale + 0.5, mmScale + 0.5);
+      }
+    }
+    // Player on minimap
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillRect(mmX + (player.x / TILE) * mmScale - 1, mmY + (player.y / TILE) * mmScale - 1, 3, 3);
+    // Artifacts on minimap
+    for (const a of artifacts) {
+      if (a.collected) continue;
+      const atx = Math.floor(a.x / TILE), aty = Math.floor(a.y / TILE);
+      if (!revealed[aty] || !revealed[aty][atx]) continue;
+      ctx.fillStyle = '#ffff44';
+      ctx.fillRect(mmX + atx * mmScale, mmY + aty * mmScale, 2, 2);
+    }
+
+    // Message
+    if (messageTimer > 0) {
+      ctx.globalAlpha = Math.min(1, messageTimer / 30);
+      ctx.fillStyle = 'rgba(15,15,26,0.8)';
+      ctx.fillRect(0, H - 40, W, 40);
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = '14px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(message, W / 2, H - 16);
+      ctx.globalAlpha = 1;
+    }
+
+    // Joystick visual
+    if (joyActive) {
+      ctx.globalAlpha = 0.3;
+      ctx.strokeStyle = '#a78bfa';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(joyStartX, joyStartY, 40, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#a78bfa';
+      ctx.beginPath();
+      ctx.arc(joyStartX + joyX, joyStartY + joyY, 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

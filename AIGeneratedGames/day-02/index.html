@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 02 – Story Points</title>
+  <!-- 🎮 -->
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f1117;
+      color: #e0e0e8;
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: #161822;
+      border-bottom: 1px solid #2a2d3a;
+      flex-shrink: 0;
+    }
+
+    .top-bar .round { font-size: 0.9rem; color: #9ca3af; }
+    .top-bar .round span { color: #a78bfa; font-weight: 700; }
+    .top-bar .score { font-size: 1.1rem; font-weight: 700; color: #10b981; }
+    .top-bar .streak { font-size: 0.9rem; color: #f59e0b; }
+
+    /* Task Card */
+    .task-area {
+      flex-shrink: 0;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .task-card {
+      background: linear-gradient(135deg, #1e2030, #252840);
+      border: 1px solid #3b3f54;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .task-card h2 {
+      font-size: 1rem;
+      color: #c4b5fd;
+      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+
+    .task-card p {
+      font-size: 0.85rem;
+      color: #9ca3af;
+      line-height: 1.4;
+    }
+
+    /* Dev Section */
+    .devs-area {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      flex-wrap: wrap;
+    }
+
+    .dev-slot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dev-avatar {
+      font-size: 1.6rem;
+      line-height: 1;
+    }
+
+    .dev-name {
+      font-size: 0.7rem;
+      color: #9ca3af;
+    }
+
+    .dev-card-wrapper {
+      width: 52px;
+      height: 68px;
+      perspective: 600px;
+    }
+
+    .dev-card {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.5s ease;
+      cursor: default;
+    }
+
+    .dev-card.flipped {
+      transform: rotateY(180deg);
+    }
+
+    .dev-card-face {
+      position: absolute;
+      inset: 0;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      font-weight: 700;
+    }
+
+    .dev-card-back {
+      background: linear-gradient(135deg, #3b3f54, #4a4f6a);
+      border: 2px solid #5b5f7a;
+      font-size: 1.2rem;
+      color: #6b7280;
+    }
+
+    .dev-card-front {
+      background: #1a1d2e;
+      border: 2px solid #a78bfa;
+      transform: rotateY(180deg);
+      font-size: 1.4rem;
+      color: #e0e0e8;
+    }
+
+    .dev-card-front.outlier-high {
+      border-color: #ef4444;
+      color: #fca5a5;
+    }
+
+    .dev-card-front.outlier-low {
+      border-color: #3b82f6;
+      color: #93c5fd;
+    }
+
+    /* Average + Score Display */
+    .result-area {
+      flex-shrink: 0;
+      text-align: center;
+      padding: 8px 16px;
+      min-height: 70px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .team-avg {
+      font-size: 1.1rem;
+      color: #a78bfa;
+      font-weight: 700;
+    }
+
+    .score-delta {
+      font-size: 1.3rem;
+      font-weight: 700;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .score-delta.show { opacity: 1; }
+    .score-delta.scored { color: #10b981; }
+    .score-delta.missed { color: #6b7280; }
+
+    .multiplier-info {
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    /* Player Cards */
+    .player-area {
+      flex-shrink: 0;
+      padding: 12px 8px 20px;
+      background: #161822;
+      border-top: 1px solid #2a2d3a;
+    }
+
+    .fib-cards {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding: 4px 8px;
+    }
+
+    .fib-card {
+      min-width: 44px;
+      height: 60px;
+      border-radius: 10px;
+      border: 2px solid #3b3f54;
+      background: #1e2030;
+      color: #e0e0e8;
+      font-size: 1.2rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .fib-card:active { transform: scale(0.95); }
+    .fib-card.selected {
+      border-color: #a78bfa;
+      background: #2d2055;
+      color: #c4b5fd;
+      box-shadow: 0 0 12px rgba(167, 139, 250, 0.3);
+    }
+
+    .fib-card.disabled {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    /* Action Buttons */
+    .action-btn {
+      display: none;
+      margin: 10px auto 0;
+      padding: 12px 32px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .action-btn.show { display: block; }
+
+    .reveal-btn {
+      background: #a78bfa;
+      color: #0f1117;
+    }
+
+    .next-btn {
+      background: #10b981;
+      color: #0f1117;
+    }
+
+    .action-btn:active { transform: scale(0.97); }
+
+    /* End Screen */
+    .end-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .end-screen.show { display: flex; }
+    .game-area.hidden { display: none !important; }
+
+    .end-screen h1 {
+      font-size: 1.5rem;
+      color: #a78bfa;
+      margin-bottom: 8px;
+    }
+
+    .final-score {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #10b981;
+      margin-bottom: 4px;
+    }
+
+    .best-streak {
+      font-size: 0.95rem;
+      color: #f59e0b;
+      margin-bottom: 16px;
+    }
+
+    .summary-table {
+      width: 100%;
+      max-width: 420px;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      margin-bottom: 20px;
+    }
+
+    .summary-table th {
+      color: #9ca3af;
+      padding: 6px 8px;
+      border-bottom: 1px solid #2a2d3a;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    .summary-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #1e2030;
+    }
+
+    .summary-table .pts-cell { color: #10b981; font-weight: 600; }
+    .summary-table .miss-cell { color: #6b7280; }
+
+    .restart-btn {
+      padding: 14px 40px;
+      border: none;
+      border-radius: 10px;
+      background: #a78bfa;
+      color: #0f1117;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+
+    .restart-btn:active { transform: scale(0.97); }
+
+    /* Back link */
+    .back-link {
+      position: absolute;
+      top: 12px;
+      left: 16px;
+      color: #6b7280;
+      text-decoration: none;
+      font-size: 0.85rem;
+      z-index: 10;
+    }
+    .back-link:hover { color: #a78bfa; }
+</style>
+</head>
+<body>
+
+  <!-- Game Area -->
+  <div class="game-area" id="gameArea">
+    <div class="top-bar">
+      <div class="round">Round <span id="roundNum">1</span>/8</div>
+      <div class="score" id="totalScore">0</div>
+      <div class="streak" id="streakDisplay"></div>
+    </div>
+
+    <div class="task-area">
+      <div class="task-card">
+        <h2 id="taskTitle">Loading...</h2>
+        <p id="taskDesc"></p>
+      </div>
+    </div>
+
+    <div class="devs-area" id="devsArea"></div>
+
+    <div class="result-area" id="resultArea">
+      <div class="team-avg" id="teamAvg"></div>
+      <div class="score-delta" id="scoreDelta"></div>
+      <div class="multiplier-info" id="multInfo"></div>
+    </div>
+
+    <div class="player-area">
+      <div class="fib-cards" id="fibCards"></div>
+      <button class="action-btn reveal-btn" id="revealBtn" onclick="revealCards()">Reveal Cards</button>
+      <button class="action-btn next-btn" id="nextBtn" onclick="nextRound()">Next Round →</button>
+    </div>
+  </div>
+
+  <!-- End Screen -->
+  <div class="end-screen" id="endScreen">
+    <h1>Sprint Complete!</h1>
+    <div class="final-score" id="finalScore">0</div>
+    <div class="best-streak" id="bestStreak"></div>
+    <table class="summary-table">
+      <thead>
+        <tr><th>#</th><th>Task</th><th>You</th><th>Avg</th><th>Pts</th></tr>
+      </thead>
+      <tbody id="summaryBody"></tbody>
+    </table>
+    <button class="restart-btn" onclick="startGame()">Play Again</button>
+  </div>
+
+  <script>
+    const FIB = [1, 2, 3, 5, 8, 13, 21];
+
+    const DEVS = [
+      { name: 'Chad',  emoji: '🧢', role: 'Junior',  bias: -0.35 },
+      { name: 'Priya', emoji: '🧠', role: 'Senior',  bias: 0.15  },
+      { name: 'Marcus',emoji: '😤', role: 'Skeptic', bias: 0.4   },
+      { name: 'Lin',   emoji: '📋', role: 'PM-dev',  bias: 0.0   }
+    ];
+
+    const TASKS = [
+      { title: "Fix typo in footer", desc: "One word misspelled on the marketing homepage footer.", avgVote: 1, variance: 0.1 },
+      { title: "Update copyright year", desc: "Change 2025 to 2026 across all pages.", avgVote: 1, variance: 0.15 },
+      { title: "Add alt text to logo", desc: "Accessibility fix — add descriptive alt to the main logo.", avgVote: 1, variance: 0.2 },
+      { title: "Change button color on landing page", desc: "Swap the CTA from blue to the new brand green.", avgVote: 2, variance: 0.2 },
+      { title: "Add loading spinner to dashboard", desc: "Show a spinner while data fetches on the main dashboard.", avgVote: 3, variance: 0.25 },
+      { title: "Fix date picker timezone bug", desc: "Users in UTC-8 see wrong date after midnight.", avgVote: 5, variance: 0.3 },
+      { title: "Implement dark mode toggle", desc: "Add a toggle to switch between light and dark themes.", avgVote: 5, variance: 0.35 },
+      { title: "Add CSV export to reports", desc: "Let users download report data as a .csv file.", avgVote: 5, variance: 0.3 },
+      { title: "Migrate auth service to OAuth 2.0", desc: "Replace custom auth with OAuth 2.0 provider integration.", avgVote: 13, variance: 0.5 },
+      { title: "Implement real-time notifications", desc: "WebSocket-based push notifications for user events.", avgVote: 8, variance: 0.4 },
+      { title: "Build user onboarding wizard", desc: "Multi-step setup flow for new users with progress indicator.", avgVote: 8, variance: 0.35 },
+      { title: "Add two-factor authentication", desc: "TOTP-based 2FA with QR code enrollment and backup codes.", avgVote: 8, variance: 0.4 },
+      { title: "Redesign settings page", desc: "Full overhaul of the settings UI to match the new design system.", avgVote: 8, variance: 0.45 },
+      { title: "Refactor legacy monolith into services", desc: "Break the billing module out of the monolith into a microservice.", avgVote: 21, variance: 0.6 },
+      { title: "GDPR data deletion pipeline", desc: "Automated pipeline to purge user data across all stores on request.", avgVote: 13, variance: 0.5 },
+      { title: "Build CI/CD pipeline from scratch", desc: "Set up automated testing, building, and deployment for the repo.", avgVote: 13, variance: 0.45 },
+      // Trap tasks: sound simple, average high
+      { title: "Update the README", desc: "The README is 4 years old and references deprecated APIs and a dead Slack channel.", avgVote: 8, variance: 0.6 },
+      { title: "Add a search bar", desc: "Full-text search across 2M documents with autocomplete and filters.", avgVote: 13, variance: 0.55 },
+      { title: "Fix the flaky test", desc: "One integration test fails ~20% of CI runs. Involves race conditions in the event bus.", avgVote: 8, variance: 0.5 },
+      { title: "Migrate database to new schema", desc: "Rename and restructure 30 tables while maintaining backwards compat.", avgVote: 21, variance: 0.55 }
+    ];
+
+    // Game state
+    let currentRound, totalScore, streak, bestStreak, playerChoice;
+    let roundTasks, roundHistory, devVotes, revealed;
+
+    // Simple seeded random
+    function seededRand(seed) {
+      let s = seed;
+      return function() {
+        s = (s * 16807 + 0) % 2147483647;
+        return (s - 1) / 2147483646;
+      };
+    }
+
+    function hashStr(str) {
+      let h = 5381;
+      for (let i = 0; i < str.length; i++) {
+        h = ((h << 5) + h + str.charCodeAt(i)) & 0x7fffffff;
+      }
+      return h;
+    }
+
+    function nearestFib(val) {
+      let best = FIB[0], bestDist = Math.abs(val - FIB[0]);
+      for (let i = 1; i < FIB.length; i++) {
+        const d = Math.abs(val - FIB[i]);
+        if (d < bestDist) { bestDist = d; best = FIB[i]; }
+      }
+      return best;
+    }
+
+    function fibIndex(val) {
+      return FIB.indexOf(val);
+    }
+
+    function fibDistance(a, b) {
+      return Math.abs(fibIndex(a) - fibIndex(b));
+    }
+
+    function computeDevVotes(task) {
+      const votes = [];
+      const seed = hashStr(task.title);
+      DEVS.forEach((dev, i) => {
+        const rng = seededRand(seed + i * 7919);
+        let personalityFactor = dev.bias;
+        // Lin is wildcard: add extra randomness
+        if (dev.name === 'Lin') {
+          personalityFactor += (rng() - 0.5) * 1.2;
+        }
+        const offset = task.variance * personalityFactor * task.avgVote;
+        // Add some rng-based jitter
+        const jitter = (rng() - 0.5) * task.variance * task.avgVote * 0.5;
+        const raw = task.avgVote + offset + jitter;
+        votes.push(nearestFib(Math.max(1, raw)));
+      });
+      return votes;
+    }
+
+    function computeTeamAvg(votes) {
+      const sum = votes.reduce((a, b) => a + b, 0);
+      return sum / votes.length;
+    }
+
+    function scoreRound(playerVote, teamAvg) {
+      const avgFib = nearestFib(teamAvg);
+      const dist = fibDistance(playerVote, avgFib);
+      if (dist === 0) return 500;
+      if (dist === 1) return 300;
+      if (dist === 2) return 100;
+      return 0;
+    }
+
+    function getMultiplier() {
+      if (streak >= 4) return 3;
+      if (streak >= 3) return 2;
+      if (streak >= 2) return 1.5;
+      return 1;
+    }
+
+    function shuffle(arr) {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    // Render
+    function renderFibCards() {
+      const container = document.getElementById('fibCards');
+      container.innerHTML = '';
+      FIB.forEach(val => {
+        const card = document.createElement('button');
+        card.className = 'fib-card';
+        card.textContent = val;
+        if (revealed) card.classList.add('disabled');
+        if (playerChoice === val) card.classList.add('selected');
+        if (playerChoice !== null && playerChoice !== val && !revealed) card.classList.add('disabled');
+        card.onclick = () => selectCard(val);
+        container.appendChild(card);
+      });
+    }
+
+    function renderDevs() {
+      const container = document.getElementById('devsArea');
+      container.innerHTML = '';
+      DEVS.forEach((dev, i) => {
+        const slot = document.createElement('div');
+        slot.className = 'dev-slot';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'dev-avatar';
+        avatar.textContent = dev.emoji;
+
+        const name = document.createElement('div');
+        name.className = 'dev-name';
+        name.textContent = dev.name;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'dev-card-wrapper';
+
+        const card = document.createElement('div');
+        card.className = 'dev-card';
+        card.id = `devCard${i}`;
+
+        const back = document.createElement('div');
+        back.className = 'dev-card-face dev-card-back';
+        back.textContent = '?';
+
+        const front = document.createElement('div');
+        front.className = 'dev-card-face dev-card-front';
+        front.id = `devFront${i}`;
+        front.textContent = '';
+
+        card.appendChild(back);
+        card.appendChild(front);
+        wrapper.appendChild(card);
+
+        slot.appendChild(avatar);
+        slot.appendChild(name);
+        slot.appendChild(wrapper);
+        container.appendChild(slot);
+      });
+    }
+
+    function renderRound() {
+      const task = roundTasks[currentRound];
+      document.getElementById('roundNum').textContent = currentRound + 1;
+      document.getElementById('taskTitle').textContent = task.title;
+      document.getElementById('taskDesc').textContent = task.desc;
+      document.getElementById('totalScore').textContent = totalScore;
+
+      const streakEl = document.getElementById('streakDisplay');
+      if (streak > 0) {
+        const mult = getMultiplier();
+        streakEl.textContent = '🔥'.repeat(Math.min(streak, 4)) + (mult > 1 ? ` ×${mult}` : '');
+      } else {
+        streakEl.textContent = '';
+      }
+
+      // Reset result area
+      document.getElementById('teamAvg').textContent = '';
+      document.getElementById('scoreDelta').className = 'score-delta';
+      document.getElementById('scoreDelta').textContent = '';
+      document.getElementById('multInfo').textContent = '';
+
+      // Reset buttons
+      document.getElementById('revealBtn').classList.remove('show');
+      document.getElementById('nextBtn').classList.remove('show');
+
+      playerChoice = null;
+      revealed = false;
+      devVotes = computeDevVotes(task);
+
+      renderDevs();
+      renderFibCards();
+    }
+
+    function selectCard(val) {
+      if (revealed || playerChoice !== null) return;
+      playerChoice = val;
+      renderFibCards();
+      document.getElementById('revealBtn').classList.add('show');
+    }
+
+    function revealCards() {
+      if (revealed || playerChoice === null) return;
+      revealed = true;
+      renderFibCards();
+      document.getElementById('revealBtn').classList.remove('show');
+
+      const task = roundTasks[currentRound];
+
+      // Find outliers
+      const maxVote = Math.max(...devVotes);
+      const minVote = Math.min(...devVotes);
+
+      // Staggered flip
+      DEVS.forEach((dev, i) => {
+        setTimeout(() => {
+          const front = document.getElementById(`devFront${i}`);
+          front.textContent = devVotes[i];
+          if (devVotes[i] === maxVote && maxVote !== minVote) front.classList.add('outlier-high');
+          if (devVotes[i] === minVote && maxVote !== minVote) front.classList.add('outlier-low');
+          document.getElementById(`devCard${i}`).classList.add('flipped');
+        }, 150 * i);
+      });
+
+      // After all flipped, show results
+      setTimeout(() => {
+        const avg = computeTeamAvg(devVotes);
+        const avgFib = nearestFib(avg);
+        document.getElementById('teamAvg').textContent = `Team avg: ${avg.toFixed(1)} → ${avgFib}`;
+
+        const base = scoreRound(playerChoice, avg);
+        const mult = getMultiplier();
+        const pts = Math.round(base * mult);
+
+        const deltaEl = document.getElementById('scoreDelta');
+        if (base > 0) {
+          deltaEl.textContent = `+${pts}`;
+          deltaEl.className = 'score-delta show scored';
+          streak++;
+          if (streak > bestStreak) bestStreak = streak;
+        } else {
+          deltaEl.textContent = '+0';
+          deltaEl.className = 'score-delta show missed';
+          streak = 0;
+        }
+
+        if (mult > 1 && base > 0) {
+          document.getElementById('multInfo').textContent = `${base} × ${mult} streak bonus`;
+        }
+
+        totalScore += pts;
+        document.getElementById('totalScore').textContent = totalScore;
+
+        // Update streak display
+        const streakEl = document.getElementById('streakDisplay');
+        if (streak > 0) {
+          const newMult = getMultiplier();
+          streakEl.textContent = '🔥'.repeat(Math.min(streak, 4)) + (newMult > 1 ? ` ×${newMult}` : '');
+        } else {
+          streakEl.textContent = '';
+        }
+
+        roundHistory.push({
+          task: task.title,
+          playerVote: playerChoice,
+          teamAvg: avg,
+          avgFib: avgFib,
+          points: pts
+        });
+
+        if (currentRound < 7) {
+          document.getElementById('nextBtn').classList.add('show');
+        } else {
+          setTimeout(showEndScreen, 800);
+        }
+      }, 150 * 4 + 300);
+    }
+
+    function nextRound() {
+      currentRound++;
+      renderRound();
+    }
+
+    function showEndScreen() {
+      document.getElementById('gameArea').classList.add('hidden');
+      const end = document.getElementById('endScreen');
+      end.classList.add('show');
+
+      document.getElementById('finalScore').textContent = totalScore;
+      document.getElementById('bestStreak').textContent = `Best streak: ${'🔥'.repeat(Math.min(bestStreak, 4))} (${bestStreak} in a row)`;
+
+      const tbody = document.getElementById('summaryBody');
+      tbody.innerHTML = '';
+      roundHistory.forEach((r, i) => {
+        const tr = document.createElement('tr');
+        const ptsCls = r.points > 0 ? 'pts-cell' : 'miss-cell';
+        tr.innerHTML = `
+          <td>${i + 1}</td>
+          <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.task}</td>
+          <td>${r.playerVote}</td>
+          <td>${r.avgFib}</td>
+          <td class="${ptsCls}">${r.points > 0 ? '+' + r.points : '0'}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function startGame() {
+      currentRound = 0;
+      totalScore = 0;
+      streak = 0;
+      bestStreak = 0;
+      playerChoice = null;
+      revealed = false;
+      roundHistory = [];
+      roundTasks = shuffle(TASKS).slice(0, 8);
+
+      document.getElementById('endScreen').classList.remove('show');
+      document.getElementById('gameArea').classList.remove('hidden');
+      renderRound();
+    }
+
+    startGame();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blitz Breakout</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 14px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+.crt-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 3px);
+}
+</style>
+</head>
+<body>
+<div class="crt-overlay"></div>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 700;
+canvas.width = W; canvas.height = H;
+
+let state = 'title'; // title, playing, paused, gameover, win
+let score = 0, lives = 3, level = 1, combo = 0;
+let paddle, balls, bricks, powerups, particles;
+
+const BRICK_ROWS = 6, BRICK_COLS = 10;
+const BRICK_W = 54, BRICK_H = 20, BRICK_PAD = 2, BRICK_TOP = 80;
+const BRICK_LEFT = (W - BRICK_COLS * (BRICK_W + BRICK_PAD)) / 2;
+
+const COLORS = {
+  QB: { fill: '#ff4444', glow: '#ff0000', label: 'QB', pts: 50 },
+  WR: { fill: '#4488ff', glow: '#0044ff', label: 'WR', pts: 30 },
+  RB: { fill: '#44cc44', glow: '#00aa00', label: 'RB', pts: 20 },
+  OL: { fill: '#cccc44', glow: '#aaaa00', label: 'OL', pts: 10 },
+};
+const POS_LIST = ['OL','OL','RB','WR','WR','QB'];
+
+function initGame() {
+  paddle = { x: W/2, y: H - 50, w: 100, h: 14, speed: 8, wide: 0, color: '#a78bfa' };
+  balls = [makeBall()];
+  bricks = [];
+  powerups = [];
+  particles = [];
+  score = 0; lives = 3; combo = 0;
+  generateBricks();
+}
+
+function makeBall(x, y) {
+  return { x: x || W/2, y: y || H - 80, dx: 3 * (Math.random() > 0.5 ? 1 : -1), dy: -4, r: 8, speed: 4, fireball: 0, stuck: !x };
+}
+
+function generateBricks() {
+  bricks = [];
+  for (let r = 0; r < BRICK_ROWS; r++) {
+    for (let c = 0; c < BRICK_COLS; c++) {
+      let posIdx = Math.min(r, POS_LIST.length - 1);
+      let pos = POS_LIST[posIdx];
+      if (r < 2 && c >= 3 && c <= 6) pos = 'QB';
+      else if (r < 3 && (c < 2 || c > 7)) pos = 'WR';
+      let info = COLORS[pos];
+      bricks.push({
+        x: BRICK_LEFT + c * (BRICK_W + BRICK_PAD),
+        y: BRICK_TOP + r * (BRICK_H + BRICK_PAD),
+        w: BRICK_W, h: BRICK_H,
+        pos, color: info.fill, glow: info.glow, pts: info.pts,
+        hits: pos === 'QB' ? 2 : 1, alive: true
+      });
+    }
+  }
+}
+
+function spawnPowerup(x, y) {
+  if (Math.random() > 0.2) return;
+  const types = ['wide', 'multi', 'fire'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const colors = { wide: '#a78bfa', multi: '#ff8844', fire: '#ff4444' };
+  const labels = { wide: 'ZONE', multi: 'BLITZ', fire: 'SACK' };
+  powerups.push({ x, y, w: 40, h: 16, dy: 2, type, color: colors[type], label: labels[type] });
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, dx: (Math.random() - 0.5) * 6, dy: (Math.random() - 0.5) * 6,
+      life: 30 + Math.random() * 20, color, r: 2 + Math.random() * 3
+    });
+  }
+}
+
+let keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') e.preventDefault();
+  if (state === 'title' && e.key === ' ') { state = 'playing'; initGame(); }
+  if (state === 'gameover' && e.key === ' ') { state = 'title'; }
+  if (state === 'win' && e.key === ' ') { state = 'title'; }
+  if (state === 'playing' && e.key === ' ') {
+    balls.forEach(b => { if (b.stuck) b.stuck = false; });
+  }
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// Mouse/touch paddle control
+canvas.addEventListener('mousemove', e => {
+  if (state === 'playing') {
+    const rect = canvas.getBoundingClientRect();
+    paddle.x = (e.clientX - rect.left) * (W / rect.width);
+  }
+});
+
+function update() {
+  if (state !== 'playing') return;
+
+  // Paddle movement
+  if (keys['ArrowLeft']) paddle.x -= paddle.speed;
+  if (keys['ArrowRight']) paddle.x += paddle.speed;
+  let pw = paddle.wide > 0 ? paddle.w * 1.5 : paddle.w;
+  paddle.x = Math.max(pw/2, Math.min(W - pw/2, paddle.x));
+  if (paddle.wide > 0) paddle.wide--;
+
+  // Balls
+  for (let i = balls.length - 1; i >= 0; i--) {
+    let b = balls[i];
+    if (b.stuck) { b.x = paddle.x; continue; }
+    b.x += b.dx;
+    b.y += b.dy;
+    if (b.fireball > 0) b.fireball--;
+
+    // Wall collisions
+    if (b.x - b.r < 0) { b.x = b.r; b.dx = Math.abs(b.dx); }
+    if (b.x + b.r > W) { b.x = W - b.r; b.dx = -Math.abs(b.dx); }
+    if (b.y - b.r < 0) { b.y = b.r; b.dy = Math.abs(b.dy); }
+
+    // Paddle collision
+    let halfPW = pw / 2;
+    if (b.dy > 0 && b.y + b.r >= paddle.y && b.y + b.r <= paddle.y + paddle.h + 5 &&
+        b.x >= paddle.x - halfPW && b.x <= paddle.x + halfPW) {
+      b.dy = -Math.abs(b.dy);
+      let offset = (b.x - paddle.x) / halfPW;
+      b.dx = offset * 5;
+      let speed = Math.sqrt(b.dx * b.dx + b.dy * b.dy);
+      let targetSpeed = Math.min(6, b.speed + combo * 0.02);
+      b.dx = (b.dx / speed) * targetSpeed;
+      b.dy = (b.dy / speed) * targetSpeed;
+      combo = 0;
+      spawnParticles(b.x, b.y, '#a78bfa', 5);
+    }
+
+    // Bottom - lose ball
+    if (b.y > H + 20) {
+      balls.splice(i, 1);
+      if (balls.length === 0) {
+        lives--;
+        combo = 0;
+        if (lives <= 0) { state = 'gameover'; }
+        else { balls.push(makeBall()); }
+      }
+      continue;
+    }
+
+    // Brick collision
+    for (let br of bricks) {
+      if (!br.alive) continue;
+      if (b.x + b.r > br.x && b.x - b.r < br.x + br.w &&
+          b.y + b.r > br.y && b.y - b.r < br.y + br.h) {
+        br.hits--;
+        if (br.hits <= 0) {
+          br.alive = false;
+          score += br.pts * (1 + Math.floor(combo / 5));
+          combo++;
+          spawnPowerup(br.x + br.w/2, br.y + br.h/2);
+          spawnParticles(br.x + br.w/2, br.y + br.h/2, br.color, 8);
+        } else {
+          br.color = '#ff8888';
+          spawnParticles(br.x + br.w/2, br.y + br.h/2, br.color, 4);
+        }
+        if (b.fireball <= 0) {
+          // Determine bounce direction
+          let overlapX = Math.min(b.x + b.r - br.x, br.x + br.w - (b.x - b.r));
+          let overlapY = Math.min(b.y + b.r - br.y, br.y + br.h - (b.y - b.r));
+          if (overlapX < overlapY) b.dx = -b.dx;
+          else b.dy = -b.dy;
+        }
+        break;
+      }
+    }
+  }
+
+  // Powerups
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    let p = powerups[i];
+    p.y += p.dy;
+    let halfPW = pw / 2;
+    if (p.y + p.h >= paddle.y && p.y <= paddle.y + paddle.h &&
+        p.x + p.w/2 >= paddle.x - halfPW && p.x - p.w/2 <= paddle.x + halfPW) {
+      if (p.type === 'wide') paddle.wide = 600;
+      if (p.type === 'multi') {
+        let newBalls = [];
+        balls.forEach(b => {
+          if (!b.stuck) {
+            newBalls.push({ ...b, dx: b.dx + 1, dy: b.dy - 1, fireball: b.fireball });
+            newBalls.push({ ...b, dx: b.dx - 1, dy: b.dy - 1, fireball: b.fireball });
+          }
+        });
+        balls.push(...newBalls);
+      }
+      if (p.type === 'fire') balls.forEach(b => b.fireball = 500);
+      spawnParticles(p.x, p.y, p.color, 10);
+      powerups.splice(i, 1);
+      continue;
+    }
+    if (p.y > H) { powerups.splice(i, 1); }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+    p.x += p.dx; p.y += p.dy;
+    p.life--; p.dx *= 0.96; p.dy *= 0.96;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Win check
+  if (bricks.every(b => !b.alive)) { state = 'win'; }
+}
+
+function drawFootball(x, y, r, fireball) {
+  ctx.save();
+  ctx.translate(x, y);
+  // Football shape (ellipse)
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 1.4, r, 0, 0, Math.PI * 2);
+  if (fireball > 0) {
+    ctx.fillStyle = '#ff4400';
+    ctx.shadowColor = '#ff4400';
+    ctx.shadowBlur = 15;
+  } else {
+    ctx.fillStyle = '#8B4513';
+    ctx.shadowColor = '#ff8844';
+    ctx.shadowBlur = 8;
+  }
+  ctx.fill();
+  // Laces
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.5, 0);
+  ctx.lineTo(r * 0.5, 0);
+  ctx.stroke();
+  for (let i = -1; i <= 1; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * r * 0.35, -r * 0.4);
+    ctx.lineTo(i * r * 0.35, r * 0.4);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    drawField();
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 48px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#a78bfa';
+    ctx.shadowBlur = 20;
+    ctx.fillText('BLITZ BREAKOUT', W/2, 200);
+    ctx.shadowBlur = 0;
+    ctx.font = '18px Courier New';
+    ctx.fillStyle = '#e0e0ff';
+    ctx.fillText('Smash through offensive formations!', W/2, 260);
+    ctx.fillStyle = '#ff4444'; ctx.fillText('RED = QB (50pts)', W/2, 310);
+    ctx.fillStyle = '#4488ff'; ctx.fillText('BLUE = WR (30pts)', W/2, 335);
+    ctx.fillStyle = '#44cc44'; ctx.fillText('GREEN = RB (20pts)', W/2, 360);
+    ctx.fillStyle = '#cccc44'; ctx.fillText('YELLOW = OL (10pts)', W/2, 385);
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillText('Power-ups: ZONE (wide) | BLITZ (multi) | SACK (fire)', W/2, 430);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '14px Courier New';
+    ctx.fillText('Arrow Keys or Mouse to move | SPACE to launch', W/2, 480);
+    ctx.font = 'bold 22px Courier New';
+    ctx.fillStyle = '#a78bfa';
+    let blink = Math.sin(Date.now() / 300) > 0;
+    if (blink) ctx.fillText('PRESS SPACE TO START', W/2, 540);
+    return;
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 48px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 20;
+    ctx.fillText('GAME OVER', W/2, 280);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '24px Courier New';
+    ctx.fillText(`Final Score: ${score}`, W/2, 340);
+    ctx.font = '18px Courier New';
+    let blink = Math.sin(Date.now() / 300) > 0;
+    if (blink) ctx.fillText('PRESS SPACE TO CONTINUE', W/2, 400);
+    return;
+  }
+
+  if (state === 'win') {
+    ctx.fillStyle = '#44ff44';
+    ctx.font = 'bold 48px Courier New';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#00ff00'; ctx.shadowBlur = 20;
+    ctx.fillText('TOUCHDOWN!', W/2, 280);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '24px Courier New';
+    ctx.fillText(`Final Score: ${score}`, W/2, 340);
+    ctx.font = '18px Courier New';
+    let blink = Math.sin(Date.now() / 300) > 0;
+    if (blink) ctx.fillText('PRESS SPACE TO CONTINUE', W/2, 400);
+    return;
+  }
+
+  // Draw field lines
+  drawField();
+
+  // Bricks
+  for (let br of bricks) {
+    if (!br.alive) continue;
+    ctx.fillStyle = br.color;
+    ctx.shadowColor = br.glow;
+    ctx.shadowBlur = 6;
+    ctx.fillRect(br.x, br.y, br.w, br.h);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.strokeRect(br.x, br.y, br.w, br.h);
+    ctx.fillStyle = '#fff';
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(COLORS[br.pos].label, br.x + br.w/2, br.y + br.h/2 + 3);
+  }
+
+  // Powerups
+  for (let p of powerups) {
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 8;
+    ctx.fillRect(p.x - p.w/2, p.y, p.w, p.h);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.label, p.x, p.y + 12);
+  }
+
+  // Paddle (defensive line)
+  let pw = paddle.wide > 0 ? paddle.w * 1.5 : paddle.w;
+  ctx.fillStyle = paddle.wide > 0 ? '#c4b5fd' : paddle.color;
+  ctx.shadowColor = '#a78bfa';
+  ctx.shadowBlur = 10;
+  ctx.fillRect(paddle.x - pw/2, paddle.y, pw, paddle.h);
+  ctx.shadowBlur = 0;
+  // Helmet details on paddle
+  ctx.fillStyle = '#fff';
+  ctx.font = '8px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('D E F E N S E', paddle.x, paddle.y + 10);
+
+  // Balls
+  for (let b of balls) {
+    drawFootball(b.x, b.y, b.r, b.fireball);
+  }
+
+  // Particles
+  for (let p of particles) {
+    ctx.globalAlpha = p.life / 50;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 16px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Score: ${score}`, 10, 25);
+  ctx.textAlign = 'right';
+  ctx.fillText(`Lives: ${'🏈'.repeat(lives)}`, W - 10, 25);
+  ctx.textAlign = 'center';
+  if (combo > 2) {
+    ctx.fillStyle = '#ff8844';
+    ctx.fillText(`${combo}x COMBO!`, W/2, 25);
+  }
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '12px Courier New';
+  if (paddle.wide > 0) ctx.fillText(`ZONE: ${Math.ceil(paddle.wide/60)}s`, 10, 45);
+  if (balls.some(b => b.fireball > 0)) ctx.fillText(`SACK MODE`, 10, 60);
+}
+
+function drawField() {
+  // Subtle field lines
+  ctx.strokeStyle = 'rgba(100,200,100,0.06)';
+  ctx.lineWidth = 1;
+  for (let y = 0; y < H; y += 50) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

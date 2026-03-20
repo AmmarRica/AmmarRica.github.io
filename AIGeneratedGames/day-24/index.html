@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 24 – Waldorf's Journey</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 1rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 1rem; font-size: 0.9rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; display: block; }
+    #ui { color: #9ca3af; font-size: 0.8rem; margin-top: 0.5rem; max-width: 480px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Waldorf's Journey</h1>
+  <p class="subtitle">Tap left/right to walk, tap top to jump. Travel through the seasons!</p>
+  <canvas id="game"></canvas>
+  <div id="ui"></div>
+  <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+
+let W, H;
+function resize() {
+  W = Math.min(480, window.innerWidth - 20);
+  H = Math.floor(W * 1.4);
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const SEASONS = [
+  { name: 'Spring', bg1: '#4a7c59', bg2: '#2d5a3f', ground: '#5a8a4a', sky: '#87ceeb', particle: '#ffb7c5', mechanic: 'rain' },
+  { name: 'Summer', bg1: '#8B7355', bg2: '#6B5335', ground: '#c2a063', sky: '#4a90d9', particle: '#ffd700', mechanic: 'heat' },
+  { name: 'Fall', bg1: '#8B4513', bg2: '#654321', ground: '#a0522d', sky: '#d4956a', particle: '#ff6600', mechanic: 'wind' },
+  { name: 'Winter', bg1: '#708090', bg2: '#4a5568', ground: '#b0c4de', sky: '#c0d6e8', particle: '#ffffff', mechanic: 'ice' }
+];
+
+const GRAVITY = 0.5;
+const TILE = 32;
+const LEVEL_WIDTH = 60;
+const LEVEL_HEIGHT = Math.ceil(H / TILE) + 2;
+
+let state = 'title';
+let currentSeason = 0;
+let score = 0;
+let lives = 3;
+let cameraX = 0;
+let levelComplete = false;
+let levelTimer = 0;
+let particles = [];
+let platforms = [];
+let collectibles = [];
+let hazards = [];
+let goal = null;
+let windForce = 0;
+let windTimer = 0;
+
+const player = {
+  x: 60, y: 0, vx: 0, vy: 0, w: 20, h: 28,
+  onGround: false, facing: 1, frame: 0, frameTimer: 0,
+  slipping: false, heatTimer: 0
+};
+
+function generateLevel(seasonIdx) {
+  platforms = [];
+  collectibles = [];
+  hazards = [];
+  particles = [];
+  const s = SEASONS[seasonIdx];
+  const groundY = H - TILE * 2;
+
+  // Ground platforms with gaps
+  for (let x = 0; x < LEVEL_WIDTH; x++) {
+    if (x > 5 && x < LEVEL_WIDTH - 3 && Math.random() < 0.12) continue; // gaps
+    platforms.push({ x: x * TILE, y: groundY, w: TILE, h: TILE * 2, type: 'ground' });
+  }
+
+  // Floating platforms
+  for (let i = 0; i < 25; i++) {
+    const px = 120 + Math.random() * (LEVEL_WIDTH * TILE - 240);
+    const py = groundY - 60 - Math.random() * (H * 0.5);
+    const pw = TILE * (2 + Math.floor(Math.random() * 3));
+    let type = 'normal';
+    if (seasonIdx === 3 && Math.random() < 0.4) type = 'ice';
+    if (seasonIdx === 1 && Math.random() < 0.3) type = 'hot';
+    platforms.push({ x: px, y: py, w: pw, h: TILE * 0.6, type });
+  }
+
+  // Collectibles (flowers/shells/leaves/snowflakes)
+  for (let i = 0; i < 30; i++) {
+    collectibles.push({
+      x: 100 + Math.random() * (LEVEL_WIDTH * TILE - 200),
+      y: 60 + Math.random() * (groundY - 100),
+      collected: false, bob: Math.random() * Math.PI * 2
+    });
+  }
+
+  // Hazards
+  for (let i = 0; i < 12; i++) {
+    const hx = 200 + Math.random() * (LEVEL_WIDTH * TILE - 400);
+    const hy = groundY - 10;
+    if (seasonIdx === 0) hazards.push({ x: hx, y: hy, w: 24, h: 16, type: 'puddle' });
+    else if (seasonIdx === 1) hazards.push({ x: hx, y: hy, w: 20, h: 20, type: 'fire' });
+    else if (seasonIdx === 2) hazards.push({ x: hx, y: hy - Math.random() * 100, w: 20, h: 20, type: 'tornado', baseY: hy - Math.random() * 100 });
+    else hazards.push({ x: hx, y: hy, w: 30, h: 8, type: 'icicle', vy: 0, falling: false });
+  }
+
+  // Goal flag
+  goal = { x: (LEVEL_WIDTH - 4) * TILE, y: groundY - 60, w: 30, h: 60 };
+
+  player.x = 60;
+  player.y = groundY - 60;
+  player.vx = 0;
+  player.vy = 0;
+  cameraX = 0;
+  levelComplete = false;
+  levelTimer = 0;
+  windForce = 0;
+}
+
+let touchLeft = false, touchRight = false, touchJump = false;
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (state === 'title') { state = 'playing'; generateLevel(0); return; }
+  if (state === 'win') { state = 'title'; return; }
+  if (state === 'gameover') { state = 'title'; lives = 3; score = 0; currentSeason = 0; return; }
+  if (state === 'transition') return;
+  for (const t of e.changedTouches) {
+    const rect = canvas.getBoundingClientRect();
+    const tx = t.clientX - rect.left;
+    const ty = t.clientY - rect.top;
+    if (ty < H * 0.35) { touchJump = true; }
+    else if (tx < W * 0.5) { touchLeft = true; }
+    else { touchRight = true; }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const rect = canvas.getBoundingClientRect();
+    const tx = t.clientX - rect.left;
+    const ty = t.clientY - rect.top;
+    if (ty < H * 0.35) { touchJump = false; }
+    else if (tx < W * 0.5) { touchLeft = false; }
+    else { touchRight = false; }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+
+// Keyboard fallback
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.key] = true;
+  if (state === 'title') { state = 'playing'; generateLevel(0); }
+  if (state === 'win' || state === 'gameover') { state = 'title'; lives = 3; score = 0; currentSeason = 0; }
+});
+window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+function update() {
+  if (state !== 'playing' && state !== 'transition') return;
+
+  const season = SEASONS[currentSeason];
+  levelTimer++;
+
+  if (state === 'transition') {
+    if (levelTimer > 120) {
+      state = 'playing';
+      generateLevel(currentSeason);
+    }
+    return;
+  }
+
+  // Input
+  const moveLeft = touchLeft || keys['ArrowLeft'] || keys['a'];
+  const moveRight = touchRight || keys['ArrowRight'] || keys['d'];
+  const jump = touchJump || keys['ArrowUp'] || keys['w'] || keys[' '];
+
+  // Movement
+  const accel = player.slipping ? 0.15 : 0.6;
+  const friction = player.slipping ? 0.98 : 0.85;
+
+  if (moveLeft) { player.vx -= accel; player.facing = -1; }
+  if (moveRight) { player.vx += accel; player.facing = 1; }
+  player.vx *= friction;
+  if (Math.abs(player.vx) < 0.1) player.vx = 0;
+
+  // Wind (fall season)
+  if (season.mechanic === 'wind') {
+    windTimer++;
+    if (windTimer % 180 < 90) windForce = Math.sin(windTimer * 0.03) * 0.3;
+    else windForce = 0;
+    if (!player.onGround) player.vx += windForce;
+  }
+
+  // Jump
+  if (jump && player.onGround) {
+    player.vy = -10;
+    player.onGround = false;
+  }
+
+  // Gravity
+  player.vy += GRAVITY;
+  if (player.vy > 12) player.vy = 12;
+
+  // Move X
+  player.x += player.vx;
+  player.slipping = false;
+
+  // Collide X
+  for (const p of platforms) {
+    if (player.x + player.w > p.x && player.x < p.x + p.w &&
+        player.y + player.h > p.y && player.y < p.y + p.h) {
+      if (player.vx > 0) player.x = p.x - player.w;
+      else if (player.vx < 0) player.x = p.x + p.w;
+      player.vx = 0;
+    }
+  }
+
+  // Move Y
+  player.y += player.vy;
+  player.onGround = false;
+
+  // Collide Y
+  for (const p of platforms) {
+    if (player.x + player.w > p.x && player.x < p.x + p.w &&
+        player.y + player.h > p.y && player.y < p.y + p.h) {
+      if (player.vy > 0) {
+        player.y = p.y - player.h;
+        player.vy = 0;
+        player.onGround = true;
+        if (p.type === 'ice') player.slipping = true;
+        if (p.type === 'hot') {
+          player.heatTimer++;
+          if (player.heatTimer > 30) { hurtPlayer(); player.heatTimer = 0; }
+        }
+      } else if (player.vy < 0) {
+        player.y = p.y + p.h;
+        player.vy = 0;
+      }
+    }
+  }
+
+  if (player.onGround) player.heatTimer = 0;
+
+  // Fell off
+  if (player.y > H + 50) hurtPlayer();
+
+  // Camera
+  const targetCam = player.x - W * 0.35;
+  cameraX += (targetCam - cameraX) * 0.08;
+  if (cameraX < 0) cameraX = 0;
+  const maxCam = LEVEL_WIDTH * TILE - W;
+  if (cameraX > maxCam) cameraX = maxCam;
+
+  // Collectibles
+  for (const c of collectibles) {
+    if (c.collected) continue;
+    c.bob += 0.05;
+    const dx = (player.x + player.w / 2) - c.x;
+    const dy = (player.y + player.h / 2) - c.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 22) {
+      c.collected = true;
+      score += 10;
+      for (let i = 0; i < 5; i++) {
+        particles.push({ x: c.x, y: c.y, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30, color: season.particle });
+      }
+    }
+  }
+
+  // Hazards
+  for (const h of hazards) {
+    if (h.type === 'tornado') {
+      h.x += Math.sin(levelTimer * 0.02) * 1.5;
+      h.y = h.baseY + Math.sin(levelTimer * 0.03) * 20;
+    }
+    if (h.type === 'icicle') {
+      const dx = Math.abs(player.x + player.w / 2 - h.x);
+      if (dx < 50 && !h.falling) { h.falling = true; }
+      if (h.falling) { h.vy += 0.3; h.y += h.vy; }
+    }
+    if (player.x + player.w > h.x && player.x < h.x + h.w &&
+        player.y + player.h > h.y && player.y < h.y + h.h) {
+      hurtPlayer();
+    }
+  }
+
+  // Goal check
+  if (goal && player.x + player.w > goal.x && player.x < goal.x + goal.w &&
+      player.y + player.h > goal.y && player.y < goal.y + goal.h) {
+    score += 100;
+    currentSeason++;
+    if (currentSeason >= 4) {
+      state = 'win';
+    } else {
+      state = 'transition';
+      levelTimer = 0;
+    }
+  }
+
+  // Season particles
+  if (season.mechanic === 'rain' && Math.random() < 0.3) {
+    particles.push({ x: cameraX + Math.random() * W, y: cameraX > 0 ? -10 : Math.random() * H * 0.3, vx: 0, vy: 4 + Math.random() * 2, life: 80, color: '#6688cc' });
+  }
+  if (season.mechanic === 'wind' && Math.random() < 0.2) {
+    particles.push({ x: cameraX - 10, y: Math.random() * H, vx: 3 + Math.random() * 2, vy: Math.random() - 0.5, life: 100, color: season.particle });
+  }
+  if (season.mechanic === 'ice' && Math.random() < 0.15) {
+    particles.push({ x: cameraX + Math.random() * W, y: -10, vx: Math.random() - 0.5, vy: 1 + Math.random(), life: 120, color: '#ffffff' });
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Animation
+  if (Math.abs(player.vx) > 0.5) {
+    player.frameTimer++;
+    if (player.frameTimer > 6) { player.frameTimer = 0; player.frame = (player.frame + 1) % 4; }
+  } else { player.frame = 0; }
+}
+
+function hurtPlayer() {
+  lives--;
+  if (lives <= 0) { state = 'gameover'; return; }
+  player.x = 60; player.y = H - TILE * 4;
+  player.vx = 0; player.vy = 0;
+  cameraX = 0;
+}
+
+function drawPlayer(ox) {
+  const px = player.x - ox;
+  const py = player.y;
+  ctx.fillStyle = '#a78bfa';
+  // Body
+  ctx.fillRect(px + 4, py + 8, 12, 14);
+  // Head
+  ctx.fillStyle = '#e0c8ff';
+  ctx.beginPath();
+  ctx.arc(px + 10, py + 6, 7, 0, Math.PI * 2);
+  ctx.fill();
+  // Eyes
+  ctx.fillStyle = '#1e1e2e';
+  const eyeOff = player.facing > 0 ? 2 : -2;
+  ctx.fillRect(px + 9 + eyeOff, py + 4, 2, 3);
+  // Legs (animated)
+  ctx.fillStyle = '#7c6cba';
+  const legOff = Math.sin(player.frame * Math.PI / 2) * 3;
+  ctx.fillRect(px + 5, py + 22, 4, 6 + legOff);
+  ctx.fillRect(px + 11, py + 22, 4, 6 - legOff);
+  // Hat
+  ctx.fillStyle = '#ffd700';
+  ctx.fillRect(px + 3, py - 2, 14, 4);
+  ctx.fillRect(px + 6, py - 6, 8, 5);
+}
+
+function draw() {
+  const season = SEASONS[Math.min(currentSeason, 3)];
+  ctx.fillStyle = season.sky;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    ctx.fillStyle = '#87ceeb';
+    ctx.fillRect(0, 0, W, H);
+    // Mountains
+    ctx.fillStyle = '#6b8e6b';
+    ctx.beginPath(); ctx.moveTo(0, H * 0.6); ctx.lineTo(W * 0.3, H * 0.25); ctx.lineTo(W * 0.6, H * 0.6); ctx.fill();
+    ctx.fillStyle = '#5a7a5a';
+    ctx.beginPath(); ctx.moveTo(W * 0.4, H * 0.6); ctx.lineTo(W * 0.7, H * 0.2); ctx.lineTo(W, H * 0.6); ctx.fill();
+    ctx.fillStyle = '#4a7c59';
+    ctx.fillRect(0, H * 0.6, W, H * 0.4);
+
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText("Waldorf's Journey", W / 2, H * 0.4);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '16px system-ui';
+    ctx.fillText('Travel through the four seasons', W / 2, H * 0.4 + 30);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap left/right to walk', W / 2, H * 0.55);
+    ctx.fillText('Tap top of screen to jump', W / 2, H * 0.55 + 22);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 18px system-ui';
+    ctx.fillText('[ Tap to Start ]', W / 2, H * 0.75);
+    return;
+  }
+
+  if (state === 'transition') {
+    const nextSeason = SEASONS[currentSeason];
+    ctx.fillStyle = nextSeason.sky;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(nextSeason.name, W / 2, H * 0.4);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '16px system-ui';
+    ctx.fillText('Get ready...', W / 2, H * 0.4 + 30);
+    return;
+  }
+
+  if (state === 'win') {
+    ctx.fillStyle = '#1e1e2e';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Journey Complete!', W / 2, H * 0.35);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '20px system-ui';
+    ctx.fillText('Score: ' + score, W / 2, H * 0.45);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '14px system-ui';
+    ctx.fillText('You traveled through all four seasons!', W / 2, H * 0.55);
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText('Tap to play again', W / 2, H * 0.65);
+    return;
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = '#1e1e2e';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff6666';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Game Over', W / 2, H * 0.4);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '18px system-ui';
+    ctx.fillText('Score: ' + score, W / 2, H * 0.5);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to try again', W / 2, H * 0.6);
+    return;
+  }
+
+  // Draw background layers
+  const ox = cameraX;
+  const bgScroll = cameraX * 0.3;
+
+  // Far mountains
+  ctx.fillStyle = season.bg2;
+  for (let i = -1; i < 6; i++) {
+    const mx = i * 200 - (bgScroll % 200);
+    ctx.beginPath();
+    ctx.moveTo(mx, H * 0.5);
+    ctx.lineTo(mx + 100, H * 0.2 + Math.sin(i) * 30);
+    ctx.lineTo(mx + 200, H * 0.5);
+    ctx.fill();
+  }
+
+  // Near hills
+  ctx.fillStyle = season.bg1;
+  const hillScroll = cameraX * 0.5;
+  for (let i = -1; i < 8; i++) {
+    const hx = i * 150 - (hillScroll % 150);
+    ctx.beginPath();
+    ctx.moveTo(hx, H * 0.6);
+    ctx.quadraticCurveTo(hx + 75, H * 0.35 + Math.cos(i * 2) * 20, hx + 150, H * 0.6);
+    ctx.fill();
+  }
+
+  // Platforms
+  for (const p of platforms) {
+    const sx = p.x - ox;
+    if (sx > W + 50 || sx + p.w < -50) continue;
+    if (p.type === 'ground') {
+      ctx.fillStyle = season.ground;
+      ctx.fillRect(sx, p.y, p.w, p.h);
+      ctx.fillStyle = season.mechanic === 'ice' ? '#d4e8f0' : '#3a5a2a';
+      ctx.fillRect(sx, p.y, p.w, 4);
+    } else if (p.type === 'ice') {
+      ctx.fillStyle = '#b0d4e8';
+      ctx.fillRect(sx, p.y, p.w, p.h);
+      ctx.fillStyle = '#d4eaf8';
+      ctx.fillRect(sx + 2, p.y, p.w - 4, 3);
+    } else if (p.type === 'hot') {
+      ctx.fillStyle = '#cc4422';
+      ctx.fillRect(sx, p.y, p.w, p.h);
+      if (Math.random() < 0.1) {
+        particles.push({ x: p.x + Math.random() * p.w, y: p.y - 5, vx: 0, vy: -1, life: 20, color: '#ff8844' });
+      }
+    } else {
+      ctx.fillStyle = '#5a6a4a';
+      ctx.fillRect(sx, p.y, p.w, p.h);
+      ctx.fillStyle = '#7a9a5a';
+      ctx.fillRect(sx, p.y, p.w, 3);
+    }
+  }
+
+  // Collectibles
+  const collectIcons = ['#ff88aa', '#ffcc44', '#ff7733', '#aaddff'];
+  for (const c of collectibles) {
+    if (c.collected) continue;
+    const sx = c.x - ox;
+    if (sx > W + 20 || sx < -20) continue;
+    const by = c.y + Math.sin(c.bob) * 4;
+    ctx.fillStyle = collectIcons[currentSeason];
+    ctx.beginPath();
+    ctx.arc(sx, by, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff88';
+    ctx.beginPath();
+    ctx.arc(sx - 2, by - 2, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Hazards
+  for (const h of hazards) {
+    const sx = h.x - ox;
+    if (sx > W + 30 || sx < -30) continue;
+    if (h.type === 'puddle') {
+      ctx.fillStyle = '#4466aa88';
+      ctx.fillRect(sx, h.y, h.w, h.h);
+    } else if (h.type === 'fire') {
+      ctx.fillStyle = '#ff4400';
+      ctx.beginPath();
+      ctx.moveTo(sx, h.y + h.h);
+      ctx.lineTo(sx + h.w / 2, h.y - Math.random() * 5);
+      ctx.lineTo(sx + h.w, h.y + h.h);
+      ctx.fill();
+      ctx.fillStyle = '#ffaa00';
+      ctx.beginPath();
+      ctx.moveTo(sx + 4, h.y + h.h);
+      ctx.lineTo(sx + h.w / 2, h.y + 5 - Math.random() * 3);
+      ctx.lineTo(sx + h.w - 4, h.y + h.h);
+      ctx.fill();
+    } else if (h.type === 'tornado') {
+      ctx.strokeStyle = '#88664488';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(sx + h.w / 2, h.y + i * 7, 5 + i * 3, 0, Math.PI);
+        ctx.stroke();
+      }
+    } else if (h.type === 'icicle') {
+      ctx.fillStyle = '#aaccee';
+      ctx.beginPath();
+      ctx.moveTo(sx, h.y);
+      ctx.lineTo(sx + h.w / 2, h.y + 20);
+      ctx.lineTo(sx + h.w, h.y);
+      ctx.fill();
+    }
+  }
+
+  // Goal flag
+  if (goal) {
+    const gx = goal.x - ox;
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(gx + 12, goal.y, 4, goal.h);
+    ctx.fillStyle = '#ff4444';
+    ctx.fillRect(gx + 16, goal.y, 20, 14);
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('GO', gx + 26, goal.y + 11);
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 60;
+    ctx.fillRect(p.x - ox, p.y, 3, 3);
+    ctx.globalAlpha = 1;
+  }
+
+  // Player
+  drawPlayer(ox);
+
+  // HUD
+  ctx.fillStyle = '#0f0f1a88';
+  ctx.fillRect(0, 0, W, 36);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 14px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(season.name, 10, 24);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.textAlign = 'center';
+  ctx.fillText('Score: ' + score, W / 2, 24);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ff6666';
+  let heartStr = '';
+  for (let i = 0; i < lives; i++) heartStr += '\u2665 ';
+  ctx.fillText(heartStr, W - 10, 24);
+
+  // Wind indicator
+  if (season.mechanic === 'wind' && windForce !== 0) {
+    ctx.fillStyle = '#ffaa4488';
+    ctx.font = '12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(windForce > 0 ? 'Wind >>>' : '<<< Wind', W / 2, 50);
+  }
+
+  // Touch zones overlay (subtle)
+  ctx.strokeStyle = '#a78bfa22';
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(W / 2, H * 0.35); ctx.lineTo(W / 2, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, H * 0.35); ctx.lineTo(W, H * 0.35); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

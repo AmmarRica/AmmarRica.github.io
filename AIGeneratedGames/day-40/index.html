@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 40 – Valbrace</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; }
+</style>
+</head>
+<body>
+  <h1>Valbrace</h1>
+  <p class="subtitle">Mini RPG - Explore, Fight, Conquer</p>
+  <canvas id="gc"></canvas>
+  <script>
+const C = document.getElementById('gc');
+const X = C.getContext('2d');
+let W, H;
+function resize() {
+  W = Math.min(480, window.innerWidth - 20);
+  H = Math.round(W * 1.4);
+  C.width = W; C.height = H;
+  C.style.width = W + 'px'; C.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Game states
+const ST = { TITLE: 0, TOWN: 1, DUNGEON: 2, COMBAT: 3, SHOP: 4, WIN: 5, DEAD: 6, DIALOG: 7 };
+let state = ST.TITLE;
+let dialogText = '', dialogCb = null;
+
+// Player
+let player = {
+  name: 'Hero', hp: 50, maxHp: 50, mp: 20, maxMp: 20,
+  atk: 8, def: 3, mag: 6, level: 1, xp: 0, xpNext: 20,
+  gold: 30, weapon: 'Rusty Sword', armor: 'Cloth Shirt',
+  weaponBonus: 0, armorBonus: 0, potions: 3
+};
+
+// Dungeon state
+let dungeonFloor = 1;
+let dungeonRoom = 0;
+const MAX_FLOORS = 5;
+const ROOMS_PER_FLOOR = 4;
+let dungeonMap = [];
+let roomCleared = {};
+
+// Combat state
+let enemy = null;
+let combatLog = [];
+let combatTurn = 'player'; // 'player' or 'enemy'
+let combatAnimTimer = 0;
+let combatResult = null; // null, 'win', 'lose'
+let combatReward = { xp: 0, gold: 0 };
+
+// Touch
+let tapX = -1, tapY = -1, tapped = false;
+C.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  tapX = t.clientX - C.getBoundingClientRect().left;
+  tapY = t.clientY - C.getBoundingClientRect().top;
+  tapped = true;
+}, { passive: false });
+C.addEventListener('touchend', e => e.preventDefault(), { passive: false });
+
+// Mouse fallback
+C.addEventListener('click', e => {
+  tapX = e.clientX - C.getBoundingClientRect().left;
+  tapY = e.clientY - C.getBoundingClientRect().top;
+  tapped = true;
+});
+
+// Enemies
+const ENEMY_TYPES = [
+  { name: 'Slime', hp: 20, atk: 4, def: 1, xp: 8, gold: 5, color: '#22c55e', floor: 1 },
+  { name: 'Goblin', hp: 30, atk: 7, def: 2, xp: 12, gold: 8, color: '#f59e0b', floor: 1 },
+  { name: 'Skeleton', hp: 40, atk: 9, def: 4, xp: 18, gold: 12, color: '#d4d4d8', floor: 2 },
+  { name: 'Dark Mage', hp: 35, atk: 12, def: 3, xp: 22, gold: 15, color: '#8b5cf6', floor: 2 },
+  { name: 'Ogre', hp: 60, atk: 14, def: 6, xp: 30, gold: 20, color: '#78716c', floor: 3 },
+  { name: 'Wraith', hp: 45, atk: 16, def: 5, xp: 35, gold: 25, color: '#6366f1', floor: 3 },
+  { name: 'Dragon Knight', hp: 70, atk: 18, def: 8, xp: 40, gold: 30, color: '#dc2626', floor: 4 },
+  { name: 'Demon', hp: 80, atk: 20, def: 9, xp: 50, gold: 35, color: '#991b1b', floor: 4 },
+];
+const BOSS = { name: 'VALBRACE KING', hp: 150, atk: 24, def: 12, xp: 100, gold: 100, color: '#fbbf24', floor: 5 };
+
+// Shop items
+const SHOP = [
+  { name: 'Potion', cost: 10, type: 'potion', desc: 'Heal 30 HP' },
+  { name: 'Iron Sword', cost: 40, type: 'weapon', bonus: 4, desc: 'ATK +4' },
+  { name: 'Steel Sword', cost: 100, type: 'weapon', bonus: 8, desc: 'ATK +8' },
+  { name: 'Chain Mail', cost: 50, type: 'armor', bonus: 3, desc: 'DEF +3' },
+  { name: 'Plate Armor', cost: 120, type: 'armor', bonus: 7, desc: 'DEF +7' },
+];
+
+function spawnEnemy(floor, isBoss) {
+  if (isBoss) {
+    enemy = { ...BOSS, maxHp: BOSS.hp };
+    return;
+  }
+  const pool = ENEMY_TYPES.filter(e => e.floor <= floor && e.floor >= floor - 1);
+  const base = pool[Math.floor(Math.random() * pool.length)];
+  const scale = 1 + (floor - base.floor) * 0.2;
+  enemy = {
+    ...base,
+    hp: Math.floor(base.hp * scale),
+    maxHp: Math.floor(base.hp * scale),
+    atk: Math.floor(base.atk * scale),
+    def: Math.floor(base.def * scale)
+  };
+}
+
+function levelUp() {
+  player.level++;
+  player.maxHp += 10;
+  player.hp = player.maxHp;
+  player.maxMp += 5;
+  player.mp = player.maxMp;
+  player.atk += 2;
+  player.def += 1;
+  player.mag += 2;
+  player.xpNext = Math.floor(player.xpNext * 1.6);
+  combatLog.push(`Level Up! Now level ${player.level}!`);
+}
+
+function calcDmg(atk, def) {
+  return Math.max(1, atk + Math.floor(Math.random() * 4) - def);
+}
+
+function startCombat(floor, isBoss) {
+  spawnEnemy(floor, isBoss);
+  combatLog = [`A ${enemy.name} appears!`];
+  combatTurn = 'player';
+  combatAnimTimer = 0;
+  combatResult = null;
+  state = ST.COMBAT;
+}
+
+function enemyTurn() {
+  combatTurn = 'enemy';
+  combatAnimTimer = 40;
+}
+
+function doEnemyAttack() {
+  const totalDef = player.def + player.armorBonus;
+  const dmg = calcDmg(enemy.atk, totalDef);
+  player.hp -= dmg;
+  combatLog.push(`${enemy.name} hits for ${dmg} damage!`);
+  if (player.hp <= 0) {
+    player.hp = 0;
+    combatResult = 'lose';
+    combatLog.push('You have been defeated...');
+  } else {
+    combatTurn = 'player';
+  }
+}
+
+// UI Button helper
+function drawBtn(x, y, w, h, text, color, textColor) {
+  X.fillStyle = color;
+  X.fillRect(x, y, w, h);
+  X.strokeStyle = '#555';
+  X.lineWidth = 1;
+  X.strokeRect(x, y, w, h);
+  X.fillStyle = textColor || '#e0e0ff';
+  X.font = `bold ${h * 0.45}px system-ui`;
+  X.textAlign = 'center';
+  X.textBaseline = 'middle';
+  X.fillText(text, x + w / 2, y + h / 2);
+}
+
+function hitBtn(bx, by, bw, bh) {
+  return tapped && tapX >= bx && tapX <= bx + bw && tapY >= by && tapY <= by + bh;
+}
+
+// Town buttons
+function drawTown() {
+  X.clearRect(0, 0, W, H);
+
+  // Background
+  X.fillStyle = '#1a1a2e';
+  X.fillRect(0, 0, W, H);
+
+  // Town buildings
+  X.fillStyle = '#2a2a4a';
+  X.fillRect(W * 0.05, H * 0.15, W * 0.4, H * 0.15);
+  X.fillRect(W * 0.55, H * 0.15, W * 0.4, H * 0.15);
+  X.fillStyle = '#3a3a5a';
+  X.fillRect(W * 0.1, H * 0.12, W * 0.3, H * 0.03);
+  X.fillRect(W * 0.6, H * 0.12, W * 0.3, H * 0.03);
+
+  X.fillStyle = '#a78bfa';
+  X.font = `bold ${W * 0.05}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('~ Town of Valbrace ~', W / 2, H * 0.07);
+
+  // Player stats
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.03}px system-ui`;
+  X.textAlign = 'left';
+  const sx = W * 0.05, sy = H * 0.35;
+  X.fillText(`${player.name} Lv.${player.level}`, sx, sy);
+  X.fillText(`HP: ${player.hp}/${player.maxHp}  MP: ${player.mp}/${player.maxMp}`, sx, sy + H * 0.03);
+  X.fillText(`ATK: ${player.atk + player.weaponBonus}  DEF: ${player.def + player.armorBonus}  MAG: ${player.mag}`, sx, sy + H * 0.06);
+  X.fillText(`Gold: ${player.gold}  Potions: ${player.potions}`, sx, sy + H * 0.09);
+  X.fillText(`Weapon: ${player.weapon}  Armor: ${player.armor}`, sx, sy + H * 0.12);
+  X.fillText(`XP: ${player.xp}/${player.xpNext}  Floor: ${dungeonFloor}/${MAX_FLOORS}`, sx, sy + H * 0.15);
+
+  // Town buttons
+  const bw = W * 0.4, bh = H * 0.06, bx = W * 0.3;
+  drawBtn(bx, H * 0.56, bw, bh, 'Enter Dungeon', '#7c3aed');
+  drawBtn(bx, H * 0.64, bw, bh, 'Visit Shop', '#0e7490');
+  drawBtn(bx, H * 0.72, bw, bh, 'Rest (Heal Full)', '#15803d');
+  drawBtn(bx, H * 0.80, bw, bh, 'Use Potion', '#b45309');
+
+  if (hitBtn(bx, H * 0.56, bw, bh)) {
+    dungeonRoom = 0;
+    state = ST.DUNGEON;
+  } else if (hitBtn(bx, H * 0.64, bw, bh)) {
+    state = ST.SHOP;
+  } else if (hitBtn(bx, H * 0.72, bw, bh)) {
+    player.hp = player.maxHp;
+    player.mp = player.maxMp;
+    showDialog('You rest at the inn. HP and MP fully restored!', () => { state = ST.TOWN; });
+  } else if (hitBtn(bx, H * 0.80, bw, bh)) {
+    if (player.potions > 0 && player.hp < player.maxHp) {
+      player.potions--;
+      player.hp = Math.min(player.maxHp, player.hp + 30);
+      showDialog('Used a potion. Healed 30 HP!', () => { state = ST.TOWN; });
+    }
+  }
+}
+
+function showDialog(text, cb) {
+  dialogText = text;
+  dialogCb = cb;
+  state = ST.DIALOG;
+}
+
+function drawDialog() {
+  X.fillStyle = 'rgba(15,15,26,0.85)';
+  X.fillRect(0, 0, W, H);
+  X.fillStyle = '#1e1e2e';
+  X.fillRect(W * 0.08, H * 0.35, W * 0.84, H * 0.2);
+  X.strokeStyle = '#a78bfa';
+  X.lineWidth = 2;
+  X.strokeRect(W * 0.08, H * 0.35, W * 0.84, H * 0.2);
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.035}px system-ui`;
+  X.textAlign = 'center';
+  // Word wrap
+  const words = dialogText.split(' ');
+  let lines = [], line = '';
+  for (const w of words) {
+    if (X.measureText(line + w).width > W * 0.75) { lines.push(line); line = w + ' '; }
+    else line += w + ' ';
+  }
+  lines.push(line);
+  lines.forEach((l, i) => X.fillText(l.trim(), W / 2, H * 0.4 + i * H * 0.04));
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.03}px system-ui`;
+  X.fillText('[Tap to continue]', W / 2, H * 0.53);
+
+  if (tapped && dialogCb) { const cb = dialogCb; dialogCb = null; cb(); }
+}
+
+function drawDungeon() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#0d0d18';
+  X.fillRect(0, 0, W, H);
+
+  // Dungeon walls
+  X.strokeStyle = '#3b3b5c';
+  X.lineWidth = 2;
+  for (let i = 0; i < 8; i++) {
+    X.strokeRect(W * 0.02 + i * 3, H * 0.05 + i * 3, W * 0.96 - i * 6, H * 0.4 - i * 6);
+  }
+
+  X.fillStyle = '#a78bfa';
+  X.font = `bold ${W * 0.045}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText(`Dungeon Floor ${dungeonFloor}`, W / 2, H * 0.08);
+
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.03}px system-ui`;
+  X.fillText(`Room ${dungeonRoom + 1} / ${ROOMS_PER_FLOOR}`, W / 2, H * 0.12);
+
+  // Player stats bar
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.028}px system-ui`;
+  X.textAlign = 'left';
+  X.fillText(`HP: ${player.hp}/${player.maxHp}  MP: ${player.mp}/${player.maxMp}  Potions: ${player.potions}`, W * 0.05, H * 0.16);
+
+  // Room visual
+  X.fillStyle = '#1a1a2e';
+  X.fillRect(W * 0.1, H * 0.2, W * 0.8, H * 0.25);
+  X.strokeStyle = '#4a4a6e';
+  X.strokeRect(W * 0.1, H * 0.2, W * 0.8, H * 0.25);
+
+  const roomKey = `${dungeonFloor}-${dungeonRoom}`;
+  const cleared = roomCleared[roomKey];
+
+  if (cleared) {
+    X.fillStyle = '#4ade80';
+    X.font = `${W * 0.04}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText('Room Cleared!', W / 2, H * 0.34);
+  } else {
+    // Draw monster silhouette
+    X.fillStyle = '#ef444466';
+    X.beginPath();
+    X.arc(W / 2, H * 0.3, W * 0.06, 0, Math.PI * 2);
+    X.fill();
+    X.fillStyle = '#ef4444';
+    X.font = `${W * 0.03}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText('Enemy ahead...', W / 2, H * 0.4);
+  }
+
+  // Buttons
+  const bw = W * 0.4, bh = H * 0.055, bx = W * 0.3;
+  let by = H * 0.5;
+
+  if (!cleared) {
+    drawBtn(bx, by, bw, bh, 'Fight!', '#dc2626');
+    if (hitBtn(bx, by, bw, bh)) {
+      const isBoss = dungeonFloor === MAX_FLOORS && dungeonRoom === ROOMS_PER_FLOOR - 1;
+      startCombat(dungeonFloor, isBoss);
+    }
+    by += bh + H * 0.015;
+  }
+
+  if (cleared && dungeonRoom < ROOMS_PER_FLOOR - 1) {
+    drawBtn(bx, by, bw, bh, 'Next Room', '#7c3aed');
+    if (hitBtn(bx, by, bw, bh)) { dungeonRoom++; }
+    by += bh + H * 0.015;
+  }
+
+  if (cleared && dungeonRoom === ROOMS_PER_FLOOR - 1 && dungeonFloor < MAX_FLOORS) {
+    drawBtn(bx, by, bw, bh, 'Next Floor', '#a78bfa');
+    if (hitBtn(bx, by, bw, bh)) { dungeonFloor++; dungeonRoom = 0; }
+    by += bh + H * 0.015;
+  }
+
+  drawBtn(bx, by, bw, bh, 'Use Potion', '#b45309');
+  if (hitBtn(bx, by, bw, bh) && player.potions > 0 && player.hp < player.maxHp) {
+    player.potions--;
+    player.hp = Math.min(player.maxHp, player.hp + 30);
+  }
+  by += bh + H * 0.015;
+
+  drawBtn(bx, by, bw, bh, 'Return to Town', '#4b5563');
+  if (hitBtn(bx, by, bw, bh)) { state = ST.TOWN; }
+}
+
+function drawCombat() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#0d0d18';
+  X.fillRect(0, 0, W, H);
+
+  if (!enemy) return;
+
+  // Enemy
+  const ex = W / 2, ey = H * 0.18;
+  X.fillStyle = enemy.color;
+  X.beginPath();
+  X.arc(ex, ey, W * 0.08, 0, Math.PI * 2);
+  X.fill();
+  if (combatTurn === 'enemy' && combatAnimTimer > 20) {
+    X.fillStyle = '#ff000066';
+    X.beginPath();
+    X.arc(ex, ey, W * 0.12, 0, Math.PI * 2);
+    X.fill();
+  }
+
+  // Enemy stats
+  X.fillStyle = '#e0e0ff';
+  X.font = `bold ${W * 0.04}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText(enemy.name, ex, ey - W * 0.11);
+
+  // Enemy HP bar
+  const ebw = W * 0.5, ebh = H * 0.02;
+  X.fillStyle = '#333';
+  X.fillRect(ex - ebw / 2, ey + W * 0.1, ebw, ebh);
+  X.fillStyle = enemy.hp > enemy.maxHp * 0.3 ? '#ef4444' : '#991b1b';
+  X.fillRect(ex - ebw / 2, ey + W * 0.1, ebw * (enemy.hp / enemy.maxHp), ebh);
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.025}px system-ui`;
+  X.fillText(`${enemy.hp}/${enemy.maxHp}`, ex, ey + W * 0.1 + ebh + H * 0.02);
+
+  // Player stats
+  const py = H * 0.42;
+  X.fillStyle = '#1e1e2e';
+  X.fillRect(W * 0.05, py, W * 0.9, H * 0.1);
+  X.strokeStyle = '#3b3b5c';
+  X.strokeRect(W * 0.05, py, W * 0.9, H * 0.1);
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.03}px system-ui`;
+  X.textAlign = 'left';
+  X.fillText(`${player.name} Lv.${player.level}`, W * 0.08, py + H * 0.03);
+  // HP bar
+  X.fillStyle = '#333';
+  X.fillRect(W * 0.08, py + H * 0.04, W * 0.5, H * 0.015);
+  X.fillStyle = player.hp > player.maxHp * 0.3 ? '#22c55e' : '#ef4444';
+  X.fillRect(W * 0.08, py + H * 0.04, W * 0.5 * (player.hp / player.maxHp), H * 0.015);
+  X.fillStyle = '#e0e0ff';
+  X.fillText(`HP: ${player.hp}/${player.maxHp}  MP: ${player.mp}/${player.maxMp}`, W * 0.08, py + H * 0.08);
+
+  // Combat log
+  X.fillStyle = '#1a1a2e';
+  X.fillRect(W * 0.05, H * 0.54, W * 0.9, H * 0.12);
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.025}px system-ui`;
+  X.textAlign = 'left';
+  const logStart = Math.max(0, combatLog.length - 3);
+  for (let i = logStart; i < combatLog.length; i++) {
+    X.fillText(combatLog[i], W * 0.08, H * 0.57 + (i - logStart) * H * 0.035);
+  }
+
+  // Action buttons
+  if (combatTurn === 'player' && !combatResult) {
+    const bw = W * 0.42, bh = H * 0.055;
+    drawBtn(W * 0.05, H * 0.7, bw, bh, `Attack (ATK ${player.atk + player.weaponBonus})`, '#dc2626');
+    drawBtn(W * 0.53, H * 0.7, bw, bh, `Magic (${player.mag} dmg, 5 MP)`, '#7c3aed');
+    drawBtn(W * 0.05, H * 0.77, bw, bh, `Heal Potion (${player.potions})`, '#15803d');
+    drawBtn(W * 0.53, H * 0.77, bw, bh, 'Run', '#4b5563');
+
+    if (hitBtn(W * 0.05, H * 0.7, bw, bh)) {
+      // Attack
+      const totalAtk = player.atk + player.weaponBonus;
+      const dmg = calcDmg(totalAtk, enemy.def);
+      enemy.hp -= dmg;
+      combatLog.push(`You attack for ${dmg} damage!`);
+      if (enemy.hp <= 0) { enemy.hp = 0; combatWin(); }
+      else enemyTurn();
+    } else if (hitBtn(W * 0.53, H * 0.7, bw, bh)) {
+      // Magic
+      if (player.mp >= 5) {
+        player.mp -= 5;
+        const dmg = player.mag + Math.floor(Math.random() * 6);
+        enemy.hp -= dmg;
+        combatLog.push(`Magic blast for ${dmg} damage!`);
+        if (enemy.hp <= 0) { enemy.hp = 0; combatWin(); }
+        else enemyTurn();
+      } else { combatLog.push('Not enough MP!'); }
+    } else if (hitBtn(W * 0.05, H * 0.77, bw, bh)) {
+      if (player.potions > 0) {
+        player.potions--;
+        const heal = 30;
+        player.hp = Math.min(player.maxHp, player.hp + heal);
+        combatLog.push(`Used potion! Healed ${heal} HP.`);
+        enemyTurn();
+      } else { combatLog.push('No potions left!'); }
+    } else if (hitBtn(W * 0.53, H * 0.77, bw, bh)) {
+      if (Math.random() < 0.6) {
+        combatLog.push('Escaped successfully!');
+        state = ST.DUNGEON;
+      } else {
+        combatLog.push('Failed to escape!');
+        enemyTurn();
+      }
+    }
+  }
+
+  // Enemy attack animation
+  if (combatTurn === 'enemy' && combatAnimTimer > 0) {
+    combatAnimTimer--;
+    if (combatAnimTimer === 15) doEnemyAttack();
+  }
+
+  // Combat result
+  if (combatResult === 'win') {
+    X.fillStyle = 'rgba(15,15,26,0.7)';
+    X.fillRect(0, H * 0.84, W, H * 0.12);
+    X.fillStyle = '#4ade80';
+    X.font = `bold ${W * 0.04}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText(`Victory! +${combatReward.xp} XP, +${combatReward.gold} Gold`, W / 2, H * 0.9);
+    X.fillStyle = '#9ca3af';
+    X.font = `${W * 0.03}px system-ui`;
+    X.fillText('[Tap to continue]', W / 2, H * 0.95);
+    if (tapped) {
+      const roomKey = `${dungeonFloor}-${dungeonRoom}`;
+      roomCleared[roomKey] = true;
+      state = ST.DUNGEON;
+    }
+  } else if (combatResult === 'lose') {
+    X.fillStyle = 'rgba(15,15,26,0.7)';
+    X.fillRect(0, H * 0.84, W, H * 0.12);
+    X.fillStyle = '#ef4444';
+    X.font = `bold ${W * 0.04}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText('Defeated...', W / 2, H * 0.9);
+    X.fillStyle = '#9ca3af';
+    X.font = `${W * 0.03}px system-ui`;
+    X.fillText('[Tap to continue]', W / 2, H * 0.95);
+    if (tapped) { state = ST.DEAD; }
+  }
+}
+
+function combatWin() {
+  combatResult = 'win';
+  combatReward = { xp: enemy.xp, gold: enemy.gold };
+  player.xp += enemy.xp;
+  player.gold += enemy.gold;
+  combatLog.push(`Defeated ${enemy.name}!`);
+  while (player.xp >= player.xpNext) {
+    player.xp -= player.xpNext;
+    levelUp();
+  }
+  // Boss kill = win
+  if (enemy.name === BOSS.name) {
+    combatResult = 'win';
+    setTimeout(() => { state = ST.WIN; }, 1500);
+  }
+}
+
+function drawShop() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#1a1a2e';
+  X.fillRect(0, 0, W, H);
+
+  X.fillStyle = '#a78bfa';
+  X.font = `bold ${W * 0.05}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('~ Equipment Shop ~', W / 2, H * 0.06);
+
+  X.fillStyle = '#fbbf24';
+  X.font = `${W * 0.035}px system-ui`;
+  X.fillText(`Gold: ${player.gold}`, W / 2, H * 0.11);
+
+  const bw = W * 0.85, bh = H * 0.06;
+  SHOP.forEach((item, i) => {
+    const by = H * 0.15 + i * (bh + H * 0.015);
+    const canBuy = player.gold >= item.cost;
+    const owned = (item.type === 'weapon' && player.weapon === item.name) || (item.type === 'armor' && player.armor === item.name);
+    drawBtn(W * 0.075, by, bw, bh, `${item.name} - ${item.cost}g (${item.desc})${owned ? ' [OWNED]' : ''}`, canBuy && !owned ? '#2a2a4a' : '#1a1a28');
+
+    if (hitBtn(W * 0.075, by, bw, bh) && canBuy && !owned) {
+      player.gold -= item.cost;
+      if (item.type === 'potion') { player.potions++; }
+      else if (item.type === 'weapon') { player.weapon = item.name; player.weaponBonus = item.bonus; }
+      else if (item.type === 'armor') { player.armor = item.name; player.armorBonus = item.bonus; }
+      showDialog(`Bought ${item.name}!`, () => { state = ST.SHOP; });
+    }
+  });
+
+  const exitY = H * 0.15 + SHOP.length * (bh + H * 0.015) + H * 0.03;
+  drawBtn(W * 0.3, exitY, W * 0.4, bh, 'Leave Shop', '#4b5563');
+  if (hitBtn(W * 0.3, exitY, W * 0.4, bh)) { state = ST.TOWN; }
+}
+
+function drawTitle() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#0f0f1a';
+  X.fillRect(0, 0, W, H);
+
+  // Castle silhouette
+  X.fillStyle = '#1a1a2e';
+  X.fillRect(W * 0.2, H * 0.2, W * 0.15, H * 0.2);
+  X.fillRect(W * 0.4, H * 0.15, W * 0.2, H * 0.25);
+  X.fillRect(W * 0.65, H * 0.2, W * 0.15, H * 0.2);
+  X.fillRect(W * 0.15, H * 0.4, W * 0.7, H * 0.05);
+
+  X.fillStyle = '#a78bfa';
+  X.font = `bold ${W * 0.1}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('VALBRACE', W / 2, H * 0.55);
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.035}px system-ui`;
+  X.fillText('A Mini RPG Adventure', W / 2, H * 0.6);
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.04}px system-ui`;
+  X.fillText('Tap to Begin', W / 2, H * 0.7);
+
+  if (tapped) {
+    player = {
+      name: 'Hero', hp: 50, maxHp: 50, mp: 20, maxMp: 20,
+      atk: 8, def: 3, mag: 6, level: 1, xp: 0, xpNext: 20,
+      gold: 30, weapon: 'Rusty Sword', armor: 'Cloth Shirt',
+      weaponBonus: 0, armorBonus: 0, potions: 3
+    };
+    dungeonFloor = 1; dungeonRoom = 0; roomCleared = {};
+    state = ST.TOWN;
+  }
+}
+
+function drawWin() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#0f0f1a';
+  X.fillRect(0, 0, W, H);
+  X.fillStyle = '#fbbf24';
+  X.font = `bold ${W * 0.08}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('VICTORY!', W / 2, H * 0.35);
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.04}px system-ui`;
+  X.fillText('You defeated the Valbrace King!', W / 2, H * 0.43);
+  X.fillText(`Final Level: ${player.level}`, W / 2, H * 0.5);
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.03}px system-ui`;
+  X.fillText('Tap to play again', W / 2, H * 0.6);
+  if (tapped) state = ST.TITLE;
+}
+
+function drawDead() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#0f0f1a';
+  X.fillRect(0, 0, W, H);
+  X.fillStyle = '#ef4444';
+  X.font = `bold ${W * 0.08}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('GAME OVER', W / 2, H * 0.35);
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.04}px system-ui`;
+  X.fillText(`Reached Floor ${dungeonFloor}, Level ${player.level}`, W / 2, H * 0.43);
+  X.fillText('Tap to try again', W / 2, H * 0.53);
+  if (tapped) state = ST.TITLE;
+}
+
+function loop() {
+  tapped && (function() {
+    switch (state) {
+      case ST.TITLE: drawTitle(); break;
+      case ST.TOWN: drawTown(); break;
+      case ST.DUNGEON: drawDungeon(); break;
+      case ST.COMBAT: drawCombat(); break;
+      case ST.SHOP: drawShop(); break;
+      case ST.DIALOG: drawDialog(); break;
+      case ST.WIN: drawWin(); break;
+      case ST.DEAD: drawDead(); break;
+    }
+  })();
+  // Always redraw
+  switch (state) {
+    case ST.TITLE: drawTitle(); break;
+    case ST.TOWN: drawTown(); break;
+    case ST.DUNGEON: drawDungeon(); break;
+    case ST.COMBAT: drawCombat(); break;
+    case ST.SHOP: drawShop(); break;
+    case ST.DIALOG: drawDialog(); break;
+    case ST.WIN: drawWin(); break;
+    case ST.DEAD: drawDead(); break;
+  }
+  tapped = false; tapX = -1; tapY = -1;
+  requestAnimationFrame(loop);
+}
+loop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

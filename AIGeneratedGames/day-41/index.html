@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 41 – Rakshasa</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; }
+</style>
+</head>
+<body>
+  <h1>Rakshasa</h1>
+  <p class="subtitle">Stealth Assassin - 5 Levels</p>
+  <canvas id="gc"></canvas>
+  <script>
+const C = document.getElementById('gc');
+const X = C.getContext('2d');
+let W, H;
+function resize() {
+  W = Math.min(480, window.innerWidth - 20);
+  H = Math.round(W * 1.2);
+  C.width = W; C.height = H;
+  C.style.width = W + 'px'; C.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const TILE = () => Math.floor(W / 16);
+const ST = { TITLE: 0, PLAY: 1, WIN_LEVEL: 2, CAUGHT: 3, GAME_WIN: 4 };
+let state = ST.TITLE;
+let level = 0;
+let alertLevel = 0; // 0-100, 100 = caught
+let score = 0;
+
+// Player
+let px, py, pAngle, hiding, dashing, dashTimer, dashCooldown;
+let swipeStartX, swipeStartY, swiping = false;
+let tapTarget = null;
+let holdTimer = 0, isHolding = false;
+
+// Level data
+const LEVELS = [
+  { // Level 1 - simple
+    walls: [[2,2,12,1],[2,2,1,10],[13,2,1,10],[2,11,12,1],[6,4,1,5],[9,4,1,5]],
+    guards: [{ x: 7.5, y: 5, patrol: [[7.5,5],[7.5,9]], speed: 0.02, angle: Math.PI/2 }],
+    target: { x: 11, y: 6 },
+    start: { x: 3, y: 9 },
+    shadows: [[3,3,2,2],[10,3,2,2],[3,8,2,2],[10,8,2,2]]
+  },
+  { // Level 2
+    walls: [[1,1,14,1],[1,1,1,12],[14,1,1,12],[1,12,14,1],[5,3,1,4],[10,6,1,4],[7,1,1,5]],
+    guards: [
+      { x: 3, y: 5, patrol: [[3,3],[3,10]], speed: 0.02, angle: Math.PI/2 },
+      { x: 12, y: 8, patrol: [[12,5],[12,10]], speed: 0.018, angle: -Math.PI/2 }
+    ],
+    target: { x: 12, y: 3 },
+    start: { x: 3, y: 10 },
+    shadows: [[2,2,2,1],[8,3,2,2],[2,8,2,2],[11,9,2,2]]
+  },
+  { // Level 3
+    walls: [[0,0,16,1],[0,0,1,13],[15,0,1,13],[0,12,16,1],[4,3,1,3],[8,2,1,4],[11,5,1,4],[4,7,4,1],[6,9,1,3]],
+    guards: [
+      { x: 3, y: 4, patrol: [[3,2],[3,6],[6,6]], speed: 0.022, angle: 0 },
+      { x: 10, y: 3, patrol: [[10,2],[10,8]], speed: 0.02, angle: Math.PI/2 },
+      { x: 13, y: 7, patrol: [[13,6],[13,10]], speed: 0.018, angle: Math.PI/2 }
+    ],
+    target: { x: 13, y: 2 },
+    start: { x: 2, y: 10 },
+    shadows: [[2,2,1,1],[5,4,2,2],[12,4,1,1],[2,7,1,2],[9,8,2,2],[12,9,2,2]]
+  },
+  { // Level 4
+    walls: [[0,0,16,1],[0,0,1,13],[15,0,1,13],[0,12,16,1],[3,3,2,1],[7,2,1,5],[10,3,2,1],[3,6,1,3],[5,8,6,1],[12,5,1,4]],
+    guards: [
+      { x: 5, y: 3, patrol: [[2,3],[6,3]], speed: 0.025, angle: 0 },
+      { x: 9, y: 5, patrol: [[8,2],[8,7],[11,7]], speed: 0.02, angle: Math.PI/2 },
+      { x: 13, y: 3, patrol: [[13,2],[13,8]], speed: 0.022, angle: Math.PI/2 },
+      { x: 5, y: 10, patrol: [[2,10],[10,10]], speed: 0.018, angle: 0 }
+    ],
+    target: { x: 14, y: 2 },
+    start: { x: 1, y: 10 },
+    shadows: [[2,2,1,1],[4,4,2,1],[9,3,1,1],[1,6,1,2],[10,5,1,2],[1,8,2,1],[13,9,1,2]]
+  },
+  { // Level 5 - boss
+    walls: [[0,0,16,1],[0,0,1,13],[15,0,1,13],[0,12,16,1],[3,2,1,3],[6,4,4,1],[3,7,1,3],[6,7,4,1],[11,2,1,4],[11,7,1,4],[13,5,2,1]],
+    guards: [
+      { x: 4, y: 3, patrol: [[2,3],[5,3]], speed: 0.025, angle: 0 },
+      { x: 8, y: 2, patrol: [[7,2],[10,2],[10,6],[7,6]], speed: 0.02, angle: 0 },
+      { x: 2, y: 9, patrol: [[2,8],[2,11],[5,11]], speed: 0.022, angle: Math.PI },
+      { x: 8, y: 9, patrol: [[6,9],[10,9],[10,11]], speed: 0.02, angle: 0 },
+      { x: 13, y: 3, patrol: [[13,2],[13,4],[14,4],[14,2]], speed: 0.018, angle: Math.PI/2 }
+    ],
+    target: { x: 14, y: 10 },
+    start: { x: 1, y: 1.5 },
+    shadows: [[4,4,1,2],[1,5,2,1],[4,8,1,2],[11,5,1,1],[12,8,2,2],[1,10,1,1]]
+  }
+];
+
+let guards = [];
+
+function initLevel(n) {
+  const lv = LEVELS[n];
+  const T = TILE();
+  px = lv.start.x * T;
+  py = lv.start.y * T;
+  pAngle = 0;
+  hiding = false;
+  dashing = false;
+  dashTimer = 0;
+  dashCooldown = 0;
+  alertLevel = 0;
+
+  guards = lv.guards.map(g => ({
+    x: g.x * T, y: g.y * T,
+    patrol: g.patrol.map(p => [p[0] * T, p[1] * T]),
+    speed: g.speed * T,
+    angle: g.angle,
+    patrolIdx: 0,
+    patrolDir: 1,
+    alerted: false,
+    alertTimer: 0,
+    dead: false
+  }));
+}
+
+// Touch
+let touchId = -1;
+C.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  const tx = t.clientX - C.getBoundingClientRect().left;
+  const ty = t.clientY - C.getBoundingClientRect().top;
+
+  if (state === ST.TITLE) { state = ST.PLAY; level = 0; score = 0; initLevel(0); return; }
+  if (state === ST.WIN_LEVEL || state === ST.CAUGHT) {
+    if (state === ST.CAUGHT) { initLevel(level); }
+    else { level++; if (level >= LEVELS.length) { state = ST.GAME_WIN; return; } initLevel(level); }
+    state = ST.PLAY; return;
+  }
+  if (state === ST.GAME_WIN) { state = ST.TITLE; return; }
+
+  swipeStartX = tx; swipeStartY = ty;
+  swiping = true;
+  touchId = t.identifier;
+  holdTimer = 0; isHolding = true;
+  tapTarget = { x: tx, y: ty };
+}, { passive: false });
+
+C.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchId) {
+      const tx = t.clientX - C.getBoundingClientRect().left;
+      const ty = t.clientY - C.getBoundingClientRect().top;
+      const dx = tx - swipeStartX, dy = ty - swipeStartY;
+      if (Math.sqrt(dx*dx+dy*dy) > 20) isHolding = false;
+    }
+  }
+}, { passive: false });
+
+C.addEventListener('touchend', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchId && swiping) {
+      const tx = t.clientX - C.getBoundingClientRect().left;
+      const ty = t.clientY - C.getBoundingClientRect().top;
+      const dx = tx - swipeStartX, dy = ty - swipeStartY;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+
+      if (dist > 40 && dashCooldown <= 0) {
+        // Swipe = dash/attack
+        const angle = Math.atan2(dy, dx);
+        dashing = true;
+        dashTimer = 10;
+        dashCooldown = 45;
+        pAngle = angle;
+
+        // Check if dashing into a guard = kill
+        for (const g of guards) {
+          if (g.dead) continue;
+          const gd = Math.sqrt((px-g.x)**2 + (py-g.y)**2);
+          if (gd < TILE() * 2.5) {
+            const angleToGuard = Math.atan2(g.y - py, g.x - px);
+            const angleDiff = Math.abs(angle - angleToGuard);
+            if (angleDiff < 0.8 || angleDiff > Math.PI * 2 - 0.8) {
+              g.dead = true;
+              score += 100;
+            }
+          }
+        }
+      } else if (dist < 20 && isHolding && holdTimer > 15) {
+        // Hold = hide
+        hiding = true;
+      }
+      swiping = false; isHolding = false;
+    }
+  }
+}, { passive: false });
+
+// Mouse fallback
+C.addEventListener('click', e => {
+  const tx = e.clientX - C.getBoundingClientRect().left;
+  const ty = e.clientY - C.getBoundingClientRect().top;
+  if (state !== ST.PLAY) { tapTarget = { x: tx, y: ty }; }
+  else { tapTarget = { x: tx, y: ty }; }
+});
+
+function pointInWall(x, y) {
+  const T = TILE();
+  const lv = LEVELS[level];
+  for (const w of lv.walls) {
+    if (x >= w[0]*T && x < (w[0]+w[2])*T && y >= w[1]*T && y < (w[1]+w[3])*T) return true;
+  }
+  return false;
+}
+
+function pointInShadow(x, y) {
+  const T = TILE();
+  const lv = LEVELS[level];
+  for (const s of lv.shadows) {
+    if (x >= s[0]*T && x < (s[0]+s[2])*T && y >= s[1]*T && y < (s[1]+s[3])*T) return true;
+  }
+  return false;
+}
+
+function canSee(gx, gy, gAngle, tx, ty) {
+  const dx = tx - gx, dy = ty - gy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const T = TILE();
+  if (dist > T * 5) return false;
+
+  const angleToTarget = Math.atan2(dy, dx);
+  let diff = angleToTarget - gAngle;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  if (Math.abs(diff) > Math.PI / 3) return false;
+
+  // Raycast for walls
+  const steps = Math.floor(dist / (T * 0.3));
+  for (let i = 1; i < steps; i++) {
+    const cx = gx + dx * i / steps;
+    const cy = gy + dy * i / steps;
+    if (pointInWall(cx, cy)) return false;
+  }
+  return true;
+}
+
+function update() {
+  if (state !== ST.PLAY) return;
+  const T = TILE();
+  const lv = LEVELS[level];
+
+  // Hold timer
+  if (isHolding) holdTimer++;
+  if (!isHolding && hiding) hiding = false;
+
+  // Dash
+  if (dashing) {
+    dashTimer--;
+    const speed = T * 0.4;
+    const nx = px + Math.cos(pAngle) * speed;
+    const ny = py + Math.sin(pAngle) * speed;
+    if (!pointInWall(nx, ny)) { px = nx; py = ny; }
+    if (dashTimer <= 0) dashing = false;
+  }
+
+  // Move to tap target
+  if (tapTarget && !dashing && !hiding) {
+    const dx = tapTarget.x - px, dy = tapTarget.y - py;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist > T * 0.3) {
+      const speed = T * 0.06;
+      const nx = px + (dx / dist) * speed;
+      const ny = py + (dy / dist) * speed;
+      if (!pointInWall(nx, ny)) { px = nx; py = ny; }
+      pAngle = Math.atan2(dy, dx);
+    } else {
+      tapTarget = null;
+    }
+  }
+
+  if (dashCooldown > 0) dashCooldown--;
+
+  // Guard AI
+  for (const g of guards) {
+    if (g.dead) continue;
+
+    // Patrol
+    const target = g.patrol[g.patrolIdx];
+    const dx = target[0] - g.x, dy = target[1] - g.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if (g.alerted) {
+      // Chase player
+      const pdx = px - g.x, pdy = py - g.y;
+      const pd = Math.sqrt(pdx*pdx + pdy*pdy);
+      if (pd > T * 0.5) {
+        const nx = g.x + (pdx / pd) * g.speed * 2;
+        const ny = g.y + (pdy / pd) * g.speed * 2;
+        if (!pointInWall(nx, ny)) { g.x = nx; g.y = ny; }
+        g.angle = Math.atan2(pdy, pdx);
+      }
+      g.alertTimer--;
+      if (g.alertTimer <= 0) g.alerted = false;
+    } else {
+      if (dist > T * 0.2) {
+        g.x += (dx / dist) * g.speed;
+        g.y += (dy / dist) * g.speed;
+        g.angle = Math.atan2(dy, dx);
+      } else {
+        g.patrolIdx += g.patrolDir;
+        if (g.patrolIdx >= g.patrol.length || g.patrolIdx < 0) {
+          g.patrolDir *= -1;
+          g.patrolIdx += g.patrolDir * 2;
+          g.patrolIdx = Math.max(0, Math.min(g.patrol.length - 1, g.patrolIdx));
+        }
+      }
+    }
+
+    // Detection
+    const inShadow = hiding && pointInShadow(px, py);
+    if (!inShadow && canSee(g.x, g.y, g.angle, px, py)) {
+      const pd = Math.sqrt((px - g.x)**2 + (py - g.y)**2);
+      alertLevel += pd < T * 2 ? 2 : 0.8;
+      g.alerted = true;
+      g.alertTimer = 120;
+    }
+
+    // Catch player
+    const catchDist = Math.sqrt((px - g.x)**2 + (py - g.y)**2);
+    if (catchDist < T * 0.6 && !g.dead) {
+      alertLevel = 100;
+    }
+  }
+
+  // Alert decay
+  if (!guards.some(g => !g.dead && g.alerted)) {
+    alertLevel = Math.max(0, alertLevel - 0.3);
+  }
+
+  if (alertLevel >= 100) {
+    state = ST.CAUGHT;
+  }
+
+  // Check target
+  const tdx = px - lv.target.x * T, tdy = py - lv.target.y * T;
+  if (Math.sqrt(tdx*tdx + tdy*tdy) < T * 0.8) {
+    // Check if all guards near target are dead or target is reachable
+    score += 500 - Math.floor(alertLevel * 3);
+    state = ST.WIN_LEVEL;
+  }
+}
+
+function draw() {
+  X.clearRect(0, 0, W, H);
+  if (state === ST.TITLE) {
+    X.fillStyle = '#0f0f1a';
+    X.fillRect(0, 0, W, H);
+    X.fillStyle = '#a78bfa';
+    X.font = `bold ${W * 0.1}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText('RAKSHASA', W / 2, H * 0.35);
+    X.fillStyle = '#9ca3af';
+    X.font = `${W * 0.035}px system-ui`;
+    X.fillText('Stealth Assassin', W / 2, H * 0.42);
+    X.fillStyle = '#e0e0ff';
+    X.font = `${W * 0.03}px system-ui`;
+    X.fillText('Tap: Move | Swipe: Dash/Kill | Hold: Hide', W / 2, H * 0.52);
+    X.fillText('Reach the target (red diamond)', W / 2, H * 0.57);
+    X.fillText('Stay out of guard vision cones!', W / 2, H * 0.62);
+    X.fillStyle = '#a78bfa';
+    X.font = `${W * 0.04}px system-ui`;
+    X.fillText('Tap to Start', W / 2, H * 0.72);
+    return;
+  }
+  if (state === ST.GAME_WIN) {
+    X.fillStyle = '#0f0f1a';
+    X.fillRect(0, 0, W, H);
+    X.fillStyle = '#fbbf24';
+    X.font = `bold ${W * 0.08}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText('MISSION COMPLETE', W / 2, H * 0.35);
+    X.fillStyle = '#e0e0ff';
+    X.font = `${W * 0.04}px system-ui`;
+    X.fillText(`Final Score: ${score}`, W / 2, H * 0.45);
+    X.fillStyle = '#9ca3af';
+    X.font = `${W * 0.03}px system-ui`;
+    X.fillText('All targets eliminated. Tap to restart.', W / 2, H * 0.55);
+    return;
+  }
+
+  const T = TILE();
+  const lv = LEVELS[level];
+
+  // Floor
+  X.fillStyle = '#12121e';
+  X.fillRect(0, 0, W, H);
+
+  // Floor tiles
+  X.strokeStyle = '#1a1a28';
+  X.lineWidth = 0.5;
+  for (let gx = 0; gx < 16; gx++) {
+    for (let gy = 0; gy < 14; gy++) {
+      X.strokeRect(gx * T, gy * T, T, T);
+    }
+  }
+
+  // Shadows (hiding spots)
+  for (const s of lv.shadows) {
+    X.fillStyle = 'rgba(30,0,60,0.6)';
+    X.fillRect(s[0]*T, s[1]*T, s[2]*T, s[3]*T);
+    // Decoration
+    X.strokeStyle = '#2a1a3a';
+    X.lineWidth = 1;
+    X.strokeRect(s[0]*T, s[1]*T, s[2]*T, s[3]*T);
+  }
+
+  // Walls
+  X.fillStyle = '#2a2a3e';
+  for (const w of lv.walls) {
+    X.fillRect(w[0]*T, w[1]*T, w[2]*T, w[3]*T);
+    X.strokeStyle = '#4a4a6e';
+    X.lineWidth = 1;
+    X.strokeRect(w[0]*T, w[1]*T, w[2]*T, w[3]*T);
+  }
+
+  // Target
+  const tx = lv.target.x * T, ty = lv.target.y * T;
+  X.fillStyle = '#ef444488';
+  X.beginPath();
+  X.moveTo(tx, ty - T*0.4); X.lineTo(tx + T*0.4, ty);
+  X.lineTo(tx, ty + T*0.4); X.lineTo(tx - T*0.4, ty);
+  X.closePath(); X.fill();
+  X.strokeStyle = '#ef4444';
+  X.lineWidth = 2;
+  X.stroke();
+
+  // Guard vision cones
+  for (const g of guards) {
+    if (g.dead) continue;
+    X.save();
+    X.translate(g.x, g.y);
+    X.rotate(g.angle);
+    X.fillStyle = g.alerted ? 'rgba(239,68,68,0.15)' : 'rgba(251,191,36,0.08)';
+    X.beginPath();
+    X.moveTo(0, 0);
+    X.arc(0, 0, T * 5, -Math.PI / 3, Math.PI / 3);
+    X.closePath();
+    X.fill();
+    X.restore();
+  }
+
+  // Guards
+  for (const g of guards) {
+    if (g.dead) {
+      X.fillStyle = '#4a4a4a44';
+      X.beginPath();
+      X.arc(g.x, g.y, T * 0.3, 0, Math.PI * 2);
+      X.fill();
+      continue;
+    }
+    X.fillStyle = g.alerted ? '#ef4444' : '#f59e0b';
+    X.beginPath();
+    X.arc(g.x, g.y, T * 0.35, 0, Math.PI * 2);
+    X.fill();
+    // Direction indicator
+    X.strokeStyle = '#fff';
+    X.lineWidth = 2;
+    X.beginPath();
+    X.moveTo(g.x, g.y);
+    X.lineTo(g.x + Math.cos(g.angle) * T * 0.5, g.y + Math.sin(g.angle) * T * 0.5);
+    X.stroke();
+    // Alert indicator
+    if (g.alerted) {
+      X.fillStyle = '#ef4444';
+      X.font = `bold ${T * 0.5}px system-ui`;
+      X.textAlign = 'center';
+      X.fillText('!', g.x, g.y - T * 0.5);
+    }
+  }
+
+  // Player
+  X.fillStyle = hiding ? '#a78bfa66' : (dashing ? '#fff' : '#a78bfa');
+  X.beginPath();
+  X.arc(px, py, T * 0.3, 0, Math.PI * 2);
+  X.fill();
+  if (dashing) {
+    X.strokeStyle = '#a78bfa';
+    X.lineWidth = 3;
+    X.beginPath();
+    X.moveTo(px, py);
+    X.lineTo(px + Math.cos(pAngle) * T * 0.7, py + Math.sin(pAngle) * T * 0.7);
+    X.stroke();
+  }
+
+  // HUD
+  X.fillStyle = 'rgba(15,15,26,0.8)';
+  X.fillRect(0, H - T * 2.2, W, T * 2.2);
+
+  // Alert bar
+  X.fillStyle = '#333';
+  X.fillRect(T * 0.5, H - T * 2, W - T, T * 0.5);
+  const alertColor = alertLevel > 70 ? '#ef4444' : alertLevel > 30 ? '#f59e0b' : '#22c55e';
+  X.fillStyle = alertColor;
+  X.fillRect(T * 0.5, H - T * 2, (W - T) * (alertLevel / 100), T * 0.5);
+  X.fillStyle = '#e0e0ff';
+  X.font = `${T * 0.4}px system-ui`;
+  X.textAlign = 'left';
+  X.fillText(`Alert: ${Math.floor(alertLevel)}%`, T * 0.5, H - T * 2.3);
+
+  X.fillText(`Level ${level + 1}/5`, T * 0.5, H - T * 0.8);
+  X.textAlign = 'right';
+  X.fillText(`Score: ${score}`, W - T * 0.5, H - T * 0.8);
+
+  // Dash cooldown
+  if (dashCooldown > 0) {
+    X.fillStyle = '#a78bfa44';
+    X.fillRect(W - T * 3, H - T * 2, T * 2.5, T * 0.5);
+    X.fillStyle = '#a78bfa';
+    X.fillRect(W - T * 3, H - T * 2, T * 2.5 * (1 - dashCooldown / 45), T * 0.5);
+  }
+
+  // State overlays
+  if (state === ST.CAUGHT) {
+    X.fillStyle = 'rgba(239,68,68,0.3)';
+    X.fillRect(0, 0, W, H);
+    X.fillStyle = '#ef4444';
+    X.font = `bold ${W * 0.07}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText('DETECTED!', W / 2, H * 0.4);
+    X.fillStyle = '#e0e0ff';
+    X.font = `${W * 0.035}px system-ui`;
+    X.fillText('Tap to retry level', W / 2, H * 0.48);
+  }
+  if (state === ST.WIN_LEVEL) {
+    X.fillStyle = 'rgba(15,15,26,0.7)';
+    X.fillRect(0, 0, W, H);
+    X.fillStyle = '#4ade80';
+    X.font = `bold ${W * 0.06}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText('TARGET ELIMINATED', W / 2, H * 0.4);
+    X.fillStyle = '#e0e0ff';
+    X.font = `${W * 0.035}px system-ui`;
+    X.fillText(`Score: ${score}`, W / 2, H * 0.47);
+    X.fillText('Tap to continue', W / 2, H * 0.53);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>Day 19 - Camouflage</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0f0f1a;color:#e0e0ff;min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+a.back{position:fixed;top:12px;left:12px;color:#a78bfa;text-decoration:none;font-size:0.9rem;z-index:100;background:#1e1e2e;padding:6px 12px;border-radius:8px;border:1px solid #3b3b5c}
+canvas{display:block;touch-action:none}
+#ui{position:fixed;top:12px;right:12px;text-align:right;z-index:100;font-size:0.85rem;background:#1e1e2ecc;padding:8px 12px;border-radius:8px}
+#ui .floor{color:#a78bfa;font-weight:700;font-size:1.1rem}
+#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e1e2ef0;color:#a78bfa;padding:24px 36px;border-radius:12px;border:2px solid #a78bfa;font-size:1.3rem;text-align:center;display:none;z-index:200}
+#msg button{margin-top:12px;background:#a78bfa;color:#0f0f1a;border:none;padding:8px 24px;border-radius:8px;font-size:1rem;cursor:pointer}
+</style>
+</head>
+<body>
+<a class="back" href="../index.html">< Back</a>
+<div id="ui"><div class="floor" id="floorLabel">Floor 1</div><div id="statusLabel">Sneak to the exit!</div></div>
+<div id="msg"><div id="msgText"></div><button id="msgBtn">OK</button></div>
+<canvas id="c"></canvas>
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const ui={floor:document.getElementById('floorLabel'),status:document.getElementById('statusLabel'),msg:document.getElementById('msg'),msgText:document.getElementById('msgText'),msgBtn:document.getElementById('msgBtn')};
+let W,H,TILE=24,COLS,ROWS;
+function resize(){W=Math.min(480,window.innerWidth);H=Math.min(720,window.innerHeight);canvas.width=W;canvas.height=H;COLS=Math.floor(W/TILE);ROWS=Math.floor(H/TILE)}
+resize();window.addEventListener('resize',resize);
+
+// Game state
+let player,guards,walls,exit,floor=1,maxFloors=5,hiding=false,detected=false,gameOver=false,won=false;
+let targetX=null,targetY=null;
+let holdTimer=0,isHolding=false;
+let alertLevel=0; // 0-100
+let hideSpots=[];
+let particles=[];
+
+function generateLevel(f){
+  walls=[];hideSpots=[];guards=[];
+  // Border walls
+  for(let x=0;x<COLS;x++){walls.push({x:x,y:0});walls.push({x:x,y:ROWS-1})}
+  for(let y=0;y<ROWS;y++){walls.push({x:0,y:y});walls.push({x:COLS-1,y:y})}
+  // Internal walls - more complex per floor
+  let numWalls=8+f*4;
+  for(let i=0;i<numWalls;i++){
+    let wx=2+Math.floor(Math.random()*(COLS-4));
+    let wy=2+Math.floor(Math.random()*(ROWS-4));
+    let horizontal=Math.random()>0.5;
+    let len=2+Math.floor(Math.random()*4);
+    for(let j=0;j<len;j++){
+      let nx=horizontal?wx+j:wx;
+      let ny=horizontal?wy:wy+j;
+      if(nx>0&&nx<COLS-1&&ny>0&&ny<ROWS-1) walls.push({x:nx,y:ny});
+    }
+  }
+  // Hide spots (dark corners)
+  let numHide=4+f;
+  for(let i=0;i<numHide;i++){
+    let hx,hy,tries=0;
+    do{hx=1+Math.floor(Math.random()*(COLS-2));hy=1+Math.floor(Math.random()*(ROWS-2));tries++}
+    while(tries<50&&(isWall(hx,hy)||hideSpots.some(h=>h.x===hx&&h.y===hy)));
+    hideSpots.push({x:hx,y:hy});
+  }
+  // Player start bottom-left area
+  player={x:2,y:ROWS-3,visible:true};
+  // Exit top-right area
+  exit={x:COLS-3,y:2};
+  // Make sure exit and player aren't on walls
+  walls=walls.filter(w=>!(w.x===player.x&&w.y===player.y)&&!(w.x===exit.x&&w.y===exit.y));
+  // Guards
+  let numGuards=2+f;
+  for(let i=0;i<numGuards;i++){
+    let gx,gy,tries=0;
+    do{gx=3+Math.floor(Math.random()*(COLS-6));gy=3+Math.floor(Math.random()*(ROWS-6));tries++}
+    while(tries<50&&(isWall(gx,gy)||(Math.abs(gx-player.x)<3&&Math.abs(gy-player.y)<3)));
+    let dir=Math.floor(Math.random()*4); // 0=up,1=right,2=down,3=left
+    guards.push({x:gx,y:gy,dir:dir,patrol:dir,speed:0.02+f*0.005,fov:Math.PI/2.5,range:5+f,turnTimer:0,alertCooldown:0});
+  }
+  alertLevel=0;detected=false;hiding=false;targetX=null;targetY=null;
+}
+
+function isWall(x,y){return walls.some(w=>w.x===x&&w.y===y)}
+function isHideSpot(x,y){return hideSpots.some(h=>h.x===x&&h.y===y)}
+
+const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
+function dirAngle(d){return[Math.PI*1.5,0,Math.PI/2,Math.PI][d]}
+
+function lineOfSight(x1,y1,x2,y2){
+  let dx=x2-x1,dy=y2-y1,dist=Math.sqrt(dx*dx+dy*dy);
+  let steps=Math.ceil(dist*2);
+  for(let i=1;i<steps;i++){
+    let t=i/steps;
+    let cx=Math.round(x1+dx*t),cy=Math.round(y1+dy*t);
+    if(isWall(cx,cy))return false;
+  }
+  return true;
+}
+
+function updateGuards(dt){
+  guards.forEach(g=>{
+    g.turnTimer+=dt;
+    if(g.turnTimer>2000+Math.random()*2000){
+      g.turnTimer=0;
+      // Random patrol: turn or continue
+      if(Math.random()>0.4){
+        g.dir=(g.dir+( Math.random()>0.5?1:3))%4;
+      }
+    }
+    // Move along direction
+    let d=dirs[g.dir];
+    let nx=g.x+d[0]*g.speed*dt*0.06;
+    let ny=g.y+d[1]*g.speed*dt*0.06;
+    let tnx=Math.round(nx),tny=Math.round(ny);
+    if(!isWall(tnx,tny)&&tnx>0&&tnx<COLS-1&&tny>0&&tny<ROWS-1){
+      g.x=nx;g.y=ny;
+    }else{
+      g.dir=(g.dir+2)%4; // reverse
+    }
+    // Check player detection
+    if(!hiding&&player.visible){
+      let dx=player.x-g.x,dy=player.y-g.y;
+      let dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<g.range){
+        let angleToPlayer=Math.atan2(dy,dx);
+        let guardAngle=dirAngle(g.dir);
+        let diff=Math.abs(Math.atan2(Math.sin(angleToPlayer-guardAngle),Math.cos(angleToPlayer-guardAngle)));
+        if(diff<g.fov/2&&lineOfSight(Math.round(g.x),Math.round(g.y),player.x,player.y)){
+          alertLevel+=dt*0.08*(1+floor*0.3);
+          if(dist<2)alertLevel+=dt*0.15;
+        }
+      }
+    }
+  });
+  if(alertLevel>0&&(hiding||!guards.some(g=>{
+    let dx=player.x-g.x,dy=player.y-g.y,dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist>=g.range)return false;
+    let a2p=Math.atan2(dy,dx),ga=dirAngle(g.dir);
+    return Math.abs(Math.atan2(Math.sin(a2p-ga),Math.cos(a2p-ga)))<g.fov/2;
+  }))){
+    alertLevel=Math.max(0,alertLevel-dt*0.03);
+  }
+  if(alertLevel>=100){detected=true;gameOver=true}
+}
+
+// Pathfinding (simple BFS for tap-to-move)
+function findPath(sx,sy,tx,ty){
+  if(isWall(tx,ty))return null;
+  let visited=new Set();
+  let queue=[{x:sx,y:sy,path:[]}];
+  visited.add(sx+','+sy);
+  while(queue.length){
+    let cur=queue.shift();
+    if(cur.x===tx&&cur.y===ty)return cur.path;
+    for(let d of dirs){
+      let nx=cur.x+d[0],ny=cur.y+d[1];
+      let key=nx+','+ny;
+      if(!visited.has(key)&&!isWall(nx,ny)&&nx>=0&&nx<COLS&&ny>=0&&ny<ROWS){
+        visited.add(key);
+        queue.push({x:nx,y:ny,path:[...cur.path,{x:nx,y:ny}]});
+      }
+    }
+  }
+  return null;
+}
+
+let currentPath=null,pathIndex=0,moveTimer=0;
+
+function updatePlayer(dt){
+  if(gameOver)return;
+  if(currentPath&&pathIndex<currentPath.length){
+    moveTimer+=dt;
+    let moveSpeed=hiding?300:120;
+    if(moveTimer>moveSpeed){
+      moveTimer=0;
+      let next=currentPath[pathIndex];
+      player.x=next.x;player.y=next.y;
+      pathIndex++;
+      // Check hide spot
+      if(isHideSpot(player.x,player.y)&&isHolding){
+        hiding=true;
+      }else{
+        hiding=false;
+      }
+      // Check exit
+      if(player.x===exit.x&&player.y===exit.y){
+        if(floor>=maxFloors){won=true;gameOver=true;}
+        else{floor++;generateLevel(floor);ui.floor.textContent='Floor '+floor}
+      }
+    }
+  }
+  if(isHolding&&isHideSpot(player.x,player.y)){hiding=true}
+  else if(!isHolding){hiding=false}
+}
+
+// Touch handling
+let touchId=null,touchStartTime=0;
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  if(gameOver)return;
+  let t=e.changedTouches[0];
+  touchId=t.identifier;
+  touchStartTime=Date.now();
+  isHolding=true;
+  let rect=canvas.getBoundingClientRect();
+  let tx=Math.floor((t.clientX-rect.left)/TILE);
+  let ty=Math.floor((t.clientY-rect.top)/TILE);
+  if(tx>=0&&tx<COLS&&ty>=0&&ty<ROWS&&!isWall(tx,ty)){
+    let path=findPath(player.x,player.y,tx,ty);
+    if(path){currentPath=path;pathIndex=0;moveTimer=0}
+  }
+},{passive:false});
+canvas.addEventListener('touchend',e=>{
+  e.preventDefault();
+  isHolding=false;hiding=false;
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault()},{passive:false});
+
+// Mouse fallback
+canvas.addEventListener('mousedown',e=>{
+  if(gameOver)return;
+  isHolding=true;
+  let rect=canvas.getBoundingClientRect();
+  let tx=Math.floor((e.clientX-rect.left)/TILE);
+  let ty=Math.floor((e.clientY-rect.top)/TILE);
+  if(tx>=0&&tx<COLS&&ty>=0&&ty<ROWS&&!isWall(tx,ty)){
+    let path=findPath(player.x,player.y,tx,ty);
+    if(path){currentPath=path;pathIndex=0;moveTimer=0}
+  }
+});
+canvas.addEventListener('mouseup',()=>{isHolding=false;hiding=false});
+
+// Drawing
+function drawVisionCone(g){
+  let angle=dirAngle(g.dir);
+  let range=g.range*TILE;
+  ctx.save();
+  ctx.globalAlpha=0.12;
+  ctx.fillStyle='#ffcc00';
+  ctx.beginPath();
+  ctx.moveTo(g.x*TILE+TILE/2,g.y*TILE+TILE/2);
+  ctx.arc(g.x*TILE+TILE/2,g.y*TILE+TILE/2,range,angle-g.fov/2,angle+g.fov/2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+
+function draw(){
+  ctx.fillStyle='#0f0f1a';ctx.fillRect(0,0,W,H);
+  // Floor
+  ctx.fillStyle='#161625';
+  for(let x=0;x<COLS;x++)for(let y=0;y<ROWS;y++){
+    if((x+y)%2===0)ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+  }
+  // Hide spots
+  hideSpots.forEach(h=>{
+    ctx.fillStyle='#1a1a3a';
+    ctx.fillRect(h.x*TILE,h.y*TILE,TILE,TILE);
+    ctx.strokeStyle='#2a2a5a';ctx.lineWidth=1;
+    ctx.strokeRect(h.x*TILE+2,h.y*TILE+2,TILE-4,TILE-4);
+  });
+  // Walls
+  ctx.fillStyle='#3b3b5c';
+  walls.forEach(w=>ctx.fillRect(w.x*TILE,w.y*TILE,TILE,TILE));
+  // Wall tops
+  ctx.fillStyle='#4a4a6c';
+  walls.forEach(w=>ctx.fillRect(w.x*TILE,w.y*TILE,TILE,TILE*0.3));
+  // Exit
+  ctx.fillStyle='#22c55e';
+  ctx.fillRect(exit.x*TILE+2,exit.y*TILE+2,TILE-4,TILE-4);
+  ctx.fillStyle='#16a34a';
+  ctx.font='bold '+Math.floor(TILE*0.6)+'px system-ui';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('E',exit.x*TILE+TILE/2,exit.y*TILE+TILE/2);
+  // Vision cones
+  guards.forEach(g=>drawVisionCone(g));
+  // Guards
+  guards.forEach(g=>{
+    ctx.fillStyle='#ef4444';
+    ctx.beginPath();
+    ctx.arc(g.x*TILE+TILE/2,g.y*TILE+TILE/2,TILE*0.4,0,Math.PI*2);
+    ctx.fill();
+    // Direction indicator
+    let da=dirAngle(g.dir);
+    ctx.strokeStyle='#fbbf24';ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(g.x*TILE+TILE/2,g.y*TILE+TILE/2);
+    ctx.lineTo(g.x*TILE+TILE/2+Math.cos(da)*TILE*0.5,g.y*TILE+TILE/2+Math.sin(da)*TILE*0.5);
+    ctx.stroke();
+  });
+  // Player
+  if(!hiding||Math.sin(Date.now()*0.01)>0){
+    ctx.fillStyle=hiding?'#1a1a3a88':alertLevel>50?'#fbbf24':'#a78bfa';
+    ctx.beginPath();
+    ctx.arc(player.x*TILE+TILE/2,player.y*TILE+TILE/2,TILE*0.35,0,Math.PI*2);
+    ctx.fill();
+    if(hiding){
+      ctx.strokeStyle='#a78bfa44';ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.arc(player.x*TILE+TILE/2,player.y*TILE+TILE/2,TILE*0.35,0,Math.PI*2);
+      ctx.stroke();
+    }
+  }
+  // Path preview
+  if(currentPath&&pathIndex<currentPath.length){
+    ctx.strokeStyle='#a78bfa33';ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(player.x*TILE+TILE/2,player.y*TILE+TILE/2);
+    for(let i=pathIndex;i<currentPath.length;i++){
+      ctx.lineTo(currentPath[i].x*TILE+TILE/2,currentPath[i].y*TILE+TILE/2);
+    }
+    ctx.stroke();
+  }
+  // Alert bar
+  if(alertLevel>0){
+    let bw=W*0.6,bh=8,bx=(W-bw)/2,by=H-30;
+    ctx.fillStyle='#333';ctx.fillRect(bx,by,bw,bh);
+    let color=alertLevel<50?'#fbbf24':alertLevel<80?'#f97316':'#ef4444';
+    ctx.fillStyle=color;ctx.fillRect(bx,by,bw*(alertLevel/100),bh);
+    ctx.strokeStyle='#555';ctx.lineWidth=1;ctx.strokeRect(bx,by,bw,bh);
+  }
+  // Status
+  let statusText=hiding?'Hidden...':alertLevel>50?'ALERT!':'Sneak to exit';
+  ui.status.textContent=statusText;
+  ui.status.style.color=alertLevel>50?'#ef4444':'#9ca3af';
+}
+
+function showMsg(text,btnText,cb){
+  ui.msgText.textContent=text;ui.msgBtn.textContent=btnText||'OK';
+  ui.msg.style.display='block';
+  ui.msgBtn.onclick=()=>{ui.msg.style.display='none';if(cb)cb()};
+}
+
+let lastTime=0;
+function gameLoop(ts){
+  let dt=Math.min(ts-lastTime,50);lastTime=ts;
+  if(!gameOver){
+    updateGuards(dt);
+    updatePlayer(dt);
+  }
+  draw();
+  if(gameOver&&!gameOver.shown){
+    gameOver={shown:true};
+    if(won)showMsg('You escaped all '+maxFloors+' floors!','Play Again',()=>{floor=1;gameOver=false;won=false;generateLevel(floor);ui.floor.textContent='Floor 1'});
+    else if(detected)showMsg('Detected! Floor '+floor,'Retry',()=>{gameOver=false;detected=false;generateLevel(floor)});
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+generateLevel(floor);
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

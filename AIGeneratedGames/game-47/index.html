@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Retro Bowl Runner</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 1000; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { image-rendering: pixelated; image-rendering: crisp-edges; border: 3px solid #333; }
+#ui { position: fixed; bottom: 20px; text-align: center; font-size: 14px; color: #888; }
+#mobile-controls {
+  position: fixed; bottom: 60px; display: flex; gap: 15px; z-index: 100;
+}
+.mobile-btn {
+  width: 60px; height: 60px; background: #1a1a2e; border: 2px solid #444;
+  border-radius: 8px; color: #e0e0ff; font-size: 14px; font-family: 'Courier New', monospace;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  user-select: none; -webkit-user-select: none; touch-action: manipulation;
+}
+.mobile-btn:active { background: #333; border-color: #ff6b35; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="mobile-controls">
+  <button class="mobile-btn" id="btn-up">UP</button>
+  <button class="mobile-btn" id="btn-down">DOWN</button>
+  <button class="mobile-btn" id="btn-z">Z</button>
+  <button class="mobile-btn" id="btn-x">X</button>
+</div>
+<div id="ui">Arrow Up/Down: Switch Lanes | Z: Stiff Arm | X: Spin Move</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// NES resolution scaled up
+const W = 256, H = 240, SCALE = 3;
+canvas.width = W; canvas.height = H;
+canvas.style.width = W * SCALE + 'px';
+canvas.style.height = H * SCALE + 'px';
+
+// Audio context for chiptune sounds
+let audioCtx;
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playSound(freq, dur, type = 'square', vol = 0.08) {
+  if (!audioCtx) return;
+  let osc = audioCtx.createOscillator();
+  let gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + dur);
+}
+
+function playPickup() { playSound(880, 0.1); setTimeout(() => playSound(1100, 0.1), 50); }
+function playHit() { playSound(100, 0.2, 'sawtooth', 0.12); }
+function playTD() {
+  [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => playSound(f, 0.2), i * 100));
+}
+function playStiff() { playSound(200, 0.15, 'sawtooth'); }
+function playSpin() { playSound(400, 0.1); setTimeout(() => playSound(600, 0.08), 60); }
+
+// NES Color palette
+const COL = {
+  bg: '#548c2c', field: '#3a7a18', white: '#fcfcfc', black: '#000',
+  skin: '#f8b878', jersey: '#0038f8', pants: '#fcfcfc',
+  red: '#d82020', yellow: '#f8d818', orange: '#f87818',
+  dkGreen: '#2a6a08', ltGreen: '#68b838',
+  brown: '#783800', gray: '#888', dkGray: '#444'
+};
+
+const LANES = [80, 130, 180]; // y positions for 3 lanes
+const LANE_H = 50;
+
+let state = 'title'; // title, play, gameover, td_celebration
+let player, defenders, pickups, particles, blockers;
+let score, highScore, yards, speed, frame, tdTimer;
+let stiffArmCooldown, spinCooldown, ghostMode, ghostTimer, speedBoost, speedTimer;
+let keys = {};
+
+// Load high score
+highScore = parseInt(localStorage.getItem('retroBowlHigh') || '0');
+
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (state === 'title') { initAudio(); startGame(); }
+  if (state === 'gameover' && e.key === ' ') { startGame(); }
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// Mobile controls
+['btn-up','btn-down','btn-z','btn-x'].forEach(id => {
+  let el = document.getElementById(id);
+  let keyMap = { 'btn-up': 'ArrowUp', 'btn-down': 'ArrowDown', 'btn-z': 'z', 'btn-x': 'x' };
+  el.addEventListener('touchstart', e => { e.preventDefault(); initAudio(); keys[keyMap[id]] = true; if(state==='title') startGame(); if(state==='gameover') startGame(); });
+  el.addEventListener('touchend', e => { e.preventDefault(); keys[keyMap[id]] = false; });
+  el.addEventListener('mousedown', e => { keys[keyMap[id]] = true; if(state==='title') startGame(); if(state==='gameover') startGame(); });
+  el.addEventListener('mouseup', e => { keys[keyMap[id]] = false; });
+});
+
+function startGame() {
+  state = 'play';
+  score = 0; yards = 0; speed = 2; frame = 0; tdTimer = 0;
+  stiffArmCooldown = 0; spinCooldown = 0;
+  ghostMode = false; ghostTimer = 0;
+  speedBoost = false; speedTimer = 0;
+  player = { x: 50, lane: 1, animFrame: 0, stiffArm: false, spinning: false, spinFrame: 0 };
+  defenders = [];
+  pickups = [];
+  particles = [];
+  blockers = [];
+}
+
+function spawnDefender() {
+  let lane = Math.floor(Math.random() * 3);
+  let type = Math.random() < 0.3 ? 'fast' : 'normal';
+  defenders.push({ x: W + 10, lane, type, w: 12, h: 16, hit: false });
+}
+
+function spawnPickup() {
+  let lane = Math.floor(Math.random() * 3);
+  let type = Math.random();
+  let kind = 'football';
+  if (type > 0.9) kind = 'ghost';
+  else if (type > 0.8) kind = 'speed';
+  else if (type > 0.7) kind = 'blocker';
+  pickups.push({ x: W + 10, lane, kind, w: 10, h: 10 });
+}
+
+function addParticle(x, y, col) {
+  for (let i = 0; i < 5; i++) {
+    particles.push({
+      x, y, dx: (Math.random() - 0.5) * 3, dy: (Math.random() - 0.5) * 3,
+      life: 20, col
+    });
+  }
+}
+
+function update() {
+  if (state !== 'play' && state !== 'td_celebration') return;
+
+  frame++;
+
+  if (state === 'td_celebration') {
+    tdTimer--;
+    if (tdTimer <= 0) state = 'play';
+    return;
+  }
+
+  // Speed increases
+  speed = 2 + Math.floor(yards / 50) * 0.3;
+  let curSpeed = speedBoost ? speed * 1.5 : speed;
+
+  // Yards
+  yards += curSpeed * 0.1;
+
+  // Touchdown check
+  if (yards > 0 && Math.floor(yards) % 100 === 0 && Math.floor(yards - curSpeed * 0.1) % 100 !== 0) {
+    score += 7;
+    state = 'td_celebration';
+    tdTimer = 90;
+    playTD();
+    addParticle(player.x, LANES[player.lane], COL.yellow);
+  }
+
+  // Cooldowns
+  if (stiffArmCooldown > 0) stiffArmCooldown--;
+  if (spinCooldown > 0) spinCooldown--;
+  if (ghostTimer > 0) { ghostTimer--; if (ghostTimer <= 0) ghostMode = false; }
+  if (speedTimer > 0) { speedTimer--; if (speedTimer <= 0) speedBoost = false; }
+
+  // Input
+  if (keys['ArrowUp'] && !keys._upLock) {
+    if (player.lane > 0) { player.lane--; playSound(440, 0.05); }
+    keys._upLock = true;
+  }
+  if (!keys['ArrowUp']) keys._upLock = false;
+
+  if (keys['ArrowDown'] && !keys._downLock) {
+    if (player.lane < 2) { player.lane++; playSound(330, 0.05); }
+    keys._downLock = true;
+  }
+  if (!keys['ArrowDown']) keys._downLock = false;
+
+  if (keys['z'] && stiffArmCooldown <= 0) {
+    player.stiffArm = true;
+    stiffArmCooldown = 45;
+    playStiff();
+    setTimeout(() => { player.stiffArm = false; }, 300);
+  }
+
+  if (keys['x'] && spinCooldown <= 0) {
+    player.spinning = true;
+    player.spinFrame = 12;
+    spinCooldown = 60;
+    playSpin();
+  }
+
+  if (player.spinning) {
+    player.spinFrame--;
+    if (player.spinFrame <= 0) player.spinning = false;
+  }
+
+  // Spawn
+  if (frame % Math.max(20, 50 - Math.floor(yards / 30)) === 0) spawnDefender();
+  if (frame % 80 === 0) spawnPickup();
+
+  // Update defenders
+  defenders.forEach(d => {
+    let spd = d.type === 'fast' ? curSpeed * 1.3 : curSpeed;
+    d.x -= spd;
+  });
+
+  // Update pickups
+  pickups.forEach(p => { p.x -= curSpeed; });
+
+  // Update blockers
+  blockers.forEach(b => { b.x -= curSpeed * 0.3; b.life--; });
+  blockers = blockers.filter(b => b.life > 0 && b.x > -20);
+
+  // Collision check
+  let py = LANES[player.lane];
+  defenders.forEach(d => {
+    if (d.hit) return;
+    let dy = LANES[d.lane];
+    if (Math.abs(player.x - d.x) < 14 && player.lane === d.lane) {
+      // Check blocker protection
+      let blocked = blockers.some(b => b.lane === d.lane && Math.abs(b.x - d.x) < 20);
+      if (blocked) {
+        d.hit = true;
+        addParticle(d.x, dy, COL.yellow);
+        playSound(150, 0.1);
+        return;
+      }
+      if (ghostMode) return;
+      if (player.stiffArm) {
+        d.hit = true;
+        d.x += 30;
+        addParticle(d.x, dy, COL.orange);
+        score += 2;
+        return;
+      }
+      if (player.spinning) {
+        d.hit = true;
+        addParticle(d.x, dy, COL.yellow);
+        score += 3;
+        return;
+      }
+      // Hit!
+      playHit();
+      state = 'gameover';
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('retroBowlHigh', highScore);
+      }
+      addParticle(player.x, py, COL.red);
+    }
+  });
+
+  // Pickup collision
+  pickups = pickups.filter(p => {
+    if (Math.abs(player.x - p.x) < 12 && player.lane === p.lane) {
+      playPickup();
+      if (p.kind === 'football') { score += 5; addParticle(p.x, LANES[p.lane], COL.yellow); }
+      else if (p.kind === 'ghost') { ghostMode = true; ghostTimer = 120; addParticle(p.x, LANES[p.lane], COL.white); }
+      else if (p.kind === 'speed') { speedBoost = true; speedTimer = 120; addParticle(p.x, LANES[p.lane], COL.orange); }
+      else if (p.kind === 'blocker') {
+        for (let i = 0; i < 3; i++) blockers.push({ x: player.x + 15 + i * 12, lane: player.lane, life: 180 });
+        addParticle(p.x, LANES[p.lane], COL.yellow);
+      }
+      return false;
+    }
+    return p.x > -20;
+  });
+
+  defenders = defenders.filter(d => d.x > -20);
+
+  // Particles
+  particles.forEach(p => { p.x += p.dx; p.y += p.dy; p.life--; });
+  particles = particles.filter(p => p.life > 0);
+
+  player.animFrame = Math.floor(frame / 6) % 4;
+}
+
+function drawPixelChar(x, y, jerseyCol, pantsCol, facingRight, anim) {
+  // Simple 8-bit character
+  let s = 2; // pixel size
+  // Head
+  ctx.fillStyle = COL.skin;
+  ctx.fillRect(x - s, y - 8 * s, 4 * s, 4 * s);
+  // Helmet
+  ctx.fillStyle = jerseyCol;
+  ctx.fillRect(x - 2 * s, y - 9 * s, 6 * s, 2 * s);
+  ctx.fillRect(x - s, y - 10 * s, 4 * s, s);
+  // Facemask
+  ctx.fillStyle = COL.gray;
+  ctx.fillRect(facingRight ? x + 3 * s : x - 2 * s, y - 7 * s, s, 2 * s);
+  // Body/Jersey
+  ctx.fillStyle = jerseyCol;
+  ctx.fillRect(x - 2 * s, y - 4 * s, 6 * s, 5 * s);
+  // Number
+  ctx.fillStyle = COL.white;
+  ctx.fillRect(x, y - 3 * s, 2 * s, 3 * s);
+  // Arms
+  let armOff = anim % 2 === 0 ? 0 : s;
+  ctx.fillStyle = jerseyCol;
+  ctx.fillRect(x - 3 * s, y - 3 * s - armOff, s, 3 * s);
+  ctx.fillRect(x + 4 * s, y - 3 * s + armOff, s, 3 * s);
+  // Pants
+  ctx.fillStyle = pantsCol;
+  ctx.fillRect(x - s, y + s, 2 * s, 3 * s);
+  ctx.fillRect(x + s, y + s, 2 * s, 3 * s);
+  // Legs
+  let legOff = [0, s, 0, -s][anim];
+  ctx.fillStyle = COL.skin;
+  ctx.fillRect(x - s, y + 4 * s + legOff, 2 * s, 2 * s);
+  ctx.fillRect(x + s, y + 4 * s - legOff, 2 * s, 2 * s);
+}
+
+function drawFootball(x, y) {
+  ctx.fillStyle = COL.brown;
+  ctx.fillRect(x - 4, y - 2, 8, 5);
+  ctx.fillRect(x - 3, y - 3, 6, 1);
+  ctx.fillRect(x - 3, y + 3, 6, 1);
+  ctx.fillStyle = COL.white;
+  ctx.fillRect(x - 1, y - 3, 2, 7);
+}
+
+function draw() {
+  // Field background
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Field lines (scrolling)
+  let lineOffset = (frame * speed * 2) % 40;
+  ctx.fillStyle = COL.dkGreen;
+  for (let x = -lineOffset; x < W + 40; x += 40) {
+    ctx.fillRect(x, 50, 2, H - 70);
+  }
+
+  // Yard markers
+  ctx.fillStyle = COL.white;
+  for (let x = -lineOffset; x < W + 40; x += 40) {
+    ctx.fillRect(x, 55, 1, 8);
+    ctx.fillRect(x, H - 35, 1, 8);
+  }
+
+  // Lane dividers
+  ctx.fillStyle = '#ffffff22';
+  ctx.fillRect(0, LANES[0] + LANE_H / 2, W, 1);
+  ctx.fillRect(0, LANES[1] + LANE_H / 2, W, 1);
+
+  // Sidelines
+  ctx.fillStyle = COL.white;
+  ctx.fillRect(0, 50, W, 2);
+  ctx.fillRect(0, H - 28, W, 2);
+
+  // Title Screen
+  if (state === 'title') {
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = COL.white;
+    ctx.font = '16px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('RETRO BOWL RUNNER', W / 2, 60);
+    ctx.font = '8px Courier New';
+    ctx.fillStyle = COL.yellow;
+    ctx.fillText('Press any key to start', W / 2, 100);
+    ctx.fillStyle = COL.white;
+    ctx.font = '7px Courier New';
+    ctx.fillText('UP/DOWN: Switch lanes', W / 2, 130);
+    ctx.fillText('Z: Stiff arm  X: Spin move', W / 2, 142);
+    ctx.fillText('Dodge defenders, collect footballs', W / 2, 158);
+    ctx.fillText('Every 100 yards = TOUCHDOWN!', W / 2, 170);
+    ctx.fillStyle = COL.orange;
+    ctx.fillText('HIGH SCORE: ' + highScore, W / 2, 195);
+    // Draw a static player
+    drawPixelChar(W / 2, 220, COL.jersey, COL.pants, true, 0);
+    return;
+  }
+
+  // Draw blockers
+  blockers.forEach(b => {
+    drawPixelChar(b.x, LANES[b.lane], COL.yellow, COL.pants, true, Math.floor(frame / 8) % 4);
+  });
+
+  // Draw pickups
+  pickups.forEach(p => {
+    let py = LANES[p.lane];
+    if (p.kind === 'football') {
+      drawFootball(p.x, py);
+    } else if (p.kind === 'ghost') {
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = 0.5 + Math.sin(frame * 0.2) * 0.3;
+      ctx.fillRect(p.x - 5, py - 5, 10, 10);
+      ctx.fillStyle = COL.black;
+      ctx.fillRect(p.x - 3, py - 3, 2, 2);
+      ctx.fillRect(p.x + 1, py - 3, 2, 2);
+      ctx.globalAlpha = 1;
+    } else if (p.kind === 'speed') {
+      ctx.fillStyle = COL.orange;
+      // Lightning bolt shape
+      ctx.fillRect(p.x - 1, py - 5, 4, 3);
+      ctx.fillRect(p.x - 3, py - 2, 4, 3);
+      ctx.fillRect(p.x - 1, py + 1, 4, 3);
+    } else if (p.kind === 'blocker') {
+      ctx.fillStyle = COL.yellow;
+      ctx.fillRect(p.x - 5, py - 5, 10, 10);
+      ctx.fillStyle = COL.black;
+      ctx.fillRect(p.x - 3, py - 2, 6, 4);
+      ctx.fillStyle = COL.yellow;
+      ctx.fillRect(p.x - 1, py - 1, 2, 2);
+    }
+  });
+
+  // Draw defenders
+  defenders.forEach(d => {
+    if (d.hit) return;
+    let col = d.type === 'fast' ? COL.red : '#c02020';
+    drawPixelChar(d.x, LANES[d.lane], col, COL.dkGray, false, Math.floor(frame / 6) % 4);
+  });
+
+  // Draw player
+  let py = LANES[player.lane];
+  if (ghostMode) ctx.globalAlpha = 0.4 + Math.sin(frame * 0.3) * 0.2;
+  if (player.spinning) {
+    // Spin animation - just flash/stretch
+    ctx.save();
+    ctx.translate(player.x, py);
+    ctx.rotate(player.spinFrame * 0.5);
+    ctx.translate(-player.x, -py);
+    drawPixelChar(player.x, py, COL.jersey, COL.pants, true, player.animFrame);
+    ctx.restore();
+  } else if (player.stiffArm) {
+    drawPixelChar(player.x, py, COL.jersey, COL.pants, true, player.animFrame);
+    // Extended arm
+    ctx.fillStyle = COL.skin;
+    ctx.fillRect(player.x + 10, py - 4, 8, 3);
+  } else {
+    drawPixelChar(player.x, py, COL.jersey, COL.pants, true, player.animFrame);
+  }
+  ctx.globalAlpha = 1;
+
+  // Particles
+  particles.forEach(p => {
+    ctx.fillStyle = p.col;
+    ctx.fillRect(p.x, p.y, 3, 3);
+  });
+
+  // HUD
+  ctx.fillStyle = '#000000cc';
+  ctx.fillRect(0, 0, W, 22);
+  ctx.fillStyle = COL.white;
+  ctx.font = '8px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText('SCORE: ' + score, 5, 10);
+  ctx.fillText('YARDS: ' + Math.floor(yards), 80, 10);
+  ctx.textAlign = 'right';
+  ctx.fillText('HI: ' + highScore, W - 5, 10);
+
+  // Power-up indicators
+  ctx.textAlign = 'left';
+  let indX = 5;
+  if (ghostMode) { ctx.fillStyle = COL.white; ctx.fillText('GHOST', indX, 20); indX += 45; }
+  if (speedBoost) { ctx.fillStyle = COL.orange; ctx.fillText('SPEED', indX, 20); indX += 45; }
+  if (blockers.length > 0) { ctx.fillStyle = COL.yellow; ctx.fillText('BLOCK', indX, 20); }
+
+  // Cooldown indicators
+  ctx.textAlign = 'right';
+  ctx.fillStyle = stiffArmCooldown > 0 ? COL.gray : COL.white;
+  ctx.fillText('Z:ARM', W - 50, 20);
+  ctx.fillStyle = spinCooldown > 0 ? COL.gray : COL.white;
+  ctx.fillText('X:SPIN', W - 5, 20);
+
+  // Bottom bar
+  ctx.fillStyle = '#000000cc';
+  ctx.fillRect(0, H - 22, W, 22);
+  ctx.fillStyle = COL.white;
+  ctx.font = '7px Courier New';
+  ctx.textAlign = 'center';
+  let nextTD = 100 - (Math.floor(yards) % 100);
+  ctx.fillText('NEXT TD: ' + nextTD + ' YDS', W / 2, H - 10);
+
+  // Speed meter
+  ctx.fillStyle = COL.dkGray;
+  ctx.fillRect(5, H - 18, 40, 6);
+  ctx.fillStyle = speed > 4 ? COL.red : speed > 3 ? COL.orange : COL.ltGreen;
+  ctx.fillRect(5, H - 18, Math.min(40, speed * 8), 6);
+
+  // TD Celebration
+  if (state === 'td_celebration') {
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(0, 80, W, 80);
+    ctx.fillStyle = COL.yellow;
+    ctx.font = '16px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('TOUCHDOWN!', W / 2, 115);
+    ctx.fillStyle = COL.white;
+    ctx.font = '8px Courier New';
+    ctx.fillText('+7 POINTS!', W / 2, 135);
+    // Fireworks particles
+    if (tdTimer % 5 === 0) {
+      addParticle(Math.random() * W, Math.random() * 60 + 80, pick([COL.yellow, COL.orange, COL.red, COL.white]));
+    }
+  }
+
+  // Game Over
+  if (state === 'gameover') {
+    ctx.fillStyle = '#000000cc';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = COL.red;
+    ctx.font = '16px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('TACKLED!', W / 2, 80);
+    ctx.fillStyle = COL.white;
+    ctx.font = '10px Courier New';
+    ctx.fillText('Score: ' + score, W / 2, 110);
+    ctx.fillText('Yards: ' + Math.floor(yards), W / 2, 125);
+    ctx.fillStyle = COL.yellow;
+    ctx.fillText('High Score: ' + highScore, W / 2, 145);
+    ctx.fillStyle = COL.gray;
+    ctx.font = '8px Courier New';
+    ctx.fillText('Press SPACE to retry', W / 2, 175);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

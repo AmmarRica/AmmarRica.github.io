@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 28 – Party House</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 1rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 1rem; font-size: 0.9rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; display: block; }
+</style>
+</head>
+<body>
+  <h1>Party House</h1>
+  <p class="subtitle">Tap guests to seat them, tap tables to serve food. Keep everyone happy!</p>
+  <canvas id="game"></canvas>
+  <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = Math.min(480, window.innerWidth - 20);
+  H = Math.floor(W * 1.4);
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const GUEST_COLORS = ['#ff6b6b', '#4ecdc4', '#ffd93d', '#6bcb77', '#ff8e53', '#a78bfa', '#ff69b4', '#00bcd4'];
+const FOOD_TYPES = [
+  { name: 'Cake', color: '#ff88aa', prepTime: 90 },
+  { name: 'Pizza', color: '#ffaa44', prepTime: 60 },
+  { name: 'Sushi', color: '#66ddaa', prepTime: 120 },
+  { name: 'Burger', color: '#cc8844', prepTime: 75 },
+  { name: 'Salad', color: '#88cc44', prepTime: 45 }
+];
+
+let state = 'title';
+let wave = 1;
+let score = 0;
+let happiness = 100; // Global happiness meter 0-100
+let money = 0;
+let gameTimer = 0;
+let waveTimer = 0;
+let guestsServed = 0;
+let guestsLost = 0;
+
+// Layout
+let tables = [];
+let waitingArea = { x: 0, y: 0, w: 0, h: 0 };
+let kitchen = { x: 0, y: 0, w: 0, h: 0 };
+let guests = [];
+let foodOrders = []; // orders being prepared
+let particles = [];
+let selectedGuest = null;
+let floatingTexts = [];
+
+function setupLayout() {
+  const margin = 15;
+  const tableW = (W - margin * 4) / 3;
+  const tableH = 55;
+
+  tables = [];
+  // 3x3 grid of tables
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      tables.push({
+        x: margin + c * (tableW + margin),
+        y: 180 + r * (tableH + 35),
+        w: tableW,
+        h: tableH,
+        seats: 2,
+        guests: [],
+        foodReady: false,
+        foodType: null,
+        prepTimer: 0,
+        preparing: false,
+        dirty: false,
+        cleanTimer: 0
+      });
+    }
+  }
+
+  waitingArea = { x: margin, y: H - 100, w: W - margin * 2, h: 80 };
+  kitchen = { x: margin, y: 130, w: W - margin * 2, h: 40 };
+}
+
+function startWave(w) {
+  wave = w;
+  happiness = 100;
+  money = 0;
+  guestsServed = 0;
+  guestsLost = 0;
+  gameTimer = 0;
+  waveTimer = 0;
+  guests = [];
+  foodOrders = [];
+  particles = [];
+  floatingTexts = [];
+  selectedGuest = null;
+
+  setupLayout();
+  // Reset tables
+  for (const t of tables) {
+    t.guests = [];
+    t.foodReady = false;
+    t.foodType = null;
+    t.prepTimer = 0;
+    t.preparing = false;
+    t.dirty = false;
+    t.cleanTimer = 0;
+  }
+
+  state = 'playing';
+}
+
+function spawnGuest() {
+  const foodWant = FOOD_TYPES[Math.floor(Math.random() * Math.min(2 + wave, FOOD_TYPES.length))];
+  const patience = Math.max(200, 500 - wave * 30);
+  guests.push({
+    x: waitingArea.x + 20 + (guests.filter(g => g.state === 'waiting').length) * 35,
+    y: waitingArea.y + waitingArea.h / 2,
+    color: GUEST_COLORS[Math.floor(Math.random() * GUEST_COLORS.length)],
+    state: 'waiting', // waiting, seated, eating, leaving, angry
+    table: null,
+    patience: patience,
+    maxPatience: patience,
+    foodWant: foodWant,
+    eatTimer: 0,
+    bobTimer: Math.random() * Math.PI * 2,
+    size: 14,
+    tip: 10 + wave * 5
+  });
+}
+
+function findNearestEntity(tx, ty) {
+  // Check waiting guests first
+  for (const g of guests) {
+    if (g.state !== 'waiting') continue;
+    const dx = tx - g.x, dy = ty - g.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 30) return { type: 'guest', guest: g };
+  }
+
+  // Check tables
+  for (const t of tables) {
+    if (tx >= t.x && tx <= t.x + t.w && ty >= t.y && ty <= t.y + t.h) {
+      return { type: 'table', table: t };
+    }
+  }
+
+  return null;
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (state === 'title') { startWave(1); return; }
+  if (state === 'wavecomplete') { startWave(wave + 1); return; }
+  if (state === 'gameover' || state === 'win') { state = 'title'; wave = 1; score = 0; return; }
+  if (state !== 'playing') return;
+
+  const touch = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  const tx = touch.clientX - rect.left;
+  const ty = touch.clientY - rect.top;
+
+  const entity = findNearestEntity(tx, ty);
+
+  if (entity) {
+    if (entity.type === 'guest' && entity.guest.state === 'waiting') {
+      selectedGuest = entity.guest;
+    } else if (entity.type === 'table') {
+      const table = entity.table;
+
+      if (table.dirty) {
+        // Clean table
+        table.dirty = false;
+        table.cleanTimer = 0;
+        floatingTexts.push({ x: table.x + table.w / 2, y: table.y, text: 'Cleaned!', color: '#66ddff', life: 40 });
+      } else if (selectedGuest && table.guests.length < table.seats && !table.dirty) {
+        // Seat guest
+        selectedGuest.state = 'seated';
+        selectedGuest.table = table;
+        table.guests.push(selectedGuest);
+        selectedGuest = null;
+        // Start food prep
+        if (!table.preparing && !table.foodReady) {
+          table.preparing = true;
+          table.foodType = table.guests[0].foodWant;
+          table.prepTimer = table.foodType.prepTime;
+        }
+        floatingTexts.push({ x: table.x + table.w / 2, y: table.y, text: 'Seated!', color: '#66ff88', life: 30 });
+      } else if (table.foodReady && table.guests.length > 0) {
+        // Serve food
+        table.foodReady = false;
+        for (const g of table.guests) {
+          if (g.state === 'seated') {
+            g.state = 'eating';
+            g.eatTimer = 120;
+          }
+        }
+        floatingTexts.push({ x: table.x + table.w / 2, y: table.y, text: 'Served!', color: '#ffd700', life: 30 });
+        for (let i = 0; i < 6; i++) {
+          particles.push({
+            x: table.x + table.w / 2, y: table.y + table.h / 2,
+            vx: (Math.random() - 0.5) * 4, vy: -Math.random() * 3,
+            life: 20, color: table.foodType.color
+          });
+        }
+      }
+    }
+  } else {
+    selectedGuest = null;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+// Mouse fallback
+canvas.addEventListener('click', (e) => {
+  if (state === 'title') { startWave(1); return; }
+  if (state === 'wavecomplete') { startWave(wave + 1); return; }
+  if (state === 'gameover' || state === 'win') { state = 'title'; wave = 1; score = 0; return; }
+  if (state !== 'playing') return;
+
+  const rect = canvas.getBoundingClientRect();
+  const tx = e.clientX - rect.left;
+  const ty = e.clientY - rect.top;
+
+  const entity = findNearestEntity(tx, ty);
+
+  if (entity) {
+    if (entity.type === 'guest' && entity.guest.state === 'waiting') {
+      selectedGuest = entity.guest;
+    } else if (entity.type === 'table') {
+      const table = entity.table;
+
+      if (table.dirty) {
+        table.dirty = false;
+        table.cleanTimer = 0;
+        floatingTexts.push({ x: table.x + table.w / 2, y: table.y, text: 'Cleaned!', color: '#66ddff', life: 40 });
+      } else if (selectedGuest && table.guests.length < table.seats && !table.dirty) {
+        selectedGuest.state = 'seated';
+        selectedGuest.table = table;
+        table.guests.push(selectedGuest);
+        selectedGuest = null;
+        if (!table.preparing && !table.foodReady) {
+          table.preparing = true;
+          table.foodType = table.guests[0].foodWant;
+          table.prepTimer = table.foodType.prepTime;
+        }
+        floatingTexts.push({ x: table.x + table.w / 2, y: table.y, text: 'Seated!', color: '#66ff88', life: 30 });
+      } else if (table.foodReady && table.guests.length > 0) {
+        table.foodReady = false;
+        for (const g of table.guests) {
+          if (g.state === 'seated') {
+            g.state = 'eating';
+            g.eatTimer = 120;
+          }
+        }
+        floatingTexts.push({ x: table.x + table.w / 2, y: table.y, text: 'Served!', color: '#ffd700', life: 30 });
+      }
+    }
+  } else {
+    selectedGuest = null;
+  }
+});
+
+const WAVE_GUESTS = [6, 8, 10, 13, 16, 20, 24, 28];
+const WAVE_DURATION = 1800; // frames per wave (~30 seconds at 60fps)
+
+function update() {
+  if (state !== 'playing') return;
+  gameTimer++;
+  waveTimer++;
+
+  // Spawn guests
+  const totalGuests = WAVE_GUESTS[Math.min(wave - 1, WAVE_GUESTS.length - 1)];
+  const spawnInterval = Math.floor(WAVE_DURATION / totalGuests);
+  const waitingCount = guests.filter(g => g.state === 'waiting').length;
+  if (waveTimer % spawnInterval === 0 && guestsServed + guests.length < totalGuests + guestsLost && waitingCount < 6) {
+    spawnGuest();
+  }
+
+  // Update guests
+  for (let i = guests.length - 1; i >= 0; i--) {
+    const g = guests[i];
+    g.bobTimer += 0.05;
+
+    if (g.state === 'waiting') {
+      g.patience--;
+      // Reposition in waiting area
+      const waitIdx = guests.filter((gg, idx) => idx <= i && gg.state === 'waiting').length - 1;
+      g.x += (waitingArea.x + 25 + waitIdx * 38 - g.x) * 0.1;
+      g.y = waitingArea.y + waitingArea.h / 2 + Math.sin(g.bobTimer) * 3;
+
+      if (g.patience <= 0) {
+        g.state = 'angry';
+        happiness -= 8;
+        guestsLost++;
+        floatingTexts.push({ x: g.x, y: g.y - 20, text: 'Left angry!', color: '#ff4444', life: 40 });
+        guests.splice(i, 1);
+        continue;
+      }
+    } else if (g.state === 'seated') {
+      g.patience -= 0.5;
+      if (g.patience <= 0) {
+        // Leave angry from table
+        g.state = 'angry';
+        happiness -= 12;
+        guestsLost++;
+        if (g.table) {
+          g.table.guests = g.table.guests.filter(gg => gg !== g);
+          if (g.table.guests.length === 0) {
+            g.table.preparing = false;
+            g.table.foodReady = false;
+            g.table.dirty = true;
+          }
+        }
+        floatingTexts.push({ x: g.x, y: g.y - 20, text: 'Left angry!', color: '#ff4444', life: 40 });
+        guests.splice(i, 1);
+        continue;
+      }
+      // Position at table
+      if (g.table) {
+        const seatIdx = g.table.guests.indexOf(g);
+        g.x += (g.table.x + 20 + seatIdx * (g.table.w - 40) - g.x) * 0.15;
+        g.y += (g.table.y + g.table.h / 2 - g.y) * 0.15;
+      }
+    } else if (g.state === 'eating') {
+      g.eatTimer--;
+      if (g.table) {
+        const seatIdx = g.table.guests.indexOf(g);
+        g.x = g.table.x + 20 + seatIdx * (g.table.w - 40);
+        g.y = g.table.y + g.table.h / 2 + Math.sin(g.bobTimer * 2) * 2;
+      }
+      if (g.eatTimer <= 0) {
+        // Done eating - leave happy
+        g.state = 'leaving';
+        const tip = g.tip;
+        score += tip;
+        money += tip;
+        guestsServed++;
+        happiness = Math.min(100, happiness + 3);
+        floatingTexts.push({ x: g.x, y: g.y - 20, text: '+$' + tip, color: '#ffd700', life: 40 });
+        for (let k = 0; k < 5; k++) {
+          particles.push({
+            x: g.x, y: g.y,
+            vx: (Math.random() - 0.5) * 3, vy: -Math.random() * 2 - 1,
+            life: 25, color: '#ffd700'
+          });
+        }
+        if (g.table) {
+          g.table.guests = g.table.guests.filter(gg => gg !== g);
+          if (g.table.guests.length === 0) {
+            g.table.dirty = true;
+            g.table.preparing = false;
+            g.table.foodReady = false;
+          }
+        }
+        guests.splice(i, 1);
+        continue;
+      }
+    }
+  }
+
+  // Update tables - food prep
+  for (const t of tables) {
+    if (t.preparing && t.prepTimer > 0) {
+      t.prepTimer--;
+      if (t.prepTimer <= 0) {
+        t.preparing = false;
+        t.foodReady = true;
+      }
+    }
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Update floating texts
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const f = floatingTexts[i];
+    f.y -= 1;
+    f.life--;
+    if (f.life <= 0) floatingTexts.splice(i, 1);
+  }
+
+  // Happiness decay
+  if (gameTimer % 60 === 0) happiness -= 0.5;
+  happiness = Math.max(0, Math.min(100, happiness));
+
+  // Game over check
+  if (happiness <= 0) {
+    state = 'gameover';
+    return;
+  }
+
+  // Wave complete check
+  if (guestsServed >= totalGuests) {
+    score += Math.floor(happiness) * wave;
+    if (wave >= 8) {
+      state = 'win';
+    } else {
+      state = 'wavecomplete';
+    }
+  }
+}
+
+function drawGuest(g, isSelected) {
+  const x = g.x, y = g.y;
+  const bounce = Math.sin(g.bobTimer) * 2;
+
+  // Shadow
+  ctx.fillStyle = '#00000033';
+  ctx.beginPath();
+  ctx.ellipse(x, y + g.size + 4, g.size * 0.8, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = g.color;
+  ctx.beginPath();
+  ctx.arc(x, y + bounce, g.size, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Face
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x - 4, y - 3 + bounce, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + 4, y - 3 + bounce, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#333';
+  ctx.beginPath();
+  ctx.arc(x - 4, y - 3 + bounce, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + 4, y - 3 + bounce, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mouth based on patience
+  const patienceRatio = g.patience / g.maxPatience;
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (patienceRatio > 0.5) {
+    ctx.arc(x, y + 4 + bounce, 4, 0, Math.PI); // smile
+  } else if (patienceRatio > 0.25) {
+    ctx.moveTo(x - 4, y + 5 + bounce);
+    ctx.lineTo(x + 4, y + 5 + bounce); // neutral
+  } else {
+    ctx.arc(x, y + 8 + bounce, 4, Math.PI, 0); // frown
+  }
+  ctx.stroke();
+
+  // Patience indicator
+  if (g.state === 'waiting' || g.state === 'seated') {
+    ctx.fillStyle = '#33333388';
+    ctx.fillRect(x - 12, y - g.size - 10, 24, 4);
+    const barColor = patienceRatio > 0.5 ? '#66ff88' : patienceRatio > 0.25 ? '#ffaa44' : '#ff4444';
+    ctx.fillStyle = barColor;
+    ctx.fillRect(x - 12, y - g.size - 10, 24 * patienceRatio, 4);
+  }
+
+  // Eating animation
+  if (g.state === 'eating') {
+    ctx.fillStyle = g.foodWant.color;
+    const munchY = Math.sin(g.bobTimer * 3) * 2;
+    ctx.fillRect(x - 3, y + 2 + bounce + munchY, 6, 4);
+  }
+
+  // Food want icon (small)
+  if (g.state === 'waiting' || g.state === 'seated') {
+    ctx.fillStyle = '#ffffff44';
+    ctx.beginPath();
+    ctx.ellipse(x + g.size + 6, y - g.size + bounce, 10, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = g.foodWant.color;
+    ctx.beginPath();
+    ctx.arc(x + g.size + 6, y - g.size + bounce, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Selection highlight
+  if (isSelected) {
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(x, y + bounce, g.size + 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    // Party background
+    const t = Date.now() * 0.002;
+    for (let i = 0; i < 30; i++) {
+      ctx.fillStyle = GUEST_COLORS[i % GUEST_COLORS.length] + '33';
+      const px = (Math.sin(t + i * 0.7) * 0.5 + 0.5) * W;
+      const py = (Math.cos(t * 0.8 + i * 0.5) * 0.5 + 0.5) * H;
+      ctx.beginPath();
+      ctx.arc(px, py, 5 + i % 4 * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 32px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Party House', W / 2, H * 0.2);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Run the best party venue in town!', W / 2, H * 0.2 + 28);
+
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '13px system-ui';
+    ctx.fillText('1. Tap a waiting guest to select them', W / 2, H * 0.42);
+    ctx.fillText('2. Tap an empty table to seat them', W / 2, H * 0.42 + 22);
+    ctx.fillText('3. Food cooks automatically', W / 2, H * 0.42 + 44);
+    ctx.fillText('4. Tap table with ready food to serve', W / 2, H * 0.42 + 66);
+    ctx.fillText('5. Tap dirty tables to clean them', W / 2, H * 0.42 + 88);
+    ctx.fillText('Keep guests happy - don\'t make them wait!', W / 2, H * 0.42 + 118);
+
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 18px system-ui';
+    ctx.fillText('[ Tap to Start ]', W / 2, H * 0.85);
+    return;
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = '#ff6666';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Party Over!', W / 2, H * 0.3);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '16px system-ui';
+    ctx.fillText('Guests are too unhappy!', W / 2, H * 0.4);
+    ctx.fillText('Score: ' + score, W / 2, H * 0.48);
+    ctx.fillText('Guests Served: ' + guestsServed, W / 2, H * 0.55);
+    ctx.fillText('Wave: ' + wave, W / 2, H * 0.62);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to try again', W / 2, H * 0.75);
+    return;
+  }
+
+  if (state === 'wavecomplete') {
+    ctx.fillStyle = '#66ff88';
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Wave ' + wave + ' Complete!', W / 2, H * 0.25);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '18px system-ui';
+    ctx.fillText('Score: ' + score, W / 2, H * 0.35);
+    ctx.fillText('Tips earned: $' + money, W / 2, H * 0.42);
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillText('Happiness bonus: +' + (Math.floor(happiness) * wave), W / 2, H * 0.49);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap for next wave', W / 2, H * 0.65);
+    return;
+  }
+
+  if (state === 'win') {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Party Legend!', W / 2, H * 0.25);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '18px system-ui';
+    ctx.fillText('All waves complete!', W / 2, H * 0.35);
+    ctx.fillText('Final Score: ' + score, W / 2, H * 0.43);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to play again', W / 2, H * 0.6);
+    return;
+  }
+
+  // HUD area
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, 125);
+
+  // Wave & score
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 16px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('Wave ' + wave, 10, 24);
+  ctx.fillStyle = '#ffd700';
+  ctx.textAlign = 'right';
+  ctx.fillText('$' + score, W - 10, 24);
+
+  // Happiness bar
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('Happiness', 10, 44);
+  ctx.fillStyle = '#334';
+  ctx.fillRect(80, 36, W - 90, 14);
+  const happyColor = happiness > 60 ? '#66ff88' : happiness > 30 ? '#ffaa44' : '#ff4444';
+  ctx.fillStyle = happyColor;
+  ctx.fillRect(80, 36, (W - 90) * (happiness / 100), 14);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(Math.floor(happiness) + '%', 80 + (W - 90) / 2, 47);
+
+  // Guests served counter
+  const totalGuests = WAVE_GUESTS[Math.min(wave - 1, WAVE_GUESTS.length - 1)];
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('Served: ' + guestsServed + '/' + totalGuests, 10, 68);
+
+  // Kitchen area
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(kitchen.x, kitchen.y, kitchen.w, kitchen.h);
+  ctx.strokeStyle = '#3b3b5c';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(kitchen.x, kitchen.y, kitchen.w, kitchen.h);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('KITCHEN', kitchen.x + kitchen.w / 2, kitchen.y + 14);
+
+  // Show food prep status
+  let prepIdx = 0;
+  for (const t of tables) {
+    if (t.preparing) {
+      const px = kitchen.x + 20 + prepIdx * 70;
+      const totalTime = t.foodType.prepTime;
+      const progress = 1 - t.prepTimer / totalTime;
+      ctx.fillStyle = '#444';
+      ctx.fillRect(px, kitchen.y + 20, 60, 8);
+      ctx.fillStyle = t.foodType.color;
+      ctx.fillRect(px, kitchen.y + 20, 60 * progress, 8);
+      ctx.fillStyle = '#ccc';
+      ctx.font = '8px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(t.foodType.name, px + 30, kitchen.y + 38);
+      prepIdx++;
+    }
+  }
+
+  // Tables
+  for (const t of tables) {
+    // Table base
+    if (t.dirty) {
+      ctx.fillStyle = '#4a3a2a';
+    } else {
+      ctx.fillStyle = '#3a2a1a';
+    }
+    ctx.fillRect(t.x, t.y, t.w, t.h);
+
+    // Table top
+    ctx.fillStyle = t.dirty ? '#6a5a4a' : '#5a4a3a';
+    ctx.fillRect(t.x + 3, t.y + 3, t.w - 6, t.h - 6);
+
+    // Table legs
+    ctx.fillStyle = '#2a1a0a';
+    ctx.fillRect(t.x + 4, t.y + t.h - 4, 6, 8);
+    ctx.fillRect(t.x + t.w - 10, t.y + t.h - 4, 6, 8);
+
+    if (t.dirty) {
+      // Dirty indicator
+      ctx.fillStyle = '#888';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('(dirty - tap to clean)', t.x + t.w / 2, t.y + t.h / 2 + 4);
+    }
+
+    // Seats (visual only)
+    ctx.fillStyle = '#4a3a5a';
+    ctx.beginPath();
+    ctx.arc(t.x + 18, t.y - 8, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(t.x + t.w - 18, t.y - 8, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Food ready indicator
+    if (t.foodReady) {
+      ctx.fillStyle = t.foodType.color;
+      ctx.beginPath();
+      ctx.arc(t.x + t.w / 2, t.y + t.h / 2, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 8px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('SERVE', t.x + t.w / 2, t.y + t.h / 2 + 3);
+
+      // Pulse effect
+      ctx.strokeStyle = '#ffd70088';
+      ctx.lineWidth = 2;
+      const pulse = Math.sin(gameTimer * 0.1) * 4;
+      ctx.beginPath();
+      ctx.arc(t.x + t.w / 2, t.y + t.h / 2, 14 + pulse, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Prep progress on table
+    if (t.preparing && t.foodType) {
+      const progress = 1 - t.prepTimer / t.foodType.prepTime;
+      ctx.fillStyle = '#444';
+      ctx.fillRect(t.x + 8, t.y + t.h - 10, t.w - 16, 4);
+      ctx.fillStyle = t.foodType.color;
+      ctx.fillRect(t.x + 8, t.y + t.h - 10, (t.w - 16) * progress, 4);
+    }
+  }
+
+  // Waiting area
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(waitingArea.x, waitingArea.y, waitingArea.w, waitingArea.h);
+  ctx.strokeStyle = '#3b3b5c';
+  ctx.strokeRect(waitingArea.x, waitingArea.y, waitingArea.w, waitingArea.h);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('WAITING AREA - Tap guest, then tap table', waitingArea.x + 8, waitingArea.y + 12);
+
+  // Draw guests
+  for (const g of guests) {
+    drawGuest(g, g === selectedGuest);
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 25;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Floating texts
+  for (const f of floatingTexts) {
+    ctx.fillStyle = f.color;
+    ctx.globalAlpha = f.life / 40;
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.globalAlpha = 1;
+  }
+
+  // Selected guest indicator
+  if (selectedGuest) {
+    ctx.fillStyle = '#ffd70088';
+    ctx.font = '12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Guest selected - tap a table to seat', W / 2, waitingArea.y - 8);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

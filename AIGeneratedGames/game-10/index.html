@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mascot Mayhem</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #2a2a4a; border-radius: 4px; margin-top: 5px; }
+h1 { color: #ff8c00; font-size: 22px; margin: 5px 0; }
+.info { color: #a0a0c0; font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>🐻 Mascot Mayhem 🥊</h1>
+<div class="info">Arrow keys: Move | Z: Punch | X: Kick | C: Special</div>
+<canvas id="c" width="800" height="450"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+const W = 800, H = 450;
+
+let state = 'title';
+let level = 0;
+let scrollX = 0;
+let screenShake = 0;
+let particles = [];
+let powerups = [];
+let message = '';
+let msgTimer = 0;
+let bossMode = false;
+
+const GROUND = H - 60;
+const GRAVITY = 0.5;
+
+const LEVELS = [
+  { name: 'PARKING LOT', bg: '#1a1a2a', groundColor: '#333344', enemies: 8, boss: 'Bull', spawnRate: 120 },
+  { name: 'CONCOURSE', bg: '#1a1520', groundColor: '#2a2a3a', enemies: 12, boss: 'Eagle', spawnRate: 90 },
+  { name: 'FIELD INVASION', bg: '#0a1a0a', groundColor: '#1a3a1a', enemies: 15, boss: 'Dragon', spawnRate: 70 }
+];
+
+let keys = {};
+document.addEventListener('keydown', e => { keys[e.key] = true; e.preventDefault(); });
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+class Entity {
+  constructor(x, y, w, h) {
+    this.x = x; this.y = y;
+    this.w = w; this.h = h;
+    this.vx = 0; this.vy = 0;
+    this.hp = 100; this.maxHp = 100;
+    this.alive = true;
+    this.facing = 1; // 1=right, -1=left
+    this.grounded = false;
+    this.attackTimer = 0;
+    this.hurtTimer = 0;
+    this.animFrame = 0;
+    this.animTimer = 0;
+  }
+  get worldX() { return this.x - scrollX; }
+  update() {
+    this.vy += GRAVITY;
+    this.x += this.vx;
+    this.y += this.vy;
+    if (this.y + this.h > GROUND) {
+      this.y = GROUND - this.h;
+      this.vy = 0;
+      this.grounded = true;
+    }
+    if (this.attackTimer > 0) this.attackTimer--;
+    if (this.hurtTimer > 0) this.hurtTimer--;
+    this.animTimer++;
+    if (this.animTimer % 10 === 0) this.animFrame = (this.animFrame + 1) % 4;
+  }
+  drawHPBar(screenX) {
+    const barW = this.w + 10;
+    const barH = 4;
+    const bx = screenX - 5;
+    const by = this.y - 10;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(bx, by, barW, barH);
+    ctx.fillStyle = this.hp > this.maxHp * 0.3 ? '#44cc44' : '#cc4444';
+    ctx.fillRect(bx, by, barW * (this.hp / this.maxHp), barH);
+  }
+}
+
+class Player extends Entity {
+  constructor() {
+    super(100, GROUND - 40, 30, 40);
+    this.hp = 100; this.maxHp = 100;
+    this.attack = 10;
+    this.specialCooldown = 0;
+    this.score = 0;
+    this.combo = 0;
+    this.comboTimer = 0;
+    this.lives = 3;
+  }
+  update() {
+    // Movement
+    if (keys['ArrowLeft']) { this.vx = -3.5; this.facing = -1; }
+    else if (keys['ArrowRight']) { this.vx = 3.5; this.facing = 1; }
+    else { this.vx *= 0.8; }
+
+    // Jump
+    if (keys['ArrowUp'] && this.grounded) {
+      this.vy = -10;
+      this.grounded = false;
+    }
+
+    super.update();
+
+    // Keep on screen
+    if (this.x < scrollX + 20) this.x = scrollX + 20;
+    if (this.x > scrollX + W - 50) this.x = scrollX + W - 50;
+
+    // Scroll
+    const screenX = this.x - scrollX;
+    if (screenX > W * 0.6) scrollX = this.x - W * 0.6;
+    if (screenX < W * 0.3) scrollX = Math.max(0, this.x - W * 0.3);
+
+    if (this.specialCooldown > 0) this.specialCooldown--;
+    if (this.comboTimer > 0) {
+      this.comboTimer--;
+      if (this.comboTimer <= 0) this.combo = 0;
+    }
+  }
+  punch() {
+    if (this.attackTimer > 0) return;
+    this.attackTimer = 15;
+    return this.getAttackBox(35, 10);
+  }
+  kick() {
+    if (this.attackTimer > 0) return;
+    this.attackTimer = 20;
+    return this.getAttackBox(40, 15);
+  }
+  special() {
+    if (this.attackTimer > 0 || this.specialCooldown > 0) return null;
+    this.attackTimer = 30;
+    this.specialCooldown = 120;
+    screenShake = 10;
+    // Wide attack
+    return { x: this.x - 30, y: this.y - 10, w: 90, h: 50, damage: 30 };
+  }
+  getAttackBox(range, damage) {
+    return {
+      x: this.facing === 1 ? this.x + this.w : this.x - range,
+      y: this.y + 5,
+      w: range,
+      h: this.h - 10,
+      damage
+    };
+  }
+  draw() {
+    const sx = this.worldX;
+    const hurt = this.hurtTimer > 0 && this.hurtTimer % 4 < 2;
+    if (hurt) ctx.globalAlpha = 0.5;
+
+    // Body
+    const bodyColor = this.attackTimer > 0 ? '#ff8c00' : '#cc6600';
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(sx, this.y, this.w, this.h);
+
+    // Mascot head (bear)
+    ctx.fillStyle = '#8B4513';
+    ctx.beginPath();
+    ctx.arc(sx + this.w / 2, this.y - 2, 18, 0, Math.PI * 2);
+    ctx.fill();
+    // Ears
+    ctx.beginPath();
+    ctx.arc(sx + 4, this.y - 14, 7, 0, Math.PI * 2);
+    ctx.arc(sx + this.w - 4, this.y - 14, 7, 0, Math.PI * 2);
+    ctx.fill();
+    // Inner ears
+    ctx.fillStyle = '#d4956b';
+    ctx.beginPath();
+    ctx.arc(sx + 4, this.y - 14, 4, 0, Math.PI * 2);
+    ctx.arc(sx + this.w - 4, this.y - 14, 4, 0, Math.PI * 2);
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(sx + this.w / 2 - 5, this.y - 3, 4, 0, Math.PI * 2);
+    ctx.arc(sx + this.w / 2 + 5, this.y - 3, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(sx + this.w / 2 - 5 + this.facing * 1, this.y - 3, 2, 0, Math.PI * 2);
+    ctx.arc(sx + this.w / 2 + 5 + this.facing * 1, this.y - 3, 2, 0, Math.PI * 2);
+    ctx.fill();
+    // Nose
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.arc(sx + this.w / 2, this.y + 3, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Arms
+    ctx.strokeStyle = '#cc6600';
+    ctx.lineWidth = 5;
+    const armY = this.y + 10;
+    if (this.attackTimer > 10) {
+      // Punching/kicking
+      ctx.beginPath();
+      ctx.moveTo(sx + (this.facing === 1 ? this.w : 0), armY);
+      ctx.lineTo(sx + (this.facing === 1 ? this.w + 25 : -25), armY - 3);
+      ctx.stroke();
+    } else {
+      // Idle
+      ctx.beginPath();
+      ctx.moveTo(sx, armY);
+      ctx.lineTo(sx - 10, armY + 10 + Math.sin(this.animFrame) * 3);
+      ctx.moveTo(sx + this.w, armY);
+      ctx.lineTo(sx + this.w + 10, armY + 10 + Math.sin(this.animFrame + 2) * 3);
+      ctx.stroke();
+    }
+
+    // Legs
+    ctx.strokeStyle = '#994400';
+    ctx.lineWidth = 5;
+    const legOff = Math.abs(this.vx) > 0.5 ? Math.sin(this.animTimer * 0.3) * 6 : 0;
+    ctx.beginPath();
+    ctx.moveTo(sx + 8, this.y + this.h);
+    ctx.lineTo(sx + 8 - legOff, this.y + this.h + 10);
+    ctx.moveTo(sx + this.w - 8, this.y + this.h);
+    ctx.lineTo(sx + this.w - 8 + legOff, this.y + this.h + 10);
+    ctx.stroke();
+
+    // Jersey number
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('#1', sx + this.w / 2, this.y + 25);
+
+    ctx.globalAlpha = 1;
+
+    // Attack effect
+    if (this.attackTimer > 8) {
+      const ax = this.facing === 1 ? sx + this.w + 10 : sx - 25;
+      ctx.fillStyle = '#ffcc0044';
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const r = 15 + Math.random() * 5;
+        ctx.lineTo(ax + Math.cos(a) * r, armY + Math.sin(a) * r);
+      }
+      ctx.fill();
+    }
+
+    this.drawHPBar(sx);
+  }
+}
+
+class Enemy extends Entity {
+  constructor(x, type) {
+    super(x, GROUND - 36, 26, 36);
+    this.type = type; // 'fan', 'guard', 'mascot'
+    this.ai = 'chase';
+    this.aiTimer = 0;
+    this.attack = 5;
+    switch (type) {
+      case 'fan':
+        this.hp = 30; this.maxHp = 30; this.attack = 5; this.speed = 1.5;
+        this.color = '#cc4444'; this.headColor = '#ffccaa';
+        break;
+      case 'guard':
+        this.hp = 50; this.maxHp = 50; this.attack = 8; this.speed = 1.2;
+        this.color = '#2244aa'; this.headColor = '#ffccaa';
+        break;
+      case 'mascot':
+        this.hp = 80; this.maxHp = 80; this.attack = 12; this.speed = 1;
+        this.color = '#884488'; this.headColor = '#8844aa';
+        this.w = 32; this.h = 42;
+        break;
+    }
+  }
+  update(player) {
+    this.aiTimer++;
+
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const dist = Math.abs(dx);
+
+    this.facing = dx > 0 ? 1 : -1;
+
+    if (dist < 40 && this.attackTimer <= 0) {
+      // Attack
+      this.attackTimer = 30;
+      this.vx = 0;
+    } else if (dist > 30) {
+      this.vx = this.facing * this.speed;
+    } else {
+      this.vx *= 0.8;
+    }
+
+    // Random jump
+    if (this.grounded && Math.random() < 0.005) {
+      this.vy = -8;
+      this.grounded = false;
+    }
+
+    super.update();
+  }
+  getAttackBox() {
+    if (this.attackTimer > 15 && this.attackTimer < 25) {
+      return {
+        x: this.facing === 1 ? this.x + this.w : this.x - 25,
+        y: this.y + 5, w: 25, h: this.h - 10,
+        damage: this.attack
+      };
+    }
+    return null;
+  }
+  draw() {
+    const sx = this.worldX;
+    if (sx < -50 || sx > W + 50) return;
+
+    const hurt = this.hurtTimer > 0 && this.hurtTimer % 4 < 2;
+    if (hurt) ctx.globalAlpha = 0.5;
+
+    // Body
+    ctx.fillStyle = this.color;
+    ctx.fillRect(sx, this.y, this.w, this.h);
+
+    // Head
+    ctx.fillStyle = this.headColor;
+    ctx.beginPath();
+    ctx.arc(sx + this.w / 2, this.y - 2, this.type === 'mascot' ? 16 : 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = this.type === 'mascot' ? '#ff0000' : '#000';
+    ctx.beginPath();
+    ctx.arc(sx + this.w / 2 - 3, this.y - 3, 2, 0, Math.PI * 2);
+    ctx.arc(sx + this.w / 2 + 3, this.y - 3, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Type-specific details
+    if (this.type === 'guard') {
+      // Hat
+      ctx.fillStyle = '#1a1a88';
+      ctx.fillRect(sx + 2, this.y - 14, this.w - 4, 6);
+      ctx.fillRect(sx - 2, this.y - 9, this.w + 4, 3);
+    } else if (this.type === 'fan') {
+      // Foam finger
+      if (this.attackTimer > 10) {
+        ctx.fillStyle = '#ff8800';
+        ctx.fillRect(sx + (this.facing === 1 ? this.w : -15), this.y + 5, 15, 8);
+        ctx.fillText('☝', sx + (this.facing === 1 ? this.w + 2 : -14), this.y + 13);
+      }
+    } else if (this.type === 'mascot') {
+      // Horns/crown
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.moveTo(sx + 4, this.y - 14);
+      ctx.lineTo(sx + 8, this.y - 24);
+      ctx.lineTo(sx + 12, this.y - 14);
+      ctx.moveTo(sx + this.w - 12, this.y - 14);
+      ctx.lineTo(sx + this.w - 8, this.y - 24);
+      ctx.lineTo(sx + this.w - 4, this.y - 14);
+      ctx.fill();
+    }
+
+    // Attack flash
+    if (this.attackTimer > 15 && this.attackTimer < 25) {
+      ctx.fillStyle = '#ff000044';
+      ctx.beginPath();
+      ctx.arc(sx + (this.facing === 1 ? this.w + 10 : -10), this.y + this.h / 2, 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = 1;
+    this.drawHPBar(sx);
+  }
+}
+
+class Boss extends Entity {
+  constructor(x, type) {
+    super(x, GROUND - 60, 50, 60);
+    this.type = type;
+    this.hp = 200; this.maxHp = 200;
+    this.attack = 15;
+    this.speed = 1;
+    this.phase = 0;
+    this.phaseTimer = 0;
+  }
+  update(player) {
+    this.phaseTimer++;
+    const dx = player.x - this.x;
+    this.facing = dx > 0 ? 1 : -1;
+
+    // Boss patterns
+    if (this.phaseTimer % 90 === 0) {
+      this.phase = (this.phase + 1) % 3;
+    }
+
+    if (this.phase === 0) {
+      // Chase
+      this.vx = this.facing * this.speed;
+    } else if (this.phase === 1) {
+      // Charge
+      this.vx = this.facing * 4;
+    } else {
+      // Jump attack
+      if (this.grounded && this.phaseTimer % 30 === 0) {
+        this.vy = -12;
+        this.grounded = false;
+      }
+      this.vx = this.facing * 2;
+    }
+
+    if (Math.abs(dx) < 50 && this.attackTimer <= 0) {
+      this.attackTimer = 25;
+    }
+
+    super.update();
+  }
+  getAttackBox() {
+    if (this.attackTimer > 10 && this.attackTimer < 20) {
+      return {
+        x: this.facing === 1 ? this.x + this.w : this.x - 40,
+        y: this.y, w: 40, h: this.h,
+        damage: this.attack
+      };
+    }
+    return null;
+  }
+  draw() {
+    const sx = this.worldX;
+    const hurt = this.hurtTimer > 0 && this.hurtTimer % 4 < 2;
+    if (hurt) ctx.globalAlpha = 0.5;
+
+    // Big body
+    const colors = {
+      Bull: ['#8B0000', '#ff4444'],
+      Eagle: ['#2244aa', '#ffcc00'],
+      Dragon: ['#2a8a2a', '#ff4400']
+    };
+    const [bodyCol, accentCol] = colors[this.type] || ['#888', '#fff'];
+
+    ctx.fillStyle = bodyCol;
+    ctx.fillRect(sx, this.y, this.w, this.h);
+
+    // Head
+    ctx.fillStyle = bodyCol;
+    ctx.beginPath();
+    ctx.arc(sx + this.w / 2, this.y - 5, 22, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes (angry)
+    ctx.fillStyle = '#ff0000';
+    ctx.beginPath();
+    ctx.arc(sx + this.w / 2 - 7, this.y - 8, 4, 0, Math.PI * 2);
+    ctx.arc(sx + this.w / 2 + 7, this.y - 8, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffff00';
+    ctx.beginPath();
+    ctx.arc(sx + this.w / 2 - 7, this.y - 8, 2, 0, Math.PI * 2);
+    ctx.arc(sx + this.w / 2 + 7, this.y - 8, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Type specific
+    if (this.type === 'Bull') {
+      // Horns
+      ctx.fillStyle = '#ddd';
+      ctx.beginPath();
+      ctx.moveTo(sx, this.y - 15);
+      ctx.lineTo(sx - 15, this.y - 30);
+      ctx.lineTo(sx + 8, this.y - 12);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(sx + this.w, this.y - 15);
+      ctx.lineTo(sx + this.w + 15, this.y - 30);
+      ctx.lineTo(sx + this.w - 8, this.y - 12);
+      ctx.fill();
+      // Nose ring
+      ctx.strokeStyle = '#ffcc00';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx + this.w / 2, this.y + 2, 5, 0, Math.PI);
+      ctx.stroke();
+    } else if (this.type === 'Eagle') {
+      // Beak
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.moveTo(sx + this.w / 2, this.y);
+      ctx.lineTo(sx + this.w / 2 + this.facing * 20, this.y + 3);
+      ctx.lineTo(sx + this.w / 2, this.y + 6);
+      ctx.closePath();
+      ctx.fill();
+      // Wings
+      ctx.fillStyle = accentCol;
+      ctx.beginPath();
+      ctx.moveTo(sx - 5, this.y + 10);
+      ctx.lineTo(sx - 25, this.y);
+      ctx.lineTo(sx - 5, this.y + 25);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(sx + this.w + 5, this.y + 10);
+      ctx.lineTo(sx + this.w + 25, this.y);
+      ctx.lineTo(sx + this.w + 5, this.y + 25);
+      ctx.fill();
+    } else if (this.type === 'Dragon') {
+      // Spikes
+      ctx.fillStyle = accentCol;
+      for (let i = 0; i < 5; i++) {
+        const spx = sx + 5 + i * 10;
+        ctx.beginPath();
+        ctx.moveTo(spx, this.y - 20);
+        ctx.lineTo(spx + 5, this.y - 32);
+        ctx.lineTo(spx + 10, this.y - 20);
+        ctx.fill();
+      }
+      // Fire breath during attack
+      if (this.attackTimer > 10 && this.attackTimer < 20) {
+        for (let i = 0; i < 5; i++) {
+          ctx.globalAlpha = 0.6 - i * 0.1;
+          ctx.fillStyle = i < 2 ? '#ff4400' : '#ffcc00';
+          ctx.beginPath();
+          ctx.arc(
+            sx + this.w / 2 + this.facing * (20 + i * 15),
+            this.y + this.h / 3 + (Math.random() - 0.5) * 10,
+            8 + i * 3, 0, Math.PI * 2
+          );
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Boss name
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(this.type.toUpperCase(), sx + this.w / 2, this.y - 30);
+
+    ctx.globalAlpha = 1;
+
+    // HP bar (bigger)
+    const barW = 60, barH = 6;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(sx - 5, this.y - 22, barW, barH);
+    ctx.fillStyle = this.hp > this.maxHp * 0.3 ? '#ff4444' : '#ffff00';
+    ctx.fillRect(sx - 5, this.y - 22, barW * (this.hp / this.maxHp), barH);
+  }
+}
+
+let player = null;
+let enemies = [];
+let boss = null;
+let enemiesSpawned = 0;
+let enemiesKilled = 0;
+let levelComplete = false;
+let spawnTimer = 0;
+
+function initLevel() {
+  const lvl = LEVELS[level];
+  player = player || new Player();
+  player.x = 100;
+  scrollX = 0;
+  enemies = [];
+  boss = null;
+  bossMode = false;
+  enemiesSpawned = 0;
+  enemiesKilled = 0;
+  levelComplete = false;
+  spawnTimer = 0;
+  particles = [];
+  powerups = [];
+  showMsg(lvl.name, 90);
+}
+
+function spawnEnemy() {
+  const lvl = LEVELS[level];
+  if (enemiesSpawned >= lvl.enemies) {
+    if (!boss && !bossMode) {
+      bossMode = true;
+      boss = new Boss(player.x + W, lvl.boss);
+      showMsg(`BOSS: ${lvl.boss.toUpperCase()}!`, 90);
+    }
+    return;
+  }
+
+  const types = level === 0 ? ['fan', 'fan', 'guard'] :
+    level === 1 ? ['fan', 'guard', 'guard', 'mascot'] :
+      ['guard', 'mascot', 'mascot', 'fan'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const x = player.x + W + Math.random() * 100;
+  enemies.push(new Enemy(x, type));
+  enemiesSpawned++;
+}
+
+function spawnPowerup(x, y) {
+  if (Math.random() < 0.35) {
+    const type = Math.random() < 0.6 ? 'hotdog' : 'foam';
+    powerups.push({ x, y: y - 10, type, vy: -3, grounded: false });
+  }
+}
+
+function boxCollide(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+    a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function hitEntity(target, damage) {
+  target.hp -= damage;
+  target.hurtTimer = 20;
+  screenShake = 5;
+  spawnHitParticles(target.x, target.y + target.h / 2);
+
+  if (target.hp <= 0) {
+    target.alive = false;
+    spawnHitParticles(target.x, target.y, 20);
+    if (target !== player) {
+      player.score += target.maxHp * 2;
+      player.combo++;
+      player.comboTimer = 90;
+      spawnPowerup(target.x, target.y + target.h);
+    }
+  }
+}
+
+function spawnHitParticles(x, y, count) {
+  for (let i = 0; i < (count || 8); i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 8,
+      vy: (Math.random() - 0.5) * 8,
+      life: 15 + Math.random() * 10,
+      color: '#ffcc00', size: 2 + Math.random() * 3
+    });
+  }
+}
+
+function showMsg(m, t) { message = m; msgTimer = t; }
+
+function update() {
+  if (state !== 'playing') return;
+
+  player.update();
+
+  // Spawn enemies
+  spawnTimer++;
+  if (spawnTimer >= LEVELS[level].spawnRate) {
+    spawnTimer = 0;
+    spawnEnemy();
+  }
+
+  // Update enemies
+  enemies = enemies.filter(e => {
+    if (!e.alive) return false;
+    e.update(player);
+    return true;
+  });
+
+  // Update boss
+  if (boss) {
+    if (!boss.alive) {
+      // Level complete!
+      player.score += 1000;
+      boss = null;
+      levelComplete = true;
+      showMsg('LEVEL COMPLETE!', 120);
+      setTimeout(() => {
+        level++;
+        if (level >= LEVELS.length) {
+          state = 'win';
+        } else {
+          initLevel();
+        }
+      }, 2000);
+      return;
+    }
+    boss.update(player);
+  }
+
+  // Player attacks
+  let attackBox = null;
+  if (keys['z'] || keys['Z']) { attackBox = player.punch(); }
+  if (keys['x'] || keys['X']) { attackBox = player.kick(); }
+  if (keys['c'] || keys['C']) { attackBox = player.special(); if (attackBox) spawnHitParticles(player.x, player.y, 15); }
+
+  if (attackBox) {
+    for (const e of enemies) {
+      if (boxCollide(attackBox, e)) {
+        hitEntity(e, attackBox.damage);
+        e.vx = player.facing * 5;
+        e.vy = -3;
+      }
+    }
+    if (boss && boss.alive && boxCollide(attackBox, boss)) {
+      hitEntity(boss, attackBox.damage);
+    }
+  }
+
+  // Enemy attacks on player
+  for (const e of enemies) {
+    const eAtk = e.getAttackBox();
+    if (eAtk && boxCollide(eAtk, player) && player.hurtTimer <= 0) {
+      hitEntity(player, eAtk.damage);
+      player.vx = e.facing * 4;
+      player.combo = 0;
+    }
+  }
+  if (boss && boss.alive) {
+    const bAtk = boss.getAttackBox();
+    if (bAtk && boxCollide(bAtk, player) && player.hurtTimer <= 0) {
+      hitEntity(player, bAtk.damage);
+      player.vx = boss.facing * 6;
+      player.combo = 0;
+    }
+  }
+
+  // Player death
+  if (!player.alive) {
+    player.lives--;
+    if (player.lives <= 0) {
+      state = 'gameover';
+      return;
+    }
+    player.hp = player.maxHp;
+    player.alive = true;
+    player.hurtTimer = 60;
+    showMsg(`${player.lives} LIVES LEFT`, 60);
+  }
+
+  // Powerups
+  powerups = powerups.filter(p => {
+    p.vy += 0.3;
+    p.y += p.vy;
+    if (p.y > GROUND - 10) { p.y = GROUND - 10; p.vy = 0; }
+
+    const px = p.x - scrollX;
+    if (Math.abs(player.x - p.x) < 30 && Math.abs(player.y - p.y) < 40) {
+      if (p.type === 'hotdog') {
+        player.hp = Math.min(player.maxHp, player.hp + 25);
+        showMsg('+25 HP!', 30);
+      } else {
+        player.attack += 3;
+        showMsg('ATTACK UP!', 30);
+      }
+      spawnHitParticles(p.x, p.y, 10);
+      return false;
+    }
+    return px > -100 && px < W + 100;
+  });
+
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.95; p.vy *= 0.95;
+    p.life--;
+    return p.life > 0;
+  });
+
+  if (msgTimer > 0) msgTimer--;
+  if (screenShake > 0) screenShake--;
+}
+
+function drawBackground() {
+  const lvl = LEVELS[level] || LEVELS[0];
+  ctx.fillStyle = lvl.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Background details
+  const bx = -(scrollX * 0.3) % 200;
+  ctx.fillStyle = '#ffffff08';
+  for (let i = 0; i < 8; i++) {
+    const x = bx + i * 200;
+    if (level === 0) {
+      // Cars in parking lot
+      ctx.fillStyle = '#22223388';
+      ctx.fillRect(x, GROUND - 80, 80, 40);
+      ctx.fillRect(x + 10, GROUND - 100, 60, 25);
+      ctx.fillStyle = '#ffffff44';
+      ctx.fillRect(x + 15, GROUND - 95, 15, 12);
+      ctx.fillRect(x + 45, GROUND - 95, 15, 12);
+    } else if (level === 1) {
+      // Concessions
+      ctx.fillStyle = '#2a2a4a88';
+      ctx.fillRect(x, GROUND - 120, 100, 80);
+      ctx.fillStyle = '#ffcc0033';
+      ctx.fillRect(x + 10, GROUND - 110, 30, 20);
+      ctx.font = '10px Courier New';
+      ctx.fillStyle = '#ffcc0044';
+      ctx.textAlign = 'center';
+      ctx.fillText('FOOD', x + 50, GROUND - 95);
+    } else {
+      // Stadium seats
+      for (let row = 0; row < 4; row++) {
+        for (let s = 0; s < 10; s++) {
+          ctx.fillStyle = `hsl(${(s * 30 + row * 60) % 360}, 40%, 25%)`;
+          ctx.fillRect(x + s * 20, 20 + row * 25, 16, 20);
+        }
+      }
+    }
+  }
+
+  // Ground
+  ctx.fillStyle = lvl.groundColor;
+  ctx.fillRect(0, GROUND, W, H - GROUND);
+  ctx.strokeStyle = '#ffffff22';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND);
+  ctx.lineTo(W, GROUND);
+  ctx.stroke();
+}
+
+function drawHUD() {
+  // HP bar
+  ctx.fillStyle = '#00000088';
+  ctx.fillRect(10, 10, 200, 50);
+  ctx.strokeStyle = '#555';
+  ctx.strokeRect(10, 10, 200, 50);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '12px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText('BEAR MASCOT', 20, 27);
+
+  ctx.fillStyle = '#333';
+  ctx.fillRect(20, 32, 170, 10);
+  ctx.fillStyle = player.hp > 30 ? '#44cc44' : '#cc4444';
+  ctx.fillRect(20, 32, 170 * (player.hp / player.maxHp), 10);
+
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText(`Lives: ${'❤'.repeat(player.lives)}  ATK: ${player.attack}`, 20, 55);
+
+  // Score & combo
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = '16px Courier New';
+  ctx.fillText(`Score: ${player.score}`, W - 20, 27);
+  if (player.combo > 1) {
+    ctx.fillStyle = '#ff69b4';
+    ctx.fillText(`${player.combo}x COMBO!`, W - 20, 47);
+  }
+
+  // Special cooldown
+  ctx.textAlign = 'left';
+  ctx.fillStyle = player.specialCooldown <= 0 ? '#00ff88' : '#666';
+  ctx.font = '12px Courier New';
+  ctx.fillText(`[C] Special: ${player.specialCooldown <= 0 ? 'READY' : Math.ceil(player.specialCooldown / 60) + 's'}`, 230, 27);
+
+  // Level name
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#a0a0c066';
+  ctx.font = '11px Courier New';
+  ctx.fillText(`Level ${level + 1}: ${LEVELS[level]?.name || ''}`, W / 2, H - 5);
+
+  // Boss HP bar
+  if (boss && boss.alive) {
+    ctx.fillStyle = '#00000088';
+    ctx.fillRect(W / 2 - 150, H - 40, 300, 20);
+    ctx.fillStyle = '#cc2222';
+    ctx.fillRect(W / 2 - 148, H - 38, 296 * (boss.hp / boss.maxHp), 16);
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`BOSS: ${boss.type.toUpperCase()}`, W / 2, H - 25);
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = 'bold 48px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff8c00';
+  ctx.fillText('MASCOT', W / 2, 100);
+  ctx.fillText('MAYHEM', W / 2, 150);
+
+  ctx.font = '18px serif';
+  ctx.fillText('🐻 🥊 💥', W / 2, 185);
+
+  ctx.font = '14px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  const lines = [
+    'You\'re a football mascot in a side-scrolling brawler!',
+    'Fight rival mascots, rowdy fans, and security!',
+    '',
+    'Controls:',
+    '← → Arrow keys: Move    ↑: Jump',
+    'Z: Punch    X: Kick    C: Special (head spin!)',
+    '',
+    'Power-ups:',
+    '🌭 Hot Dog: Restore health',
+    '☝ Foam Finger: Increase attack power',
+    '',
+    '3 Levels: Parking Lot → Concourse → Field Invasion',
+    'Each level ends with a BOSS FIGHT!',
+    '',
+    'Press Z to START!'
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, 220 + i * 19));
+}
+
+function drawGameOver() {
+  ctx.fillStyle = '#0f0f1aee';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = 'bold 48px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText('GAME OVER', W / 2, 150);
+
+  ctx.font = '24px Courier New';
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText(`Final Score: ${player ? player.score : 0}`, W / 2, 220);
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText(`Reached: Level ${level + 1} - ${LEVELS[level]?.name || ''}`, W / 2, 260);
+
+  ctx.font = '16px Courier New';
+  ctx.fillText('Press Z to try again', W / 2, 330);
+}
+
+function drawWin() {
+  ctx.fillStyle = '#0f0f1aee';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = 'bold 48px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText('YOU WIN!', W / 2, 130);
+
+  ctx.font = '20px Courier New';
+  ctx.fillStyle = '#ff8c00';
+  ctx.fillText('The crowd goes wild!', W / 2, 180);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText(`Final Score: ${player ? player.score : 0}`, W / 2, 230);
+
+  ctx.font = '16px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText('Press Z to play again', W / 2, 300);
+}
+
+function draw() {
+  ctx.save();
+  if (screenShake > 0) {
+    ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
+  }
+
+  if (state === 'title') { drawTitle(); ctx.restore(); return; }
+  if (state === 'gameover') { drawGameOver(); ctx.restore(); return; }
+  if (state === 'win') { drawWin(); ctx.restore(); return; }
+
+  drawBackground();
+
+  // Powerups
+  powerups.forEach(p => {
+    const px = p.x - scrollX;
+    ctx.font = '20px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.type === 'hotdog' ? '🌭' : '☝', px, p.y);
+    // Glow
+    ctx.fillStyle = p.type === 'hotdog' ? '#44cc4433' : '#ffcc0033';
+    ctx.beginPath();
+    ctx.arc(px, p.y - 5, 15, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Draw entities
+  enemies.forEach(e => e.draw());
+  if (boss && boss.alive) boss.draw();
+  player.draw();
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 25;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x - scrollX, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  drawHUD();
+
+  // Message
+  if (msgTimer > 0) {
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(W / 2 - 160, H / 2 - 25, 320, 50);
+    ctx.font = 'bold 24px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillText(message, W / 2, H / 2 + 8);
+  }
+
+  ctx.restore();
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'z' || e.key === 'Z') && (state === 'title' || state === 'gameover' || state === 'win')) {
+    state = 'playing';
+    level = 0;
+    player = new Player();
+    initLevel();
+  }
+});
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

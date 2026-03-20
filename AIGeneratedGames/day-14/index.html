@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 14 – Kick Club</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+      overflow: hidden;
+      touch-action: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.9rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { color: #a78bfa; font-size: 1.5rem; margin-bottom: 0.5rem; }
+    #info { color: #9ca3af; font-size: 0.85rem; margin-bottom: 0.5rem; text-align: center; }
+    canvas {
+      background: #1a1a2e;
+      border-radius: 8px;
+      border: 1px solid #3b3b5c;
+      max-width: 480px;
+      width: 100%;
+      touch-action: none;
+    }
+    #score { font-size: 1.2rem; margin-top: 0.5rem; color: #e0e0ff; }
+    #message {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(15,15,26,0.95); border: 2px solid #a78bfa; border-radius: 12px;
+      padding: 2rem; text-align: center; display: none; z-index: 10;
+    }
+    #message h2 { color: #a78bfa; margin-bottom: 1rem; }
+    #message button {
+      background: #a78bfa; color: #0f0f1a; border: none; padding: 0.75rem 2rem;
+      border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: bold;
+    }
+</style>
+</head>
+<body>
+  <h1>Kick Club</h1>
+  <div id="info">Drag your player (blue). Swipe toward ball to kick. First to 5 wins!</div>
+  <canvas id="c"></canvas>
+  <div id="score">You 0 – 0 CPU</div>
+  <div id="message"><h2 id="msgText"></h2><button id="msgBtn">Play Again</button></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const msgEl = document.getElementById('message');
+const msgText = document.getElementById('msgText');
+const msgBtn = document.getElementById('msgBtn');
+
+const W = 480, H = 640;
+canvas.width = W; canvas.height = H;
+
+const GOAL_W = 120, GOAL_H = 20, PLAYER_R = 20, BALL_R = 12;
+const WIN_SCORE = 5;
+const FRICTION = 0.985;
+const KICK_POWER = 14;
+const AI_SPEED = 2.8;
+
+let playerScore = 0, cpuScore = 0;
+let gameOver = false;
+let goalFlash = 0;
+let goalScoredBy = '';
+
+const player = { x: W/2, y: H * 0.75, vx: 0, vy: 0, r: PLAYER_R, color: '#60a5fa' };
+const cpu = { x: W/2, y: H * 0.25, vx: 0, vy: 0, r: PLAYER_R, color: '#f87171' };
+const ball = { x: W/2, y: H/2, vx: 0, vy: 0, r: BALL_R };
+
+let touchId = null;
+let touchStartX = 0, touchStartY = 0;
+let dragging = false;
+let dragOffX = 0, dragOffY = 0;
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function resetPositions() {
+  player.x = W/2; player.y = H * 0.75; player.vx = 0; player.vy = 0;
+  cpu.x = W/2; cpu.y = H * 0.25; cpu.vx = 0; cpu.vy = 0;
+  ball.x = W/2; ball.y = H/2; ball.vx = 0; ball.vy = 0;
+}
+
+function resetGame() {
+  playerScore = 0; cpuScore = 0; gameOver = false;
+  resetPositions();
+  msgEl.style.display = 'none';
+  updateScore();
+}
+
+function updateScore() {
+  scoreEl.textContent = `You ${playerScore} – ${cpuScore} CPU`;
+}
+
+function getCanvasPos(touch) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  return { x: (touch.clientX - rect.left) * scaleX, y: (touch.clientY - rect.top) * scaleY };
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (gameOver) return;
+  const t = e.changedTouches[0];
+  touchId = t.identifier;
+  const pos = getCanvasPos(t);
+  touchStartX = pos.x; touchStartY = pos.y;
+
+  if (dist(pos, player) < PLAYER_R * 2.5) {
+    dragging = true;
+    dragOffX = player.x - pos.x;
+    dragOffY = player.y - pos.y;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (gameOver) return;
+  for (let t of e.changedTouches) {
+    if (t.identifier === touchId && dragging) {
+      const pos = getCanvasPos(t);
+      let nx = pos.x + dragOffX;
+      let ny = pos.y + dragOffY;
+      // constrain to player's half + a bit
+      ny = Math.max(H/2 - 20, Math.min(H - PLAYER_R, ny));
+      nx = Math.max(PLAYER_R, Math.min(W - PLAYER_R, nx));
+      player.vx = (nx - player.x) * 0.5;
+      player.vy = (ny - player.y) * 0.5;
+      player.x = nx;
+      player.y = ny;
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (gameOver) return;
+  for (let t of e.changedTouches) {
+    if (t.identifier === touchId) {
+      const pos = getCanvasPos(t);
+      const swipeDx = pos.x - touchStartX;
+      const swipeDy = pos.y - touchStartY;
+      const swipeDist = Math.hypot(swipeDx, swipeDy);
+
+      // If it was a swipe and player is near ball, kick
+      if (swipeDist > 20 && dist(player, ball) < PLAYER_R + BALL_R + 40) {
+        const angle = Math.atan2(swipeDy, swipeDx);
+        const power = Math.min(swipeDist / 30, 1) * KICK_POWER;
+        ball.vx += Math.cos(angle) * power;
+        ball.vy += Math.sin(angle) * power;
+      }
+      dragging = false;
+      touchId = null;
+    }
+  }
+}, { passive: false });
+
+// Mouse fallback for desktop
+let mouseDown = false;
+canvas.addEventListener('mousedown', (e) => {
+  if (gameOver) return;
+  const rect = canvas.getBoundingClientRect();
+  const pos = { x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height };
+  touchStartX = pos.x; touchStartY = pos.y;
+  if (dist(pos, player) < PLAYER_R * 2.5) {
+    mouseDown = true; dragging = true;
+    dragOffX = player.x - pos.x; dragOffY = player.y - pos.y;
+  }
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (!mouseDown || gameOver) return;
+  const rect = canvas.getBoundingClientRect();
+  const pos = { x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height };
+  let nx = pos.x + dragOffX, ny = pos.y + dragOffY;
+  ny = Math.max(H/2 - 20, Math.min(H - PLAYER_R, ny));
+  nx = Math.max(PLAYER_R, Math.min(W - PLAYER_R, nx));
+  player.vx = (nx - player.x) * 0.5;
+  player.vy = (ny - player.y) * 0.5;
+  player.x = nx; player.y = ny;
+});
+canvas.addEventListener('mouseup', (e) => {
+  if (!mouseDown) return;
+  const rect = canvas.getBoundingClientRect();
+  const pos = { x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height };
+  const dx = pos.x - touchStartX, dy = pos.y - touchStartY;
+  if (Math.hypot(dx, dy) > 20 && dist(player, ball) < PLAYER_R + BALL_R + 40) {
+    const angle = Math.atan2(dy, dx);
+    const power = Math.min(Math.hypot(dx, dy) / 30, 1) * KICK_POWER;
+    ball.vx += Math.cos(angle) * power;
+    ball.vy += Math.sin(angle) * power;
+  }
+  mouseDown = false; dragging = false;
+});
+
+msgBtn.addEventListener('click', resetGame);
+msgBtn.addEventListener('touchend', (e) => { e.preventDefault(); resetGame(); });
+
+function aiUpdate() {
+  // AI tries to get between ball and its own goal, then kick toward player's goal
+  const targetX = ball.x;
+  let targetY = ball.y - 50; // stay above ball
+
+  // If ball is in CPU's half, go aggressive
+  if (ball.y < H/2) {
+    targetY = ball.y - 30;
+  } else {
+    // Defend: stay near own goal
+    targetY = H * 0.2;
+  }
+
+  targetY = Math.max(cpu.r, Math.min(H/2 + 20, targetY));
+  const tx = Math.max(cpu.r, Math.min(W - cpu.r, targetX));
+
+  const dx = tx - cpu.x, dy = targetY - cpu.y;
+  const d = Math.hypot(dx, dy);
+  if (d > 2) {
+    cpu.x += (dx / d) * AI_SPEED;
+    cpu.y += (dy / d) * AI_SPEED;
+  }
+
+  // Kick: if near ball, push it toward player's goal
+  if (dist(cpu, ball) < cpu.r + ball.r + 5) {
+    const kickAngle = Math.atan2(H - ball.y, W/2 - ball.x + (Math.random() - 0.5) * 80);
+    const kickPow = 6 + Math.random() * 4;
+    ball.vx += Math.cos(kickAngle) * kickPow;
+    ball.vy += Math.sin(kickAngle) * kickPow;
+  }
+}
+
+function circleCollision(a, b) {
+  const d = dist(a, b);
+  if (d < a.r + b.r) {
+    const overlap = a.r + b.r - d;
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    b.x += Math.cos(angle) * overlap * 0.5;
+    b.y += Math.sin(angle) * overlap * 0.5;
+    // Transfer velocity
+    const relVx = a.vx - b.vx, relVy = a.vy - b.vy;
+    const nx = Math.cos(angle), ny = Math.sin(angle);
+    const dot = relVx * nx + relVy * ny;
+    if (dot > 0) {
+      b.vx += nx * dot * 1.2;
+      b.vy += ny * dot * 1.2;
+    }
+  }
+}
+
+function checkGoal() {
+  const goalLeft = (W - GOAL_W) / 2;
+  const goalRight = goalLeft + GOAL_W;
+
+  // Ball in top goal (player scores)
+  if (ball.y - ball.r <= GOAL_H && ball.x > goalLeft && ball.x < goalRight) {
+    playerScore++;
+    goalScoredBy = 'player';
+    goalFlash = 60;
+    updateScore();
+    if (playerScore >= WIN_SCORE) {
+      gameOver = true;
+      msgText.textContent = 'You Win!';
+      msgEl.style.display = 'block';
+    } else {
+      setTimeout(resetPositions, 800);
+    }
+    return true;
+  }
+  // Ball in bottom goal (CPU scores)
+  if (ball.y + ball.r >= H - GOAL_H && ball.x > goalLeft && ball.x < goalRight) {
+    cpuScore++;
+    goalScoredBy = 'cpu';
+    goalFlash = 60;
+    updateScore();
+    if (cpuScore >= WIN_SCORE) {
+      gameOver = true;
+      msgText.textContent = 'CPU Wins!';
+      msgEl.style.display = 'block';
+    } else {
+      setTimeout(resetPositions, 800);
+    }
+    return true;
+  }
+  return false;
+}
+
+function update() {
+  if (gameOver) return;
+  if (goalFlash > 0) { goalFlash--; if (goalFlash > 30) return; }
+
+  aiUpdate();
+
+  // Ball physics
+  ball.x += ball.vx; ball.y += ball.vy;
+  ball.vx *= FRICTION; ball.vy *= FRICTION;
+
+  // Wall bounces
+  if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx *= -0.8; }
+  if (ball.x + ball.r > W) { ball.x = W - ball.r; ball.vx *= -0.8; }
+  if (ball.y - ball.r < 0) { ball.y = ball.r; ball.vy *= -0.8; }
+  if (ball.y + ball.r > H) { ball.y = H - ball.r; ball.vy *= -0.8; }
+
+  // Collisions
+  circleCollision(player, ball);
+  circleCollision(cpu, ball);
+
+  checkGoal();
+
+  // Dampen player velocity
+  player.vx *= 0.8; player.vy *= 0.8;
+}
+
+function drawField() {
+  // Field background
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Center line and circle
+  ctx.strokeStyle = '#2a5a2a';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(W/2, H/2, 60, 0, Math.PI * 2); ctx.stroke();
+
+  // Center dot
+  ctx.fillStyle = '#2a5a2a';
+  ctx.beginPath(); ctx.arc(W/2, H/2, 5, 0, Math.PI * 2); ctx.fill();
+
+  // Goals
+  const goalLeft = (W - GOAL_W) / 2;
+
+  // Top goal (CPU's goal)
+  ctx.fillStyle = goalFlash > 30 && goalScoredBy === 'player' ? '#60a5fa' : '#333366';
+  ctx.fillRect(goalLeft, 0, GOAL_W, GOAL_H);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.strokeRect(goalLeft, 0, GOAL_W, GOAL_H);
+
+  // Bottom goal (Player's goal)
+  ctx.fillStyle = goalFlash > 30 && goalScoredBy === 'cpu' ? '#f87171' : '#333366';
+  ctx.fillRect(goalLeft, H - GOAL_H, GOAL_W, GOAL_H);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.strokeRect(goalLeft, H - GOAL_H, GOAL_W, GOAL_H);
+
+  // Penalty areas
+  ctx.strokeStyle = '#2a5a2a';
+  ctx.strokeRect(W/2 - 90, 0, 180, 80);
+  ctx.strokeRect(W/2 - 90, H - 80, 180, 80);
+}
+
+function drawPlayer(p) {
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(p.x + 3, p.y + 3, p.r, p.r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+  // Body
+  ctx.fillStyle = p.color;
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Jersey number
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px system-ui';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(p === player ? '10' : '9', p.x, p.y);
+}
+
+function drawBall() {
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(ball.x + 2, ball.y + 2, ball.r, ball.r * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2); ctx.fill();
+  // Pentagon pattern
+  ctx.fillStyle = '#333';
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath(); ctx.arc(ball.x + Math.cos(a) * 5, ball.y + Math.sin(a) * 5, 3, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawField();
+  drawPlayer(cpu);
+  drawPlayer(player);
+  drawBall();
+
+  // Goal flash overlay
+  if (goalFlash > 40) {
+    ctx.fillStyle = `rgba(167,139,250,${(goalFlash - 40) / 60})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('GOAL!', W/2, H/2);
+  }
+
+  // Score overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(W/2 - 50, H/2 - 15, 100, 30);
+  ctx.fillStyle = '#60a5fa';
+  ctx.font = 'bold 18px system-ui';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(`${playerScore}`, W/2 - 20, H/2);
+  ctx.fillStyle = '#fff';
+  ctx.fillText('–', W/2, H/2);
+  ctx.fillStyle = '#f87171';
+  ctx.fillText(`${cpuScore}`, W/2 + 20, H/2);
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+resetPositions();
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

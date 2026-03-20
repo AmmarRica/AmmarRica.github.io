@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 05 – Bug Hunter – Game a Day</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas {
+      border: 2px solid #3b3b5c;
+      border-radius: 8px;
+      background: #1a2e1a;
+      max-width: 480px;
+      width: 100%;
+      touch-action: none;
+    }
+    #ui { color: #9ca3af; margin-top: 0.5rem; font-size: 0.8rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Bug Hunter</h1>
+  <p class="subtitle">Drag to move net, tap to swing. Catch the quota!</p>
+  <canvas id="game"></canvas>
+  <div id="ui">Level 1 | Caught: 0/5 | Time: 30s</div>
+  <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+
+let W, H, scale;
+function resize() {
+  const maxW = 480, maxH = 480;
+  let w = Math.min(window.innerWidth - 20, maxW);
+  let h = w;
+  if (h > window.innerHeight - 140) { h = window.innerHeight - 140; w = h; }
+  canvas.width = maxW; canvas.height = maxH;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  W = maxW; H = maxH;
+  scale = w / maxW;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const BUG_TYPES = [
+  { name: 'beetle', color: '#22c55e', speed: 1.5, size: 10, points: 10, pattern: 'wander' },
+  { name: 'butterfly', color: '#c084fc', speed: 2, size: 8, points: 20, pattern: 'zigzag' },
+  { name: 'firefly', color: '#fbbf24', speed: 2.5, size: 6, points: 30, pattern: 'circle' },
+  { name: 'dragonfly', color: '#38bdf8', speed: 3.5, size: 9, points: 40, pattern: 'dash' },
+  { name: 'moth', color: '#f9a8d4', speed: 1.8, size: 7, points: 15, pattern: 'spiral' },
+];
+
+let net, bugs, particles, level, caught, quota, timer, maxTime, gameState, swinging, swingTimer;
+let comboCount, comboTimer, score;
+
+class Net {
+  constructor() {
+    this.x = W / 2; this.y = H / 2;
+    this.radius = 28; this.swingRadius = 40;
+  }
+}
+
+function createBug(type, x, y) {
+  return {
+    type,
+    x: x || 30 + Math.random() * (W - 60),
+    y: y || 30 + Math.random() * (H - 60),
+    angle: Math.random() * Math.PI * 2,
+    timer: Math.random() * 100,
+    alive: true,
+    escaping: false,
+    escapeTimer: 0,
+    wingPhase: Math.random() * Math.PI * 2,
+    scared: false, scareTimer: 0,
+  };
+}
+
+function spawnBugs(lvl) {
+  const list = [];
+  const count = 5 + Math.floor(lvl * 1.5);
+  for (let i = 0; i < count; i++) {
+    const typeIdx = Math.min(Math.floor(Math.random() * Math.min(lvl + 1, BUG_TYPES.length)), BUG_TYPES.length - 1);
+    list.push(createBug(BUG_TYPES[typeIdx]));
+  }
+  return list;
+}
+
+function init() {
+  level = 1; score = 0; gameState = 'play';
+  startLevel(level);
+}
+
+function startLevel(lvl) {
+  net = new Net();
+  bugs = spawnBugs(lvl);
+  particles = [];
+  caught = 0;
+  quota = 3 + Math.floor(lvl * 1.2);
+  maxTime = 30 + lvl * 2;
+  timer = maxTime;
+  swinging = false; swingTimer = 0;
+  comboCount = 0; comboTimer = 0;
+  gameState = 'play';
+}
+
+function updateBug(b, dt) {
+  if (!b.alive) return;
+  b.timer += dt;
+  b.wingPhase += dt * 10;
+
+  const speed = b.type.speed * (b.scared ? 2.5 : 1);
+
+  if (b.scared) {
+    b.scareTimer -= dt;
+    if (b.scareTimer <= 0) b.scared = false;
+    // Run from net
+    const dx = b.x - net.x, dy = b.y - net.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    b.x += (dx / dist) * speed * 60 * dt;
+    b.y += (dy / dist) * speed * 60 * dt;
+  } else {
+    switch (b.type.pattern) {
+      case 'wander':
+        if (Math.random() < 0.02) b.angle += (Math.random() - 0.5) * 1.5;
+        b.x += Math.cos(b.angle) * speed * 60 * dt;
+        b.y += Math.sin(b.angle) * speed * 60 * dt;
+        break;
+      case 'zigzag':
+        b.angle += Math.sin(b.timer * 3) * 0.05;
+        b.x += Math.cos(b.angle) * speed * 60 * dt;
+        b.y += Math.sin(b.angle) * speed * 60 * dt;
+        break;
+      case 'circle':
+        b.x += Math.cos(b.timer * 2) * speed * 40 * dt;
+        b.y += Math.sin(b.timer * 2) * speed * 40 * dt;
+        break;
+      case 'dash':
+        if (Math.sin(b.timer * 2) > 0.8) {
+          b.x += Math.cos(b.angle) * speed * 120 * dt;
+          b.y += Math.sin(b.angle) * speed * 120 * dt;
+        } else {
+          if (Math.random() < 0.01) b.angle = Math.random() * Math.PI * 2;
+        }
+        break;
+      case 'spiral':
+        const r = 30 + Math.sin(b.timer * 0.5) * 20;
+        b.x += Math.cos(b.timer * 1.5) * speed * 30 * dt;
+        b.y += Math.sin(b.timer * 1.5) * speed * 30 * dt;
+        break;
+    }
+  }
+
+  // Bounce off walls
+  const margin = 15;
+  if (b.x < margin) { b.x = margin; b.angle = Math.PI - b.angle; }
+  if (b.x > W - margin) { b.x = W - margin; b.angle = Math.PI - b.angle; }
+  if (b.y < margin) { b.y = margin; b.angle = -b.angle; }
+  if (b.y > H - margin) { b.y = H - margin; b.angle = -b.angle; }
+
+  // Scare nearby bugs when net is close (but not swinging)
+  if (!swinging) {
+    const dx = b.x - net.x, dy = b.y - net.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 60) {
+      b.scared = true;
+      b.scareTimer = 0.5;
+    }
+  }
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5,
+      life: 20 + Math.random() * 15, maxLife: 35, color, size: 2 + Math.random() * 3
+    });
+  }
+}
+
+let lastTime = 0;
+function update(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+
+  if (gameState !== 'play') return;
+
+  timer -= dt;
+  if (timer <= 0) {
+    timer = 0;
+    if (caught >= quota) {
+      level++;
+      startLevel(level);
+      return;
+    } else {
+      gameState = 'gameover';
+      return;
+    }
+  }
+
+  // Swing
+  if (swinging) {
+    swingTimer -= dt;
+    if (swingTimer <= 0) swinging = false;
+
+    // Check catches
+    bugs.forEach(b => {
+      if (!b.alive) return;
+      const dx = b.x - net.x, dy = b.y - net.y;
+      if (Math.sqrt(dx * dx + dy * dy) < net.swingRadius + b.type.size) {
+        b.alive = false;
+        caught++;
+        comboCount++;
+        comboTimer = 1.5;
+        const multiplier = Math.min(comboCount, 5);
+        score += b.type.points * multiplier;
+        spawnParticles(b.x, b.y, b.type.color, 15);
+        spawnParticles(b.x, b.y, '#ffffff', 5);
+      }
+    });
+  }
+
+  // Combo timer
+  if (comboTimer > 0) {
+    comboTimer -= dt;
+    if (comboTimer <= 0) comboCount = 0;
+  }
+
+  bugs.forEach(b => updateBug(b, dt));
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Level complete check
+  if (caught >= quota) {
+    level++;
+    if (level > 20) { gameState = 'win'; return; }
+    startLevel(level);
+    return;
+  }
+
+  // All bugs gone but not quota?
+  const alive = bugs.filter(b => b.alive).length;
+  if (alive === 0 && caught < quota) {
+    // Spawn more bugs
+    const extra = quota - caught + 2;
+    for (let i = 0; i < extra; i++) {
+      const typeIdx = Math.min(Math.floor(Math.random() * Math.min(level + 1, BUG_TYPES.length)), BUG_TYPES.length - 1);
+      const edge = Math.floor(Math.random() * 4);
+      let x, y;
+      if (edge === 0) { x = 0; y = Math.random() * H; }
+      else if (edge === 1) { x = W; y = Math.random() * H; }
+      else if (edge === 2) { x = Math.random() * W; y = 0; }
+      else { x = Math.random() * W; y = H; }
+      bugs.push(createBug(BUG_TYPES[typeIdx], x, y));
+    }
+  }
+
+  ui.textContent = `Level ${level} | Caught: ${caught}/${quota} | Time: ${Math.ceil(timer)}s | Score: ${score}`;
+}
+
+function drawBug(b) {
+  if (!b.alive) return;
+  const s = b.type.size;
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  ctx.rotate(b.angle);
+
+  // Wings
+  ctx.fillStyle = b.type.color;
+  ctx.globalAlpha = 0.5 + Math.sin(b.wingPhase) * 0.3;
+  ctx.beginPath();
+  ctx.ellipse(-s * 0.4, -s * 0.7, s * 0.6, s * 0.4, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(s * 0.4, -s * 0.7, s * 0.6, s * 0.4, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Body
+  ctx.fillStyle = b.type.color;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, s * 0.5, s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head
+  ctx.fillStyle = '#1a1a2e';
+  ctx.beginPath();
+  ctx.arc(0, -s, s * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-3, -s - 2, 2, 2);
+  ctx.fillRect(1, -s - 2, 2, 2);
+
+  ctx.restore();
+}
+
+function draw() {
+  ctx.fillStyle = '#1a2e1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grass texture
+  ctx.fillStyle = '#1e3320';
+  for (let i = 0; i < 80; i++) {
+    const gx = (i * 73 + 11) % W;
+    const gy = (i * 97 + 23) % H;
+    ctx.fillRect(gx, gy, 2, 6);
+  }
+
+  // Flowers in background
+  const flowerColors = ['#ef4444', '#fbbf24', '#a78bfa', '#f472b6'];
+  for (let i = 0; i < 12; i++) {
+    const fx = (i * 127 + 31) % W;
+    const fy = (i * 83 + 47) % H;
+    ctx.fillStyle = flowerColors[i % 4];
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.arc(fx, fy, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Bugs
+  bugs.forEach(b => drawBug(b));
+
+  // Net
+  ctx.save();
+  ctx.translate(net.x, net.y);
+
+  if (swinging) {
+    // Swing animation
+    const prog = 1 - swingTimer / 0.25;
+    const swingAngle = prog * Math.PI * 2;
+    ctx.rotate(swingAngle);
+
+    // Swing arc visual
+    ctx.strokeStyle = '#a78bfa';
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, net.swingRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Handle
+  ctx.strokeStyle = '#8b6914';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, 12);
+  ctx.lineTo(0, 30);
+  ctx.stroke();
+
+  // Net rim
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, net.radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Net mesh
+  ctx.strokeStyle = 'rgba(167, 139, 250, 0.3)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(-net.radius * Math.cos(a), -net.radius * Math.sin(a));
+    ctx.lineTo(net.radius * Math.cos(a), net.radius * Math.sin(a));
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, net.radius * 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Combo indicator
+  if (comboCount > 1 && comboTimer > 0) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = comboTimer / 1.5;
+    ctx.fillText(`x${comboCount} COMBO!`, W / 2, 40);
+    ctx.globalAlpha = 1;
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // Time warning
+  if (timer < 10 && gameState === 'play') {
+    ctx.fillStyle = '#ef4444';
+    ctx.globalAlpha = 0.3 + Math.sin(Date.now() / 200) * 0.2;
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.ceil(timer).toString(), W / 2, H / 2);
+    ctx.globalAlpha = 1;
+  }
+
+  // Overlays
+  if (gameState === 'gameover') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 44px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', W/2, H/2 - 30);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '20px system-ui';
+    ctx.fillText(`Score: ${score} | Level: ${level}`, W/2, H/2 + 10);
+    ctx.fillText('Tap to restart', W/2, H/2 + 45);
+  } else if (gameState === 'win') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 44px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('YOU WIN!', W/2, H/2 - 30);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '20px system-ui';
+    ctx.fillText(`Final Score: ${score}`, W/2, H/2 + 10);
+    ctx.fillText('Tap to play again', W/2, H/2 + 45);
+  }
+}
+
+// Touch controls
+let dragging = false;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (gameState === 'gameover' || gameState === 'win') { init(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.touches[0].clientX - rect.left) / scale;
+  const ty = (e.touches[0].clientY - rect.top) / scale;
+  const dx = tx - net.x, dy = ty - net.y;
+  if (Math.sqrt(dx * dx + dy * dy) < 60) {
+    dragging = true;
+  } else {
+    // Tap to swing
+    swinging = true; swingTimer = 0.25;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.touches[0].clientX - rect.left) / scale;
+  const ty = (e.touches[0].clientY - rect.top) / scale;
+  net.x = Math.max(20, Math.min(W - 20, tx));
+  net.y = Math.max(20, Math.min(H - 20, ty));
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (dragging) {
+    dragging = false;
+    // Auto-swing on release
+    swinging = true; swingTimer = 0.25;
+  }
+}, { passive: false });
+
+// Mouse fallback
+canvas.addEventListener('mousedown', e => {
+  if (gameState === 'gameover' || gameState === 'win') { init(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.clientX - rect.left) / scale;
+  const ty = (e.clientY - rect.top) / scale;
+  const dx = tx - net.x, dy = ty - net.y;
+  if (Math.sqrt(dx * dx + dy * dy) < 60) dragging = true;
+  else { swinging = true; swingTimer = 0.25; }
+});
+canvas.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  net.x = Math.max(20, Math.min(W - 20, (e.clientX - rect.left) / scale));
+  net.y = Math.max(20, Math.min(H - 20, (e.clientY - rect.top) / scale));
+});
+canvas.addEventListener('mouseup', () => {
+  if (dragging) { dragging = false; swinging = true; swingTimer = 0.25; }
+});
+
+function loop(ts) {
+  update(ts);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+init();
+lastTime = performance.now();
+requestAnimationFrame(loop);
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

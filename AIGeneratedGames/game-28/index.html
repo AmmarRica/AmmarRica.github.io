@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Playbook Puzzle</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; cursor: crosshair; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const C = document.getElementById('c');
+const ctx = C.getContext('2d');
+let W, H;
+function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+const TITLE = 0, PLAYING = 1, SIMULATING = 2, RESULT = 3, GAMEOVER = 4, WIN = 5;
+let state = TITLE;
+let mouseX = 0, mouseY = 0, clicked = false;
+
+C.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+C.addEventListener('click', e => { mouseX = e.clientX; mouseY = e.clientY; clicked = true; });
+
+// Board config
+const BOARD_SIZE = 500;
+let boardX, boardY;
+let level = 0, totalLevels = 20, score = 0;
+
+// Players
+let offense = []; // WRs with drawn routes
+let defense = []; // Defenders with coverage
+let qb = null;
+let selectedWR = -1;
+let simTimer = 0, simDuration = 180;
+let simResult = '';
+
+// Levels define defensive formations
+const levels = [];
+function generateLevels() {
+  levels.length = 0;
+  for (let i = 0; i < totalLevels; i++) {
+    const numDef = Math.min(7, 4 + Math.floor(i / 4));
+    const defSpeed = 1.5 + i * 0.1;
+    const coverType = i < 5 ? 'zone' : i < 12 ? 'man' : 'mix';
+    const defs = [];
+    // Generate defensive positions
+    for (let j = 0; j < numDef; j++) {
+      const angle = (j / numDef) * Math.PI * 0.8 + Math.PI * 0.1;
+      const dist = 80 + Math.random() * 80;
+      defs.push({
+        rx: 0.5 + Math.cos(angle) * (dist / BOARD_SIZE) * (0.6 + Math.random() * 0.3),
+        ry: 0.3 + Math.sin(angle) * (dist / BOARD_SIZE) * 0.3 - 0.15,
+        speed: defSpeed,
+        cover: coverType === 'mix' ? (Math.random() < 0.5 ? 'zone' : 'man') : coverType,
+        zoneX: 0.5 + Math.cos(angle) * 0.25,
+        zoneY: 0.2 + Math.sin(angle) * 0.15
+      });
+    }
+    // WR positions
+    const numWR = Math.min(4, 2 + Math.floor(i / 5));
+    const wrs = [];
+    for (let j = 0; j < numWR; j++) {
+      wrs.push({
+        rx: 0.2 + (j / (numWR - 1 || 1)) * 0.6,
+        ry: 0.55
+      });
+    }
+    levels.push({ defs, wrs, numWR });
+  }
+}
+generateLevels();
+
+function setupLevel() {
+  const lv = levels[level];
+  boardX = (W - BOARD_SIZE) / 2;
+  boardY = (H - BOARD_SIZE) / 2 + 20;
+
+  offense = lv.wrs.map((w, i) => ({
+    x: boardX + w.rx * BOARD_SIZE,
+    y: boardY + w.ry * BOARD_SIZE,
+    startX: boardX + w.rx * BOARD_SIZE,
+    startY: boardY + w.ry * BOARD_SIZE,
+    route: [],
+    routeIdx: 0,
+    open: false,
+    speed: 2.5
+  }));
+
+  defense = lv.defs.map(d => ({
+    x: boardX + d.rx * BOARD_SIZE,
+    y: boardY + d.ry * BOARD_SIZE,
+    startX: boardX + d.rx * BOARD_SIZE,
+    startY: boardY + d.ry * BOARD_SIZE,
+    speed: d.speed,
+    cover: d.cover,
+    zoneX: boardX + d.zoneX * BOARD_SIZE,
+    zoneY: boardY + d.zoneY * BOARD_SIZE,
+    assignedWR: -1
+  }));
+
+  // Assign man coverage
+  let wrIdx = 0;
+  defense.forEach(d => {
+    if (d.cover === 'man' && wrIdx < offense.length) {
+      d.assignedWR = wrIdx++;
+    }
+  });
+
+  qb = { x: boardX + BOARD_SIZE * 0.5, y: boardY + BOARD_SIZE * 0.65 };
+  selectedWR = 0;
+  simTimer = 0;
+  simResult = '';
+  state = PLAYING;
+}
+
+function simulatePlay() {
+  state = SIMULATING;
+  simTimer = 0;
+
+  // Reset positions
+  offense.forEach(wr => {
+    wr.x = wr.startX;
+    wr.y = wr.startY;
+    wr.routeIdx = 0;
+    wr.open = false;
+  });
+  defense.forEach(d => {
+    d.x = d.startX;
+    d.y = d.startY;
+  });
+}
+
+function updateSim() {
+  simTimer++;
+
+  // Move WRs along routes
+  offense.forEach(wr => {
+    if (wr.routeIdx < wr.route.length) {
+      const target = wr.route[wr.routeIdx];
+      const dx = target.x - wr.x, dy = target.y - wr.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 5) {
+        wr.routeIdx++;
+      } else {
+        wr.x += (dx / dist) * wr.speed;
+        wr.y += (dy / dist) * wr.speed;
+      }
+    }
+  });
+
+  // Move defenders
+  defense.forEach(d => {
+    let tx, ty;
+    if (d.cover === 'man' && d.assignedWR >= 0 && d.assignedWR < offense.length) {
+      const wr = offense[d.assignedWR];
+      tx = wr.x; ty = wr.y;
+    } else {
+      // Zone: move toward zone position, react to nearest WR if close
+      let nearest = null, minDist = 120;
+      offense.forEach(wr => {
+        const dist = Math.sqrt((wr.x - d.zoneX) ** 2 + (wr.y - d.zoneY) ** 2);
+        if (dist < minDist) { minDist = dist; nearest = wr; }
+      });
+      if (nearest) {
+        tx = nearest.x; ty = nearest.y;
+      } else {
+        tx = d.zoneX; ty = d.zoneY;
+      }
+    }
+    const dx = tx - d.x, dy = ty - d.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 3) {
+      d.x += (dx / dist) * d.speed;
+      d.y += (dy / dist) * d.speed;
+    }
+  });
+
+  // Check if any WR is open (far from all defenders)
+  offense.forEach(wr => {
+    if (wr.route.length === 0) return;
+    let minDefDist = Infinity;
+    defense.forEach(d => {
+      const dist = Math.sqrt((wr.x - d.x) ** 2 + (wr.y - d.y) ** 2);
+      if (dist < minDefDist) minDefDist = dist;
+    });
+    if (minDefDist > 50 && wr.y < boardY + BOARD_SIZE * 0.45) {
+      wr.open = true;
+    }
+  });
+
+  if (simTimer >= simDuration) {
+    const anyOpen = offense.some(wr => wr.open);
+    if (anyOpen) {
+      simResult = 'COMPLETE! WR got open!';
+      score += 10 + level * 5;
+    } else {
+      simResult = 'COVERED! No one got open.';
+    }
+    state = RESULT;
+  }
+}
+
+function drawBoard() {
+  // Chalkboard background
+  ctx.fillStyle = '#2d4a2d';
+  ctx.fillRect(boardX - 10, boardY - 10, BOARD_SIZE + 20, BOARD_SIZE + 20);
+
+  // Board frame
+  ctx.strokeStyle = '#8B6914';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(boardX - 10, boardY - 10, BOARD_SIZE + 20, BOARD_SIZE + 20);
+
+  // Grid lines (chalk)
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const y = boardY + (BOARD_SIZE / 10) * i;
+    ctx.beginPath();
+    ctx.moveTo(boardX, y);
+    ctx.lineTo(boardX + BOARD_SIZE, y);
+    ctx.stroke();
+  }
+
+  // Scrimmage line
+  ctx.strokeStyle = 'rgba(255,255,0,0.5)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(boardX, boardY + BOARD_SIZE * 0.55);
+  ctx.lineTo(boardX + BOARD_SIZE, boardY + BOARD_SIZE * 0.55);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // End zone
+  ctx.fillStyle = 'rgba(200,50,50,0.2)';
+  ctx.fillRect(boardX, boardY, BOARD_SIZE, BOARD_SIZE * 0.1);
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('END ZONE', boardX + BOARD_SIZE / 2, boardY + BOARD_SIZE * 0.06);
+}
+
+function drawPlayers() {
+  // QB
+  ctx.fillStyle = '#4a90d9';
+  ctx.beginPath();
+  ctx.arc(qb.x, qb.y, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('QB', qb.x, qb.y + 4);
+
+  // Offense (O's) with routes
+  offense.forEach((wr, i) => {
+    // Draw route
+    if (wr.route.length > 0) {
+      ctx.strokeStyle = i === selectedWR ? '#4a90d9' : 'rgba(74,144,217,0.5)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(wr.startX, wr.startY);
+      wr.route.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+
+      // Arrow at end
+      if (wr.route.length > 0) {
+        const last = wr.route[wr.route.length - 1];
+        const prev = wr.route.length > 1 ? wr.route[wr.route.length - 2] : { x: wr.startX, y: wr.startY };
+        const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.beginPath();
+        ctx.moveTo(last.x + Math.cos(angle) * 8, last.y + Math.sin(angle) * 8);
+        ctx.lineTo(last.x + Math.cos(angle + 2.5) * 8, last.y + Math.sin(angle + 2.5) * 8);
+        ctx.lineTo(last.x + Math.cos(angle - 2.5) * 8, last.y + Math.sin(angle - 2.5) * 8);
+        ctx.fill();
+      }
+    }
+
+    // Player circle
+    const highlight = i === selectedWR && state === PLAYING;
+    ctx.strokeStyle = wr.open ? '#2ecc71' : (highlight ? '#f1c40f' : '#4a90d9');
+    ctx.lineWidth = highlight ? 3 : 2;
+    ctx.beginPath();
+    ctx.arc(wr.x, wr.y, 12, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (wr.open) {
+      ctx.fillStyle = '#2ecc71';
+      ctx.beginPath();
+      ctx.arc(wr.x, wr.y, 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('O', wr.x, wr.y + 4);
+  });
+
+  // Defense (X's)
+  defense.forEach(d => {
+    ctx.strokeStyle = '#e74c3c';
+    ctx.lineWidth = 2;
+    const s = 10;
+    ctx.beginPath();
+    ctx.moveTo(d.x - s, d.y - s);
+    ctx.lineTo(d.x + s, d.y + s);
+    ctx.moveTo(d.x + s, d.y - s);
+    ctx.lineTo(d.x - s, d.y + s);
+    ctx.stroke();
+
+    // Coverage type indicator
+    ctx.fillStyle = 'rgba(255,100,100,0.5)';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.cover === 'man' ? 'M' : 'Z', d.x, d.y + 18);
+  });
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Level: ${level + 1}/${totalLevels} | Score: ${score}`, boardX, boardY - 25);
+
+  if (state === PLAYING) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#f1c40f';
+    ctx.fillText(`Drawing route for WR ${selectedWR + 1}`, boardX + BOARD_SIZE, boardY - 25);
+
+    // Instructions
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Click on the board to add waypoints. Tab/1-4 to select WR. Space to simulate.', W / 2, boardY + BOARD_SIZE + 30);
+
+    // Buttons
+    // Clear route
+    const clrX = boardX, clrY = boardY + BOARD_SIZE + 45;
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(clrX, clrY, 100, 30);
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px monospace';
+    ctx.fillText('CLEAR', clrX + 50, clrY + 20);
+
+    if (clicked && mouseX > clrX && mouseX < clrX + 100 && mouseY > clrY && mouseY < clrY + 30) {
+      if (selectedWR >= 0 && selectedWR < offense.length) {
+        offense[selectedWR].route = [];
+      }
+    }
+
+    // Simulate button
+    const simX = boardX + BOARD_SIZE - 120, simY = boardY + BOARD_SIZE + 45;
+    const hasRoutes = offense.some(wr => wr.route.length > 0);
+    ctx.fillStyle = hasRoutes ? '#2ecc71' : '#555';
+    ctx.fillRect(simX, simY, 120, 30);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px monospace';
+    ctx.fillText('SIMULATE', simX + 60, simY + 20);
+
+    if (clicked && hasRoutes && mouseX > simX && mouseX < simX + 120 && mouseY > simY && mouseY < simY + 30) {
+      simulatePlay();
+    }
+
+    // WR selector buttons
+    offense.forEach((wr, i) => {
+      const bx = boardX + 120 + i * 60, by = boardY + BOARD_SIZE + 45;
+      ctx.fillStyle = i === selectedWR ? '#f1c40f' : '#333';
+      ctx.fillRect(bx, by, 50, 30);
+      ctx.fillStyle = i === selectedWR ? '#000' : '#fff';
+      ctx.font = '12px monospace';
+      ctx.fillText('WR' + (i + 1), bx + 25, by + 20);
+
+      if (clicked && mouseX > bx && mouseX < bx + 50 && mouseY > by && mouseY < by + 30) {
+        selectedWR = i;
+      }
+    });
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Chalkboard feel
+  ctx.fillStyle = '#2d4a2d';
+  ctx.fillRect(W / 2 - 250, H * 0.1, 500, H * 0.35);
+  ctx.strokeStyle = '#8B6914';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(W / 2 - 250, H * 0.1, 500, H * 0.35);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 38px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PLAYBOOK PUZZLE', W / 2, H * 0.2);
+
+  ctx.font = '16px monospace';
+  ctx.fillText('X\'s and O\'s Route Drawing', W / 2, H * 0.28);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  const lines = [
+    'Draw routes for your receivers to beat the defense!',
+    '',
+    'Click waypoints on the board to create routes',
+    'Use WR buttons or 1-4 keys to select receivers',
+    'Click SIMULATE to run the play',
+    'If a WR gets open downfield, you score!',
+    '20 levels of increasing difficulty'
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.5 + i * 22));
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.82, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('START', W / 2, H * 0.82 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.82 && mouseY < H * 0.82 + 45) {
+    level = 0; score = 0;
+    setupLevel();
+  }
+}
+
+function drawResult() {
+  drawBoard();
+  drawPlayers();
+  drawHUD();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(W / 2 - 200, H / 2 - 50, 400, 100);
+
+  const success = simResult.includes('COMPLETE');
+  ctx.fillStyle = success ? '#2ecc71' : '#e74c3c';
+  ctx.font = 'bold 24px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(simResult, W / 2, H / 2 - 10);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  ctx.fillText('Click to continue', W / 2, H / 2 + 25);
+
+  if (clicked) {
+    if (success) {
+      level++;
+      if (level >= totalLevels) { state = WIN; return; }
+    }
+    setupLevel();
+  }
+}
+
+function drawWin() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#2ecc71';
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PLAYBOOK MASTER!', W / 2, H * 0.3);
+
+  ctx.fillStyle = '#f1c40f';
+  ctx.font = '24px monospace';
+  ctx.fillText(`Final Score: ${score}`, W / 2, H * 0.42);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px monospace';
+  ctx.fillText('You solved all 20 defensive puzzles!', W / 2, H * 0.52);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.65, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('REPLAY', W / 2, H * 0.65 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.65 && mouseY < H * 0.65 + 45) {
+    state = TITLE;
+  }
+}
+
+// Keyboard controls
+document.addEventListener('keydown', e => {
+  if (state === PLAYING) {
+    if (e.key >= '1' && e.key <= '4') {
+      const idx = parseInt(e.key) - 1;
+      if (idx < offense.length) selectedWR = idx;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      selectedWR = (selectedWR + 1) % offense.length;
+    }
+    if (e.key === ' ') {
+      e.preventDefault();
+      if (offense.some(wr => wr.route.length > 0)) simulatePlay();
+    }
+    if (e.key === 'c' || e.key === 'C') {
+      if (selectedWR >= 0 && selectedWR < offense.length) offense[selectedWR].route = [];
+    }
+  }
+});
+
+function gameLoop() {
+  if (state === SIMULATING) updateSim();
+
+  switch (state) {
+    case TITLE: drawTitle(); break;
+    case PLAYING:
+      ctx.fillStyle = '#0f0f1a';
+      ctx.fillRect(0, 0, W, H);
+      drawBoard();
+      drawPlayers();
+      drawHUD();
+
+      // Handle clicks to add waypoints
+      if (clicked && selectedWR >= 0 && selectedWR < offense.length) {
+        if (mouseX > boardX && mouseX < boardX + BOARD_SIZE && mouseY > boardY && mouseY < boardY + BOARD_SIZE * 0.55) {
+          const wr = offense[selectedWR];
+          if (wr.route.length < 6) {
+            wr.route.push({ x: mouseX, y: mouseY });
+          }
+        }
+      }
+      break;
+    case SIMULATING:
+      ctx.fillStyle = '#0f0f1a';
+      ctx.fillRect(0, 0, W, H);
+      drawBoard();
+      drawPlayers();
+      drawHUD();
+      // Sim indicator
+      ctx.fillStyle = '#f1c40f';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('SIMULATING... ' + Math.floor(simTimer / simDuration * 100) + '%', W / 2, boardY + BOARD_SIZE + 30);
+      break;
+    case RESULT: drawResult(); break;
+    case WIN: drawWin(); break;
+  }
+
+  clicked = false;
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

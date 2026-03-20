@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 48 – Mini & Max</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    #ui { color: #e0e0ff; font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; gap: 1rem; }
+    canvas {
+      border: 2px solid #3b3b5c;
+      border-radius: 8px;
+      background: #1e1e2e;
+      max-width: 480px;
+      width: 100%;
+    }
+    #msg {
+      margin-top: 0.5rem;
+      color: #a78bfa;
+      font-size: 0.9rem;
+      min-height: 1.5em;
+      text-align: center;
+    }
+    #controls {
+      margin-top: 0.5rem;
+      display: flex;
+      gap: 0.5rem;
+      max-width: 480px;
+      width: 100%;
+    }
+    .ctrl-btn {
+      flex: 1;
+      padding: 1rem;
+      background: #1e1e2e;
+      color: #a78bfa;
+      border: 2px solid #3b3b5c;
+      border-radius: 8px;
+      font-size: 1.2rem;
+      cursor: pointer;
+      text-align: center;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .ctrl-btn:active { background: #2a2a3e; border-color: #a78bfa; }
+    .ctrl-btn.swap { background: #2a1848; border-color: #7c3aed; }
+    button.restart {
+      margin-top: 0.5rem;
+      padding: 0.5rem 1.5rem;
+      background: #a78bfa;
+      color: #0f0f1a;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: none;
+    }
+</style>
+</head>
+<body>
+  <h1>Mini & Max</h1>
+  <p class="subtitle">Swap size to solve puzzles. Big breaks walls, small fits through gaps.</p>
+  <div id="ui">
+    <span id="levelInfo">Level 1</span>
+    <span id="sizeInfo">Size: BIG</span>
+    <span id="coinInfo">Coins: 0</span>
+  </div>
+  <canvas id="c"></canvas>
+  <div id="msg">Use buttons below to move, jump, and swap size</div>
+  <div id="controls">
+    <div class="ctrl-btn" id="btnLeft">&#9664; Left</div>
+    <div class="ctrl-btn" id="btnJump">&#9650; Jump</div>
+    <div class="ctrl-btn swap" id="btnSwap">&#8693; Swap</div>
+    <div class="ctrl-btn" id="btnRight">Right &#9654;</div>
+  </div>
+  <button class="restart" id="restartBtn" onclick="initGame()">Play Again</button>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const msgEl = document.getElementById('msg');
+const restartBtn = document.getElementById('restartBtn');
+const levelInfoEl = document.getElementById('levelInfo');
+const sizeInfoEl = document.getElementById('sizeInfo');
+const coinInfoEl = document.getElementById('coinInfo');
+
+const W = 480, H = 384;
+canvas.width = W; canvas.height = H;
+
+const TILE = 24;
+const COLS = W / TILE; // 20
+const ROWS = H / TILE; // 16
+const GRAVITY = 0.5;
+const JUMP_VEL = -8;
+const MOVE_SPEED = 3;
+
+// Tile types: # wall, B breakable, G goal, C coin, P player, . empty
+// Small gap = 1 tile high passage, Big needed = B blocks
+const LEVELS = [
+  // Level 1 - Tutorial
+  [
+    '####################',
+    '#..................#',
+    '#..................#',
+    '#..................#',
+    '#..P...C..........#',
+    '#######...........#',
+    '#..........C......#',
+    '#.......#####.....#',
+    '#.................#',
+    '#.........BBB.....#',
+    '#.........###..C..#',
+    '#..C..........#####',
+    '########..........#',
+    '#...........G.....#',
+    '#..........########',
+    '####################',
+  ],
+  // Level 2 - Small tunnels
+  [
+    '####################',
+    '#..................#',
+    '#..P..............#',
+    '#######...........#',
+    '#.......C.........#',
+    '#....######.......#',
+    '#.................#',
+    '#........#####.C..#',
+    '########.#..######',
+    '#........#........#',
+    '#..BBB...#..C.....#',
+    '#..###...#...######',
+    '#........#........#',
+    '#..C.....#..G.....#',
+    '#########...#######',
+    '####################',
+  ],
+  // Level 3 - Break and squeeze
+  [
+    '####################',
+    '#.................##',
+    '#..P..C...........#',
+    '######............#',
+    '#.......BBB.......#',
+    '#.......###..C....#',
+    '#............######',
+    '########.#........#',
+    '#........#..BBB...#',
+    '#..C.....#..###...#',
+    '#....#####........#',
+    '#........#...######',
+    '########.#........#',
+    '#........#...G..C.#',
+    '#........#...######',
+    '####################',
+  ],
+  // Level 4 - Maze
+  [
+    '####################',
+    '#P...#............#',
+    '####.#.C..........#',
+    '#....#....####....#',
+    '#.####....#..#..C.#',
+    '#.........#..######',
+    '#..BBB....#.......#',
+    '#..###..###.......#',
+    '#.......#...BBB...#',
+    '######..#...###...#',
+    '#....#..#.........#',
+    '#.C..#..########..#',
+    '#....#............#',
+    '####.#..C....G....#',
+    '#....#.....########',
+    '####################',
+  ],
+  // Level 5 - Final
+  [
+    '####################',
+    '#P.......#........#',
+    '######...#...C....#',
+    '#........#...######',
+    '#..BBB...#........#',
+    '#..###..##..BBB...#',
+    '#.......#...###...#',
+    '#..######.........#',
+    '#........#..#######',
+    '########.#........#',
+    '#..C.....#..BBB...#',
+    '#....#####..###.C.#',
+    '########.#........#',
+    '#........#...G....#',
+    '#..C.....#...######',
+    '####################',
+  ],
+];
+
+let player, tiles, level, coins, totalCoins, isBig, gameState;
+let moveLeft, moveRight, jumping;
+let cameraX;
+
+const BIG_W = 22, BIG_H = 22;
+const SMALL_W = 10, SMALL_H = 10;
+
+function parseLevel(idx) {
+  const data = LEVELS[idx];
+  tiles = [];
+  coins = 0;
+  totalCoins = 0;
+  let startPos = null;
+  let goalPos = null;
+
+  for (let r = 0; r < ROWS; r++) {
+    tiles[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      const ch = data[r] ? data[r][c] || '.' : '.';
+      tiles[r][c] = { type: ch === 'P' || ch === 'C' || ch === 'G' ? '.' : ch, original: ch };
+      if (ch === 'P') startPos = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 };
+      if (ch === 'C') { tiles[r][c].coin = true; totalCoins++; }
+      if (ch === 'G') { tiles[r][c].goal = true; }
+    }
+  }
+  return startPos;
+}
+
+function initLevel(idx) {
+  level = idx;
+  isBig = true;
+  const start = parseLevel(idx);
+  player = {
+    x: start.x, y: start.y,
+    vx: 0, vy: 0,
+    w: BIG_W, h: BIG_H,
+    grounded: false
+  };
+  coins = 0;
+  gameState = 'playing';
+  moveLeft = false;
+  moveRight = false;
+  jumping = false;
+  cameraX = 0;
+  levelInfoEl.textContent = `Level ${level + 1}/${LEVELS.length}`;
+  sizeInfoEl.textContent = 'Size: BIG';
+  coinInfoEl.textContent = `Coins: 0/${totalCoins}`;
+  msgEl.textContent = level === 0 ? 'Big breaks B-blocks. Small fits through 1-tile gaps.' : '';
+}
+
+function initGame() {
+  restartBtn.style.display = 'none';
+  initLevel(0);
+  requestAnimationFrame(gameLoop);
+}
+
+function tileAt(c, r) {
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return { type: '#' };
+  return tiles[r][c];
+}
+
+function isSolid(c, r) {
+  const t = tileAt(c, r);
+  return t.type === '#' || t.type === 'B';
+}
+
+function getPlayerTiles(x, y, w, h) {
+  return {
+    left: Math.floor((x - w / 2) / TILE),
+    right: Math.floor((x + w / 2 - 0.1) / TILE),
+    top: Math.floor((y - h / 2) / TILE),
+    bottom: Math.floor((y + h / 2 - 0.1) / TILE)
+  };
+}
+
+function collides(x, y, w, h) {
+  const b = getPlayerTiles(x, y, w, h);
+  for (let r = b.top; r <= b.bottom; r++) {
+    for (let c = b.left; c <= b.right; c++) {
+      if (isSolid(c, r)) return true;
+    }
+  }
+  return false;
+}
+
+function breakBlocks(x, y, w, h) {
+  const b = getPlayerTiles(x, y, w, h);
+  let broke = false;
+  for (let r = b.top; r <= b.bottom; r++) {
+    for (let c = b.left; c <= b.right; c++) {
+      const t = tileAt(c, r);
+      if (t.type === 'B') {
+        t.type = '.';
+        broke = true;
+      }
+    }
+  }
+  return broke;
+}
+
+function swapSize() {
+  if (gameState !== 'playing') return;
+  const newBig = !isBig;
+  const newW = newBig ? BIG_W : SMALL_W;
+  const newH = newBig ? BIG_H : SMALL_H;
+
+  // Check if we can swap (not stuck in wall)
+  if (!collides(player.x, player.y, newW, newH)) {
+    isBig = newBig;
+    player.w = newW;
+    player.h = newH;
+    sizeInfoEl.textContent = isBig ? 'Size: BIG' : 'Size: small';
+  } else {
+    msgEl.textContent = 'Not enough space to swap!';
+    setTimeout(() => { if (gameState === 'playing') msgEl.textContent = ''; }, 1000);
+  }
+}
+
+function update() {
+  if (gameState !== 'playing') return;
+
+  // Horizontal movement
+  player.vx = 0;
+  if (moveLeft) player.vx = -MOVE_SPEED;
+  if (moveRight) player.vx = MOVE_SPEED;
+
+  // Gravity
+  player.vy += GRAVITY;
+  if (player.vy > 12) player.vy = 12;
+
+  // Move X
+  let newX = player.x + player.vx;
+  if (!collides(newX, player.y, player.w, player.h)) {
+    player.x = newX;
+  } else {
+    if (isBig && breakBlocks(newX, player.y, player.w, player.h)) {
+      // Broke blocks, can move now
+      if (!collides(newX, player.y, player.w, player.h)) {
+        player.x = newX;
+      }
+    }
+    // Align to tile edge
+    if (player.vx > 0) {
+      player.x = Math.floor((player.x + player.w / 2) / TILE) * TILE - player.w / 2 - 0.1;
+    } else if (player.vx < 0) {
+      player.x = Math.ceil((player.x - player.w / 2) / TILE) * TILE + player.w / 2 + 0.1;
+    }
+  }
+
+  // Move Y
+  let newY = player.y + player.vy;
+  if (!collides(player.x, newY, player.w, player.h)) {
+    player.y = newY;
+    player.grounded = false;
+  } else {
+    if (isBig && player.vy > 0 && breakBlocks(player.x, newY, player.w, player.h)) {
+      if (!collides(player.x, newY, player.w, player.h)) {
+        player.y = newY;
+        player.grounded = false;
+      } else {
+        landOnGround(newY);
+      }
+    } else {
+      if (player.vy > 0) {
+        landOnGround(newY);
+      } else {
+        player.y = Math.ceil((player.y - player.h / 2) / TILE) * TILE + player.h / 2 + 0.1;
+        player.vy = 0;
+      }
+    }
+  }
+
+  // Coins
+  const b = getPlayerTiles(player.x, player.y, player.w, player.h);
+  for (let r = b.top; r <= b.bottom; r++) {
+    for (let c = b.left; c <= b.right; c++) {
+      const t = tileAt(c, r);
+      if (t.coin) {
+        t.coin = false;
+        coins++;
+        coinInfoEl.textContent = `Coins: ${coins}/${totalCoins}`;
+      }
+    }
+  }
+
+  // Goal
+  for (let r = b.top; r <= b.bottom; r++) {
+    for (let c = b.left; c <= b.right; c++) {
+      const t = tileAt(c, r);
+      if (t.goal) {
+        winLevel();
+        return;
+      }
+    }
+  }
+
+  // Fall out of bounds
+  if (player.y > H + 50) {
+    initLevel(level);
+  }
+}
+
+function landOnGround(newY) {
+  player.y = Math.floor((player.y + player.h / 2) / TILE) * TILE - player.h / 2 - 0.1;
+  player.vy = 0;
+  player.grounded = true;
+}
+
+function jump() {
+  if (gameState !== 'playing') return;
+  if (player.grounded) {
+    player.vy = JUMP_VEL;
+    player.grounded = false;
+  }
+}
+
+function winLevel() {
+  if (level < LEVELS.length - 1) {
+    gameState = 'transition';
+    msgEl.textContent = `Level ${level + 1} complete! Coins: ${coins}/${totalCoins}`;
+    setTimeout(() => initLevel(level + 1), 1000);
+  } else {
+    gameState = 'won';
+    msgEl.textContent = `You beat all levels! Total coins: ${coins}/${totalCoins}`;
+    restartBtn.style.display = 'inline-block';
+  }
+}
+
+// Touch controls for buttons
+function addButtonEvents(id, onDown, onUp) {
+  const el = document.getElementById(id);
+  el.addEventListener('touchstart', (e) => { e.preventDefault(); onDown(); }, { passive: false });
+  el.addEventListener('touchend', (e) => { e.preventDefault(); if (onUp) onUp(); }, { passive: false });
+  el.addEventListener('touchcancel', (e) => { e.preventDefault(); if (onUp) onUp(); }, { passive: false });
+  el.addEventListener('mousedown', (e) => { e.preventDefault(); onDown(); });
+  el.addEventListener('mouseup', (e) => { e.preventDefault(); if (onUp) onUp(); });
+  el.addEventListener('mouseleave', (e) => { if (onUp) onUp(); });
+}
+
+addButtonEvents('btnLeft', () => { moveLeft = true; }, () => { moveLeft = false; });
+addButtonEvents('btnRight', () => { moveRight = true; }, () => { moveRight = false; });
+addButtonEvents('btnJump', () => { jump(); }, null);
+addButtonEvents('btnSwap', () => { swapSize(); }, null);
+
+// Canvas touch - tap left/right halves to move, top half to jump
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  const x = (t.clientX - rect.left) / rect.width;
+  const y = (t.clientY - rect.top) / rect.height;
+  if (y < 0.3) {
+    jump();
+  } else if (x < 0.35) {
+    moveLeft = true;
+  } else if (x > 0.65) {
+    moveRight = true;
+  } else {
+    swapSize();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  moveLeft = false;
+  moveRight = false;
+}, { passive: false });
+
+// Keyboard support
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft = true;
+  if (e.key === 'ArrowRight' || e.key === 'd') moveRight = true;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') jump();
+  if (e.key === 's' || e.key === 'ArrowDown') swapSize();
+});
+document.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft = false;
+  if (e.key === 'ArrowRight' || e.key === 'd') moveRight = false;
+});
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw tiles
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const t = tiles[r][c];
+      const x = c * TILE, y = r * TILE;
+
+      if (t.type === '#') {
+        ctx.fillStyle = '#2a2a3e';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = '#3b3b5c';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x, y, TILE, TILE);
+      } else if (t.type === 'B') {
+        ctx.fillStyle = '#5c3a1e';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = '#8b5e3c';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, TILE, TILE);
+        // Crack lines
+        ctx.strokeStyle = '#3a2510';
+        ctx.beginPath();
+        ctx.moveTo(x + 4, y + 4);
+        ctx.lineTo(x + TILE - 4, y + TILE - 4);
+        ctx.moveTo(x + TILE - 4, y + 4);
+        ctx.lineTo(x + 4, y + TILE - 4);
+        ctx.stroke();
+      }
+
+      // Coins
+      if (t.coin) {
+        ctx.fillStyle = '#fbbf24';
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(x + TILE / 2, y + TILE / 2, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#92400e';
+        ctx.font = 'bold 8px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('$', x + TILE / 2, y + TILE / 2 + 1);
+      }
+
+      // Goal
+      if (t.goal) {
+        ctx.fillStyle = '#22c55e';
+        ctx.shadowColor = '#22c55e';
+        ctx.shadowBlur = 12;
+        ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('G', x + TILE / 2, y + TILE / 2 + 1);
+      }
+    }
+  }
+
+  // Player
+  ctx.save();
+  ctx.translate(player.x, player.y);
+
+  if (isBig) {
+    // Big form - square, strong
+    ctx.fillStyle = '#7c3aed';
+    ctx.fillRect(-player.w / 2, -player.h / 2, player.w, player.h);
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-player.w / 2, -player.h / 2, player.w, player.h);
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-6, -5, 5, 5);
+    ctx.fillRect(2, -5, 5, 5);
+    ctx.fillStyle = '#0f0f1a';
+    ctx.fillRect(-4, -3, 2, 2);
+    ctx.fillRect(4, -3, 2, 2);
+    // Mouth (determined)
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-4, 4, 9, 2);
+  } else {
+    // Small form - round, cute
+    ctx.fillStyle = '#c084fc';
+    ctx.beginPath();
+    ctx.arc(0, 0, player.w / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#e9d5ff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(-2, -1, 2, 0, Math.PI * 2);
+    ctx.arc(3, -1, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#0f0f1a';
+    ctx.beginPath();
+    ctx.arc(-1.5, -0.5, 1, 0, Math.PI * 2);
+    ctx.arc(3.5, -0.5, 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Size indicator
+  ctx.fillStyle = 'rgba(167,139,250,0.4)';
+  ctx.font = '13px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(isBig ? 'BIG (can break)' : 'small (can squeeze)', 8, 16);
+
+  // Level transition
+  if (gameState === 'transition') {
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Level Complete!', W / 2, H / 2);
+  }
+
+  // Win
+  if (gameState === 'won') {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#22c55e';
+    ctx.font = 'bold 32px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('YOU WIN!', W / 2, H / 2 - 15);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '16px system-ui';
+    ctx.fillText(`Coins: ${coins}/${totalCoins}`, W / 2, H / 2 + 15);
+  }
+}
+
+let lastTime = 0;
+function gameLoop(time) {
+  if (time - lastTime > 16) {
+    update();
+    draw();
+    lastTime = time;
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+initGame();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

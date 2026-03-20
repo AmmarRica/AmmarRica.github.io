@@ -1,0 +1,10 @@
+{
+  "name": "game-a-day",
+  "version": "1.0.0",
+  "description": "One small game built every day.",
+  "scripts": {
+    "generate": "node scripts/generate.js",
+    "new": "node scripts/generate.js"
+  },
+  "license": "MIT"
+}

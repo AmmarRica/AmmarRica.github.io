@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather War Football</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #a78bfa; margin-top: 5px; }
+#controls { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+.weather-btn { background: #1a1a2e; border: 2px solid #444; color: #e0e0ff; padding: 8px 12px; cursor: pointer; font-family: monospace; font-size: 12px; border-radius: 6px; min-width: 90px; text-align: center; transition: all 0.2s; }
+.weather-btn:hover:not(.on-cooldown) { border-color: #a78bfa; }
+.weather-btn.active { border-color: #fbbf24; background: #2a2a3e; }
+.weather-btn.on-cooldown { opacity: 0.4; cursor: not-allowed; }
+.cooldown-bar { height: 3px; background: #ef4444; margin-top: 4px; border-radius: 2px; transition: width 0.1s; }
+#info { color: #a78bfa; margin-top: 8px; font-size: 12px; text-align: center; max-width: 700px; }
+</style>
+</head>
+<body>
+<canvas id="game" width="700" height="400"></canvas>
+<div id="controls">
+  <button class="weather-btn" data-weather="rain" onclick="toggleWeather('rain')">🌧 Rain<br><small>More fumbles</small><div class="cooldown-bar" id="cd-rain"></div></button>
+  <button class="weather-btn" data-weather="snow" onclick="toggleWeather('snow')">❄ Snow<br><small>Slow movement</small><div class="cooldown-bar" id="cd-snow"></div></button>
+  <button class="weather-btn" data-weather="wind" onclick="toggleWeather('wind')">💨 Wind<br><small>Affects passes</small><div class="cooldown-bar" id="cd-wind"></div></button>
+  <button class="weather-btn" data-weather="fog" onclick="toggleWeather('fog')">🌫 Fog<br><small>Reduced vision</small><div class="cooldown-bar" id="cd-fog"></div></button>
+  <button class="weather-btn" data-weather="lightning" onclick="toggleWeather('lightning')">⚡ Lightning<br><small>Random KOs</small><div class="cooldown-bar" id="cd-lightning"></div></button>
+</div>
+<div id="info">You are the Weather God! Use weather powers to sabotage the opposing team. Your team has weather-resistant gear!</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 700, H = 400;
+
+let state = 'title';
+let gameTime = 0;
+const GAME_LENGTH = 3600; // frames ~60s at 60fps
+
+// Weather state
+let weather = {
+  rain: { active: false, cooldown: 0, maxCooldown: 300, duration: 0, maxDuration: 360 },
+  snow: { active: false, cooldown: 0, maxCooldown: 360, duration: 0, maxDuration: 300 },
+  wind: { active: false, cooldown: 0, maxCooldown: 240, duration: 0, maxDuration: 240, dir: 1 },
+  fog: { active: false, cooldown: 0, maxCooldown: 300, duration: 0, maxDuration: 420 },
+  lightning: { active: false, cooldown: 0, maxCooldown: 600, duration: 0, maxDuration: 120 }
+};
+
+let particles = [];
+let playerScore = 0, enemyScore = 0;
+
+// Teams
+let homeTeam = { name: 'Storm', color: '#4488ff', players: [], hasBall: true, yard: 25, direction: 1 };
+let awayTeam = { name: 'Visitors', color: '#ff4444', players: [], hasBall: false, yard: 75, direction: -1 };
+
+// Play state
+let playState = 'huddle'; // huddle, snap, running, passing, tackle, scoring, kickoff
+let playTimer = 0;
+let ballX, ballY, ballVx, ballVy, ballInAir = false;
+let down = 1, yardsToGo = 10, lineOfScrimmage = 25;
+let offense, defense;
+let playMessage = '';
+let msgTimer = 0;
+let quarter = 1;
+let flashBolt = null;
+let fogAlpha = 0;
+
+function initPlayers() {
+  homeTeam.players = [];
+  awayTeam.players = [];
+  for (let i = 0; i < 11; i++) {
+    homeTeam.players.push({ x: 0, y: 0, vx: 0, vy: 0, role: i, ko: 0, hasBall: false, speed: 2 });
+    awayTeam.players.push({ x: 0, y: 0, vx: 0, vy: 0, role: i, ko: 0, hasBall: false, speed: 2 });
+  }
+}
+
+function yardToX(yard) { return 50 + (yard / 100) * (W - 100); }
+function xToYard(x) { return ((x - 50) / (W - 100)) * 100; }
+
+function setupPlay() {
+  offense = homeTeam.hasBall ? homeTeam : awayTeam;
+  defense = homeTeam.hasBall ? awayTeam : homeTeam;
+  let losX = yardToX(lineOfScrimmage);
+  let dir = offense.direction;
+
+  // Position offense
+  for (let i = 0; i < 11; i++) {
+    let p = offense.players[i];
+    p.ko = Math.max(0, p.ko - 1);
+    if (i === 0) { // QB
+      p.x = losX - dir * 30;
+      p.y = H / 2;
+      p.hasBall = true;
+    } else if (i < 6) { // OL
+      p.x = losX - dir * 5;
+      p.y = H / 2 - 60 + i * 25;
+    } else { // Receivers/RB
+      p.x = losX - dir * (20 + (i - 6) * 15);
+      p.y = 80 + (i - 6) * 55;
+    }
+    p.vx = 0; p.vy = 0;
+  }
+
+  // Position defense
+  for (let i = 0; i < 11; i++) {
+    let p = defense.players[i];
+    p.ko = Math.max(0, p.ko - 1);
+    if (i < 4) { // DL
+      p.x = losX + dir * 8;
+      p.y = H / 2 - 45 + i * 30;
+    } else if (i < 7) { // LB
+      p.x = losX + dir * 40;
+      p.y = H / 2 - 40 + (i - 4) * 40;
+    } else { // DB
+      p.x = losX + dir * 80;
+      p.y = 80 + (i - 7) * 55;
+    }
+    p.vx = 0; p.vy = 0; p.hasBall = false;
+  }
+
+  playState = 'huddle';
+  playTimer = 60;
+  ballInAir = false;
+}
+
+function startGame() {
+  playerScore = 0; enemyScore = 0;
+  gameTime = 0; quarter = 1;
+  homeTeam.hasBall = true;
+  lineOfScrimmage = 25;
+  down = 1; yardsToGo = 10;
+  homeTeam.direction = 1;
+  awayTeam.direction = -1;
+  initPlayers();
+  for (let k in weather) { weather[k].active = false; weather[k].cooldown = 0; weather[k].duration = 0; }
+  setupPlay();
+  state = 'playing';
+}
+
+function toggleWeather(type) {
+  if (state !== 'playing') return;
+  let w = weather[type];
+  if (w.cooldown > 0) return;
+  if (w.active) {
+    w.active = false;
+    w.cooldown = w.maxCooldown;
+  } else {
+    w.active = true;
+    w.duration = w.maxDuration;
+    if (type === 'wind') w.dir = Math.random() < 0.5 ? 1 : -1;
+  }
+  updateButtons();
+}
+
+function updateButtons() {
+  for (let type in weather) {
+    let btn = document.querySelector(`[data-weather="${type}"]`);
+    let bar = document.getElementById('cd-' + type);
+    let w = weather[type];
+    btn.classList.toggle('active', w.active);
+    btn.classList.toggle('on-cooldown', w.cooldown > 0);
+    bar.style.width = w.cooldown > 0 ? ((w.cooldown / w.maxCooldown) * 100) + '%' : '0%';
+  }
+}
+
+function showMsg(msg) { playMessage = msg; msgTimer = 90; }
+
+function updateWeather() {
+  for (let type in weather) {
+    let w = weather[type];
+    if (w.active) {
+      w.duration--;
+      if (w.duration <= 0) {
+        w.active = false;
+        w.cooldown = w.maxCooldown;
+      }
+    }
+    if (w.cooldown > 0) w.cooldown--;
+  }
+  updateButtons();
+}
+
+function updatePlay() {
+  playTimer--;
+
+  let snowSlow = weather.snow.active ? 0.5 : 1;
+
+  if (playState === 'huddle' && playTimer <= 0) {
+    playState = 'snap';
+    playTimer = 20;
+  }
+
+  if (playState === 'snap' && playTimer <= 0) {
+    // Decide play type
+    let isPass = Math.random() < 0.45;
+    playState = isPass ? 'passing' : 'running';
+    playTimer = 180;
+  }
+
+  if (playState === 'running') {
+    let qb = offense.players[0];
+    let rb = offense.players[6]; // Use first skill player as runner
+    let dir = offense.direction;
+
+    // Hand off
+    if (playTimer > 160) {
+      rb.vx = dir * 2 * snowSlow;
+      rb.vy = (Math.random() - 0.5) * 2;
+      if (!rb.hasBall && Math.abs(rb.x - qb.x) < 20) {
+        rb.hasBall = true;
+        qb.hasBall = false;
+      }
+    } else {
+      // Runner moves
+      rb.vx = dir * (2.5 + Math.random()) * snowSlow;
+      rb.vy += (Math.random() - 0.5) * 0.5;
+      rb.vy = Math.max(-2, Math.min(2, rb.vy));
+
+      // Rain fumble chance
+      if (weather.rain.active && rb.hasBall && Math.random() < 0.003) {
+        // Only affect away team (enemy)
+        if (offense === awayTeam) {
+          rb.hasBall = false;
+          showMsg('FUMBLE in the rain!');
+          // Turnover
+          switchPossession(xToYard(rb.x));
+          return;
+        }
+      }
+
+      // Blockers move
+      for (let i = 1; i < 6; i++) {
+        let bl = offense.players[i];
+        bl.vx = dir * 1.5 * snowSlow;
+      }
+    }
+
+    // Defense pursues
+    for (let d of defense.players) {
+      if (d.ko > 0) continue;
+      let target = rb.hasBall ? rb : qb;
+      let dx = target.x - d.x;
+      let dy = target.y - d.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      let spd = (d.role < 4 ? 2 : d.role < 7 ? 2.3 : 2.6) * snowSlow;
+      // Fog makes defense slower to react for away team
+      if (weather.fog.active && defense === awayTeam) spd *= 0.7;
+      if (dist > 1) {
+        d.vx = (dx / dist) * spd;
+        d.vy = (dy / dist) * spd;
+      }
+
+      // Tackle check
+      let ballCarrier = rb.hasBall ? rb : qb;
+      let tdx = ballCarrier.x - d.x;
+      let tdy = ballCarrier.y - d.y;
+      if (Math.sqrt(tdx * tdx + tdy * tdy) < 12) {
+        let tackleYard = xToYard(ballCarrier.x);
+        showMsg('Tackled at the ' + Math.round(tackleYard) + '!');
+        advanceDown(tackleYard);
+        return;
+      }
+    }
+
+    // Check TD
+    let bc = rb.hasBall ? rb : qb;
+    let bcYard = xToYard(bc.x);
+    if ((offense.direction > 0 && bcYard >= 100) || (offense.direction < 0 && bcYard <= 0)) {
+      let team = offense === homeTeam ? 'home' : 'away';
+      if (team === 'home') playerScore += 7; else enemyScore += 7;
+      showMsg('TOUCHDOWN ' + offense.name + '!');
+      switchPossession(25);
+      return;
+    }
+
+    // Out of bounds
+    if (bc.y < 60 || bc.y > H - 20) {
+      advanceDown(xToYard(bc.x));
+      return;
+    }
+
+    if (playTimer <= 0) {
+      advanceDown(xToYard(rb.hasBall ? rb.x : qb.x));
+      return;
+    }
+  }
+
+  if (playState === 'passing') {
+    let qb = offense.players[0];
+    let dir = offense.direction;
+
+    if (!ballInAir) {
+      // QB drops back
+      if (playTimer > 150) {
+        qb.vx = -dir * 1.5 * snowSlow;
+      } else if (playTimer > 140) {
+        qb.vx = 0;
+        // Throw to random receiver
+        let receivers = offense.players.filter((p, i) => i >= 7 && i <= 10);
+        let target = receivers[Math.floor(Math.random() * receivers.length)];
+        target.x = qb.x + dir * (60 + Math.random() * 80);
+        target.y = 80 + Math.random() * (H - 160);
+
+        ballX = qb.x; ballY = qb.y;
+        let windEffect = weather.wind.active ? weather.wind.dir * 3 : 0;
+        // Wind only affects away team
+        if (offense === homeTeam) windEffect = 0;
+        ballVx = (target.x - qb.x) / 30 + windEffect * 0.1;
+        ballVy = (target.y - qb.y) / 30;
+        ballInAir = true;
+        qb.hasBall = false;
+      }
+
+      // Receivers run routes
+      for (let i = 7; i <= 10; i++) {
+        let r = offense.players[i];
+        r.vx = dir * 2.5 * snowSlow;
+        r.vy = (i % 2 === 0 ? 1 : -1) * 1.5;
+      }
+
+      // Rush
+      for (let d of defense.players) {
+        if (d.ko > 0) continue;
+        let spd = (d.role < 4 ? 2.2 : 1.5) * snowSlow;
+        if (weather.fog.active && defense === awayTeam) spd *= 0.7;
+        let dx = qb.x - d.x;
+        let dy = qb.y - d.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 1) {
+          d.vx = (dx / dist) * spd;
+          d.vy = (dy / dist) * spd;
+        }
+        // Sack check
+        if (dist < 12 && qb.hasBall) {
+          showMsg('SACK!');
+          advanceDown(xToYard(qb.x));
+          return;
+        }
+      }
+    } else {
+      // Ball in air
+      ballX += ballVx;
+      ballY += ballVy;
+      // Wind push
+      if (weather.wind.active && offense === awayTeam) {
+        ballVx += weather.wind.dir * 0.05;
+      }
+
+      // Check catch
+      for (let i = 7; i <= 10; i++) {
+        let r = offense.players[i];
+        let dx = ballX - r.x;
+        let dy = ballY - r.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 20) {
+          // Catch!
+          let catchChance = 0.75;
+          if (weather.rain.active && offense === awayTeam) catchChance -= 0.25;
+          if (Math.random() < catchChance) {
+            r.hasBall = true;
+            ballInAir = false;
+            showMsg('CATCH!');
+            // Run after catch
+            playState = 'running';
+            playTimer = 60;
+            // Swap: make this receiver the "runner"
+            let temp = { ...offense.players[6] };
+            offense.players[6].x = r.x;
+            offense.players[6].y = r.y;
+            offense.players[6].hasBall = true;
+            r.hasBall = false;
+          } else {
+            showMsg('DROPPED! (Rain!)');
+            ballInAir = false;
+            advanceDown(lineOfScrimmage);
+          }
+          return;
+        }
+      }
+
+      // Interception check by defense
+      for (let d of defense.players) {
+        if (d.ko > 0) continue;
+        let dx = ballX - d.x;
+        let dy = ballY - d.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 15) {
+          let intChance = 0.15;
+          if (weather.wind.active && offense === awayTeam) intChance += 0.15;
+          if (Math.random() < intChance) {
+            showMsg('INTERCEPTED!');
+            switchPossession(xToYard(d.x));
+            return;
+          }
+        }
+      }
+
+      // Ball out of bounds / too far
+      if (ballX < 30 || ballX > W - 30 || ballY < 50 || ballY > H - 10 || playTimer <= 0) {
+        showMsg('Incomplete!');
+        ballInAir = false;
+        advanceDown(lineOfScrimmage);
+        return;
+      }
+    }
+
+    if (playTimer <= 0 && !ballInAir) {
+      advanceDown(lineOfScrimmage);
+      return;
+    }
+  }
+
+  // Move all players
+  for (let team of [homeTeam, awayTeam]) {
+    for (let p of team.players) {
+      if (p.ko > 0) continue;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.y = Math.max(65, Math.min(H - 15, p.y));
+      p.x = Math.max(30, Math.min(W - 30, p.x));
+      p.vx *= 0.9;
+      p.vy *= 0.9;
+    }
+  }
+
+  // Lightning strikes
+  if (weather.lightning.active && Math.random() < 0.008) {
+    // Strike random away team player
+    let target = awayTeam.players[Math.floor(Math.random() * 11)];
+    if (target.ko <= 0) {
+      target.ko = 180;
+      flashBolt = { x: target.x, y: target.y, timer: 15 };
+      showMsg('LIGHTNING STRIKE!');
+      addParticles(target.x, target.y, '#ffff44', 20);
+    }
+  }
+}
+
+function advanceDown(newYard) {
+  let gained = (newYard - lineOfScrimmage) * offense.direction;
+  yardsToGo -= gained;
+  lineOfScrimmage = newYard;
+  down++;
+
+  if (yardsToGo <= 0) {
+    down = 1;
+    yardsToGo = 10;
+    showMsg('First Down!');
+  } else if (down > 4) {
+    showMsg('Turnover on Downs!');
+    switchPossession(lineOfScrimmage);
+    return;
+  }
+
+  setupPlay();
+}
+
+function switchPossession(yard) {
+  homeTeam.hasBall = !homeTeam.hasBall;
+  awayTeam.hasBall = !awayTeam.hasBall;
+  lineOfScrimmage = Math.max(10, Math.min(90, 100 - yard));
+  homeTeam.direction = homeTeam.hasBall ? 1 : -1;
+  awayTeam.direction = awayTeam.hasBall ? 1 : -1;
+  down = 1;
+  yardsToGo = 10;
+  setupPlay();
+}
+
+function addParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6,
+      life: 20 + Math.random() * 20, color, size: 2 + Math.random() * 3
+    });
+  }
+}
+
+// Weather particles
+let rainDrops = [];
+let snowFlakes = [];
+for (let i = 0; i < 100; i++) {
+  rainDrops.push({ x: Math.random() * W, y: Math.random() * H, speed: 5 + Math.random() * 5 });
+  snowFlakes.push({ x: Math.random() * W, y: Math.random() * H, speed: 1 + Math.random() * 2, drift: Math.random() * 2 - 1 });
+}
+
+function drawWeatherEffects() {
+  if (weather.rain.active) {
+    ctx.strokeStyle = '#6688cc88';
+    ctx.lineWidth = 1;
+    for (let d of rainDrops) {
+      ctx.beginPath();
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x - 1, d.y + 8);
+      ctx.stroke();
+      d.y += d.speed;
+      d.x -= 1;
+      if (d.y > H) { d.y = 0; d.x = Math.random() * W; }
+    }
+  }
+
+  if (weather.snow.active) {
+    ctx.fillStyle = '#ffffffcc';
+    for (let s of snowFlakes) {
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.speed;
+      s.x += s.drift + Math.sin(s.y * 0.02) * 0.5;
+      if (s.y > H) { s.y = 0; s.x = Math.random() * W; }
+    }
+  }
+
+  if (weather.wind.active) {
+    ctx.strokeStyle = '#aaaaff22';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 10; i++) {
+      let y = 70 + Math.random() * (H - 90);
+      let x = Math.random() * W;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + weather.wind.dir * 40, y + Math.random() * 5);
+      ctx.stroke();
+    }
+    // Wind arrow indicator
+    ctx.fillStyle = '#aaaaff';
+    ctx.font = '16px monospace';
+    ctx.fillText(weather.wind.dir > 0 ? 'WIND >>>' : '<<< WIND', W / 2 - 40, 62);
+  }
+
+  if (weather.fog.active) {
+    fogAlpha = Math.min(0.55, fogAlpha + 0.01);
+  } else {
+    fogAlpha = Math.max(0, fogAlpha - 0.02);
+  }
+
+  if (flashBolt) {
+    ctx.strokeStyle = '#ffff88';
+    ctx.lineWidth = 3;
+    let fx = flashBolt.x, fy = 0;
+    ctx.beginPath();
+    ctx.moveTo(fx, fy);
+    for (let i = 0; i < 5; i++) {
+      fx += (Math.random() - 0.5) * 30;
+      fy += flashBolt.y / 5;
+      ctx.lineTo(fx, fy);
+    }
+    ctx.stroke();
+    flashBolt.timer--;
+    if (flashBolt.timer <= 0) flashBolt = null;
+  }
+}
+
+function drawFog() {
+  if (fogAlpha > 0) {
+    ctx.fillStyle = `rgba(100, 100, 120, ${fogAlpha})`;
+    ctx.fillRect(0, 50, W, H - 50);
+  }
+}
+
+function drawField() {
+  ctx.fillStyle = '#1a5a1a';
+  ctx.fillRect(0, 50, W, H - 50);
+
+  // Yard lines
+  for (let y = 0; y <= 100; y += 10) {
+    let x = yardToX(y);
+    ctx.strokeStyle = '#2a7a2a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, 50);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+
+    if (y > 0 && y < 100) {
+      ctx.fillStyle = '#2a7a2a88';
+      ctx.font = '10px monospace';
+      ctx.fillText(y <= 50 ? y : 100 - y, x - 5, H - 3);
+    }
+  }
+
+  // Endzones
+  ctx.fillStyle = '#0d3d0d';
+  ctx.fillRect(0, 50, yardToX(0) + 50, H - 50);
+  ctx.fillRect(yardToX(100), 50, 100, H - 50);
+
+  // Line of scrimmage
+  ctx.strokeStyle = '#4488ff66';
+  ctx.lineWidth = 2;
+  let losX = yardToX(lineOfScrimmage);
+  ctx.beginPath();
+  ctx.moveTo(losX, 50);
+  ctx.lineTo(losX, H);
+  ctx.stroke();
+
+  // First down line
+  let fdYard = lineOfScrimmage + yardsToGo * offense.direction;
+  if (fdYard > 0 && fdYard < 100) {
+    ctx.strokeStyle = '#ffff0066';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(yardToX(fdYard), 50);
+    ctx.lineTo(yardToX(fdYard), H);
+    ctx.stroke();
+  }
+}
+
+function drawPlayer(p, color, teamName) {
+  if (p.ko > 0) {
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#888';
+  } else {
+    ctx.fillStyle = color;
+  }
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+  ctx.fill();
+  if (p.hasBall) {
+    ctx.fillStyle = '#c8a020';
+    ctx.beginPath();
+    ctx.ellipse(p.x + 5, p.y - 5, 4, 3, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (p.ko > 0) {
+    ctx.fillStyle = '#ffff00';
+    ctx.font = '8px monospace';
+    ctx.fillText('KO', p.x - 5, p.y - 10);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, 50);
+
+  ctx.fillStyle = homeTeam.color;
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText(homeTeam.name + ': ' + playerScore, 10, 22);
+
+  ctx.fillStyle = awayTeam.color;
+  ctx.fillText(awayTeam.name + ': ' + enemyScore, 10, 42);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '13px monospace';
+  let offName = offense === homeTeam ? 'Storm' : 'Visitors';
+  ctx.fillText('Q' + quarter + ' | ' + offName + ' ball', 220, 22);
+  ctx.fillText(down + (down===1?'st':down===2?'nd':down===3?'rd':'th') + ' & ' + Math.max(0, Math.round(yardsToGo)), 220, 42);
+
+  // Time
+  let timeLeft = Math.max(0, GAME_LENGTH - gameTime);
+  let secs = Math.floor(timeLeft / 60);
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText('Time: ' + secs + 's', W - 120, 22);
+
+  // Active weather
+  let activeW = Object.keys(weather).filter(k => weather[k].active);
+  if (activeW.length > 0) {
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '11px monospace';
+    ctx.fillText('Active: ' + activeW.join(', '), W - 250, 42);
+  }
+
+  // Play message
+  if (msgTimer > 0) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(playMessage, W / 2, H - 8);
+    ctx.textAlign = 'left';
+    msgTimer--;
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 32px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('WEATHER WAR FOOTBALL', W / 2, 70);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  ctx.fillText('Control the weather to dominate the game!', W / 2, 100);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '12px monospace';
+  let y = 140;
+  const lines = [
+    'You are the Weather God for the Storm team!',
+    '',
+    '🌧 RAIN - Causes fumbles for the opposing team',
+    '❄ SNOW - Slows all player movement',
+    '💨 WIND - Pushes passes off target',
+    '🌫 FOG - Reduces defensive reaction speed',
+    '⚡ LIGHTNING - Randomly knocks out enemy players',
+    '',
+    'Your team has weather-resistant gear!',
+    'Weather effects hurt the Visitors more!',
+    'Each power has a cooldown after use.',
+    '',
+    'The game auto-plays - you control the weather!'
+  ];
+  for (let line of lines) {
+    ctx.fillText(line, W / 2, y);
+    y += 20;
+  }
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText('CLICK TO START', W / 2, H - 30);
+  ctx.textAlign = 'left';
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = playerScore > enemyScore ? '#4ade80' : '#ef4444';
+  ctx.font = 'bold 32px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(playerScore > enemyScore ? 'VICTORY!' : 'DEFEAT!', W / 2, 100);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px monospace';
+  ctx.fillText(homeTeam.name + ': ' + playerScore + '  |  ' + awayTeam.name + ': ' + enemyScore, W / 2, 160);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '14px monospace';
+  ctx.fillText('Click to play again', W / 2, 240);
+  ctx.textAlign = 'left';
+}
+
+canvas.addEventListener('click', () => {
+  if (state === 'title') startGame();
+  else if (state === 'gameover') state = 'title';
+});
+
+function gameLoop() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    drawTitle();
+  } else if (state === 'playing') {
+    gameTime++;
+    if (gameTime >= GAME_LENGTH) {
+      state = 'gameover';
+    }
+    updateWeather();
+    updatePlay();
+    drawField();
+
+    // Draw players
+    for (let p of homeTeam.players) drawPlayer(p, homeTeam.color, 'home');
+    for (let p of awayTeam.players) drawPlayer(p, awayTeam.color, 'away');
+
+    // Ball in air
+    if (ballInAir) {
+      ctx.fillStyle = '#c8a020';
+      ctx.beginPath();
+      ctx.ellipse(ballX, ballY, 5, 3, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Particles
+    for (let p of particles) {
+      ctx.globalAlpha = p.life / 40;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+      p.x += p.vx; p.y += p.vy; p.life--;
+    }
+    ctx.globalAlpha = 1;
+    particles = particles.filter(p => p.life > 0);
+
+    drawWeatherEffects();
+    drawFog();
+    drawHUD();
+  } else if (state === 'gameover') {
+    drawGameOver();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

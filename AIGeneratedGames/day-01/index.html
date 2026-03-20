@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 01 – Sheep Grazer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    nav { width: 100%; padding: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.85rem; }
+    nav a:hover { text-decoration: underline; }
+    #ui {
+      position: fixed; top: 0; left: 0; right: 0;
+      display: flex; gap: 4px; padding: 4px 8px;
+      background: rgba(15,15,26,0.85);
+      z-index: 10; flex-wrap: wrap;
+      font-size: 0.7rem;
+    }
+    .meter {
+      flex: 1; min-width: 60px;
+      background: #1e1e2e; border-radius: 4px;
+      overflow: hidden; position: relative; height: 20px;
+    }
+    .meter-fill { height: 100%; transition: width 0.2s; }
+    .meter-label {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.65rem; color: #fff;
+      text-shadow: 0 1px 2px #000;
+    }
+    canvas { display: block; }
+    #attack-btn {
+      position: fixed; bottom: 20px; right: 20px;
+      width: 70px; height: 70px; border-radius: 50%;
+      background: #ef4444; color: #fff; font-weight: 900;
+      font-size: 1.1rem; border: 3px solid #fca5a5;
+      z-index: 20; display: none;
+      box-shadow: 0 4px 12px rgba(239,68,68,0.5);
+    }
+    #dpad {
+      position: fixed; bottom: 15px; left: 15px;
+      width: 140px; height: 140px; z-index: 20;
+      display: none;
+    }
+    .dpad-btn {
+      position: absolute; width: 44px; height: 44px;
+      background: rgba(167,139,250,0.35); border: 2px solid rgba(167,139,250,0.6);
+      border-radius: 8px; color: #fff; font-size: 1.2rem;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .dpad-btn:active { background: rgba(167,139,250,0.7); }
+    #dpad-u { left: 48px; top: 0; }
+    #dpad-d { left: 48px; bottom: 0; }
+    #dpad-l { left: 0; top: 48px; }
+    #dpad-r { right: 0; top: 48px; }
+    #overlay {
+      position: fixed; inset: 0;
+      background: rgba(15,15,26,0.92);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 30; gap: 1rem;
+    }
+    #overlay h2 { color: #a78bfa; font-size: 2rem; }
+    #overlay p { color: #9ca3af; max-width: 320px; text-align: center; font-size: 0.9rem; line-height: 1.5; }
+    #overlay button {
+      padding: 0.8rem 2rem; background: #a78bfa; color: #0f0f1a;
+      border: none; border-radius: 8px; font-size: 1.1rem;
+      font-weight: 700; cursor: pointer;
+    }
+    #overlay button:hover { background: #c4b5fd; }
+    #score-display { color: #fbbf24; font-size: 1.2rem; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div id="ui">
+    <div class="meter">
+      <div class="meter-fill" id="m-hunger" style="width:100%;background:#22c55e;"></div>
+      <div class="meter-label">🍀 Food</div>
+    </div>
+    <div class="meter">
+      <div class="meter-fill" id="m-poison" style="width:0%;background:#a855f7;"></div>
+      <div class="meter-label">☠️ Poison</div>
+    </div>
+    <div class="meter">
+      <div class="meter-fill" id="m-sleep" style="width:100%;background:#3b82f6;"></div>
+      <div class="meter-label">😴 Sleep</div>
+    </div>
+    <div class="meter">
+      <div class="meter-fill" id="m-speed" style="width:100%;background:#f59e0b;"></div>
+      <div class="meter-label">⚡ Speed</div>
+    </div>
+  </div>
+
+  <div id="dpad">
+    <button class="dpad-btn" id="dpad-u">▲</button>
+    <button class="dpad-btn" id="dpad-d">▼</button>
+    <button class="dpad-btn" id="dpad-l">◀</button>
+    <button class="dpad-btn" id="dpad-r">▶</button>
+  </div>
+  <button id="attack-btn">POW!</button>
+
+  <div id="overlay">
+    <h2>🐑 Sheep Grazer</h2>
+    <p>Eat grass to survive! Some plants are poisonous (purple glow). As poison builds, you slow down and get sleepy. Fight wolves by facing them and tapping POW!</p>
+    <p style="font-size:0.75rem;color:#6b7280;">Mobile: use D-pad + POW button<br>Desktop: Arrow keys + W to attack</p>
+    <button id="start-btn">Start Game</button>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// --- Responsive sizing ---
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+// --- Constants ---
+const TILE = 32;
+const GRASS_DENSITY = 0.35;
+const POISON_CHANCE_BASE = 0.15;
+const WOLF_SPAWN_INTERVAL = 12000;
+const NPC_SHEEP_COUNT = 5;
+
+// --- Game state ---
+let world, player, npcSheep, wolves, pows, camera, gameOver, score, elapsed;
+let poisonChance;
+
+function initGame() {
+  const cols = Math.ceil(canvas.width / TILE) + 40;
+  const rows = Math.ceil(canvas.height / TILE) + 40;
+  world = { cols, rows, grass: [] };
+  // Generate grass grid
+  for (let y = 0; y < rows; y++) {
+    world.grass[y] = [];
+    for (let x = 0; x < cols; x++) {
+      if (Math.random() < GRASS_DENSITY) {
+        world.grass[y][x] = {
+          type: Math.random() < POISON_CHANCE_BASE ? 'poison' : 'good',
+          eaten: false,
+          regrowTimer: 0
+        };
+      } else {
+        world.grass[y][x] = null;
+      }
+    }
+  }
+
+  player = {
+    x: (cols * TILE) / 2,
+    y: (rows * TILE) / 2,
+    w: 28, h: 28,
+    dir: { x: 0, y: 1 },
+    food: 100,
+    poison: 0,
+    sleep: 100,
+    speed: 100,
+    baseSpeed: 2.5,
+    alive: true,
+    eatTimer: 0,
+    eatingAnim: 0
+  };
+
+  npcSheep = [];
+  for (let i = 0; i < NPC_SHEEP_COUNT; i++) {
+    npcSheep.push({
+      x: player.x + (Math.random() - 0.5) * 600,
+      y: player.y + (Math.random() - 0.5) * 600,
+      w: 24, h: 24,
+      dir: { x: 0, y: 1 },
+      moveTimer: 0,
+      vx: 0, vy: 0
+    });
+  }
+
+  wolves = [];
+  pows = [];
+  camera = { x: 0, y: 0 };
+  gameOver = false;
+  score = 0;
+  elapsed = 0;
+  poisonChance = POISON_CHANCE_BASE;
+  lastWolfSpawn = 0;
+  keys = {};
+}
+
+let lastWolfSpawn = 0;
+let keys = {};
+
+// --- Input ---
+document.addEventListener('keydown', e => { keys[e.key] = true; });
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// D-pad for mobile
+const dpadDirs = { 'dpad-u': {x:0,y:-1}, 'dpad-d': {x:0,y:1}, 'dpad-l': {x:-1,y:0}, 'dpad-r': {x:1,y:0} };
+let dpadHeld = {};
+
+function setupMobile() {
+  document.getElementById('dpad').style.display = 'block';
+  document.getElementById('attack-btn').style.display = 'block';
+
+  for (const [id, dir] of Object.entries(dpadDirs)) {
+    const btn = document.getElementById(id);
+    const start = () => { dpadHeld[id] = dir; };
+    const end = () => { delete dpadHeld[id]; };
+    btn.addEventListener('touchstart', e => { e.preventDefault(); start(); }, { passive: false });
+    btn.addEventListener('touchend', e => { e.preventDefault(); end(); }, { passive: false });
+    btn.addEventListener('touchcancel', end);
+    btn.addEventListener('mousedown', start);
+    btn.addEventListener('mouseup', end);
+    btn.addEventListener('mouseleave', end);
+  }
+
+  const atkBtn = document.getElementById('attack-btn');
+  atkBtn.addEventListener('touchstart', e => { e.preventDefault(); doAttack(); }, { passive: false });
+  atkBtn.addEventListener('click', doAttack);
+}
+
+function doAttack() {
+  if (gameOver || !player.alive) return;
+  // Check for wolf in front of player
+  const ax = player.x + player.dir.x * 40;
+  const ay = player.y + player.dir.y * 40;
+  const range = 50;
+
+  for (let i = wolves.length - 1; i >= 0; i--) {
+    const w = wolves[i];
+    const dx = w.x - ax;
+    const dy = w.y - ay;
+    if (Math.sqrt(dx*dx + dy*dy) < range) {
+      // Hit!
+      pows.push({ x: w.x, y: w.y, timer: 40, scale: 0 });
+      wolves.splice(i, 1);
+      score += 50;
+      return;
+    }
+  }
+  // Miss pow
+  pows.push({ x: ax, y: ay, timer: 25, scale: 0 });
+}
+
+// --- Start ---
+document.getElementById('start-btn').addEventListener('click', () => {
+  document.getElementById('overlay').style.display = 'none';
+  initGame();
+  if (isMobile) setupMobile();
+  requestAnimationFrame(loop);
+});
+
+// --- Game loop ---
+let lastTime = 0;
+
+function loop(time) {
+  if (!lastTime) lastTime = time;
+  const dt = Math.min(time - lastTime, 50);
+  lastTime = time;
+
+  if (!gameOver) {
+    update(dt);
+  }
+  draw();
+
+  if (!gameOver) {
+    requestAnimationFrame(loop);
+  }
+}
+
+function update(dt) {
+  elapsed += dt;
+  const sec = dt / 1000;
+
+  // Increase poison chance over time
+  poisonChance = Math.min(0.6, POISON_CHANCE_BASE + elapsed / 300000);
+
+  // --- Player movement ---
+  let mx = 0, my = 0;
+  if (keys['ArrowUp'] || keys['w'] && !keys['W']) my -= 1;
+  if (keys['ArrowDown'] || keys['s']) my += 1;
+  if (keys['ArrowLeft'] || keys['a']) mx -= 1;
+  if (keys['ArrowRight'] || keys['d']) mx += 1;
+
+  // D-pad input
+  for (const dir of Object.values(dpadHeld)) {
+    mx += dir.x;
+    my += dir.y;
+  }
+
+  if (mx !== 0 || my !== 0) {
+    const len = Math.sqrt(mx*mx + my*my);
+    mx /= len; my /= len;
+    player.dir = { x: Math.sign(mx || 0), y: Math.sign(my || 0) };
+    if (Math.abs(mx) > Math.abs(my)) player.dir.y = 0;
+    else player.dir.x = 0;
+  }
+
+  // Speed affected by poison and sleep
+  const speedMult = (player.speed / 100) * (0.4 + 0.6 * (player.sleep / 100));
+  const spd = player.baseSpeed * speedMult;
+  player.x += mx * spd * (dt / 16);
+  player.y += my * spd * (dt / 16);
+
+  // Clamp to world
+  player.x = Math.max(0, Math.min(world.cols * TILE - player.w, player.x));
+  player.y = Math.max(0, Math.min(world.rows * TILE - player.h, player.y));
+
+  // --- Eating ---
+  const tileX = Math.floor((player.x + player.w/2) / TILE);
+  const tileY = Math.floor((player.y + player.h/2) / TILE);
+  if (tileY >= 0 && tileY < world.rows && tileX >= 0 && tileX < world.cols) {
+    const g = world.grass[tileY][tileX];
+    if (g && !g.eaten) {
+      player.eatTimer += dt;
+      if (player.eatTimer > 400) {
+        g.eaten = true;
+        g.regrowTimer = 8000 + Math.random() * 5000;
+        player.eatingAnim = 15;
+        if (g.type === 'good') {
+          player.food = Math.min(100, player.food + 8);
+          score += 10;
+        } else {
+          player.food = Math.min(100, player.food + 3);
+          player.poison = Math.min(100, player.poison + 12);
+          score += 2;
+        }
+        player.eatTimer = 0;
+      }
+    } else {
+      player.eatTimer = 0;
+    }
+  }
+  if (player.eatingAnim > 0) player.eatingAnim--;
+
+  // --- Meters decay ---
+  player.food = Math.max(0, player.food - 1.8 * sec);
+  player.sleep = Math.max(0, player.sleep - (1.0 + player.poison * 0.04) * sec);
+  player.speed = Math.max(0, 100 - player.poison * 0.8 - (100 - player.sleep) * 0.3);
+
+  // Poison slowly decays but very slowly
+  player.poison = Math.max(0, player.poison - 0.3 * sec);
+
+  // Death check
+  if (player.food <= 0 || player.sleep <= 0) {
+    player.alive = false;
+    gameOver = true;
+    showGameOver('You collapsed from ' + (player.food <= 0 ? 'starvation' : 'exhaustion') + '!');
+    return;
+  }
+  if (player.poison >= 100) {
+    player.alive = false;
+    gameOver = true;
+    showGameOver('You died from poisoning!');
+    return;
+  }
+
+  // --- Keyboard attack ---
+  if (keys['w'] || keys['W']) {
+    keys['w'] = false;
+    keys['W'] = false;
+    doAttack();
+  }
+
+  // --- Grass regrow ---
+  for (let y = tileY - 15; y < tileY + 15; y++) {
+    for (let x = tileX - 15; x < tileX + 15; x++) {
+      if (y >= 0 && y < world.rows && x >= 0 && x < world.cols) {
+        const g = world.grass[y][x];
+        if (g && g.eaten) {
+          g.regrowTimer -= dt;
+          if (g.regrowTimer <= 0) {
+            g.eaten = false;
+            // Re-roll type; poison chance increases over time
+            g.type = Math.random() < poisonChance ? 'poison' : 'good';
+          }
+        }
+        // Spawn new grass in empty spots
+        if (!g && Math.random() < 0.00002 * dt) {
+          world.grass[y][x] = {
+            type: Math.random() < poisonChance ? 'poison' : 'good',
+            eaten: false,
+            regrowTimer: 0
+          };
+        }
+      }
+    }
+  }
+
+  // --- NPC sheep ---
+  for (const s of npcSheep) {
+    s.moveTimer -= dt;
+    if (s.moveTimer <= 0) {
+      const a = Math.random() * Math.PI * 2;
+      s.vx = Math.cos(a) * 1;
+      s.vy = Math.sin(a) * 1;
+      s.dir = { x: Math.sign(s.vx), y: Math.sign(s.vy) };
+      s.moveTimer = 1000 + Math.random() * 3000;
+    }
+    // Flee from wolves
+    for (const w of wolves) {
+      const dx = s.x - w.x, dy = s.y - w.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 120) {
+        s.vx = (dx / dist) * 2.5;
+        s.vy = (dy / dist) * 2.5;
+      }
+    }
+    s.x += s.vx * (dt / 16);
+    s.y += s.vy * (dt / 16);
+    s.x = Math.max(0, Math.min(world.cols * TILE - s.w, s.x));
+    s.y = Math.max(0, Math.min(world.rows * TILE - s.h, s.y));
+  }
+
+  // --- Wolves ---
+  if (elapsed - lastWolfSpawn > WOLF_SPAWN_INTERVAL) {
+    lastWolfSpawn = elapsed;
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 350 + Math.random() * 150;
+    wolves.push({
+      x: player.x + Math.cos(angle) * dist,
+      y: player.y + Math.sin(angle) * dist,
+      w: 30, h: 30,
+      speed: 1.2 + elapsed / 120000,
+      dir: { x: 0, y: 0 }
+    });
+  }
+
+  for (const w of wolves) {
+    // Chase nearest sheep or player
+    let tx = player.x, ty = player.y;
+    let minD = Math.sqrt((player.x - w.x)**2 + (player.y - w.y)**2);
+    for (const s of npcSheep) {
+      const d = Math.sqrt((s.x - w.x)**2 + (s.y - w.y)**2);
+      if (d < minD) { minD = d; tx = s.x; ty = s.y; }
+    }
+    const dx = tx - w.x, dy = ty - w.y;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    w.dir = { x: dx / dist, y: dy / dist };
+    w.x += w.dir.x * w.speed * (dt / 16);
+    w.y += w.dir.y * w.speed * (dt / 16);
+
+    // Wolf bites player
+    if (Math.abs(w.x - player.x) < 24 && Math.abs(w.y - player.y) < 24) {
+      player.food = Math.max(0, player.food - 20);
+      player.sleep = Math.max(0, player.sleep - 10);
+      pows.push({ x: player.x, y: player.y, timer: 20, scale: 0, text: 'OUCH' });
+      // Push wolf back
+      w.x -= w.dir.x * 80;
+      w.y -= w.dir.y * 80;
+      if (player.food <= 0) {
+        player.alive = false;
+        gameOver = true;
+        showGameOver('A wolf got you!');
+        return;
+      }
+    }
+  }
+
+  // --- POW animations ---
+  for (let i = pows.length - 1; i >= 0; i--) {
+    pows[i].timer--;
+    pows[i].scale = Math.min(1, pows[i].scale + 0.15);
+    if (pows[i].timer <= 0) pows.splice(i, 1);
+  }
+
+  // --- Camera ---
+  camera.x = player.x - canvas.width / 2;
+  camera.y = player.y - canvas.height / 2;
+
+  // --- Update UI ---
+  document.getElementById('m-hunger').style.width = player.food + '%';
+  document.getElementById('m-hunger').style.background = player.food < 25 ? '#ef4444' : '#22c55e';
+  document.getElementById('m-poison').style.width = player.poison + '%';
+  document.getElementById('m-poison').style.background = player.poison > 60 ? '#ef4444' : '#a855f7';
+  document.getElementById('m-sleep').style.width = player.sleep + '%';
+  document.getElementById('m-sleep').style.background = player.sleep < 25 ? '#ef4444' : '#3b82f6';
+  document.getElementById('m-speed').style.width = Math.max(0, player.speed) + '%';
+}
+
+function showGameOver(msg) {
+  const ov = document.getElementById('overlay');
+  ov.style.display = 'flex';
+  ov.querySelector('h2').textContent = '💀 Game Over';
+  ov.querySelector('p').textContent = msg;
+  const scoreP = ov.querySelectorAll('p')[1];
+  if (scoreP) scoreP.textContent = 'Score: ' + Math.floor(score) + ' | Survived: ' + Math.floor(elapsed / 1000) + 's';
+  const btn = document.getElementById('start-btn');
+  btn.textContent = 'Play Again';
+}
+
+// --- Drawing ---
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(-camera.x, -camera.y);
+
+  // Ground
+  const startX = Math.max(0, Math.floor(camera.x / TILE));
+  const startY = Math.max(0, Math.floor(camera.y / TILE));
+  const endX = Math.min(world.cols, Math.ceil((camera.x + canvas.width) / TILE) + 1);
+  const endY = Math.min(world.rows, Math.ceil((camera.y + canvas.height) / TILE) + 1);
+
+  // Draw dirt
+  ctx.fillStyle = '#3d2e1a';
+  ctx.fillRect(startX * TILE, startY * TILE, (endX - startX) * TILE, (endY - startY) * TILE);
+
+  // Draw grass tiles
+  for (let y = startY; y < endY; y++) {
+    for (let x = startX; x < endX; x++) {
+      const g = world.grass[y] && world.grass[y][x];
+      if (g && !g.eaten) {
+        if (g.type === 'good') {
+          ctx.fillStyle = '#2d5a1e';
+          ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+          // Grass blades
+          ctx.fillStyle = '#4ade80';
+          ctx.fillRect(x * TILE + 6, y * TILE + 8, 3, 16);
+          ctx.fillRect(x * TILE + 14, y * TILE + 5, 3, 19);
+          ctx.fillRect(x * TILE + 22, y * TILE + 10, 3, 14);
+        } else {
+          ctx.fillStyle = '#2a1a3a';
+          ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+          // Purple toxic plant
+          ctx.fillStyle = '#c084fc';
+          ctx.fillRect(x * TILE + 8, y * TILE + 6, 4, 18);
+          ctx.fillRect(x * TILE + 18, y * TILE + 9, 4, 15);
+          // Glow
+          ctx.fillStyle = 'rgba(168,85,247,0.15)';
+          ctx.beginPath();
+          ctx.arc(x * TILE + 16, y * TILE + 16, 18, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (g && g.eaten) {
+        // Bare dirt patch
+        ctx.fillStyle = '#4a3a22';
+        ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+      }
+    }
+  }
+
+  // --- Draw NPC sheep ---
+  for (const s of npcSheep) {
+    drawSheep(s.x, s.y, s.w, s.h, s.dir, false, 0);
+  }
+
+  // --- Draw Player sheep ---
+  drawSheep(player.x, player.y, player.w, player.h, player.dir, true, player.eatingAnim);
+
+  // --- Draw wolves ---
+  for (const w of wolves) {
+    drawWolf(w.x, w.y, w.w, w.h, w.dir);
+  }
+
+  // --- Draw POW effects ---
+  for (const p of pows) {
+    const s = p.scale;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(s, s);
+    // Star burst
+    ctx.fillStyle = '#fbbf24';
+    drawStar(0, 0, 5, 35, 18);
+    // Text
+    ctx.fillStyle = '#ef4444';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.font = 'bold 22px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const txt = p.text || 'POW!';
+    ctx.strokeText(txt, 0, 0);
+    ctx.fillText(txt, 0, 0);
+    ctx.restore();
+  }
+
+  ctx.restore();
+
+  // Score display
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 14px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText('Score: ' + Math.floor(score), canvas.width - 10, 38);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '11px system-ui';
+  ctx.fillText(Math.floor(elapsed / 1000) + 's', canvas.width - 10, 52);
+}
+
+function drawSheep(x, y, w, h, dir, isPlayer, eatAnim) {
+  ctx.save();
+  ctx.translate(x + w/2, y + h/2);
+
+  // Body (fluffy wool)
+  ctx.fillStyle = isPlayer ? '#f5f5f5' : '#e0e0e0';
+  ctx.beginPath();
+  ctx.ellipse(0, 2, w/2 + 2, h/2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Wool bumps
+  ctx.fillStyle = isPlayer ? '#fff' : '#d4d4d4';
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * (w/3), Math.sin(a) * (h/3), 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Head direction
+  const hx = dir.x * 10;
+  const hy = dir.y * 8;
+  ctx.fillStyle = '#1a1a1a';
+  const headY = eatAnim > 0 ? hy + 3 : hy;
+  ctx.beginPath();
+  ctx.ellipse(hx, headY, 7, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(hx - 3, headY - 2, 2, 0, Math.PI * 2);
+  ctx.arc(hx + 3, headY - 2, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Player indicator
+  if (isPlayer) {
+    ctx.fillStyle = '#a78bfa';
+    ctx.beginPath();
+    ctx.moveTo(0, -h/2 - 8);
+    ctx.lineTo(-4, -h/2 - 14);
+    ctx.lineTo(4, -h/2 - 14);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawWolf(x, y, w, h, dir) {
+  ctx.save();
+  ctx.translate(x + w/2, y + h/2);
+
+  // Body
+  ctx.fillStyle = '#4b4b4b';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, w/2 + 2, h/2 - 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head
+  const hx = dir.x * 12;
+  const hy = dir.y * 10;
+  ctx.fillStyle = '#6b6b6b';
+  ctx.beginPath();
+  ctx.ellipse(hx, hy, 9, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ears
+  ctx.fillStyle = '#4b4b4b';
+  ctx.beginPath();
+  ctx.moveTo(hx - 6, hy - 6);
+  ctx.lineTo(hx - 10, hy - 14);
+  ctx.lineTo(hx - 2, hy - 8);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(hx + 6, hy - 6);
+  ctx.lineTo(hx + 10, hy - 14);
+  ctx.lineTo(hx + 2, hy - 8);
+  ctx.fill();
+
+  // Eyes (menacing red)
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.arc(hx - 3, hy - 1, 2, 0, Math.PI * 2);
+  ctx.arc(hx + 3, hy - 1, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawStar(cx, cy, spikes, outerR, innerR) {
+  let rot = Math.PI / 2 * 3;
+  const step = Math.PI / spikes;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - outerR);
+  for (let i = 0; i < spikes; i++) {
+    ctx.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+    rot += step;
+    ctx.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+    rot += step;
+  }
+  ctx.lineTo(cx, cy - outerR);
+  ctx.closePath();
+  ctx.fill();
+}
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

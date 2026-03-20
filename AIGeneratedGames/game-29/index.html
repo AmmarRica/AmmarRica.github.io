@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zombie Bowl</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const C = document.getElementById('c');
+const ctx = C.getContext('2d');
+let W, H;
+function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+const TITLE = 0, PLAYING = 1, GAMEOVER = 2, WIN = 3;
+let state = TITLE;
+let keys = {};
+let clicked = false, mouseX = 0, mouseY = 0;
+
+document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keyup', e => keys[e.key] = false);
+C.addEventListener('click', e => { mouseX = e.clientX; mouseY = e.clientY; clicked = true; });
+C.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+
+// Game vars
+const FIELD_W = 800, FIELD_H = 500;
+let fieldX, fieldY;
+let player = null; // Ball carrier controlled by player
+let teammates = [];
+let zombies = [];
+let powerups = [];
+let bloodSplatters = [];
+let particles = [];
+let quarter = 1, quarterTime = 0, maxQuarterTime = 40 * 60;
+let touchdowns = 0, zombiesKilled = 0;
+let rosterSize = 5;
+let message = '', messageTimer = 0;
+let activePowerup = '', powerupTimer = 0;
+let scrimmageY = 0;
+let playInProgress = false;
+let waveTimer = 0;
+let score = 0;
+
+function initGame() {
+  quarter = 1; quarterTime = 0;
+  touchdowns = 0; zombiesKilled = 0;
+  rosterSize = 5;
+  zombies = [];
+  powerups = [];
+  bloodSplatters = [];
+  particles = [];
+  activePowerup = '';
+  powerupTimer = 0;
+  score = 0;
+  waveTimer = 0;
+  startPlay();
+  state = PLAYING;
+}
+
+function startPlay() {
+  fieldX = (W - FIELD_W) / 2;
+  fieldY = (H - FIELD_H) / 2;
+  scrimmageY = FIELD_H * 0.8;
+  playInProgress = true;
+
+  // Create player (ball carrier)
+  player = {
+    x: fieldX + FIELD_W / 2,
+    y: fieldY + scrimmageY,
+    vx: 0, vy: 0, speed: 3.5,
+    hasBall: true, alive: true, radius: 10
+  };
+
+  // Teammates (blockers)
+  teammates = [];
+  for (let i = 0; i < Math.min(rosterSize - 1, 4); i++) {
+    teammates.push({
+      x: player.x - 60 + i * 40,
+      y: player.y + 15,
+      vx: 0, vy: 0, speed: 2.8,
+      alive: true, radius: 10,
+      blocking: false
+    });
+  }
+}
+
+function spawnZombieWave() {
+  const count = 3 + quarter * 2 + Math.floor(quarterTime / (maxQuarterTime / 4));
+  for (let i = 0; i < count; i++) {
+    const side = Math.random();
+    let zx, zy;
+    if (side < 0.5) {
+      // From top
+      zx = fieldX + Math.random() * FIELD_W;
+      zy = fieldY + Math.random() * FIELD_H * 0.3;
+    } else if (side < 0.75) {
+      zx = fieldX + Math.random() * 50;
+      zy = fieldY + Math.random() * FIELD_H;
+    } else {
+      zx = fieldX + FIELD_W - Math.random() * 50;
+      zy = fieldY + Math.random() * FIELD_H;
+    }
+    zombies.push({
+      x: zx, y: zy,
+      vx: 0, vy: 0,
+      speed: 1 + Math.random() * 0.8 + quarter * 0.2,
+      alive: true, radius: 10,
+      hp: 1, stunTimer: 0
+    });
+  }
+}
+
+function spawnPowerup() {
+  const types = ['chainsaw', 'shotgun', 'flamethrower'];
+  powerups.push({
+    x: fieldX + 50 + Math.random() * (FIELD_W - 100),
+    y: fieldY + 50 + Math.random() * (FIELD_H - 100),
+    type: types[Math.floor(Math.random() * types.length)],
+    timer: 300
+  });
+}
+
+function addBlood(x, y) {
+  for (let i = 0; i < 5; i++) {
+    bloodSplatters.push({
+      x: x + (Math.random() - 0.5) * 20,
+      y: y + (Math.random() - 0.5) * 20,
+      size: 3 + Math.random() * 8,
+      alpha: 0.7
+    });
+  }
+}
+
+function addParticle(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6,
+      life: 30 + Math.random() * 30,
+      color, size: 2 + Math.random() * 3
+    });
+  }
+}
+
+function update() {
+  if (state !== PLAYING) return;
+
+  quarterTime++;
+
+  // Quarter transitions
+  if (quarterTime >= maxQuarterTime) {
+    quarter++;
+    quarterTime = 0;
+    if (quarter > 4) {
+      state = touchdowns > 0 ? WIN : GAMEOVER;
+      return;
+    }
+    showMessage('QUARTER ' + quarter);
+    startPlay();
+  }
+
+  // Wave spawning
+  waveTimer++;
+  if (waveTimer > 150 - quarter * 20) {
+    spawnZombieWave();
+    waveTimer = 0;
+  }
+
+  // Powerup spawning
+  if (Math.random() < 0.005) spawnPowerup();
+
+  // Powerup timers
+  powerups.forEach(p => p.timer--);
+  powerups = powerups.filter(p => p.timer > 0);
+
+  if (powerupTimer > 0) powerupTimer--;
+  if (powerupTimer <= 0) activePowerup = '';
+
+  if (messageTimer > 0) messageTimer--;
+
+  // Player movement (WASD or arrows)
+  if (player && player.alive) {
+    player.vx = 0; player.vy = 0;
+    if (keys['ArrowLeft'] || keys['a'] || keys['A']) player.vx = -player.speed;
+    if (keys['ArrowRight'] || keys['d'] || keys['D']) player.vx = player.speed;
+    if (keys['ArrowUp'] || keys['w'] || keys['W']) player.vy = -player.speed;
+    if (keys['ArrowDown'] || keys['s'] || keys['S']) player.vy = player.speed;
+
+    player.x += player.vx;
+    player.y += player.vy;
+
+    // Clamp to field
+    player.x = Math.max(fieldX + 10, Math.min(fieldX + FIELD_W - 10, player.x));
+    player.y = Math.max(fieldY + 10, Math.min(fieldY + FIELD_H - 10, player.y));
+
+    // Check touchdown
+    if (player.y < fieldY + FIELD_H * 0.08) {
+      touchdowns++;
+      score += 7;
+      showMessage('TOUCHDOWN! Score: ' + score);
+      addParticle(player.x, player.y, '#f1c40f', 30);
+      // Clear some zombies
+      zombies = zombies.filter(() => Math.random() > 0.5);
+      startPlay();
+      return;
+    }
+
+    // Powerup collection
+    for (let i = powerups.length - 1; i >= 0; i--) {
+      const p = powerups[i];
+      const dx = player.x - p.x, dy = player.y - p.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 20) {
+        activePowerup = p.type;
+        powerupTimer = 300;
+        powerups.splice(i, 1);
+        showMessage(p.type.toUpperCase() + ' ACTIVATED!');
+      }
+    }
+
+    // Powerup effects on click/space
+    if (activePowerup && (clicked || keys[' '])) {
+      if (activePowerup === 'chainsaw') {
+        // Kill nearby zombies
+        zombies.forEach(z => {
+          const dx = player.x - z.x, dy = player.y - z.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 60) {
+            z.alive = false;
+            zombiesKilled++;
+            addBlood(z.x, z.y);
+            addParticle(z.x, z.y, '#e74c3c', 10);
+          }
+        });
+      } else if (activePowerup === 'shotgun') {
+        // Shoot in mouse direction
+        const angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+        for (let i = -2; i <= 2; i++) {
+          const a = angle + i * 0.15;
+          const range = 200;
+          zombies.forEach(z => {
+            const dx = z.x - player.x, dy = z.y - player.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const zA = Math.atan2(dy, dx);
+            if (dist < range && Math.abs(zA - a) < 0.3) {
+              z.alive = false;
+              zombiesKilled++;
+              addBlood(z.x, z.y);
+              addParticle(z.x, z.y, '#f39c12', 8);
+            }
+          });
+          // Visual
+          addParticle(player.x + Math.cos(a) * 30, player.y + Math.sin(a) * 30, '#ff0', 3);
+        }
+      } else if (activePowerup === 'flamethrower') {
+        // Cone of fire ahead
+        const angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+        zombies.forEach(z => {
+          const dx = z.x - player.x, dy = z.y - player.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const zA = Math.atan2(dy, dx);
+          if (dist < 120 && Math.abs(zA - angle) < 0.5) {
+            z.alive = false;
+            zombiesKilled++;
+            addBlood(z.x, z.y);
+            addParticle(z.x, z.y, '#e67e22', 6);
+          }
+        });
+        for (let i = 0; i < 5; i++) {
+          const a = angle + (Math.random() - 0.5) * 0.8;
+          const d = 30 + Math.random() * 80;
+          addParticle(player.x + Math.cos(a) * d, player.y + Math.sin(a) * d, Math.random() < 0.5 ? '#e74c3c' : '#f39c12', 1);
+        }
+      }
+    }
+  }
+
+  // Move teammates (block nearest zombie)
+  teammates.forEach(t => {
+    if (!t.alive) return;
+    let nearest = null, minDist = Infinity;
+    zombies.forEach(z => {
+      if (!z.alive) return;
+      const dx = z.x - player.x, dy = z.y - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 150 && dist < minDist) { minDist = dist; nearest = z; }
+    });
+
+    if (nearest) {
+      // Move to intercept
+      const dx = nearest.x - t.x, dy = nearest.y - t.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 5) {
+        t.x += (dx / dist) * t.speed;
+        t.y += (dy / dist) * t.speed;
+      }
+      // Block/stun zombie
+      if (dist < 18) {
+        nearest.stunTimer = 30;
+        t.blocking = true;
+      } else {
+        t.blocking = false;
+      }
+    } else {
+      // Follow player
+      const dx = player.x - t.x, dy = player.y - 20 - t.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 30) {
+        t.x += (dx / dist) * t.speed;
+        t.y += (dy / dist) * t.speed;
+      }
+      t.blocking = false;
+    }
+  });
+
+  // Move zombies
+  zombies.forEach(z => {
+    if (!z.alive || z.stunTimer > 0) {
+      if (z.stunTimer > 0) z.stunTimer--;
+      return;
+    }
+    // Chase ball carrier
+    if (player && player.alive) {
+      const dx = player.x - z.x, dy = player.y - z.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 3) {
+        z.x += (dx / dist) * z.speed;
+        z.y += (dy / dist) * z.speed;
+      }
+
+      // Tackle
+      if (dist < 15) {
+        // Player tackled - zombie conversion!
+        player.alive = false;
+        rosterSize--;
+        addBlood(player.x, player.y);
+        addParticle(player.x, player.y, '#2ecc71', 20);
+        showMessage('TACKLED! Player turned into zombie! Roster: ' + rosterSize);
+
+        if (rosterSize <= 0) {
+          state = touchdowns > 0 ? WIN : GAMEOVER;
+          return;
+        }
+
+        // Convert a random teammate to zombie
+        if (teammates.length > 0 && Math.random() < 0.5) {
+          const idx = Math.floor(Math.random() * teammates.length);
+          const t = teammates[idx];
+          if (t.alive) {
+            zombies.push({
+              x: t.x, y: t.y, vx: 0, vy: 0,
+              speed: 1.5, alive: true, radius: 10, hp: 1, stunTimer: 0
+            });
+            t.alive = false;
+            addBlood(t.x, t.y);
+          }
+        }
+
+        setTimeout(() => startPlay(), 1000);
+        return;
+      }
+    }
+
+    // Tackle teammates
+    teammates.forEach(t => {
+      if (!t.alive) return;
+      const dx = t.x - z.x, dy = t.y - z.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 14 && !t.blocking && Math.random() < 0.005) {
+        t.alive = false;
+        rosterSize = Math.max(1, rosterSize - 1);
+        addBlood(t.x, t.y);
+        showMessage('Teammate turned! Roster: ' + rosterSize);
+        zombies.push({
+          x: t.x, y: t.y, vx: 0, vy: 0,
+          speed: 1.5, alive: true, radius: 10, hp: 1, stunTimer: 0
+        });
+      }
+    });
+  });
+
+  // Clean up dead zombies
+  zombies = zombies.filter(z => z.alive);
+
+  // Update particles
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+    p.vx *= 0.95;
+    p.vy *= 0.95;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  // Fade blood splatters
+  bloodSplatters.forEach(b => b.alpha -= 0.001);
+  bloodSplatters = bloodSplatters.filter(b => b.alpha > 0);
+  if (bloodSplatters.length > 200) bloodSplatters = bloodSplatters.slice(-200);
+}
+
+function showMessage(msg) { message = msg; messageTimer = 120; }
+
+function drawField() {
+  fieldX = (W - FIELD_W) / 2;
+  fieldY = (H - FIELD_H) / 2;
+
+  // Field
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(fieldX, fieldY, FIELD_W, FIELD_H);
+
+  // Blood on field
+  bloodSplatters.forEach(b => {
+    ctx.fillStyle = `rgba(139,0,0,${b.alpha})`;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Yard lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const y = fieldY + (FIELD_H / 10) * i;
+    ctx.beginPath();
+    ctx.moveTo(fieldX, y);
+    ctx.lineTo(fieldX + FIELD_W, y);
+    ctx.stroke();
+  }
+
+  // End zone
+  ctx.fillStyle = 'rgba(200,50,50,0.3)';
+  ctx.fillRect(fieldX, fieldY, FIELD_W, FIELD_H * 0.08);
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('END ZONE', fieldX + FIELD_W / 2, fieldY + FIELD_H * 0.05);
+
+  // Field border - horror style
+  ctx.strokeStyle = '#8b0000';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(fieldX, fieldY, FIELD_W, FIELD_H);
+}
+
+function drawEntities() {
+  // Powerups
+  powerups.forEach(p => {
+    const pulse = Math.sin(Date.now() * 0.01) * 3;
+    ctx.fillStyle = p.type === 'chainsaw' ? '#e74c3c' : p.type === 'shotgun' ? '#f39c12' : '#e67e22';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 12 + pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    const icons = { chainsaw: 'SAW', shotgun: 'GUN', flamethrower: 'FLM' };
+    ctx.fillText(icons[p.type], p.x, p.y + 4);
+  });
+
+  // Zombies
+  zombies.forEach(z => {
+    if (!z.alive) return;
+    ctx.fillStyle = z.stunTimer > 0 ? '#556b2f' : '#2ecc71';
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.radius, 0, Math.PI * 2);
+    ctx.fill();
+    // Zombie face
+    ctx.fillStyle = '#000';
+    ctx.fillRect(z.x - 4, z.y - 3, 2, 3);
+    ctx.fillRect(z.x + 2, z.y - 3, 2, 3);
+    // Open mouth
+    ctx.fillStyle = '#8b0000';
+    ctx.fillRect(z.x - 3, z.y + 2, 6, 3);
+    // Arms reaching
+    ctx.strokeStyle = '#2ecc71';
+    ctx.lineWidth = 2;
+    const wobble = Math.sin(Date.now() * 0.01 + z.x) * 5;
+    ctx.beginPath();
+    ctx.moveTo(z.x - 10, z.y);
+    ctx.lineTo(z.x - 18, z.y - 5 + wobble);
+    ctx.moveTo(z.x + 10, z.y);
+    ctx.lineTo(z.x + 18, z.y - 5 - wobble);
+    ctx.stroke();
+  });
+
+  // Teammates
+  teammates.forEach(t => {
+    if (!t.alive) return;
+    ctx.fillStyle = t.blocking ? '#f39c12' : '#3498db';
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('BLK', t.x, t.y + 3);
+  });
+
+  // Player
+  if (player && player.alive) {
+    ctx.fillStyle = '#f1c40f';
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    ctx.fill();
+    // Football
+    ctx.fillStyle = '#8B4513';
+    ctx.beginPath();
+    ctx.ellipse(player.x, player.y - 14, 5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Powerup aura
+    if (activePowerup) {
+      const colors = { chainsaw: '#e74c3c', shotgun: '#f39c12', flamethrower: '#e67e22' };
+      ctx.strokeStyle = colors[activePowerup];
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.01) * 0.3;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, 18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 60;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, W, 45);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Q${quarter} | Score: ${score} | TDs: ${touchdowns} | Roster: ${rosterSize} | Killed: ${zombiesKilled}`, 80, 20);
+
+  const timeLeft = Math.max(0, Math.ceil((maxQuarterTime - quarterTime) / 60));
+  ctx.textAlign = 'right';
+  ctx.fillText(`Time: ${timeLeft}s`, W - 20, 20);
+
+  if (activePowerup) {
+    ctx.fillStyle = '#f1c40f';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${activePowerup.toUpperCase()} [${Math.ceil(powerupTimer / 60)}s] - Click/Space to use!`, W / 2, 38);
+  }
+
+  if (messageTimer > 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(W / 2 - 250, H / 2 - 25, 500, 50);
+    ctx.fillStyle = '#e74c3c';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(message, W / 2, H / 2 + 7);
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Dripping blood title
+  ctx.fillStyle = '#8b0000';
+  ctx.font = 'bold 52px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('ZOMBIE BOWL', W / 2, H * 0.2);
+
+  // Drip effect
+  const t = Date.now() * 0.003;
+  for (let i = 0; i < 8; i++) {
+    const x = W / 2 - 160 + i * 45;
+    const dripLen = 10 + Math.sin(t + i) * 8;
+    ctx.fillStyle = '#8b0000';
+    ctx.fillRect(x, H * 0.22, 3, dripLen);
+  }
+
+  ctx.fillStyle = '#2ecc71';
+  ctx.font = '18px monospace';
+  ctx.fillText('Survive the undead on the gridiron!', W / 2, H * 0.3);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  const lines = [
+    'WASD/Arrows: Move your ball carrier',
+    'Score TDs by reaching the end zone',
+    'Zombies will tackle and turn your players!',
+    'Collect powerups: Chainsaw, Shotgun, Flamethrower',
+    'Click/Space to use active powerup',
+    'Survive all 4 quarters!',
+    '',
+    'Your roster shrinks as zombies claim your team...'
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.4 + i * 22));
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.8, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('PLAY', W / 2, H * 0.8 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.8 && mouseY < H * 0.8 + 45) {
+    initGame();
+  }
+}
+
+function drawEnd(won) {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = won ? '#f1c40f' : '#8b0000';
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(won ? 'YOU SURVIVED!' : 'BRAAAAINS...', W / 2, H * 0.25);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px monospace';
+  ctx.fillText(`Score: ${score}`, W / 2, H * 0.38);
+  ctx.fillText(`Touchdowns: ${touchdowns}`, W / 2, H * 0.44);
+  ctx.fillText(`Zombies Killed: ${zombiesKilled}`, W / 2, H * 0.50);
+  ctx.fillText(`Roster Remaining: ${rosterSize}`, W / 2, H * 0.56);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.7, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('RETRY', W / 2, H * 0.7 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.7 && mouseY < H * 0.7 + 45) {
+    state = TITLE;
+  }
+}
+
+function gameLoop() {
+  update();
+
+  switch (state) {
+    case TITLE: drawTitle(); break;
+    case PLAYING:
+      ctx.fillStyle = '#0f0f1a';
+      ctx.fillRect(0, 0, W, H);
+      drawField();
+      drawEntities();
+      drawHUD();
+      break;
+    case GAMEOVER: drawEnd(false); break;
+    case WIN: drawEnd(true); break;
+  }
+
+  clicked = false;
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

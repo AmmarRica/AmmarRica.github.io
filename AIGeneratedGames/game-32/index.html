@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Typing Blitz</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #a78bfa; margin-top: 5px; }
+#typebox { position: absolute; opacity: 0; }
+#info { color: #a78bfa; margin-top: 8px; font-size: 13px; }
+</style>
+</head>
+<body>
+<canvas id="game" width="700" height="450"></canvas>
+<input id="typebox" type="text" autofocus>
+<div id="info">Type the words to block defenders! Protect your QB!</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const typebox = document.getElementById('typebox');
+const W = 700, H = 450;
+
+// Focus management
+canvas.addEventListener('click', () => typebox.focus());
+document.addEventListener('click', () => typebox.focus());
+
+const WORDS_EASY = ['run','pass','punt','kick','snap','rush','blitz','zone','man','flat','gap','end','out','fly','dig','post','curl','slant','sweep','draw'];
+const WORDS_MED = ['tackle','safety','fumble','motion','pocket','screen','hurdle','option','sacker','sprint','guard','center','corner','nickel','audible'];
+const WORDS_HARD = ['interception','quarterback','linebacker','cornerback','touchdown','offensive','defensive','formation','completion','scrambling','blitzing'];
+
+let state = 'title';
+let score = 0;
+let wordsTyped = 0;
+let wordsTotal = 0;
+let accuracy = 100;
+let sacks = 0;
+let maxSacks = 3;
+let drive = 1;
+let down = 1;
+let yardsToGo = 10;
+let yardLine = 20;
+let defenders = [];
+let currentTyping = '';
+let comboCount = 0;
+let comboTimer = 0;
+let spawnTimer = 0;
+let spawnRate = 120;
+let waveDefenders = 0;
+let waveMax = 6;
+let waveCleared = false;
+let particles = [];
+let flashMsg = '';
+let flashTimer = 0;
+let qbX = 100, qbY = H / 2;
+let playActive = true;
+
+function getWord(difficulty) {
+  if (difficulty < 3) return WORDS_EASY[Math.floor(Math.random() * WORDS_EASY.length)];
+  if (difficulty < 6) return WORDS_MED[Math.floor(Math.random() * WORDS_MED.length)];
+  return WORDS_HARD[Math.floor(Math.random() * WORDS_HARD.length)];
+}
+
+function spawnDefender() {
+  let diff = Math.min(Math.floor(drive / 2), 3) + Math.floor(Math.random() * 3);
+  let word = getWord(diff);
+  let lane = Math.floor(Math.random() * 5);
+  let y = 80 + lane * 75;
+  defenders.push({
+    x: W + 20,
+    y: y,
+    word: word,
+    typed: 0,
+    speed: 0.6 + drive * 0.08 + Math.random() * 0.3,
+    size: Math.min(30, 16 + word.length * 1.5),
+    active: true,
+    targeted: false
+  });
+  waveDefenders++;
+}
+
+function resetPlay() {
+  defenders = [];
+  waveDefenders = 0;
+  waveCleared = false;
+  spawnTimer = 0;
+  playActive = true;
+  currentTyping = '';
+  typebox.value = '';
+}
+
+function startGame() {
+  score = 0;
+  wordsTyped = 0;
+  wordsTotal = 0;
+  sacks = 0;
+  drive = 1;
+  down = 1;
+  yardsToGo = 10;
+  yardLine = 20;
+  comboCount = 0;
+  particles = [];
+  resetPlay();
+  state = 'playing';
+  typebox.focus();
+}
+
+function addParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6,
+      life: 30 + Math.random() * 20,
+      color: color,
+      size: 2 + Math.random() * 3
+    });
+  }
+}
+
+function flash(msg) {
+  flashMsg = msg;
+  flashTimer = 90;
+}
+
+// Typing handler
+typebox.addEventListener('input', () => {
+  if (state !== 'playing') return;
+  let val = typebox.value.toLowerCase().trim();
+  currentTyping = val;
+
+  // Find matching defender
+  let matched = null;
+  for (let d of defenders) {
+    if (!d.active) continue;
+    let remaining = d.word.substring(d.typed);
+    if (remaining.startsWith(val)) {
+      d.targeted = true;
+      if (val.length > 0) {
+        d.typed = d.word.length - remaining.length + val.length;
+      }
+      if (d.typed >= d.word.length) {
+        matched = d;
+      }
+      break;
+    }
+  }
+
+  if (matched) {
+    matched.active = false;
+    wordsTyped++;
+    wordsTotal++;
+    comboCount++;
+    comboTimer = 120;
+    let pts = matched.word.length * 10 + comboCount * 5;
+    score += pts;
+    addParticles(matched.x, matched.y, '#4ade80', 15);
+    flash('BLOCKED! +' + pts + (comboCount > 1 ? ' x' + comboCount + ' COMBO!' : ''));
+    typebox.value = '';
+    currentTyping = '';
+
+    // Check if wave done
+    let remaining = defenders.filter(d => d.active).length;
+    if (remaining === 0 && waveDefenders >= waveMax) {
+      waveCleared = true;
+      // Advance drive
+      let gain = 5 + Math.floor(Math.random() * 10);
+      yardLine += gain;
+      yardsToGo -= gain;
+      flash('PLAY COMPLETE! +' + gain + ' yards!');
+
+      if (yardLine >= 100) {
+        flash('TOUCHDOWN! +100 pts!');
+        score += 100;
+        drive++;
+        yardLine = 20;
+        down = 1;
+        yardsToGo = 10;
+        waveMax = Math.min(12, 6 + drive);
+      } else if (yardsToGo <= 0) {
+        flash('FIRST DOWN!');
+        down = 1;
+        yardsToGo = 10;
+      } else {
+        down++;
+        if (down > 4) {
+          flash('TURNOVER ON DOWNS!');
+          drive++;
+          yardLine = 20;
+          down = 1;
+          yardsToGo = 10;
+        }
+      }
+      setTimeout(() => resetPlay(), 1500);
+    }
+
+    // Reset targeting
+    for (let d of defenders) d.targeted = false;
+  }
+});
+
+function update() {
+  if (state !== 'playing') return;
+
+  // Spawn defenders
+  if (waveDefenders < waveMax && playActive) {
+    spawnTimer++;
+    if (spawnTimer >= spawnRate) {
+      spawnDefender();
+      spawnTimer = 0;
+      spawnRate = Math.max(40, 120 - drive * 10);
+    }
+  }
+
+  // Move defenders
+  for (let d of defenders) {
+    if (!d.active) continue;
+    d.x -= d.speed;
+
+    // Reached QB?
+    if (d.x < 130) {
+      d.active = false;
+      sacks++;
+      wordsTotal++;
+      comboCount = 0;
+      addParticles(qbX, qbY, '#ef4444', 20);
+      flash('SACK! (' + sacks + '/' + maxSacks + ')');
+      score -= 20;
+
+      if (sacks >= maxSacks) {
+        state = 'gameover';
+      }
+    }
+  }
+
+  // Combo timer
+  if (comboTimer > 0) {
+    comboTimer--;
+    if (comboTimer === 0) comboCount = 0;
+  }
+
+  // Flash timer
+  if (flashTimer > 0) flashTimer--;
+
+  // Particles
+  for (let p of particles) {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+    p.vx *= 0.95;
+    p.vy *= 0.95;
+  }
+  particles = particles.filter(p => p.life > 0);
+}
+
+function drawField() {
+  // Field background
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(0, 50, W, H - 50);
+
+  // Yard lines
+  ctx.strokeStyle = '#2a5a2a';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 50) {
+    ctx.beginPath();
+    ctx.moveTo(x, 50);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+
+  // Line of scrimmage
+  ctx.strokeStyle = '#4488ff44';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(140, 50);
+  ctx.lineTo(140, H);
+  ctx.stroke();
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, 50);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  ctx.fillText('Score: ' + score, 10, 20);
+  ctx.fillText('Drive: ' + drive, 10, 38);
+  ctx.fillText(down + (down === 1 ? 'st' : down === 2 ? 'nd' : down === 3 ? 'rd' : 'th') + ' & ' + Math.max(yardsToGo, 0), 130, 20);
+  ctx.fillText('Ball at: ' + yardLine + ' yd', 130, 38);
+
+  // Sack meter
+  ctx.fillStyle = '#333';
+  ctx.fillRect(W - 160, 10, 100, 12);
+  ctx.fillStyle = sacks >= 2 ? '#ef4444' : '#4ade80';
+  ctx.fillRect(W - 160, 10, (sacks / maxSacks) * 100, 12);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '10px monospace';
+  ctx.fillText('Pressure: ' + sacks + '/' + maxSacks, W - 160, 38);
+
+  // Combo
+  if (comboCount > 1) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText('COMBO x' + comboCount, W / 2 - 40, 35);
+  }
+
+  // WPM estimate
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '11px monospace';
+  let acc = wordsTotal > 0 ? Math.round((wordsTyped / wordsTotal) * 100) : 100;
+  ctx.fillText('Accuracy: ' + acc + '%', W - 160 + 110, 20);
+}
+
+function drawDefender(d) {
+  if (!d.active) return;
+  let ratio = d.typed / d.word.length;
+
+  // Body
+  let alpha = 1 - ratio * 0.3;
+  let r = d.size;
+
+  // Jersey
+  ctx.fillStyle = d.targeted ? '#ff6666' : '#cc2222';
+  ctx.beginPath();
+  ctx.ellipse(d.x, d.y, r * 0.6, r * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Helmet
+  ctx.fillStyle = '#882222';
+  ctx.beginPath();
+  ctx.arc(d.x, d.y - r * 0.5, r * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Number
+  ctx.fillStyle = '#ffffff';
+  ctx.font = Math.max(9, r * 0.4) + 'px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(d.word.length > 8 ? '99' : d.word.length * 11, d.x, d.y + 4);
+
+  // Word above
+  ctx.font = 'bold 14px monospace';
+  let typedPart = d.word.substring(0, d.typed);
+  let remaining = d.word.substring(d.typed);
+
+  let fullWidth = ctx.measureText(d.word).width;
+  let startX = d.x - fullWidth / 2;
+
+  // Background
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(startX - 4, d.y - r - 20, fullWidth + 8, 18);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.textAlign = 'left';
+  ctx.fillText(typedPart, startX, d.y - r - 6);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(remaining, startX + ctx.measureText(typedPart).width, d.y - r - 6);
+  ctx.textAlign = 'left';
+}
+
+function drawQB() {
+  // QB
+  ctx.fillStyle = '#4466ff';
+  ctx.beginPath();
+  ctx.ellipse(qbX, qbY, 14, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#2244cc';
+  ctx.beginPath();
+  ctx.arc(qbX, qbY - 12, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('QB', qbX, qbY + 4);
+  ctx.textAlign = 'left';
+
+  // OL
+  for (let i = 0; i < 5; i++) {
+    let oly = qbY - 80 + i * 40;
+    ctx.fillStyle = '#3355cc';
+    ctx.beginPath();
+    ctx.ellipse(145, oly, 10, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawTyping() {
+  // Current typing at bottom
+  ctx.fillStyle = 'rgba(0,0,0,0.8)';
+  ctx.fillRect(0, H - 35, W, 35);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '12px monospace';
+  ctx.fillText('Typing: ', 10, H - 14);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText(currentTyping + '|', 80, H - 12);
+}
+
+function drawFlash() {
+  if (flashTimer > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${Math.min(0.5, flashTimer / 90 * 0.5)})`;
+    ctx.fillRect(W / 2 - 200, H / 2 - 25, 400, 50);
+    ctx.fillStyle = flashMsg.includes('SACK') || flashMsg.includes('TURNOVER') ? '#ef4444' : '#fbbf24';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(flashMsg, W / 2, H / 2 + 7);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawParticles() {
+  for (let p of particles) {
+    ctx.globalAlpha = p.life / 50;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 36px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('FOOTBALL TYPING BLITZ', W / 2, 80);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  ctx.fillText('Type words to block defenders!', W / 2, 120);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '12px monospace';
+  let y = 170;
+  const lines = [
+    'Defenders rush toward your QB as words',
+    'Type each word to tackle/block them',
+    'Longer words = bigger, tougher defenders',
+    'Miss a word = SACK! (3 sacks = game over)',
+    'Build combos for bonus points!',
+    'Complete drives to score touchdowns!',
+    '',
+    'Just start typing to play!'
+  ];
+  for (let line of lines) {
+    ctx.fillText(line, W / 2, y);
+    y += 22;
+  }
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText('PRESS ANY KEY TO START', W / 2, H - 50);
+  ctx.textAlign = 'left';
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#ef4444';
+  ctx.font = 'bold 36px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('GAME OVER', W / 2, 100);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px monospace';
+  ctx.fillText('Final Score: ' + score, W / 2, 160);
+  ctx.fillText('Words Typed: ' + wordsTyped, W / 2, 190);
+  ctx.fillText('Drives: ' + drive, W / 2, 220);
+  let acc = wordsTotal > 0 ? Math.round((wordsTyped / wordsTotal) * 100) : 100;
+  ctx.fillText('Accuracy: ' + acc + '%', W / 2, 250);
+
+  let rating = score >= 500 ? 'MVP!' : score >= 300 ? 'All-Pro' : score >= 150 ? 'Starter' : 'Practice Squad';
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('Rating: ' + rating, W / 2, 290);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '14px monospace';
+  ctx.fillText('PRESS SPACE TO PLAY AGAIN', W / 2, 360);
+  ctx.textAlign = 'left';
+}
+
+document.addEventListener('keydown', e => {
+  if (state === 'title') {
+    startGame();
+  } else if (state === 'gameover' && e.key === ' ') {
+    state = 'title';
+  }
+  // Keep focus on input
+  typebox.focus();
+});
+
+function gameLoop() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    drawTitle();
+  } else if (state === 'playing') {
+    update();
+    drawField();
+    drawQB();
+    for (let d of defenders) drawDefender(d);
+    drawParticles();
+    drawHUD();
+    drawTyping();
+    drawFlash();
+  } else if (state === 'gameover') {
+    drawGameOver();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

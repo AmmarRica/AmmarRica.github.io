@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stadium Food Fight</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; cursor: crosshair; }
+#overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(15,15,26,0.93); display: flex; align-items: center; justify-content: center;
+  z-index: 200; flex-direction: column; gap: 16px;
+}
+#overlay h1 { font-size: 44px; color: #fbbf24; text-shadow: 0 0 20px #fbbf2488; }
+#overlay h2 { font-size: 22px; color: #ef4444; }
+#overlay p { font-size: 14px; max-width: 520px; text-align: center; line-height: 1.6; color: #c0c0e0; }
+#overlay button {
+  background: #a78bfa; color: #0f0f1a; border: none; padding: 12px 32px;
+  font-size: 18px; font-weight: bold; border-radius: 10px; cursor: pointer;
+}
+#overlay button:hover { background: #c4b5fd; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="overlay">
+  <h1>🌭 Stadium Food Fight</h1>
+  <h2>Hot Dog Vendor Simulator</h2>
+  <p>You're a hot dog vendor in the stands! Fans raise their hands when hungry.
+  <br><br><b>Aim</b> with your mouse and <b>click to throw</b> hot dogs!<br>
+  Physics-based trajectory - aim higher for farther throws.<br><br>
+  Watch out for standing fans, beach balls, and security guards!<br>
+  Power-ups: 🟡 Mustard Gun (rapid fire) | 🥨 Pretzel Boomerang<br><br>
+  Earn money for each catch. Survive 4 quarters!</p>
+  <button onclick="startGame()">Start Vending!</button>
+</div>
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width = 900;
+const H = canvas.height = 620;
+
+let state = 'title';
+let money = 0, quarter = 1, timeLeft = 60;
+let hotdogs = [], fans = [], obstacles = [], particles = [], powerups = [];
+let mouseX = 0, mouseY = 0;
+let vendorX = 80, vendorY = H - 80;
+let rapidFire = 0, boomerangMode = 0;
+let throwCooldown = 0;
+let combo = 0, comboTimer = 0;
+let totalCatches = 0, totalThrows = 0;
+let timerInterval = null;
+let level = 1;
+
+const GRAVITY = 0.25;
+const SECTIONS = [
+  { name: 'Lower Deck', rows: 5, startY: 200, fanSize: 28 },
+  { name: 'Upper Deck', rows: 4, startY: 60, fanSize: 22 }
+];
+
+function startGame() {
+  document.getElementById('overlay').classList.add('hidden');
+  state = 'playing';
+  money = 0; quarter = 1; timeLeft = 60; level = 1;
+  hotdogs = []; fans = []; obstacles = []; particles = []; powerups = [];
+  combo = 0; comboTimer = 0; totalCatches = 0; totalThrows = 0;
+  rapidFire = 0; boomerangMode = 0;
+  generateLevel();
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(tick, 1000);
+  requestAnimationFrame(gameLoop);
+}
+
+function generateLevel() {
+  fans = [];
+  obstacles = [];
+  powerups = [];
+
+  // Generate fans in stadium seating
+  for (let sec of SECTIONS) {
+    for (let row = 0; row < sec.rows; row++) {
+      let y = sec.startY + row * (sec.fanSize + 8);
+      let count = 10 + Math.floor(Math.random() * 5);
+      for (let i = 0; i < count; i++) {
+        let x = 180 + i * ((W - 200) / count);
+        fans.push({
+          x: x + (Math.random() - 0.5) * 20,
+          y: y,
+          size: sec.fanSize,
+          hungry: false,
+          hungerTimer: 0,
+          hungerDuration: 0,
+          handUp: false,
+          caught: false,
+          color: `hsl(${Math.random() * 360}, 50%, 50%)`,
+          hatColor: `hsl(${Math.random() * 360}, 60%, 40%)`,
+          section: sec.name
+        });
+      }
+    }
+  }
+
+  // Standing obstacles
+  let obsCount = 2 + quarter;
+  for (let i = 0; i < obsCount; i++) {
+    obstacles.push({
+      type: 'standing_fan',
+      x: 250 + Math.random() * (W - 350),
+      y: 180 + Math.random() * 300,
+      w: 30, h: 50,
+      vx: (Math.random() - 0.5) * 1.5,
+      color: `hsl(${Math.random() * 360}, 50%, 50%)`
+    });
+  }
+
+  // Beach balls
+  for (let i = 0; i < Math.min(quarter, 3); i++) {
+    obstacles.push({
+      type: 'beach_ball',
+      x: 300 + Math.random() * 400,
+      y: 100 + Math.random() * 300,
+      r: 15,
+      vx: (Math.random() - 0.5) * 3,
+      vy: (Math.random() - 0.5) * 2,
+      color: '#ff6b6b'
+    });
+  }
+
+  // Security guard
+  if (quarter >= 2) {
+    obstacles.push({
+      type: 'security',
+      x: 400 + Math.random() * 300,
+      y: 350 + Math.random() * 100,
+      w: 35, h: 55,
+      vx: (Math.random() < 0.5 ? 1 : -1) * (1 + Math.random()),
+      color: '#333366'
+    });
+  }
+
+  // Power-ups
+  if (Math.random() < 0.5) {
+    powerups.push({
+      type: 'mustard',
+      x: 300 + Math.random() * 400,
+      y: 150 + Math.random() * 250,
+      r: 12, active: true
+    });
+  }
+  if (Math.random() < 0.4) {
+    powerups.push({
+      type: 'pretzel',
+      x: 300 + Math.random() * 400,
+      y: 150 + Math.random() * 250,
+      r: 12, active: true
+    });
+  }
+}
+
+function tick() {
+  if (state !== 'playing') return;
+  timeLeft--;
+  if (timeLeft <= 0) {
+    quarter++;
+    if (quarter > 4) {
+      endGame();
+      return;
+    }
+    timeLeft = 60;
+    level++;
+    generateLevel();
+  }
+}
+
+function endGame() {
+  state = 'gameover';
+  if (timerInterval) clearInterval(timerInterval);
+  let ov = document.getElementById('overlay');
+  ov.classList.remove('hidden');
+  let accuracy = totalThrows > 0 ? Math.round(totalCatches / totalThrows * 100) : 0;
+  ov.innerHTML = `
+    <h1>🌭 Game Over!</h1>
+    <h2>Total Earnings: $${money}</h2>
+    <p>Catches: ${totalCatches} | Throws: ${totalThrows} | Accuracy: ${accuracy}%</p>
+    <button onclick="startGame()">Play Again</button>
+  `;
+}
+
+function throwHotdog(tx, ty) {
+  if (throwCooldown > 0 && rapidFire <= 0) return;
+  throwCooldown = rapidFire > 0 ? 5 : 20;
+  totalThrows++;
+
+  let dx = tx - vendorX, dy = ty - vendorY;
+  let dist = Math.sqrt(dx * dx + dy * dy);
+  let power = Math.min(dist / 40, 18);
+  let vx = (dx / dist) * power;
+  let vy = (dy / dist) * power;
+
+  hotdogs.push({
+    x: vendorX, y: vendorY,
+    vx, vy,
+    rotation: 0,
+    boomerang: boomerangMode > 0,
+    life: 180
+  });
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  let rect = canvas.getBoundingClientRect();
+  mouseX = (e.clientX - rect.left) * (W / rect.width);
+  mouseY = (e.clientY - rect.top) * (H / rect.height);
+});
+
+canvas.addEventListener('click', (e) => {
+  if (state !== 'playing') return;
+  let rect = canvas.getBoundingClientRect();
+  let tx = (e.clientX - rect.left) * (W / rect.width);
+  let ty = (e.clientY - rect.top) * (H / rect.height);
+  throwHotdog(tx, ty);
+});
+
+function spawnParticles(x, y, color, count, text) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 4, vy: -2 - Math.random() * 3,
+      life: 30 + Math.random() * 30, maxLife: 60, color, size: 3 + Math.random() * 3,
+      text: i === 0 ? text : null
+    });
+  }
+}
+
+function update() {
+  if (throwCooldown > 0) throwCooldown--;
+  if (rapidFire > 0) rapidFire--;
+  if (boomerangMode > 0) boomerangMode--;
+  if (comboTimer > 0) { comboTimer--; if (comboTimer <= 0) combo = 0; }
+
+  // Make random fans hungry
+  for (let f of fans) {
+    if (!f.hungry && !f.caught && Math.random() < 0.005) {
+      f.hungry = true;
+      f.handUp = true;
+      f.hungerDuration = 120 + Math.floor(Math.random() * 180);
+      f.hungerTimer = f.hungerDuration;
+    }
+    if (f.hungry) {
+      f.hungerTimer--;
+      if (f.hungerTimer <= 0) {
+        f.hungry = false;
+        f.handUp = false;
+      }
+    }
+  }
+
+  // Move obstacles
+  for (let o of obstacles) {
+    if (o.type === 'standing_fan' || o.type === 'security') {
+      o.x += o.vx;
+      if (o.x < 200 || o.x > W - 50) o.vx *= -1;
+    }
+    if (o.type === 'beach_ball') {
+      o.x += o.vx;
+      o.y += o.vy;
+      if (o.x < 150 || o.x > W - 20) o.vx *= -1;
+      if (o.y < 50 || o.y > 450) o.vy *= -1;
+    }
+  }
+
+  // Update hotdogs
+  for (let i = hotdogs.length - 1; i >= 0; i--) {
+    let h = hotdogs[i];
+    h.x += h.vx;
+    h.y += h.vy;
+    h.vy += GRAVITY;
+    h.rotation += 0.15;
+    h.life--;
+
+    if (h.boomerang && h.life < 120) {
+      let dx = vendorX - h.x, dy = vendorY - h.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      h.vx += (dx / dist) * 0.3;
+      h.vy += (dy / dist) * 0.3;
+    }
+
+    // Check fan catches
+    for (let f of fans) {
+      if (f.hungry && f.handUp && !f.caught) {
+        let dx = h.x - f.x, dy = h.y - (f.y - 10);
+        if (Math.sqrt(dx * dx + dy * dy) < f.size) {
+          f.caught = true;
+          f.hungry = false;
+          f.handUp = false;
+          hotdogs.splice(i, 1);
+          combo++;
+          comboTimer = 90;
+          let reward = 5 * combo;
+          money += reward;
+          totalCatches++;
+          spawnParticles(f.x, f.y, '#22c55e', 6, '+$' + reward);
+          if (combo > 1) spawnParticles(f.x, f.y - 20, '#fbbf24', 3, combo + 'x COMBO!');
+          break;
+        }
+      }
+    }
+
+    // Check obstacle collision
+    let removed = false;
+    for (let o of obstacles) {
+      if (o.type === 'beach_ball') {
+        let dx = h.x - o.x, dy = h.y - o.y;
+        if (Math.sqrt(dx * dx + dy * dy) < o.r + 8) {
+          h.vx *= -0.5;
+          h.vy *= -0.8;
+          o.vx += h.vx * 0.3;
+          spawnParticles(h.x, h.y, '#ff6b6b', 4);
+        }
+      } else {
+        if (h.x > o.x - o.w / 2 && h.x < o.x + o.w / 2 &&
+            h.y > o.y - o.h && h.y < o.y) {
+          hotdogs.splice(i, 1);
+          spawnParticles(h.x, h.y, '#ef4444', 5, 'BLOCKED!');
+          removed = true;
+          break;
+        }
+      }
+    }
+    if (removed) continue;
+
+    // Check powerup collision
+    for (let p of powerups) {
+      if (!p.active) continue;
+      let dx = h.x - p.x, dy = h.y - p.y;
+      if (Math.sqrt(dx * dx + dy * dy) < p.r + 8) {
+        p.active = false;
+        if (p.type === 'mustard') {
+          rapidFire = 300;
+          spawnParticles(p.x, p.y, '#fbbf24', 10, 'RAPID FIRE!');
+        } else {
+          boomerangMode = 300;
+          spawnParticles(p.x, p.y, '#8B6914', 10, 'BOOMERANG!');
+        }
+      }
+    }
+
+    // Off screen
+    if (h.y > H + 20 || h.x > W + 20 || h.x < -20 || h.life <= 0) {
+      hotdogs.splice(i, 1);
+    }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawStadium() {
+  // Stadium background - rows of seats
+  for (let y = 50; y < H - 100; y += 12) {
+    let shade = 30 + (y / H) * 30;
+    ctx.fillStyle = `hsl(240, 20%, ${shade}%)`;
+    ctx.fillRect(140, y, W - 160, 10);
+  }
+
+  // Aisle
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, 140, H);
+
+  // Vendor area
+  ctx.fillStyle = '#2a1a0a';
+  ctx.fillRect(0, H - 120, 140, 120);
+}
+
+function drawVendor() {
+  let vx = vendorX, vy = vendorY;
+  // Body
+  ctx.fillStyle = '#ff4444';
+  ctx.fillRect(vx - 12, vy - 25, 24, 30);
+  // Head
+  ctx.fillStyle = '#ffcc88';
+  ctx.beginPath();
+  ctx.arc(vx, vy - 32, 10, 0, Math.PI * 2);
+  ctx.fill();
+  // Hat
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(vx - 12, vy - 42, 24, 6);
+  ctx.fillRect(vx - 8, vy - 50, 16, 10);
+  // Tray
+  ctx.fillStyle = '#888';
+  ctx.fillRect(vx - 20, vy - 5, 40, 5);
+  // Hot dogs on tray
+  ctx.fillStyle = '#cc8800';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(vx - 15 + i * 12, vy - 9, 8, 4);
+  }
+
+  // Aim line
+  let dx = mouseX - vx, dy = mouseY - vy;
+  let dist = Math.sqrt(dx * dx + dy * dy);
+  ctx.strokeStyle = '#ffffff44';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(vx, vy - 5);
+
+  // Draw trajectory preview
+  let pvx = (dx / dist) * Math.min(dist / 40, 18);
+  let pvy = (dy / dist) * Math.min(dist / 40, 18);
+  let px = vx, py = vy;
+  for (let t = 0; t < 20; t++) {
+    px += pvx;
+    py += pvy;
+    pvy += GRAVITY;
+    ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Power indicator
+  let power = Math.min(dist / 40, 18);
+  ctx.fillStyle = power > 12 ? '#ef4444' : power > 6 ? '#fbbf24' : '#22c55e';
+  ctx.fillRect(vx - 20, vy + 12, (power / 18) * 40, 4);
+  ctx.strokeStyle = '#ffffff44';
+  ctx.strokeRect(vx - 20, vy + 12, 40, 4);
+}
+
+function drawFans() {
+  for (let f of fans) {
+    // Seat
+    ctx.fillStyle = '#3a3a5a';
+    ctx.fillRect(f.x - f.size / 2 - 2, f.y - 2, f.size + 4, f.size / 2 + 4);
+
+    // Body
+    ctx.fillStyle = f.color;
+    ctx.fillRect(f.x - f.size / 3, f.y - f.size / 2, f.size * 2 / 3, f.size / 2);
+
+    // Head
+    ctx.fillStyle = '#ffcc88';
+    ctx.beginPath();
+    ctx.arc(f.x, f.y - f.size / 2 - 6, f.size / 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hat
+    ctx.fillStyle = f.hatColor;
+    ctx.fillRect(f.x - f.size / 3, f.y - f.size / 2 - 12, f.size * 2 / 3, 5);
+
+    // Raised hand
+    if (f.handUp) {
+      ctx.fillStyle = '#ffcc88';
+      ctx.fillRect(f.x + f.size / 4, f.y - f.size - 8, 5, 20);
+      // Waving animation
+      let wave = Math.sin(Date.now() / 150 + f.x) * 5;
+      ctx.fillRect(f.x + f.size / 4 - 3 + wave, f.y - f.size - 12, 10, 6);
+
+      // Hunger indicator
+      let pct = f.hungerTimer / f.hungerDuration;
+      ctx.fillStyle = pct > 0.5 ? '#22c55e' : pct > 0.25 ? '#fbbf24' : '#ef4444';
+      ctx.fillRect(f.x - 8, f.y - f.size - 18, 16 * pct, 3);
+    }
+
+    // Caught animation
+    if (f.caught) {
+      ctx.fillStyle = '#22c55e88';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('😋', f.x, f.y - f.size / 2 - 15);
+    }
+  }
+}
+
+function drawObstacles() {
+  for (let o of obstacles) {
+    if (o.type === 'standing_fan') {
+      ctx.fillStyle = o.color;
+      ctx.fillRect(o.x - o.w / 2, o.y - o.h, o.w, o.h);
+      ctx.fillStyle = '#ffcc88';
+      ctx.beginPath();
+      ctx.arc(o.x, o.y - o.h - 8, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ff000044';
+      ctx.font = '10px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('STANDING', o.x, o.y + 12);
+    } else if (o.type === 'beach_ball') {
+      ctx.fillStyle = '#ff6b6b';
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r, 0, Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = '#33333344';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    } else if (o.type === 'security') {
+      ctx.fillStyle = '#333366';
+      ctx.fillRect(o.x - o.w / 2, o.y - o.h, o.w, o.h);
+      ctx.fillStyle = '#ffcc88';
+      ctx.beginPath();
+      ctx.arc(o.x, o.y - o.h - 8, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 9px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('SECURITY', o.x, o.y - o.h + 15);
+    }
+  }
+}
+
+function drawHotdogs() {
+  for (let h of hotdogs) {
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.rotate(h.rotation);
+    // Bun
+    ctx.fillStyle = '#cc8800';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 10, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Dog
+    ctx.fillStyle = '#ff4444';
+    ctx.fillRect(-7, -2, 14, 3);
+    // Mustard
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-6, -1);
+    for (let i = 0; i < 5; i++) ctx.lineTo(-6 + i * 3, -1 + (i % 2 ? -2 : 0));
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (let p of particles) {
+    let alpha = p.life / p.maxLife;
+    if (p.text) {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(p.text, p.x, p.y);
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#0f0f1aDD';
+  ctx.fillRect(0, 0, W, 42);
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 18px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Q${quarter}`, 160, 28);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText(`Time: ${timeLeft}s`, 220, 28);
+  ctx.fillText(`Money: $${money}`, 380, 28);
+  ctx.fillText(`Catches: ${totalCatches}`, 550, 28);
+  if (combo > 1) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillText(`${combo}x COMBO`, 720, 28);
+  }
+
+  // Power-up indicators
+  if (rapidFire > 0) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText('🟡 RAPID FIRE: ' + Math.ceil(rapidFire / 60) + 's', 10, H - 10);
+  }
+  if (boomerangMode > 0) {
+    ctx.fillStyle = '#8B6914';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText('🥨 BOOMERANG: ' + Math.ceil(boomerangMode / 60) + 's', 10, H - 30);
+  }
+}
+
+function drawPowerups() {
+  for (let p of powerups) {
+    if (!p.active) continue;
+    let pulse = Math.sin(Date.now() / 200) * 3;
+    ctx.fillStyle = p.type === 'mustard' ? '#fbbf2488' : '#8B691488';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r + pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.type === 'mustard' ? '🟡' : '🥨', p.x, p.y + 5);
+  }
+}
+
+function gameLoop() {
+  if (state !== 'playing') return;
+
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  drawStadium();
+  drawFans();
+  drawObstacles();
+  drawPowerups();
+  drawHotdogs();
+  drawVendor();
+  drawParticles();
+  drawHUD();
+
+  update();
+  requestAnimationFrame(gameLoop);
+}
+</script>
+<script src="../header.js"></script>
+</body>
+</html>
