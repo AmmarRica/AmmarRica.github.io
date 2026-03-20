@@ -106,6 +106,38 @@
       helpBtn.classList.toggle('active');
     });
 
+    const fsBtn = header.querySelector('.gad-fullscreen');
+    if (fsBtn) {
+      function updateFsIcon() {
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement ||
+                        document.mozFullScreenElement || document.msFullscreenElement);
+        fsBtn.innerHTML = isFs ? '&#x2715;' : '&#x26F6;';
+        fsBtn.setAttribute('aria-label', isFs ? 'Exit fullscreen' : 'Toggle fullscreen');
+      }
+      fsBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement ||
+                        document.mozFullScreenElement || document.msFullscreenElement);
+        if (!isFs) {
+          const el = document.documentElement;
+          if (el.requestFullscreen) el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+          else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
+          else if (el.msRequestFullscreen) el.msRequestFullscreen();
+        } else {
+          if (document.exitFullscreen) document.exitFullscreen();
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+          else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+          else if (document.msExitFullscreen) document.msExitFullscreen();
+        }
+      });
+      document.addEventListener('fullscreenchange', updateFsIcon);
+      document.addEventListener('webkitfullscreenchange', updateFsIcon);
+      document.addEventListener('mozfullscreenchange', updateFsIcon);
+      document.addEventListener('MSFullscreenChange', updateFsIcon);
+    }
+
     // Insert into page
     if (spacer) document.body.insertBefore(spacer, document.body.firstChild);
     document.body.insertBefore(header, document.body.firstChild);
