@@ -796,12 +796,12 @@
     { from: 'isaac',         to: 'hades-game',   label: 'roguelite influence' },
     { from: 'slay-spire',    to: 'vamp-surv',    label: 'roguelite crossover' },
     // FPS lineage key bridges
+    { from: 'wolfenstein',   to: 'doom',         label: 'id Software evolution' },
     { from: 'doom',          to: 'quake',        label: 'id Software evolution' },
     { from: 'quake',         to: 'half-life',    label: 'FPS evolution' },
     { from: 'half-life',     to: 'hl2',          label: 'sequel' },
-    { from: 'doom',          to: 'wolfenstein',  label: 'predecessor' },
     // Minecraft ancestry
-    { from: 'terraria',      to: 'minecraft',    label: '2D inspiration' },
+    { from: 'minecraft',     to: 'terraria',     label: 'sandbox inspiration' },
     // Fighting game key bridges
     { from: 'sf2',           to: 'mk',           label: 'fighting game boom' },
     { from: 'sf2',           to: 'kof94',        label: 'influenced' },
