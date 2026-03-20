@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pirate Football</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 1.1em; }
+nav a:hover { color: #c4b5fd; }
+#game { position: relative; width: 860px; margin: 0 auto; }
+canvas { display: block; border: 2px solid #2a2a4a; border-radius: 4px; margin: 0 auto; }
+#sidebar { display: flex; gap: 15px; margin-top: 10px; justify-content: center; flex-wrap: wrap; }
+.panel { background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 12px; min-width: 200px; }
+.panel h3 { color: #a78bfa; margin-bottom: 8px; font-size: 0.95em; }
+.panel .stat { color: #8888cc; font-size: 0.85em; margin-bottom: 3px; }
+.panel .stat span { color: #e0e0ff; float: right; }
+#plays { display: flex; gap: 8px; margin-top: 10px; justify-content: center; flex-wrap: wrap; }
+.play-btn { padding: 10px 18px; font-size: 0.95em; background: #1a1a2e; color: #e0e0ff; border: 2px solid #444; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+.play-btn:hover { background: #2a2a4e; border-color: #a78bfa; }
+.play-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.play-btn.selected { border-color: #a78bfa; background: #2a1a4e; }
+#message { text-align: center; margin-top: 10px; font-size: 1.1em; min-height: 2.5em; color: #ffcc00; }
+#overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15,15,26,0.94); z-index: 20; }
+#overlay h1 { font-size: 2.8em; color: #a78bfa; margin-bottom: 10px; }
+#overlay h2 { font-size: 1.3em; color: #ffcc00; margin-bottom: 15px; }
+#overlay .sub { color: #8888cc; margin-bottom: 5px; font-size: 0.95em; max-width: 600px; text-align: center; }
+#overlay button { padding: 14px 36px; font-size: 1.2em; background: #7c3aed; color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-top: 15px; }
+#overlay button:hover { background: #6d28d9; }
+.hidden { display: none !important; }
+#score-bar { display: flex; justify-content: space-between; align-items: center; background: #1a1a2e; padding: 8px 20px; border-radius: 8px; margin-bottom: 8px; font-size: 1.1em; }
+#score-bar .team { font-weight: bold; }
+#score-bar .pirates { color: #a78bfa; }
+#score-bar .monsters { color: #ef4444; }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="score-bar">
+    <span class="team pirates">Pirates: <span id="pScore">0</span></span>
+    <span id="downInfo" style="color:#8888cc;">1st & 10 | Own 20</span>
+    <span class="team monsters">Opponents: <span id="oScore">0</span></span>
+  </div>
+  <canvas id="c" width="860" height="360"></canvas>
+  <div id="message">Choose your play, Captain!</div>
+  <div id="plays"></div>
+  <div id="sidebar">
+    <div class="panel" id="crewPanel">
+      <h3>Your Crew</h3>
+    </div>
+    <div class="panel" id="shipPanel">
+      <h3>Ship Status</h3>
+    </div>
+    <div class="panel" id="powerPanel">
+      <h3>Power-Ups</h3>
+    </div>
+  </div>
+</div>
+<div id="overlay">
+  <h1>Pirate Football</h1>
+  <h2>Arrr! Football on the High Seas!</h2>
+  <div class="sub">Turn-based football on a rocking pirate ship!</div>
+  <div class="sub">Your crew has special pirate abilities:</div>
+  <div class="sub">Hook Hand = catch bonus | Peg Leg = unpredictable runs</div>
+  <div class="sub">Parrot = reveals defense | Eyepatch = intimidation</div>
+  <div class="sub">Watch out for cannonballs and the rocking ship!</div>
+  <div class="sub">Win 4 games to face the Sea Monster Boss!</div>
+  <button id="startBtn">SET SAIL!</button>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const messageEl = document.getElementById('message');
+const playsEl = document.getElementById('plays');
+const crewPanel = document.getElementById('crewPanel');
+const shipPanel = document.getElementById('shipPanel');
+const powerPanel = document.getElementById('powerPanel');
+const pScoreEl = document.getElementById('pScore');
+const oScoreEl = document.getElementById('oScore');
+const downInfoEl = document.getElementById('downInfo');
+
+const W = 860, H = 360;
+let gameState = 'title';
+let playerScore = 0, opponentScore = 0;
+let down = 1, yardsToGo = 10, fieldPos = 20;
+let shipRock = 0, shipRockSpeed = 0.8, shipRockAmp = 0;
+let cannonballs = [];
+let treasures = [];
+let turnPhase = 'choose'; // choose, animating, result
+let animTimer = 0;
+let gamesWon = 0;
+let isBoss = false;
+let possession = 'player'; // player or opponent
+let defenseRevealed = false;
+let selectedPlay = null;
+let opponentDefense = null;
+let resultText = '';
+let particles = [];
+
+const CREW = [
+  { name: 'Captain Hookbeard', ability: 'Hook Hand', desc: '+30% catch bonus', icon: '🪝', stat: 0 },
+  { name: 'Pegleg Pete', ability: 'Peg Leg', desc: 'Unpredictable runs (-5 to +15)', icon: '🦿', stat: 0 },
+  { name: 'Polly the Parrot', ability: 'Parrot Scout', desc: 'Reveals defensive play', icon: '🦜', stat: 3 },
+  { name: 'One-Eye Jack', ability: 'Eyepatch', desc: 'Intimidation: -10% defense', icon: '🏴‍☠️', stat: 0 }
+];
+
+const PLAYS = [
+  { name: 'Cannon Pass', type: 'pass', icon: '💣', baseYards: 15, risk: 0.45, desc: 'Long pass, risky on rocking ship' },
+  { name: 'Plank Run', type: 'run', icon: '🏃', baseYards: 5, risk: 0.2, desc: 'Safe run up the plank' },
+  { name: 'Treasure Sweep', type: 'run', icon: '💰', baseYards: 8, risk: 0.3, desc: 'Sweep around the mast' },
+  { name: 'Hail Kraken', type: 'pass', icon: '🐙', baseYards: 30, risk: 0.65, desc: 'Deep bomb! Very risky' },
+  { name: 'Parrot Scout', type: 'special', icon: '🦜', baseYards: 0, risk: 0, desc: 'Reveal defensive play (uses 1 charge)', charges: true },
+  { name: 'Punt', type: 'punt', icon: '🦵', baseYards: 40, risk: 0.1, desc: 'Punt the ball away' }
+];
+
+const DEFENSES = ['Broadside Blitz', 'Anchor Coverage', 'Man-to-Plank', 'Crow\'s Nest Zone'];
+const DEF_STRENGTHS = { 'Broadside Blitz': { run: 0.3, pass: -0.1 }, 'Anchor Coverage': { run: -0.1, pass: 0.2 }, 'Man-to-Plank': { run: 0.1, pass: 0.15 }, "Crow's Nest Zone": { run: -0.05, pass: 0.25 } };
+
+function initGame() {
+  playerScore = 0; opponentScore = 0;
+  down = 1; yardsToGo = 10; fieldPos = 20;
+  shipRockAmp = 3 + gamesWon * 1.5;
+  cannonballs = [];
+  treasures = [];
+  turnPhase = 'choose';
+  possession = 'player';
+  defenseRevealed = false;
+  CREW[2].stat = 3; // Reset parrot charges
+  particles = [];
+  spawnTreasures();
+  updateUI();
+  showPlays();
+}
+
+function spawnTreasures() {
+  treasures = [];
+  for (let i = 0; i < 3; i++) {
+    treasures.push({
+      yardLine: 30 + Math.floor(Math.random() * 60),
+      type: ['extraYards', 'hookBoost', 'cannonShield'][i % 3],
+      active: true
+    });
+  }
+}
+
+function showPlays() {
+  if (possession !== 'player') {
+    playsEl.innerHTML = '';
+    return;
+  }
+  playsEl.innerHTML = '';
+  PLAYS.forEach((play, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'play-btn';
+    btn.innerHTML = `${play.icon} ${play.name}`;
+    if (play.charges && CREW[2].stat <= 0) btn.disabled = true;
+    if (play.type === 'punt' && down < 4) btn.style.opacity = '0.6';
+    btn.onclick = () => selectPlay(i);
+    playsEl.appendChild(btn);
+  });
+}
+
+function selectPlay(idx) {
+  if (turnPhase !== 'choose' || possession !== 'player') return;
+  selectedPlay = PLAYS[idx];
+
+  if (selectedPlay.type === 'special') {
+    if (CREW[2].stat > 0) {
+      CREW[2].stat--;
+      opponentDefense = DEFENSES[Math.floor(Math.random() * DEFENSES.length)];
+      defenseRevealed = true;
+      messageEl.textContent = `🦜 Parrot reveals: "${opponentDefense}"! Now choose your real play!`;
+      updateUI();
+      showPlays();
+    }
+    return;
+  }
+
+  turnPhase = 'animating';
+  if (!defenseRevealed) {
+    opponentDefense = DEFENSES[Math.floor(Math.random() * DEFENSES.length)];
+  }
+  defenseRevealed = false;
+  animTimer = 2;
+  playsEl.innerHTML = '<div style="color:#8888cc;padding:10px;">Play in progress...</div>';
+
+  // Spawn cannonball during play
+  if (Math.random() < 0.3 + gamesWon * 0.08) {
+    cannonballs.push({ x: Math.random() * W, y: -20, vy: 100 + Math.random() * 50, active: true });
+  }
+
+  setTimeout(() => resolvePlay(), 2000);
+}
+
+function resolvePlay() {
+  const play = selectedPlay;
+  const def = opponentDefense;
+  const defMod = DEF_STRENGTHS[def];
+  const rockPenalty = shipRockAmp * 0.03;
+
+  let yards = 0;
+  let success = true;
+  let msg = '';
+
+  if (play.type === 'punt') {
+    const puntDist = play.baseYards + Math.floor(Math.random() * 20) - 5;
+    fieldPos = Math.max(5, 100 - (fieldPos + puntDist));
+    down = 1; yardsToGo = 10;
+    switchPossession();
+    msg = `Punted ${puntDist} yards! Opponents take over.`;
+  } else {
+    let risk = play.risk + (play.type === 'pass' ? rockPenalty : rockPenalty * 0.3);
+    risk += defMod[play.type === 'pass' ? 'pass' : 'run'] || 0;
+    // Eyepatch intimidation
+    risk -= 0.1;
+    risk = Math.max(0.05, Math.min(0.85, risk));
+
+    // Check for cannonball interference
+    const cannonHit = cannonballs.some(c => c.active);
+    if (cannonHit && Math.random() < 0.3) {
+      risk += 0.2;
+      msg += '💥 CANNONBALL INTERFERENCE! ';
+    }
+
+    if (Math.random() < risk) {
+      // Failed
+      if (play.type === 'pass') {
+        yards = 0;
+        msg += `Incomplete pass! ${play.name} failed. (${def})`;
+      } else {
+        yards = -2 + Math.floor(Math.random() * 3);
+        msg += `${play.name} stuffed for ${yards} yards. (${def})`;
+      }
+    } else {
+      // Success
+      yards = play.baseYards + Math.floor(Math.random() * 10) - 3;
+      // Peg Leg bonus for runs
+      if (play.type === 'run') yards += Math.floor(Math.random() * 10) - 3;
+      // Hook Hand bonus for passes
+      if (play.type === 'pass') yards += Math.floor(Math.random() * 5);
+      // Treasure check
+      treasures.forEach(t => {
+        if (t.active && fieldPos <= t.yardLine && fieldPos + yards >= t.yardLine) {
+          t.active = false;
+          if (t.type === 'extraYards') { yards += 10; msg += '💰 TREASURE! +10 yards! '; }
+          else if (t.type === 'hookBoost') { CREW[2].stat++; msg += '💰 TREASURE! +1 Parrot charge! '; }
+          else { msg += '💰 TREASURE! Cannonball shield! '; }
+        }
+      });
+      msg += `${play.name}: ${yards} yards! `;
+      if (yards >= 20) msg += 'WHAT A PLAY! ';
+    }
+
+    fieldPos += yards;
+
+    // Touchdown check
+    if (fieldPos >= 100) {
+      playerScore += 7;
+      msg += '🏴‍☠️ TOUCHDOWN! ARRR! (+7)';
+      fieldPos = 20; down = 1; yardsToGo = 10;
+      switchPossession();
+    } else {
+      yardsToGo -= yards;
+      if (yardsToGo <= 0) {
+        down = 1; yardsToGo = 10;
+        msg += ' First down!';
+      } else {
+        down++;
+        if (down > 4) {
+          msg += ' Turnover on downs!';
+          fieldPos = 100 - fieldPos;
+          down = 1; yardsToGo = 10;
+          switchPossession();
+        }
+      }
+    }
+
+    if (fieldPos <= 0) {
+      msg += ' Safety! Opponents score 2!';
+      opponentScore += 2;
+      fieldPos = 20; down = 1; yardsToGo = 10;
+    }
+  }
+
+  messageEl.textContent = msg;
+  cannonballs = [];
+  turnPhase = 'choose';
+  updateUI();
+
+  if (possession === 'opponent') {
+    setTimeout(opponentTurn, 1500);
+  } else {
+    showPlays();
+  }
+
+  checkGameEnd();
+}
+
+function switchPossession() {
+  possession = possession === 'player' ? 'opponent' : 'player';
+}
+
+function opponentTurn() {
+  if (gameState !== 'playing') return;
+  turnPhase = 'animating';
+  playsEl.innerHTML = '<div style="color:#ef4444;padding:10px;">Opponents are playing...</div>';
+  messageEl.textContent = isBoss ? '🐙 The Sea Monster attacks!' : 'Opponents choosing play...';
+
+  setTimeout(() => {
+    const isRun = Math.random() > 0.45;
+    let yards = isRun ? (3 + Math.floor(Math.random() * 8)) : (Math.random() < 0.4 ? 0 : 8 + Math.floor(Math.random() * 15));
+    const rockPenalty = Math.random() < shipRockAmp * 0.04;
+    if (rockPenalty) yards = Math.floor(yards * 0.3);
+    if (isBoss) yards = Math.floor(yards * 1.3);
+
+    // Eyepatch intimidation
+    if (Math.random() < 0.15) {
+      yards = Math.max(0, yards - 3);
+      messageEl.textContent = `🏴‍☠️ Intimidated! Opponent gains only ${yards} yards.`;
+    } else {
+      messageEl.textContent = `Opponent ${isRun ? 'runs' : 'passes'} for ${yards} yards.`;
+    }
+
+    fieldPos += yards;
+
+    if (fieldPos >= 100) {
+      opponentScore += 7;
+      messageEl.textContent += ' OPPONENT TOUCHDOWN! (+7)';
+      fieldPos = 20; down = 1; yardsToGo = 10;
+      switchPossession();
+    } else {
+      yardsToGo -= yards;
+      if (yardsToGo <= 0) {
+        down = 1; yardsToGo = 10;
+      } else {
+        down++;
+        if (down > 4) {
+          fieldPos = 100 - fieldPos;
+          down = 1; yardsToGo = 10;
+          switchPossession();
+          messageEl.textContent += ' Turnover! Your ball!';
+        }
+      }
+    }
+
+    turnPhase = 'choose';
+    updateUI();
+
+    if (possession === 'opponent' && gameState === 'playing') {
+      setTimeout(opponentTurn, 1500);
+    } else {
+      showPlays();
+    }
+
+    checkGameEnd();
+  }, 1500);
+}
+
+let totalTurns = 0;
+function checkGameEnd() {
+  totalTurns++;
+  if (totalTurns >= 30) {
+    if (playerScore > opponentScore) {
+      gamesWon++;
+      if (gamesWon >= 4 && !isBoss) {
+        messageEl.textContent = '🐙 THE SEA MONSTER APPROACHES! Championship game!';
+        isBoss = true;
+        setTimeout(() => { totalTurns = 0; initGame(); }, 2000);
+      } else if (isBoss) {
+        gameState = 'gameover';
+        showWin();
+      } else {
+        messageEl.textContent = `Victory! ${gamesWon}/4 wins toward the championship!`;
+        setTimeout(() => { totalTurns = 0; initGame(); }, 2000);
+      }
+    } else {
+      gameState = 'gameover';
+      showLoss();
+    }
+  }
+}
+
+function showWin() {
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `
+    <h1>🏴‍☠️ CHAMPION! 🏴‍☠️</h1>
+    <h2>You defeated the Sea Monster!</h2>
+    <div class="sub">Final: Pirates ${playerScore} - ${opponentScore} Sea Monster</div>
+    <div class="sub">The treasure is yours, Captain!</div>
+    <button id="restartBtn">SAIL AGAIN</button>
+  `;
+  document.getElementById('restartBtn').onclick = fullRestart;
+}
+
+function showLoss() {
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `
+    <h1>DEFEATED!</h1>
+    <h2>Your crew has been bested.</h2>
+    <div class="sub">Final: Pirates ${playerScore} - ${opponentScore} Opponents</div>
+    <div class="sub">Games Won: ${gamesWon}/4</div>
+    <button id="restartBtn">TRY AGAIN</button>
+  `;
+  document.getElementById('restartBtn').onclick = fullRestart;
+}
+
+function fullRestart() {
+  gamesWon = 0; isBoss = false; totalTurns = 0;
+  startGame();
+}
+
+function updateUI() {
+  pScoreEl.textContent = playerScore;
+  oScoreEl.textContent = opponentScore;
+  downInfoEl.textContent = `${['1st','2nd','3rd','4th'][down-1]} & ${yardsToGo} | ${possession === 'player' ? 'Own' : 'Opp'} ${fieldPos}`;
+
+  crewPanel.innerHTML = '<h3>Your Crew</h3>' + CREW.map(c =>
+    `<div class="stat">${c.icon} ${c.name}<span>${c.ability}${c.stat ? ` (${c.stat})` : ''}</span></div>`
+  ).join('');
+
+  shipPanel.innerHTML = `<h3>Ship Status</h3>
+    <div class="stat">Rock Intensity<span>${shipRockAmp.toFixed(1)}</span></div>
+    <div class="stat">Games Won<span>${gamesWon}/4</span></div>
+    <div class="stat">Round<span>${totalTurns}/30</span></div>
+    <div class="stat">Opponent<span>${isBoss ? '🐙 Sea Monster' : `Team ${gamesWon+1}`}</span></div>`;
+
+  powerPanel.innerHTML = '<h3>Treasures</h3>' + treasures.map(t =>
+    `<div class="stat">${t.active ? '💰' : '⬛'} ${t.type} (yd ${t.yardLine})<span>${t.active ? 'Active' : 'Claimed'}</span></div>`
+  ).join('');
+}
+
+function drawField() {
+  ctx.save();
+  ctx.translate(W/2, H/2);
+  shipRock = Math.sin(Date.now() * 0.001 * shipRockSpeed) * shipRockAmp;
+  ctx.rotate(shipRock * Math.PI / 180);
+  ctx.translate(-W/2, -H/2);
+
+  // Ocean
+  ctx.fillStyle = '#0a2a4a';
+  ctx.fillRect(-50, -50, W+100, H+100);
+
+  // Ship deck
+  ctx.fillStyle = '#5c3a1a';
+  ctx.beginPath();
+  ctx.moveTo(60, 50);
+  ctx.lineTo(W-60, 50);
+  ctx.lineTo(W-30, H-50);
+  ctx.lineTo(30, H-50);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#3a2210';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // Planks
+  ctx.strokeStyle = 'rgba(90,55,25,0.5)';
+  ctx.lineWidth = 1;
+  for (let y = 60; y < H-50; y += 15) {
+    ctx.beginPath();
+    ctx.moveTo(65, y);
+    ctx.lineTo(W-65, y);
+    ctx.stroke();
+  }
+
+  // Field lines on deck
+  const fLeft = 80, fRight = W - 80, fTop = 60, fBot = H - 60;
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const x = fLeft + (fRight - fLeft) * i / 10;
+    ctx.beginPath(); ctx.moveTo(x, fTop); ctx.lineTo(x, fBot); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '9px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(i * 10, x, fBot + 12);
+  }
+
+  // Endzones
+  ctx.fillStyle = 'rgba(100,0,200,0.2)';
+  ctx.fillRect(fLeft, fTop, (fRight-fLeft)*0.1, fBot-fTop);
+  ctx.fillStyle = 'rgba(200,0,0,0.2)';
+  ctx.fillRect(fRight - (fRight-fLeft)*0.1, fTop, (fRight-fLeft)*0.1, fBot-fTop);
+
+  // Ball position marker
+  const ballXPos = fLeft + (fRight - fLeft) * fieldPos / 100;
+  ctx.fillStyle = '#ffcc00';
+  ctx.beginPath();
+  ctx.arc(ballXPos, H/2, 6, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#8B4513';
+  ctx.beginPath();
+  ctx.arc(ballXPos, H/2, 4, 0, Math.PI*2);
+  ctx.fill();
+
+  // First down marker
+  const fdX = fLeft + (fRight - fLeft) * Math.min(100, fieldPos + yardsToGo) / 100;
+  ctx.strokeStyle = '#ffcc00';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5,3]);
+  ctx.beginPath();
+  ctx.moveTo(fdX, fTop);
+  ctx.lineTo(fdX, fBot);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Treasure chests
+  treasures.forEach(t => {
+    if (!t.active) return;
+    const tx = fLeft + (fRight - fLeft) * t.yardLine / 100;
+    ctx.fillStyle = '#daa520';
+    ctx.fillRect(tx - 8, H/2 + 30, 16, 12);
+    ctx.fillStyle = '#b8860b';
+    ctx.fillRect(tx - 8, H/2 + 30, 16, 4);
+    ctx.fillStyle = '#ffff00';
+    ctx.fillRect(tx - 2, H/2 + 32, 4, 3);
+  });
+
+  // Pixel art players
+  const playerPositions = [
+    { x: ballXPos - 15, y: H/2 - 20 }, { x: ballXPos - 15, y: H/2 + 20 },
+    { x: ballXPos - 30, y: H/2 }, { x: ballXPos + 20, y: H/2 - 15 },
+    { x: ballXPos + 20, y: H/2 + 15 }
+  ];
+  playerPositions.forEach((p, i) => {
+    // Pixel pirate
+    ctx.fillStyle = i < 3 ? '#7c3aed' : '#ef4444';
+    ctx.fillRect(p.x - 4, p.y - 6, 8, 12);
+    // Hat
+    ctx.fillStyle = '#333';
+    ctx.fillRect(p.x - 5, p.y - 9, 10, 4);
+    // Eye
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(p.x - 1, p.y - 4, 2, 2);
+  });
+
+  // Mast
+  ctx.fillStyle = '#4a2a0a';
+  ctx.fillRect(W/2 - 3, 20, 6, 40);
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.moveTo(W/2, 20);
+  ctx.lineTo(W/2 + 30, 35);
+  ctx.lineTo(W/2, 50);
+  ctx.fill();
+  // Skull flag
+  ctx.fillStyle = '#fff';
+  ctx.font = '14px Arial';
+  ctx.fillText('☠️', W/2 + 8, 42);
+
+  // Cannonballs
+  cannonballs.forEach(c => {
+    if (!c.active) return;
+    c.y += c.vy * 0.016;
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 8, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#ff4400';
+    ctx.beginPath();
+    ctx.arc(c.x, c.y - 8, 4, 0, Math.PI*2);
+    ctx.fill();
+    if (c.y > H + 20) c.active = false;
+  });
+
+  // Waves at edges
+  const waveT = Date.now() * 0.002;
+  ctx.strokeStyle = 'rgba(100,180,255,0.4)';
+  ctx.lineWidth = 2;
+  for (let side = 0; side < 2; side++) {
+    ctx.beginPath();
+    for (let y = 0; y < H; y += 5) {
+      const x = side === 0 ? 25 + Math.sin(y * 0.05 + waveT) * 10 : W - 25 + Math.sin(y * 0.05 + waveT) * 10;
+      if (y === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Boss indicator
+  if (isBoss) {
+    ctx.fillStyle = 'rgba(200,0,0,0.1)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🐙 SEA MONSTER CHAMPIONSHIP 🐙', W/2, 30);
+  }
+
+  ctx.restore();
+}
+
+function startGame() {
+  totalTurns = 0;
+  initGame();
+  gameState = 'playing';
+  overlay.classList.add('hidden');
+}
+
+function gameLoop() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawField();
+  requestAnimationFrame(gameLoop);
+}
+
+startBtn.onclick = startGame;
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

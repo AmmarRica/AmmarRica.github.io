@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time Travel Touchdown</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden; }
+nav { width: 100%; padding: 10px 20px; z-index: 200; position: relative; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 1.1em; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+#overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f0f1acc; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+#overlay h2 { font-size: 2.2em; color: #00ffcc; margin-bottom: 10px; text-shadow: 0 0 20px #00ffcc55; font-family: 'Courier New', monospace; }
+#overlay p { color: #e0e0ff; margin: 5px 0; font-size: 1em; max-width: 550px; text-align: center; line-height: 1.6; }
+#overlay button { margin-top: 20px; padding: 12px 30px; font-size: 1.2em; background: #00ccaa; color: #0f0f1a; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: 'Courier New', monospace; }
+#overlay button:hover { background: #00ffcc; }
+.vhs { color: #00ff88; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="overlay">
+<h2>[ TIME TRAVEL TOUCHDOWN ]</h2>
+<p class="vhs">/// TEMPORAL FOOTBALL SYSTEM v1.983 ///</p>
+<p>You have the power to REWIND TIME.<br><br>
+Arrow Keys / WASD - Move your QB<br>
+SPACE - Snap ball / Throw to receiver<br>
+R - REWIND TIME (3 per game)<br>
+Rewind goes back ~3 seconds<br><br>
+Play 4 quarters of simplified football.<br>
+Use rewinds strategically on crucial plays!<br>
+WARNING: Excessive rewinds cause temporal anomalies.<br>
+Anomaly defenders cannot be blocked!</p>
+<button id="startBtn">[ INSERT TAPE ]</button>
+</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = 800;
+canvas.height = 500;
+
+let gameState = 'title';
+let frameCount = 0;
+
+// Game state
+let score = 0, oppScore = 0, quarter = 1, downs = 1, yardsToGo = 10;
+let ballPosition = 20; // yard line 0-100
+let rewindsLeft = 3, rewindsUsedHere = 0;
+let playActive = false, playPhase = 'pre-snap'; // pre-snap, playing, result
+let resultText = '', resultTimer = 0;
+let totalPlays = 0;
+let possession = 'player'; // player or opp
+
+// Entities
+let qb, ball, receivers = [], defenders = [], anomalies = [];
+let keys = {};
+
+// Time recording
+let timelineFrames = [];
+const MAX_TIMELINE = 180; // 3 seconds at 60fps
+let rewinding = false, rewindFrame = 0;
+
+// VHS effects
+let trackingOffset = 0, scanlinePhase = 0;
+let vhsGlitchTimer = 0;
+
+class Entity {
+  constructor(x, y, color, size) {
+    this.x = x; this.y = y; this.color = color;
+    this.w = size || 16; this.h = size ? size * 1.5 : 24;
+    this.vx = 0; this.vy = 0;
+  }
+}
+
+function initPlay() {
+  const fieldX = ballPosition / 100 * 600 + 100;
+  qb = new Entity(fieldX, 280, '#0044cc');
+  ball = { x: qb.x, y: qb.y, vx: 0, vy: 0, thrown: false, caught: false };
+  receivers = [
+    new Entity(fieldX + 50, 150, '#0066ff'),
+    new Entity(fieldX + 50, 350, '#0066ff'),
+    new Entity(fieldX + 80, 250, '#0066ff')
+  ];
+  defenders = [
+    new Entity(fieldX + 120, 130, '#cc0000'),
+    new Entity(fieldX + 100, 250, '#cc0000'),
+    new Entity(fieldX + 120, 370, '#cc0000'),
+    new Entity(fieldX + 60, 200, '#cc0000')
+  ];
+  anomalies = [];
+  for (let i = 0; i < rewindsUsedHere; i++) {
+    anomalies.push(new Entity(fieldX + 80 + Math.random()*100, 100 + Math.random()*300, '#ff00ff'));
+  }
+  receivers.forEach((r, i) => {
+    r.routeAngle = [-0.5, 0.5, 0][i];
+    r.speed = 2.5 + Math.random();
+  });
+  playPhase = 'pre-snap';
+  ball.thrown = false;
+  ball.caught = false;
+  timelineFrames = [];
+  playActive = true;
+}
+
+function recordFrame() {
+  const frame = {
+    qb: { x: qb.x, y: qb.y },
+    ball: { x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, thrown: ball.thrown, caught: ball.caught },
+    receivers: receivers.map(r => ({ x: r.x, y: r.y })),
+    defenders: defenders.map(d => ({ x: d.x, y: d.y }))
+  };
+  timelineFrames.push(frame);
+  if (timelineFrames.length > MAX_TIMELINE) timelineFrames.shift();
+}
+
+function restoreFrame(frame) {
+  qb.x = frame.qb.x; qb.y = frame.qb.y;
+  ball.x = frame.ball.x; ball.y = frame.ball.y;
+  ball.vx = frame.ball.vx; ball.vy = frame.ball.vy;
+  ball.thrown = frame.ball.thrown; ball.caught = frame.ball.caught;
+  receivers.forEach((r, i) => { r.x = frame.receivers[i].x; r.y = frame.receivers[i].y; });
+  defenders.forEach((d, i) => { d.x = frame.defenders[i].x; d.y = frame.defenders[i].y; });
+}
+
+function startRewind() {
+  if (rewindsLeft <= 0 || timelineFrames.length < 10 || rewinding) return;
+  rewinding = true;
+  rewindsLeft--;
+  rewindsUsedHere++;
+  rewindFrame = timelineFrames.length - 1;
+  vhsGlitchTimer = 30;
+  // Add anomaly if rewound too much
+  if (rewindsUsedHere >= 2) {
+    const fx = qb.x + 100;
+    anomalies.push(new Entity(fx, 100 + Math.random() * 300, '#ff00ff'));
+  }
+}
+
+function update() {
+  if (gameState !== 'playing') return;
+  frameCount++;
+
+  if (rewinding) {
+    rewindFrame -= 3;
+    if (rewindFrame <= 0) {
+      rewindFrame = 0;
+      rewinding = false;
+      timelineFrames = timelineFrames.slice(0, 1);
+    }
+    if (timelineFrames[rewindFrame]) {
+      restoreFrame(timelineFrames[rewindFrame]);
+    }
+    return;
+  }
+
+  if (!playActive) {
+    resultTimer--;
+    if (resultTimer <= 0) {
+      if (totalPlays >= 16) {
+        gameState = 'gameover';
+        showOverlay();
+        return;
+      }
+      if (possession === 'opp') {
+        // Opponent auto-play
+        const oppGain = Math.floor(Math.random() * 15) - 3;
+        if (oppGain > 10) {
+          oppScore += 7;
+          resultText = 'Opponent scored a TOUCHDOWN!';
+        } else {
+          resultText = `Opponent gained ${Math.max(0,oppGain)} yards.`;
+        }
+        possession = 'player';
+        ballPosition = 20;
+        downs = 1; yardsToGo = 10;
+        resultTimer = 90;
+        totalPlays++;
+        if (resultTimer > 0) return;
+      }
+      rewindsUsedHere = 0;
+      initPlay();
+    }
+    return;
+  }
+
+  if (playPhase === 'pre-snap') {
+    if (keys[' ']) {
+      playPhase = 'playing';
+      keys[' '] = false;
+    }
+    return;
+  }
+
+  recordFrame();
+
+  // QB movement
+  const spd = 3;
+  if (keys['ArrowLeft'] || keys['a']) qb.x -= spd;
+  if (keys['ArrowRight'] || keys['d']) qb.x += spd;
+  if (keys['ArrowUp'] || keys['w']) qb.y -= spd;
+  if (keys['ArrowDown'] || keys['s']) qb.y += spd;
+  qb.x = Math.max(30, Math.min(canvas.width - 30, qb.x));
+  qb.y = Math.max(50, Math.min(canvas.height - 50, qb.y));
+
+  // Throw
+  if (keys[' '] && !ball.thrown) {
+    ball.thrown = true;
+    ball.x = qb.x;
+    ball.y = qb.y;
+    let nearest = receivers[0], minD = Infinity;
+    receivers.forEach(r => {
+      const d = Math.hypot(r.x - qb.x, r.y - qb.y);
+      if (d < minD) { minD = d; nearest = r; }
+    });
+    const a = Math.atan2(nearest.y - ball.y, nearest.x - ball.x);
+    ball.vx = Math.cos(a) * 7;
+    ball.vy = Math.sin(a) * 7;
+    keys[' '] = false;
+  }
+
+  // Receivers run routes
+  if (playPhase === 'playing') {
+    receivers.forEach(r => {
+      r.x += r.speed;
+      r.y += Math.sin(frameCount * 0.05 + r.routeAngle * 10) * r.speed * 0.8;
+      r.x = Math.max(30, Math.min(canvas.width - 30, r.x));
+      r.y = Math.max(50, Math.min(canvas.height - 50, r.y));
+    });
+  }
+
+  // Ball flight
+  if (ball.thrown && !ball.caught) {
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+
+    // Catch check
+    receivers.forEach(r => {
+      if (Math.hypot(ball.x - r.x, ball.y - r.y) < 22) {
+        ball.caught = true;
+        const ydsGained = Math.floor((r.x - (ballPosition/100*600+100)) / 6);
+        const actualGain = Math.max(0, ydsGained);
+        ballPosition = Math.min(100, ballPosition + actualGain);
+        if (ballPosition >= 100) {
+          score += 7;
+          resultText = `TOUCHDOWN! +${actualGain} yards!`;
+          ballPosition = 20;
+          downs = 1; yardsToGo = 10;
+          possession = 'opp';
+        } else {
+          yardsToGo -= actualGain;
+          if (yardsToGo <= 0) { downs = 1; yardsToGo = 10; }
+          else { downs++; }
+          if (downs > 4) {
+            resultText = 'Turnover on downs!';
+            possession = 'opp';
+            ballPosition = 20; downs = 1; yardsToGo = 10;
+          } else {
+            resultText = `Caught! +${actualGain} yards. ${downs}${['st','nd','rd','th'][Math.min(downs-1,3)]} & ${yardsToGo}`;
+          }
+        }
+        playActive = false;
+        resultTimer = 100;
+        totalPlays++;
+      }
+    });
+
+    // Defender interception
+    defenders.concat(anomalies).forEach(d => {
+      if (Math.hypot(ball.x - d.x, ball.y - d.y) < 20 && ball.thrown && !ball.caught) {
+        resultText = d.color === '#ff00ff' ? 'TEMPORAL ANOMALY INTERCEPTION!' : 'INTERCEPTED!';
+        possession = 'opp';
+        ballPosition = 20; downs = 1; yardsToGo = 10;
+        playActive = false;
+        resultTimer = 100;
+        totalPlays++;
+      }
+    });
+
+    // Out of bounds
+    if (ball.x < 0 || ball.x > canvas.width || ball.y < 0 || ball.y > canvas.height) {
+      resultText = 'Incomplete pass!';
+      downs++;
+      if (downs > 4) {
+        resultText = 'Turnover on downs!';
+        possession = 'opp';
+        ballPosition = 20; downs = 1; yardsToGo = 10;
+      }
+      playActive = false;
+      resultTimer = 100;
+      totalPlays++;
+    }
+  } else if (!ball.thrown) {
+    ball.x = qb.x + 8; ball.y = qb.y - 5;
+  }
+
+  // Defenders rush
+  defenders.forEach(d => {
+    const a = Math.atan2(qb.y - d.y, qb.x - d.x);
+    d.x += Math.cos(a) * 1.2;
+    d.y += Math.sin(a) * 1.2;
+    // Sack
+    if (Math.hypot(d.x - qb.x, d.y - qb.y) < 18 && !ball.thrown) {
+      resultText = 'SACKED! Loss of 5 yards.';
+      ballPosition = Math.max(0, ballPosition - 5);
+      downs++;
+      if (downs > 4) {
+        resultText = 'Turnover on downs!';
+        possession = 'opp';
+        ballPosition = 20; downs = 1; yardsToGo = 10;
+      }
+      playActive = false;
+      resultTimer = 100;
+      totalPlays++;
+    }
+  });
+
+  // Anomaly defenders (faster, scarier)
+  anomalies.forEach(a => {
+    const ang = Math.atan2(qb.y - a.y, qb.x - a.x);
+    a.x += Math.cos(ang) * 2.5;
+    a.y += Math.sin(ang) * 2.5;
+    if (Math.hypot(a.x - qb.x, a.y - qb.y) < 18 && !ball.thrown) {
+      resultText = 'TEMPORAL ANOMALY SACK! Paradox penalty!';
+      ballPosition = Math.max(0, ballPosition - 10);
+      downs++;
+      if (downs > 4) { possession = 'opp'; ballPosition = 20; downs = 1; yardsToGo = 10; }
+      playActive = false;
+      resultTimer = 100;
+      totalPlays++;
+    }
+  });
+
+  // Rewind key
+  if (keys['r'] && playPhase === 'playing') {
+    startRewind();
+    keys['r'] = false;
+  }
+}
+
+function drawField() {
+  // VHS-style green field
+  ctx.fillStyle = '#0a2e0a';
+  ctx.fillRect(0, 40, canvas.width, canvas.height - 80);
+
+  // Yard lines
+  for (let i = 0; i <= 10; i++) {
+    const x = 100 + i * 60;
+    ctx.strokeStyle = '#ffffff22';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, 40); ctx.lineTo(x, canvas.height - 40); ctx.stroke();
+    ctx.fillStyle = '#ffffff44';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(i * 10, x, canvas.height - 30);
+  }
+
+  // Endzones
+  ctx.fillStyle = '#cc000033';
+  ctx.fillRect(0, 40, 100, canvas.height - 80);
+  ctx.fillStyle = '#0044cc33';
+  ctx.fillRect(700, 40, 100, canvas.height - 80);
+  ctx.font = 'bold 14px monospace';
+  ctx.fillStyle = '#ffffff44';
+  ctx.save(); ctx.translate(50, 300); ctx.rotate(-Math.PI/2); ctx.fillText('END ZONE', 0, 0); ctx.restore();
+  ctx.save(); ctx.translate(750, 200); ctx.rotate(Math.PI/2); ctx.fillText('END ZONE', 0, 0); ctx.restore();
+
+  // Ball position marker
+  const bx = ballPosition / 100 * 600 + 100;
+  ctx.strokeStyle = '#ffcc00';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath(); ctx.moveTo(bx, 40); ctx.lineTo(bx, canvas.height - 40); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawEntity(e, label) {
+  ctx.fillStyle = e.color;
+  ctx.fillRect(e.x - e.w/2, e.y - e.h/2, e.w, e.h);
+  if (label) {
+    ctx.fillStyle = '#fff';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, e.x, e.y + 3);
+  }
+}
+
+function drawBall() {
+  ctx.fillStyle = '#8B4513';
+  ctx.beginPath();
+  ctx.ellipse(ball.x, ball.y, 10, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(ball.x - 2, ball.y - 5); ctx.lineTo(ball.x - 2, ball.y + 5);
+  ctx.moveTo(ball.x + 2, ball.y - 5); ctx.lineTo(ball.x + 2, ball.y + 5);
+  ctx.stroke();
+}
+
+function drawVHSOverlay() {
+  // Scanlines
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
+  for (let y = 0; y < canvas.height; y += 3) {
+    ctx.fillRect(0, y, canvas.width, 1);
+  }
+  // Tracking lines
+  scanlinePhase += 0.5;
+  const trackY = (scanlinePhase * 2) % canvas.height;
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  ctx.fillRect(0, trackY, canvas.width, 30);
+
+  // Timestamp
+  ctx.fillStyle = '#ffffff88';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'right';
+  const d = new Date();
+  ctx.fillText(`REC ● ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`, canvas.width - 20, canvas.height - 10);
+
+  // VHS glitch
+  if (vhsGlitchTimer > 0) {
+    vhsGlitchTimer--;
+    for (let i = 0; i < 10; i++) {
+      const gy = Math.random() * canvas.height;
+      ctx.fillStyle = `rgba(0,255,200,0.15)`;
+      ctx.fillRect(0, gy, canvas.width, 3 + Math.random() * 8);
+    }
+    ctx.fillStyle = '#00ffcc44';
+    ctx.font = 'bold 40px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('◄◄ REWIND ◄◄', canvas.width/2, canvas.height/2);
+  }
+
+  // Rewinding visual
+  if (rewinding) {
+    ctx.fillStyle = 'rgba(0,20,40,0.5)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < 20; i++) {
+      const gy = Math.random() * canvas.height;
+      ctx.fillStyle = `rgba(0,255,200,0.2)`;
+      ctx.fillRect(0, gy, canvas.width, 2 + Math.random() * 5);
+    }
+    ctx.fillStyle = '#00ffcc';
+    ctx.font = 'bold 48px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('◄◄ REWIND ◄◄', canvas.width/2, canvas.height/2);
+    ctx.font = '16px monospace';
+    ctx.fillText(`Frame: ${rewindFrame}/${timelineFrames.length}`, canvas.width/2, canvas.height/2 + 40);
+  }
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#000000cc';
+  ctx.fillRect(0, 0, canvas.width, 38);
+
+  ctx.font = '13px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#00ff88';
+  ctx.fillText(`YOU: ${score}`, 20, 15);
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText(`OPP: ${oppScore}`, 120, 15);
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText(`Q${quarter} | ${downs}${['st','nd','rd','th'][Math.min(downs-1,3)]} & ${yardsToGo} | Ball: ${ballPosition} yd`, 230, 15);
+
+  // Rewinds
+  ctx.fillStyle = '#00ffcc';
+  ctx.fillText(`REWINDS: ${'[R]'.repeat(rewindsLeft)}${'[ ]'.repeat(3-rewindsLeft)}`, 20, 32);
+
+  ctx.fillStyle = '#aaa';
+  ctx.fillText(`Play ${totalPlays+1}/16`, 650, 15);
+
+  // Play phase
+  if (playPhase === 'pre-snap' && playActive) {
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Press SPACE to snap', canvas.width/2, canvas.height/2 - 50);
+  }
+
+  // Result
+  if (!playActive && resultTimer > 0) {
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(100, canvas.height/2 - 30, canvas.width - 200, 60);
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(resultText, canvas.width/2, canvas.height/2 + 5);
+  }
+
+  // Anomaly warnings
+  if (anomalies.length > 0) {
+    ctx.fillStyle = '#ff00ff';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`ANOMALIES: ${anomalies.length}`, canvas.width - 20, 32);
+  }
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (gameState === 'title') {
+    drawVHSOverlay();
+    requestAnimationFrame(render);
+    return;
+  }
+
+  drawField();
+
+  if (playActive || resultTimer > 0) {
+    // Draw anomalies with glow
+    anomalies.forEach(a => {
+      ctx.shadowColor = '#ff00ff';
+      ctx.shadowBlur = 15;
+      drawEntity(a, '??');
+      ctx.shadowBlur = 0;
+    });
+    defenders.forEach(d => drawEntity(d, 'D'));
+    receivers.forEach(r => drawEntity(r, 'WR'));
+    drawEntity(qb, 'QB');
+    drawBall();
+  }
+
+  drawHUD();
+  drawVHSOverlay();
+  update();
+  requestAnimationFrame(render);
+}
+
+function showOverlay() {
+  const ov = document.getElementById('overlay');
+  ov.style.display = 'flex';
+  ov.querySelector('h2').textContent = score > oppScore ? '[ VICTORY ]' : score < oppScore ? '[ DEFEAT ]' : '[ TIME PARADOX ]';
+  ov.querySelector('p:last-of-type').textContent = `Final Score: ${score} - ${oppScore}. Rewinds used: ${3 - rewindsLeft}. The timeline has been restored... mostly.`;
+  ov.querySelector('button').textContent = '[ REWIND TO START ]';
+}
+
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ') e.preventDefault();
+  if (e.key === 'r' || e.key === 'R') e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  document.getElementById('overlay').style.display = 'none';
+  gameState = 'playing';
+  score = 0; oppScore = 0; quarter = 1; totalPlays = 0;
+  downs = 1; yardsToGo = 10; ballPosition = 20;
+  rewindsLeft = 3; rewindsUsedHere = 0;
+  possession = 'player';
+  initPlay();
+});
+
+render();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 38 – Campanella 2</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; }
+    #ui { color: #e0e0ff; font-size: 0.85rem; max-width: 480px; width: 100%; display: flex; justify-content: space-between; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+  <h1>Campanella 2</h1>
+  <p class="subtitle">Adventure platformer: Tap sides to move, top to jump, ring bells to unlock paths!</p>
+  <canvas id="gc"></canvas>
+  <div id="ui"><span id="bellInfo">Bells: 0/0</span><span id="areaInfo">Area: Start</span></div>
+<script>
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = 480, H = 480;
+const TILE = 32;
+
+function resize() {
+  const s = Math.min(window.innerWidth - 20, W) / W;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+resize(); window.addEventListener('resize', resize);
+
+// World is made of connected areas
+const AREA_W = 20; // tiles wide
+const AREA_H = 15; // tiles tall
+const GRAVITY = 0.35;
+
+let player = {
+  x: 3 * TILE, y: 10 * TILE, vx: 0, vy: 0, w: 20, h: 28,
+  grounded: false, facing: 1,
+  bellsRung: [], // bell IDs that have been rung
+  hasDoubleJump: false, hasWallJump: false, hasDash: false,
+  jumpsLeft: 1, dashCooldown: 0,
+  bellCombo: [] // recent bell colors for combos
+};
+
+let cameraX = 0, cameraY = 0;
+let currentArea = 'start';
+let gameState = 'play'; // play, win
+let particles = [];
+let bellAnimations = [];
+let moveLeft = false, moveRight = false, jumping = false, jumpPressed = false;
+
+// Areas definition
+const areas = {};
+
+function createArea(name, layout, bells, gates, exits, abilities, areaLabel) {
+  // layout: array of strings, each char is a tile
+  // bells: [{x,y,color,id}]
+  // gates: [{x,y,w,h,combo}] - combo is array of bell colors needed
+  // exits: [{x,y,target,tx,ty}]
+  // abilities: [{x,y,type}]
+  areas[name] = { layout, bells, gates, exits, abilities: abilities || [], label: areaLabel || name };
+}
+
+// Build world
+createArea('start', [
+  '....................','....................','....................','....................','....................','....................','......B.............','....=====...........','....................','..............B..g..','...===......======..','....................','....b...==..........','===...====...===..E.','####################'
+], [
+  { x: 6, y: 6, color: 'blue', id: 'b1' },
+  { x: 14, y: 9, color: 'red', id: 'b2' },
+  { x: 4, y: 12, color: 'blue', id: 'b3' }
+], [
+  { x: 17, y: 11, w: 1, h: 2, combo: ['blue', 'blue'], id: 'g1' }
+], [
+  { x: 18, y: 13, target: 'forest', tx: 1, ty: 11 }
+], [], 'Village');
+
+createArea('forest', [
+  '....................','....................','...........B........','..........===.......','....................','......===...........','....................','....===.....===.....','....................','..===.........===...','....................','E.==...........==.E.','....................','===....====....===..','####################'
+], [
+  { x: 11, y: 2, color: 'green', id: 'b4' }
+], [
+  { x: 0, y: 9, w: 1, h: 4, combo: ['green'], id: 'g2' },
+  { x: 18, y: 9, w: 1, h: 2, combo: ['red', 'green'], id: 'g3' }
+], [
+  { x: 0, y: 11, target: 'caves', tx: 17, ty: 11 },
+  { x: 19, y: 11, target: 'tower', tx: 1, ty: 11 }
+], [
+  { x: 10, y: 13, type: 'doubleJump' }
+], 'Forest');
+
+createArea('caves', [
+  '####################','#..................#','#.B..............B.#','#.==..........===..#','#..................#','#....===...........#','#..................#','#........===.......#','#..................#','#..===.......===...#','#..................#','#.===..........===E#','#..................#','#..===...====......#','####################'
+], [
+  { x: 2, y: 2, color: 'purple', id: 'b5' },
+  { x: 17, y: 2, color: 'red', id: 'b6' }
+], [
+  { x: 18, y: 9, w: 1, h: 2, combo: ['purple', 'red'], id: 'g4' }
+], [
+  { x: 18, y: 11, target: 'start', tx: 1, ty: 11 }
+], [
+  { x: 10, y: 13, type: 'wallJump' }
+], 'Caves');
+
+createArea('tower', [
+  '.......GGG..........','....................','....................','....===.....===.....','....................','..===.....B...===...','....................','....===.....===.....','....................','......===.===.......','....................','E.===.........===...','....................','===..====.====..===.','####################'
+], [
+  { x: 10, y: 5, color: 'gold', id: 'b7' }
+], [
+  { x: 7, y: 0, w: 3, h: 1, combo: ['gold'], id: 'g5' }
+], [
+  { x: 0, y: 11, target: 'forest', tx: 17, ty: 11 },
+  { x: 8, y: 0, target: 'win', tx: 8, ty: 12 }
+], [
+  { x: 5, y: 13, type: 'dash' }
+], 'Bell Tower');
+
+// Parse area to tiles
+function getTiles(areaName) {
+  const area = areas[areaName];
+  if (!area) return [];
+  const tiles = [];
+  for (let r = 0; r < area.layout.length; r++) {
+    tiles[r] = [];
+    const row = area.layout[r];
+    for (let c = 0; c < row.length; c++) {
+      const ch = row[c];
+      if (ch === '#') tiles[r][c] = 'solid';
+      else if (ch === '=') tiles[r][c] = 'platform';
+      else if (ch === 'B') tiles[r][c] = 'bell_marker';
+      else if (ch === 'E') tiles[r][c] = 'exit';
+      else if (ch === 'g') tiles[r][c] = 'gate_marker';
+      else if (ch === 'G') tiles[r][c] = 'golden_gate';
+      else tiles[r][c] = 'empty';
+    }
+  }
+  return tiles;
+}
+
+let currentTiles = [];
+
+function loadArea(name) {
+  if (name === 'win') {
+    gameState = 'win';
+    return;
+  }
+  currentArea = name;
+  currentTiles = getTiles(name);
+}
+
+// Touch controls
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  for (let t of e.changedTouches) {
+    const tx = (t.clientX - rect.left) * (W / rect.width);
+    const ty = (t.clientY - rect.top) * (H / rect.height);
+
+    if (gameState === 'win') { restartGame(); return; }
+
+    if (ty < H * 0.3) {
+      if (!jumpPressed) {
+        jumping = true;
+        jumpPressed = true;
+      }
+    } else if (tx < W * 0.4) {
+      moveLeft = true;
+    } else if (tx > W * 0.6) {
+      moveRight = true;
+    } else {
+      // Center tap - ring nearby bell or dash
+      if (player.hasDash && player.dashCooldown <= 0) {
+        player.vx = player.facing * 12;
+        player.dashCooldown = 30;
+        for (let i = 0; i < 8; i++) {
+          particles.push({
+            x: player.x + player.w / 2, y: player.y + player.h / 2,
+            vx: -player.facing * Math.random() * 4, vy: (Math.random() - 0.5) * 3,
+            life: 15, color: '#a78bfa', size: 3
+          });
+        }
+      }
+      tryRingBell();
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  moveLeft = false; moveRight = false; jumping = false; jumpPressed = false;
+}, { passive: false });
+
+// Mouse fallback
+canvas.addEventListener('mousedown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.clientX - rect.left) * (W / rect.width);
+  const ty = (e.clientY - rect.top) * (H / rect.height);
+  if (gameState === 'win') { restartGame(); return; }
+  if (ty < H * 0.3) { jumping = true; jumpPressed = true; }
+  else if (tx < W * 0.4) moveLeft = true;
+  else if (tx > W * 0.6) moveRight = true;
+  else { if (player.hasDash && player.dashCooldown <= 0) { player.vx = player.facing * 12; player.dashCooldown = 30; } tryRingBell(); }
+});
+canvas.addEventListener('mouseup', () => { moveLeft = false; moveRight = false; jumping = false; jumpPressed = false; });
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft = true;
+  if (e.key === 'ArrowRight' || e.key === 'd') moveRight = true;
+  if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') && !jumpPressed) { jumping = true; jumpPressed = true; }
+  if (e.key === 'e') tryRingBell();
+  if (e.key === 'Shift' && player.hasDash && player.dashCooldown <= 0) { player.vx = player.facing * 12; player.dashCooldown = 30; }
+});
+document.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft = false;
+  if (e.key === 'ArrowRight' || e.key === 'd') moveRight = false;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') { jumping = false; jumpPressed = false; }
+});
+
+function tryRingBell() {
+  const area = areas[currentArea];
+  if (!area) return;
+  for (let bell of area.bells) {
+    const bx = bell.x * TILE, by = bell.y * TILE;
+    const dist = Math.abs(player.x + player.w / 2 - bx - TILE / 2) + Math.abs(player.y + player.h / 2 - by - TILE / 2);
+    if (dist < TILE * 2.5) {
+      // Ring it
+      if (!player.bellsRung.includes(bell.id)) {
+        player.bellsRung.push(bell.id);
+      }
+      player.bellCombo.push(bell.color);
+      if (player.bellCombo.length > 5) player.bellCombo.shift();
+
+      bellAnimations.push({ x: bx + TILE / 2, y: by, timer: 40, color: bell.color });
+
+      // Ring particles
+      const colors = { blue: '#60a5fa', red: '#ef4444', green: '#4ade80', purple: '#a78bfa', gold: '#fbbf24' };
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        particles.push({
+          x: bx + TILE / 2, y: by + TILE / 2,
+          vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3,
+          life: 25, color: colors[bell.color] || '#fff', size: 4
+        });
+      }
+
+      // Check gates
+      checkGates();
+      return;
+    }
+  }
+}
+
+function checkGates() {
+  const area = areas[currentArea];
+  if (!area) return;
+  for (let gate of area.gates) {
+    if (gate.opened) continue;
+    // Check if recent combo matches
+    const combo = player.bellCombo.slice(-gate.combo.length);
+    if (combo.length >= gate.combo.length) {
+      let match = true;
+      for (let i = 0; i < gate.combo.length; i++) {
+        if (combo[i] !== gate.combo[i]) { match = false; break; }
+      }
+      if (match) {
+        gate.opened = true;
+        // Gate open particles
+        for (let i = 0; i < 15; i++) {
+          particles.push({
+            x: gate.x * TILE + TILE / 2, y: (gate.y + gate.h / 2) * TILE,
+            vx: (Math.random() - 0.5) * 6, vy: -Math.random() * 4,
+            life: 30, color: '#fbbf24', size: 5
+          });
+        }
+      }
+    }
+  }
+}
+
+function isSolid(px, py) {
+  const c = Math.floor(px / TILE);
+  const r = Math.floor(py / TILE);
+  if (r < 0 || r >= AREA_H || c < 0 || c >= AREA_W) return false;
+  if (!currentTiles[r]) return false;
+  const tile = currentTiles[r][c];
+  if (tile === 'solid') return true;
+
+  // Check gates
+  const area = areas[currentArea];
+  if (area) {
+    for (let gate of area.gates) {
+      if (gate.opened) continue;
+      if (c >= gate.x && c < gate.x + gate.w && r >= gate.y && r < gate.y + gate.h) return true;
+    }
+  }
+  return false;
+}
+
+function isPlatform(px, py) {
+  const c = Math.floor(px / TILE);
+  const r = Math.floor(py / TILE);
+  if (r < 0 || r >= AREA_H || c < 0 || c >= AREA_W) return false;
+  if (!currentTiles[r]) return false;
+  return currentTiles[r][c] === 'platform';
+}
+
+function update() {
+  if (gameState !== 'play') return;
+
+  const speed = 3;
+  if (moveLeft) { player.vx = -speed; player.facing = -1; }
+  else if (moveRight) { player.vx = speed; player.facing = 1; }
+  else player.vx *= 0.75;
+
+  if (jumping && player.jumpsLeft > 0) {
+    player.vy = -8;
+    player.jumpsLeft--;
+    jumping = false;
+  }
+
+  // Wall jump
+  if (jumping && player.hasWallJump && !player.grounded && player.jumpsLeft <= 0) {
+    // Check if against wall
+    const wallLeft = isSolid(player.x - 2, player.y + player.h / 2);
+    const wallRight = isSolid(player.x + player.w + 2, player.y + player.h / 2);
+    if (wallLeft) { player.vy = -7; player.vx = 5; player.facing = 1; jumping = false; }
+    else if (wallRight) { player.vy = -7; player.vx = -5; player.facing = -1; jumping = false; }
+  }
+
+  if (player.dashCooldown > 0) player.dashCooldown--;
+
+  // Gravity
+  player.vy += GRAVITY;
+  if (player.vy > 10) player.vy = 10;
+
+  // Horizontal collision
+  player.x += player.vx;
+  // Left
+  if (isSolid(player.x, player.y + 4) || isSolid(player.x, player.y + player.h - 4)) {
+    player.x = (Math.floor(player.x / TILE) + 1) * TILE;
+    player.vx = 0;
+  }
+  // Right
+  if (isSolid(player.x + player.w, player.y + 4) || isSolid(player.x + player.w, player.y + player.h - 4)) {
+    player.x = Math.floor((player.x + player.w) / TILE) * TILE - player.w;
+    player.vx = 0;
+  }
+
+  // Vertical collision
+  player.y += player.vy;
+  player.grounded = false;
+
+  // Down
+  if (player.vy >= 0) {
+    for (let testX of [player.x + 2, player.x + player.w - 2]) {
+      if (isSolid(testX, player.y + player.h)) {
+        player.y = Math.floor((player.y + player.h) / TILE) * TILE - player.h;
+        player.vy = 0;
+        player.grounded = true;
+        player.jumpsLeft = player.hasDoubleJump ? 2 : 1;
+      }
+      // Platform (only when falling)
+      const pr = Math.floor((player.y + player.h) / TILE);
+      const pc = Math.floor(testX / TILE);
+      if (isPlatform(testX, player.y + player.h) && player.y + player.h - player.vy <= pr * TILE + 2) {
+        player.y = pr * TILE - player.h;
+        player.vy = 0;
+        player.grounded = true;
+        player.jumpsLeft = player.hasDoubleJump ? 2 : 1;
+      }
+    }
+  }
+  // Up
+  if (player.vy < 0) {
+    if (isSolid(player.x + 2, player.y) || isSolid(player.x + player.w - 2, player.y)) {
+      player.y = (Math.floor(player.y / TILE) + 1) * TILE;
+      player.vy = 0;
+    }
+  }
+
+  // Check exits
+  const area = areas[currentArea];
+  if (area) {
+    for (let exit of area.exits) {
+      const ex = exit.x * TILE, ey = exit.y * TILE;
+      if (player.x + player.w > ex && player.x < ex + TILE &&
+          player.y + player.h > ey && player.y < ey + TILE) {
+        player.x = exit.tx * TILE;
+        player.y = exit.ty * TILE;
+        player.vx = 0;
+        player.vy = 0;
+        loadArea(exit.target);
+        return;
+      }
+    }
+
+    // Ability pickups
+    for (let i = area.abilities.length - 1; i >= 0; i--) {
+      const ab = area.abilities[i];
+      if (ab.collected) continue;
+      const ax = ab.x * TILE, ay = ab.y * TILE;
+      if (Math.abs(player.x - ax) < TILE && Math.abs(player.y - ay) < TILE) {
+        ab.collected = true;
+        if (ab.type === 'doubleJump') { player.hasDoubleJump = true; player.jumpsLeft = 2; }
+        else if (ab.type === 'wallJump') player.hasWallJump = true;
+        else if (ab.type === 'dash') player.hasDash = true;
+        for (let j = 0; j < 20; j++) {
+          particles.push({
+            x: ax + TILE / 2, y: ay + TILE / 2,
+            vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6,
+            life: 30, color: '#fbbf24', size: 4
+          });
+        }
+      }
+    }
+  }
+
+  // Respawn if fell
+  if (player.y > AREA_H * TILE + 50) {
+    player.x = 3 * TILE;
+    player.y = 2 * TILE;
+    player.vx = 0;
+    player.vy = 0;
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Bell animations
+  for (let i = bellAnimations.length - 1; i >= 0; i--) {
+    bellAnimations[i].timer--;
+    if (bellAnimations[i].timer <= 0) bellAnimations.splice(i, 1);
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  const area = areas[currentArea];
+  if (!area) return;
+
+  // Camera
+  const targetCamX = player.x - W / 2 + player.w / 2;
+  const targetCamY = player.y - H / 2 + player.h / 2;
+  cameraX += (targetCamX - cameraX) * 0.1;
+  cameraY += (targetCamY - cameraY) * 0.1;
+  cameraX = Math.max(0, Math.min(AREA_W * TILE - W, cameraX));
+  cameraY = Math.max(0, Math.min(AREA_H * TILE - H, cameraY));
+
+  ctx.save();
+  ctx.translate(-cameraX, -cameraY);
+
+  // Draw tiles
+  for (let r = 0; r < AREA_H; r++) {
+    for (let c = 0; c < AREA_W; c++) {
+      if (!currentTiles[r]) continue;
+      const tile = currentTiles[r][c];
+      const x = c * TILE, y = r * TILE;
+
+      if (tile === 'solid') {
+        ctx.fillStyle = '#2a2a4a';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = '#3b3b5c';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, TILE, TILE);
+      } else if (tile === 'platform') {
+        ctx.fillStyle = '#3b3b5c';
+        ctx.fillRect(x, y, TILE, 6);
+      }
+    }
+  }
+
+  // Draw gates
+  for (let gate of area.gates) {
+    if (gate.opened) continue;
+    ctx.fillStyle = '#6b2222';
+    for (let gy = gate.y; gy < gate.y + gate.h; gy++) {
+      ctx.fillRect(gate.x * TILE, gy * TILE, gate.w * TILE, TILE);
+      // Combo hint
+      ctx.fillStyle = '#2a1111';
+      ctx.fillRect(gate.x * TILE + 4, gy * TILE + 4, gate.w * TILE - 8, TILE - 8);
+      ctx.fillStyle = '#6b2222';
+    }
+    // Show required combo
+    const colors = { blue: '#60a5fa', red: '#ef4444', green: '#4ade80', purple: '#a78bfa', gold: '#fbbf24' };
+    const cx = gate.x * TILE + (gate.w * TILE) / 2;
+    const cy = (gate.y + gate.h / 2) * TILE;
+    for (let i = 0; i < gate.combo.length; i++) {
+      ctx.fillStyle = colors[gate.combo[i]];
+      ctx.beginPath();
+      ctx.arc(cx - (gate.combo.length - 1) * 7 + i * 14, cy, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Draw bells
+  const bellColors = { blue: '#60a5fa', red: '#ef4444', green: '#4ade80', purple: '#a78bfa', gold: '#fbbf24' };
+  for (let bell of area.bells) {
+    const bx = bell.x * TILE, by = bell.y * TILE;
+    const rung = player.bellsRung.includes(bell.id);
+
+    // Bell body
+    ctx.fillStyle = bellColors[bell.color];
+    ctx.beginPath();
+    ctx.arc(bx + TILE / 2, by + TILE / 2 + 2, 12, 0, Math.PI, false);
+    ctx.fill();
+    ctx.fillRect(bx + TILE / 2 - 12, by + 4, 24, TILE / 2);
+
+    // Clapper
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.arc(bx + TILE / 2, by + TILE - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rope
+    ctx.strokeStyle = '#8B7355';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bx + TILE / 2, by);
+    ctx.lineTo(bx + TILE / 2, by - 10);
+    ctx.stroke();
+
+    if (rung) {
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.beginPath();
+      ctx.arc(bx + TILE / 2, by + TILE / 2, 18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Bell ring animations
+  for (let anim of bellAnimations) {
+    const progress = 1 - anim.timer / 40;
+    ctx.strokeStyle = bellColors[anim.color] || '#fff';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 1 - progress;
+    ctx.beginPath();
+    ctx.arc(anim.x, anim.y + TILE / 2, 20 + progress * 40, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(anim.x, anim.y + TILE / 2, 10 + progress * 60, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Ability pickups
+  for (let ab of area.abilities) {
+    if (ab.collected) continue;
+    const ax = ab.x * TILE, ay = ab.y * TILE;
+    const bobY = Math.sin(Date.now() / 300) * 4;
+
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(ax + TILE / 2, ay + TILE / 2 + bobY, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 12px system-ui';
+    ctx.textAlign = 'center';
+    const labels = { doubleJump: 'DJ', wallJump: 'WJ', dash: 'DA' };
+    ctx.fillText(labels[ab.type] || '?', ax + TILE / 2, ay + TILE / 2 + bobY + 4);
+
+    // Glow
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ax + TILE / 2, ay + TILE / 2 + bobY, 14 + Math.sin(Date.now() / 200) * 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Exits
+  for (let exit of area.exits) {
+    const ex = exit.x * TILE, ey = exit.y * TILE;
+    ctx.fillStyle = 'rgba(74, 222, 128, 0.3)';
+    ctx.fillRect(ex, ey, TILE, TILE);
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(ex, ey, TILE, TILE);
+  }
+
+  // Player
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+  // Head
+  ctx.fillStyle = '#e0c8a0';
+  ctx.fillRect(player.x + 3, player.y + 2, player.w - 6, 10);
+  // Eye
+  ctx.fillStyle = '#333';
+  const eyeX = player.facing === 1 ? player.x + player.w - 7 : player.x + 4;
+  ctx.fillRect(eyeX, player.y + 5, 3, 3);
+
+  // Ability indicators
+  let indicatorY = player.y - 8;
+  if (player.hasDoubleJump) {
+    ctx.fillStyle = '#60a5fa';
+    ctx.fillRect(player.x, indicatorY, 5, 5);
+  }
+  if (player.hasWallJump) {
+    ctx.fillStyle = '#4ade80';
+    ctx.fillRect(player.x + 7, indicatorY, 5, 5);
+  }
+  if (player.hasDash) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(player.x + 14, indicatorY, 5, 5);
+  }
+
+  // Particles
+  for (let p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = Math.min(1, p.life / 10);
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+
+  // HUD
+  ctx.fillStyle = 'rgba(15, 15, 26, 0.8)';
+  ctx.fillRect(0, 0, W, 28);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '13px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Area: ${area.label}`, 8, 18);
+
+  ctx.textAlign = 'center';
+  // Bell combo display
+  const comboColors = { blue: '#60a5fa', red: '#ef4444', green: '#4ade80', purple: '#a78bfa', gold: '#fbbf24' };
+  for (let i = 0; i < player.bellCombo.length; i++) {
+    ctx.fillStyle = comboColors[player.bellCombo[i]];
+    ctx.beginPath();
+    ctx.arc(W / 2 - (player.bellCombo.length - 1) * 8 + i * 16, 14, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#fbbf24';
+  const totalBells = Object.values(areas).reduce((s, a) => s + a.bells.length, 0);
+  ctx.fillText(`Bells: ${player.bellsRung.length}/${totalBells}`, W - 8, 18);
+
+  // Ability HUD
+  let abY = 40;
+  ctx.textAlign = 'left';
+  ctx.font = '11px system-ui';
+  if (player.hasDoubleJump) { ctx.fillStyle = '#60a5fa'; ctx.fillText('Double Jump', 8, abY); abY += 14; }
+  if (player.hasWallJump) { ctx.fillStyle = '#4ade80'; ctx.fillText('Wall Jump', 8, abY); abY += 14; }
+  if (player.hasDash) { ctx.fillStyle = '#fbbf24'; ctx.fillText('Dash (tap center)', 8, abY); }
+
+  // Touch zone hints
+  ctx.fillStyle = 'rgba(167, 139, 250, 0.03)';
+  ctx.fillRect(0, 0, W, H * 0.3);
+
+  // Win screen
+  if (gameState === 'win') {
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Golden Bell Found!', W / 2, H / 2 - 50);
+
+    // Draw golden bell
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, 30, 0, Math.PI, false);
+    ctx.fill();
+    ctx.fillRect(W / 2 - 30, H / 2 - 26, 60, 26);
+    ctx.fillStyle = '#b8860b';
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2 + 10, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '18px system-ui';
+    const totalBells2 = Object.values(areas).reduce((s, a) => s + a.bells.length, 0);
+    ctx.fillText(`Bells rung: ${player.bellsRung.length}/${totalBells2}`, W / 2, H / 2 + 60);
+    const abilities = [player.hasDoubleJump, player.hasWallJump, player.hasDash].filter(Boolean).length;
+    ctx.fillText(`Abilities: ${abilities}/3`, W / 2, H / 2 + 85);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to play again', W / 2, H / 2 + 115);
+  }
+
+  document.getElementById('bellInfo').textContent = `Bells: ${player.bellsRung.length}/${Object.values(areas).reduce((s, a) => s + a.bells.length, 0)}`;
+  document.getElementById('areaInfo').textContent = `Area: ${area.label}`;
+}
+
+function restartGame() {
+  player = {
+    x: 3 * TILE, y: 10 * TILE, vx: 0, vy: 0, w: 20, h: 28,
+    grounded: false, facing: 1,
+    bellsRung: [], hasDoubleJump: false, hasWallJump: false, hasDash: false,
+    jumpsLeft: 1, dashCooldown: 0, bellCombo: []
+  };
+  // Reset gates
+  for (let name in areas) {
+    for (let g of areas[name].gates) g.opened = false;
+    for (let a of areas[name].abilities) a.collected = false;
+  }
+  particles = [];
+  bellAnimations = [];
+  gameState = 'play';
+  loadArea('start');
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+loadArea('start');
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

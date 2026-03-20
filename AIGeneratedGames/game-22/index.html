@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Viking Gridiron Saga</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin-top: 5px; cursor: pointer; image-rendering: pixelated; }
+#overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(15,15,26,0.95); display: flex; align-items: center; justify-content: center;
+  z-index: 200; flex-direction: column; gap: 16px;
+}
+#overlay h1 { font-size: 44px; color: #fbbf24; text-shadow: 0 0 20px #fbbf2488; }
+#overlay h2 { font-size: 22px; color: #a78bfa; }
+#overlay p { font-size: 14px; max-width: 560px; text-align: center; line-height: 1.6; color: #c0c0e0; }
+#overlay button {
+  background: #a78bfa; color: #0f0f1a; border: none; padding: 12px 32px;
+  font-size: 18px; font-weight: bold; border-radius: 10px; cursor: pointer;
+}
+#overlay button:hover { background: #c4b5fd; transform: scale(1.05); }
+.hidden { display: none !important; }
+#hud {
+  position: fixed; top: 10px; right: 10px; z-index: 100;
+  font-size: 15px; text-align: right; line-height: 1.8;
+}
+#action-panel {
+  position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+  z-index: 100; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+  background: rgba(15,15,26,0.9); padding: 10px 16px; border-radius: 12px;
+  border: 1px solid #a78bfa44; max-width: 700px;
+}
+.act-btn {
+  background: #1a1a2e; border: 2px solid #a78bfa; border-radius: 8px; padding: 6px 14px;
+  color: #e0e0ff; cursor: pointer; font-size: 12px; transition: all 0.2s; text-align: center;
+}
+.act-btn:hover { background: #2a2a4e; }
+.act-btn:disabled { opacity: 0.4; cursor: default; }
+.act-btn .name { font-weight: bold; font-size: 13px; color: #fbbf24; }
+#msg-box {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 28px; font-weight: bold; color: #fbbf24; z-index: 150;
+  text-shadow: 0 0 20px #fbbf2488; pointer-events: none; opacity: 0;
+  transition: opacity 0.4s;
+}
+</style>
+</head>
+<body>
+<div id="hud" class="hidden">
+  <div>⚔️ Round: <span id="round">1</span>/10</div>
+  <div>🏈 Down: <span id="down">1st</span> &amp; <span id="ytg">10</span></div>
+  <div>📍 Yard: <span id="yard">20</span></div>
+  <div>🛡️ Score: <span id="score">0</span> - <span id="escore">0</span></div>
+  <div>⚡ Rune Power: <span id="rune">100</span></div>
+</div>
+<div id="action-panel" class="hidden"></div>
+<div id="msg-box"></div>
+<div id="overlay">
+  <h1>⚔️ Viking Gridiron Saga ⚔️</h1>
+  <h2>Norse Mythology Meets Football</h2>
+  <p>Command your Viking warriors on a longship-shaped field! Use Norse powers to defeat mythological defenders.
+  <br><br>🔨 <b>Thor's Hammer</b> - Devastating throw (costs 30 rune)<br>
+  👁️ <b>Odin's Eye</b> - See defender positions (costs 20 rune)<br>
+  🔥 <b>Berserker Rage</b> - Unstoppable run (costs 40 rune)<br>
+  🦅 <b>Valkyrie Lift</b> - Leaping catch (costs 25 rune)<br><br>
+  Choose plays each down. Score touchdowns against mythological creatures! Win 10 rounds.</p>
+  <button onclick="startGame()">Begin the Saga!</button>
+</div>
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width = 800;
+const H = canvas.height = 560;
+
+let state = 'title'; // title, picking, animating, result, gameover
+let round = 1, maxRounds = 10;
+let down = 1, yardsToGo = 10, yardLine = 20;
+let playerScore = 0, enemyScore = 0;
+let runePower = 100;
+let msgTimer = 0;
+let animFrame = 0, animType = '', animResult = null;
+let defenders = [];
+let runePickups = [];
+let odinActive = false;
+
+const FIELD_X = 40, FIELD_Y = 60, FIELD_W = 720, FIELD_H = 420;
+
+const CREATURES = [
+  { name: 'Frost Giant', color: '#6699cc', size: 18, power: 60 },
+  { name: 'Fenrir Wolf', color: '#888888', size: 14, power: 50 },
+  { name: 'Dark Elf', color: '#9933cc', size: 12, power: 40 },
+  { name: 'Draugr', color: '#336633', size: 13, power: 35 },
+  { name: 'Troll', color: '#996633', size: 20, power: 70 },
+  { name: 'Valkyrie', color: '#cc99ff', size: 14, power: 55 }
+];
+
+const PLAYS = [
+  { id: 'short_pass', name: 'Short Pass', desc: 'Safe 3-6 yds', yards: [3, 6], success: 0.75 },
+  { id: 'long_pass', name: 'Long Pass', desc: 'Risky 10-25 yds', yards: [10, 25], success: 0.40 },
+  { id: 'run', name: 'Viking Rush', desc: 'Steady 2-5 yds', yards: [2, 5], success: 0.80 },
+  { id: 'thor', name: "Thor's Hammer", desc: '🔨 15-40 yds (30⚡)', yards: [15, 40], success: 0.60, rune: 30 },
+  { id: 'berserker', name: 'Berserker Rage', desc: '🔥 8-15 yds (40⚡)', yards: [8, 15], success: 0.90, rune: 40 },
+  { id: 'valkyrie', name: 'Valkyrie Lift', desc: '🦅 12-30 yds (25⚡)', yards: [12, 30], success: 0.65, rune: 25 },
+  { id: 'odin', name: "Odin's Eye", desc: '👁️ See defense (20⚡)', yards: [0, 0], success: 1.0, rune: 20, scout: true }
+];
+
+function showMsg(text) {
+  let el = document.getElementById('msg-box');
+  el.textContent = text;
+  el.style.opacity = '1';
+  msgTimer = 100;
+}
+
+function updateHUD() {
+  document.getElementById('round').textContent = round;
+  const downs = ['1st', '2nd', '3rd', '4th'];
+  document.getElementById('down').textContent = downs[Math.min(down - 1, 3)];
+  document.getElementById('ytg').textContent = yardsToGo;
+  document.getElementById('yard').textContent = yardLine;
+  document.getElementById('score').textContent = playerScore;
+  document.getElementById('escore').textContent = enemyScore;
+  document.getElementById('rune').textContent = runePower;
+}
+
+function generateDefenders() {
+  defenders = [];
+  let count = 4 + Math.floor(round / 3);
+  for (let i = 0; i < count; i++) {
+    let c = CREATURES[Math.floor(Math.random() * CREATURES.length)];
+    defenders.push({
+      ...c,
+      x: FIELD_X + FIELD_W * (0.4 + Math.random() * 0.5),
+      y: FIELD_Y + 40 + Math.random() * (FIELD_H - 80),
+      revealed: false
+    });
+  }
+  // Rune pickups
+  runePickups = [];
+  if (Math.random() < 0.4) {
+    runePickups.push({
+      x: FIELD_X + FIELD_W * (0.3 + Math.random() * 0.4),
+      y: FIELD_Y + 40 + Math.random() * (FIELD_H - 80),
+      value: 10 + Math.floor(Math.random() * 15)
+    });
+  }
+}
+
+function showActions() {
+  let panel = document.getElementById('action-panel');
+  panel.classList.remove('hidden');
+  panel.innerHTML = '';
+  for (let p of PLAYS) {
+    let btn = document.createElement('button');
+    btn.className = 'act-btn';
+    let disabled = (p.rune && runePower < p.rune);
+    btn.disabled = disabled;
+    btn.innerHTML = `<div class="name">${p.name}</div><div>${p.desc}</div>`;
+    btn.onclick = () => executePlay(p);
+    panel.appendChild(btn);
+  }
+}
+
+function hideActions() {
+  document.getElementById('action-panel').classList.add('hidden');
+}
+
+function executePlay(play) {
+  if (play.rune) runePower -= play.rune;
+  hideActions();
+  state = 'animating';
+  odinActive = false;
+
+  if (play.scout) {
+    odinActive = true;
+    for (let d of defenders) d.revealed = true;
+    showMsg("👁️ Odin reveals the defense!");
+    setTimeout(() => {
+      state = 'picking';
+      showActions();
+      updateHUD();
+    }, 1500);
+    return;
+  }
+
+  // Calculate result
+  let defPower = defenders.reduce((s, d) => s + d.power, 0) / defenders.length;
+  let successMod = 1 - (defPower / 200);
+  let chance = play.success * (0.7 + successMod * 0.3);
+  let success = Math.random() < chance;
+
+  let gained = 0;
+  if (success) {
+    gained = play.yards[0] + Math.floor(Math.random() * (play.yards[1] - play.yards[0] + 1));
+    if (play.id === 'thor') gained = Math.min(gained, 100 - yardLine);
+    if (play.id === 'berserker') gained = Math.min(gained + 3, 100 - yardLine);
+  } else {
+    gained = Math.floor(Math.random() * 2) - 1;
+  }
+
+  // Check for rune pickup
+  let gotRune = runePickups.length > 0 && success && Math.random() < 0.5;
+  if (gotRune) {
+    runePower = Math.min(100, runePower + runePickups[0].value);
+    runePickups = [];
+  }
+
+  animType = play.id;
+  animFrame = 0;
+  animResult = { success, gained, gotRune, play };
+
+  let animDuration = 60;
+  let animInterval = setInterval(() => {
+    animFrame++;
+    if (animFrame >= animDuration) {
+      clearInterval(animInterval);
+      resolvePlay(animResult);
+    }
+  }, 30);
+}
+
+function resolvePlay(result) {
+  let { success, gained, gotRune, play } = result;
+  yardLine += gained;
+
+  if (gotRune) showMsg("✨ Rune Power restored!");
+
+  if (yardLine >= 100) {
+    // Touchdown!
+    playerScore += 7;
+    showMsg("⚔️ TOUCHDOWN! +7 points!");
+    yardLine = 20;
+    down = 1;
+    yardsToGo = 10;
+    generateDefenders();
+    runePower = Math.min(100, runePower + 15);
+    // Enemy gets a score sometimes
+    if (Math.random() < 0.3 + round * 0.03) {
+      enemyScore += 3 + Math.floor(Math.random() * 5);
+    }
+    round++;
+    if (round > maxRounds) {
+      endGame();
+      return;
+    }
+    setTimeout(() => {
+      state = 'picking';
+      showActions();
+      updateHUD();
+    }, 2000);
+    return;
+  }
+
+  if (success) {
+    yardsToGo -= gained;
+    if (yardsToGo <= 0) {
+      down = 1;
+      yardsToGo = 10;
+      showMsg("⚡ First Down! +" + gained + " yards");
+    } else {
+      showMsg("+" + gained + " yards");
+      down++;
+    }
+  } else {
+    showMsg("🛡️ Stopped! " + (gained < 0 ? gained : '+' + gained) + " yards");
+    down++;
+  }
+
+  if (down > 4) {
+    // Turnover
+    showMsg("💀 Turnover on downs!");
+    enemyScore += 3;
+    yardLine = 20;
+    down = 1;
+    yardsToGo = 10;
+    generateDefenders();
+    round++;
+    if (round > maxRounds) {
+      endGame();
+      return;
+    }
+  }
+
+  generateDefenders();
+  setTimeout(() => {
+    state = 'picking';
+    showActions();
+    updateHUD();
+  }, 1500);
+}
+
+function endGame() {
+  state = 'gameover';
+  hideActions();
+  let ov = document.getElementById('overlay');
+  ov.classList.remove('hidden');
+  let won = playerScore > enemyScore;
+  ov.innerHTML = `
+    <h1>${won ? '⚔️ VICTORY!' : '💀 DEFEAT'}</h1>
+    <h2>Final Score: Vikings ${playerScore} - Monsters ${enemyScore}</h2>
+    <p>${won ? 'The Norse gods smile upon your gridiron conquest!' : 'The mythological beasts proved too powerful this time.'}</p>
+    <button onclick="startGame()">Play Again</button>
+  `;
+}
+
+function startGame() {
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  state = 'picking';
+  round = 1; down = 1; yardsToGo = 10; yardLine = 20;
+  playerScore = 0; enemyScore = 0; runePower = 100;
+  odinActive = false;
+  generateDefenders();
+  updateHUD();
+  showActions();
+  requestAnimationFrame(gameLoop);
+}
+
+function drawField() {
+  // Longship shape
+  ctx.save();
+  ctx.beginPath();
+  let cx = FIELD_X + FIELD_W / 2, cy = FIELD_Y + FIELD_H / 2;
+  let hw = FIELD_W / 2, hh = FIELD_H / 2;
+  // Pointed ends like a longship
+  ctx.moveTo(FIELD_X - 30, cy);
+  ctx.quadraticCurveTo(FIELD_X + 40, FIELD_Y - 10, cx, FIELD_Y);
+  ctx.quadraticCurveTo(FIELD_X + FIELD_W - 40, FIELD_Y - 10, FIELD_X + FIELD_W + 30, cy);
+  ctx.quadraticCurveTo(FIELD_X + FIELD_W - 40, FIELD_Y + FIELD_H + 10, cx, FIELD_Y + FIELD_H);
+  ctx.quadraticCurveTo(FIELD_X + 40, FIELD_Y + FIELD_H + 10, FIELD_X - 30, cy);
+  ctx.closePath();
+  ctx.fillStyle = '#1a4a1a';
+  ctx.fill();
+  ctx.strokeStyle = '#8B6914';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.restore();
+
+  // Yard lines
+  ctx.strokeStyle = '#ffffff22';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    let x = FIELD_X + (FIELD_W * i / 10);
+    ctx.beginPath();
+    ctx.moveTo(x, FIELD_Y + 20);
+    ctx.lineTo(x, FIELD_Y + FIELD_H - 20);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff44';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(i * 10, x, FIELD_Y + FIELD_H - 8);
+  }
+
+  // Endzones with runes
+  ctx.fillStyle = '#0a3a0a88';
+  ctx.fillRect(FIELD_X, FIELD_Y + 20, 30, FIELD_H - 40);
+  ctx.fillStyle = '#3a0a0a88';
+  ctx.fillRect(FIELD_X + FIELD_W - 30, FIELD_Y + 20, 30, FIELD_H - 40);
+
+  // Rune decorations on border
+  ctx.fillStyle = '#8B691466';
+  ctx.font = '20px serif';
+  const runes = 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛝᛟᛞ';
+  for (let i = 0; i < 16; i++) {
+    ctx.fillText(runes[i % runes.length], FIELD_X + i * 48, FIELD_Y + 14);
+    ctx.fillText(runes[(i + 8) % runes.length], FIELD_X + i * 48, FIELD_Y + FIELD_H + 16);
+  }
+
+  // Current position marker
+  let posX = FIELD_X + (yardLine / 100) * FIELD_W;
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.arc(posX, FIELD_Y + FIELD_H / 2, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 10px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🏈', posX - 1, FIELD_Y + FIELD_H / 2);
+
+  // Yards to go line
+  let tgtX = FIELD_X + (Math.min(yardLine + yardsToGo, 100) / 100) * FIELD_W;
+  ctx.strokeStyle = '#fbbf2488';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(tgtX, FIELD_Y + 30);
+  ctx.lineTo(tgtX, FIELD_Y + FIELD_H - 30);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawVikings() {
+  // Player team (left side, near ball)
+  let posX = FIELD_X + (yardLine / 100) * FIELD_W;
+  let positions = [
+    { dx: -30, dy: -40, role: 'QB', color: '#fbbf24' },
+    { dx: -20, dy: 0, role: 'C', color: '#8B6914' },
+    { dx: -20, dy: -20, role: 'G', color: '#8B6914' },
+    { dx: -20, dy: 20, role: 'G', color: '#8B6914' },
+    { dx: -50, dy: -60, role: 'WR', color: '#22c55e' },
+    { dx: -50, dy: 60, role: 'WR', color: '#22c55e' },
+    { dx: -40, dy: 30, role: 'RB', color: '#ef4444' }
+  ];
+
+  for (let p of positions) {
+    let px = posX + p.dx, py = FIELD_Y + FIELD_H / 2 + p.dy;
+    // Pixel-art style viking
+    ctx.fillStyle = p.color;
+    ctx.fillRect(px - 6, py - 8, 12, 16);
+    // Helmet
+    ctx.fillStyle = '#666';
+    ctx.fillRect(px - 5, py - 10, 10, 5);
+    // Horns
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(px - 8, py - 12, 3, 4);
+    ctx.fillRect(px + 5, py - 12, 3, 4);
+    // Shield
+    ctx.fillStyle = '#4444aa';
+    ctx.beginPath();
+    ctx.arc(px + 8, py, 5, 0, Math.PI * 2);
+    ctx.fill();
+    // Label
+    ctx.fillStyle = '#e0e0ff88';
+    ctx.font = '9px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.role, px, py + 20);
+  }
+}
+
+function drawDefenders() {
+  for (let d of defenders) {
+    if (!d.revealed && !odinActive) {
+      // Hidden - show as shadow
+      ctx.fillStyle = '#ffffff11';
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Revealed creature
+      ctx.fillStyle = d.color;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ff000066';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Eyes
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(d.x - 4, d.y - 3, 3, 3);
+      ctx.fillRect(d.x + 1, d.y - 3, 3, 3);
+      // Name
+      ctx.fillStyle = '#ff666688';
+      ctx.font = '9px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.name, d.x, d.y + d.size + 10);
+    }
+  }
+}
+
+function drawRunePickups() {
+  for (let r of runePickups) {
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '20px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('ᚠ', r.x, r.y + 7);
+    ctx.fillStyle = '#a78bfa44';
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, 12 + Math.sin(Date.now() / 300) * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawAnimation() {
+  if (state !== 'animating') return;
+  let posX = FIELD_X + (yardLine / 100) * FIELD_W;
+  let t = animFrame / 60;
+
+  if (animType === 'thor') {
+    // Lightning bolt
+    let endX = posX + (animResult.gained / 100) * FIELD_W * t;
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(posX, FIELD_Y + FIELD_H / 2 - 40);
+    for (let i = 0; i < 6; i++) {
+      ctx.lineTo(posX + (endX - posX) * (i / 6) + (Math.random() - 0.5) * 20,
+                 FIELD_Y + FIELD_H / 2 - 40 + (Math.random() - 0.5) * 30);
+    }
+    ctx.lineTo(endX, FIELD_Y + FIELD_H / 2);
+    ctx.stroke();
+    ctx.fillStyle = '#fbbf2488';
+    ctx.beginPath();
+    ctx.arc(endX, FIELD_Y + FIELD_H / 2, 15 * t, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (animType === 'berserker') {
+    // Fire trail
+    let endX = posX + (animResult.gained / 100) * FIELD_W * t;
+    for (let i = 0; i < 10; i++) {
+      let fx = posX + (endX - posX) * (i / 10);
+      ctx.fillStyle = `hsl(${20 + Math.random() * 20}, 100%, ${50 + Math.random() * 30}%)`;
+      ctx.beginPath();
+      ctx.arc(fx, FIELD_Y + FIELD_H / 2 + (Math.random() - 0.5) * 20, 4 + Math.random() * 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (animType === 'valkyrie') {
+    // Arc trajectory
+    let endX = posX + (animResult.gained / 100) * FIELD_W * t;
+    let arcY = FIELD_Y + FIELD_H / 2 - Math.sin(t * Math.PI) * 100;
+    ctx.fillStyle = '#cc99ff88';
+    ctx.beginPath();
+    ctx.arc(endX, arcY, 10, 0, Math.PI * 2);
+    ctx.fill();
+    // Wings
+    ctx.strokeStyle = '#cc99ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(endX - 15, arcY);
+    ctx.quadraticCurveTo(endX - 25, arcY - 15, endX - 10, arcY - 20);
+    ctx.moveTo(endX + 15, arcY);
+    ctx.quadraticCurveTo(endX + 25, arcY - 15, endX + 10, arcY - 20);
+    ctx.stroke();
+  } else {
+    // Generic play animation - ball flying
+    let endX = posX + (animResult.gained / 100) * FIELD_W * t;
+    ctx.fillStyle = '#8B6914';
+    ctx.beginPath();
+    ctx.ellipse(endX, FIELD_Y + FIELD_H / 2, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawHUD() {
+  // Down & distance box
+  ctx.fillStyle = '#0f0f1aCC';
+  ctx.fillRect(FIELD_X, FIELD_Y + FIELD_H + 24, 200, 28);
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 14px Arial';
+  ctx.textAlign = 'left';
+  const downs = ['1st', '2nd', '3rd', '4th'];
+  ctx.fillText(`${downs[Math.min(down - 1, 3)]} & ${yardsToGo} at ${yardLine} yd line`, FIELD_X + 8, FIELD_Y + FIELD_H + 42);
+}
+
+function gameLoop() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  drawField();
+  drawRunePickups();
+  drawDefenders();
+  drawVikings();
+  drawAnimation();
+  drawHUD();
+
+  // Msg timer
+  if (msgTimer > 0) {
+    msgTimer--;
+    if (msgTimer <= 0) document.getElementById('msg-box').style.opacity = '0';
+  }
+
+  if (state !== 'gameover' && state !== 'title') {
+    requestAnimationFrame(gameLoop);
+  }
+}
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

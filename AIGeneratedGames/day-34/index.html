@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 34 – Pingolf</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; }
+    #ui { color: #e0e0ff; font-size: 0.85rem; max-width: 480px; width: 100%; display: flex; justify-content: space-between; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+  <h1>Pingolf</h1>
+  <p class="subtitle">Pinball + Golf: Tap sides for flippers, drag bottom to launch</p>
+  <canvas id="gc"></canvas>
+  <div id="ui"><span id="holeInfo">Hole 1/9</span><span id="scoreInfo">Strokes: 0 | Par: 0</span></div>
+<script>
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = 480, H = 700;
+
+function resize() {
+  const s = Math.min(window.innerWidth - 20, W) / W;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+resize(); window.addEventListener('resize', resize);
+
+// Game state
+const HOLES = 9;
+let currentHole = 0;
+let totalStrokes = 0;
+let totalPar = 0;
+let strokes = 0;
+let gameState = 'launch'; // launch, play, holed, gameover
+let leftFlipperActive = false;
+let rightFlipperActive = false;
+let plungerPull = 0;
+let plungerDragging = false;
+let dragStartY = 0;
+
+// Physics
+const GRAVITY = 0.15;
+const FRICTION = 0.998;
+const BOUNCE = 0.7;
+const FLIPPER_FORCE = 12;
+
+// Ball
+let ball = { x: W - 30, y: H - 120, vx: 0, vy: 0, r: 8, active: false };
+
+// Flippers
+const FLIPPER_LEN = 60;
+const FLIPPER_W = 8;
+let leftFlipper = { x: W/2 - 80, y: H - 80, angle: 0.4, target: 0.4 };
+let rightFlipper = { x: W/2 + 80, y: H - 80, angle: Math.PI - 0.4, target: Math.PI - 0.4 };
+
+// Hole layouts
+let bumpers = [];
+let walls = [];
+let holeTarget = { x: 0, y: 0, r: 15 };
+let holePar = 3;
+
+function generateHole(n) {
+  bumpers = [];
+  walls = [];
+  holePar = 2 + Math.floor(n / 3);
+
+  // Hole position - always in upper portion
+  holeTarget.x = 80 + Math.random() * (W - 160);
+  holeTarget.y = 60 + Math.random() * 150;
+  holeTarget.r = 15;
+
+  // Generate bumpers
+  const numBumpers = 3 + n;
+  for (let i = 0; i < numBumpers; i++) {
+    bumpers.push({
+      x: 60 + Math.random() * (W - 120),
+      y: 150 + Math.random() * (H - 350),
+      r: 15 + Math.random() * 20,
+      score: 10
+    });
+  }
+
+  // Side walls / obstacles
+  if (n > 1) {
+    const numWalls = Math.min(n - 1, 4);
+    for (let i = 0; i < numWalls; i++) {
+      const wx = 40 + Math.random() * (W - 80);
+      const wy = 200 + Math.random() * (H - 400);
+      walls.push({
+        x1: wx, y1: wy,
+        x2: wx + 40 + Math.random() * 60, y2: wy + (Math.random() - 0.5) * 40
+      });
+    }
+  }
+
+  resetBall();
+}
+
+function resetBall() {
+  ball.x = W - 30;
+  ball.y = H - 120;
+  ball.vx = 0;
+  ball.vy = 0;
+  ball.active = false;
+  gameState = 'launch';
+  plungerPull = 0;
+}
+
+// Touch handling
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+
+  for (let t of e.changedTouches) {
+    const tx = (t.clientX - rect.left) * scaleX;
+    const ty = (t.clientY - rect.top) * scaleY;
+
+    if (gameState === 'gameover') {
+      currentHole = 0; totalStrokes = 0; totalPar = 0;
+      generateHole(0);
+      return;
+    }
+
+    if (gameState === 'holed') {
+      currentHole++;
+      if (currentHole >= HOLES) {
+        gameState = 'gameover';
+      } else {
+        generateHole(currentHole);
+      }
+      return;
+    }
+
+    // Plunger area
+    if (tx > W - 60 && ty > H - 200 && gameState === 'launch') {
+      plungerDragging = true;
+      dragStartY = ty;
+      t._id = 'plunger';
+    }
+    // Flippers
+    else if (gameState === 'play' || gameState === 'launch') {
+      if (tx < W / 2) {
+        leftFlipperActive = true;
+      } else {
+        rightFlipperActive = true;
+      }
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleY = H / rect.height;
+
+  for (let t of e.changedTouches) {
+    const ty = (t.clientY - rect.top) * scaleY;
+    if (plungerDragging) {
+      plungerPull = Math.max(0, Math.min(1, (ty - dragStartY) / 100));
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+
+  for (let t of e.changedTouches) {
+    if (plungerDragging && gameState === 'launch') {
+      // Launch ball
+      if (plungerPull > 0.05) {
+        ball.vy = -plungerPull * 20;
+        ball.vx = -2 - Math.random() * 2;
+        ball.active = true;
+        gameState = 'play';
+        strokes++;
+      }
+      plungerDragging = false;
+      plungerPull = 0;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const tx = (t.clientX - rect.left) * (W / rect.width);
+    if (tx < W / 2) leftFlipperActive = false;
+    else rightFlipperActive = false;
+  }
+}, { passive: false });
+
+// Mouse fallback
+canvas.addEventListener('mousedown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.clientX - rect.left) * (W / rect.width);
+  const ty = (e.clientY - rect.top) * (H / rect.height);
+
+  if (gameState === 'gameover') { currentHole = 0; totalStrokes = 0; totalPar = 0; generateHole(0); return; }
+  if (gameState === 'holed') { currentHole++; if (currentHole >= HOLES) gameState = 'gameover'; else generateHole(currentHole); return; }
+
+  if (tx > W - 60 && ty > H - 200 && gameState === 'launch') {
+    plungerDragging = true; dragStartY = ty;
+  } else {
+    if (tx < W / 2) leftFlipperActive = true; else rightFlipperActive = true;
+  }
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (!plungerDragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const ty = (e.clientY - rect.top) * (H / rect.height);
+  plungerPull = Math.max(0, Math.min(1, (ty - dragStartY) / 100));
+});
+canvas.addEventListener('mouseup', (e) => {
+  if (plungerDragging && gameState === 'launch' && plungerPull > 0.05) {
+    ball.vy = -plungerPull * 20; ball.vx = -2 - Math.random() * 2;
+    ball.active = true; gameState = 'play'; strokes++;
+  }
+  plungerDragging = false; plungerPull = 0;
+  leftFlipperActive = false; rightFlipperActive = false;
+});
+
+function circleCollision(ax, ay, ar, bx, by, br) {
+  const dx = ax - bx, dy = ay - by;
+  return dx * dx + dy * dy < (ar + br) * (ar + br);
+}
+
+function lineCircleCollision(x1, y1, x2, y2, cx, cy, cr) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const nx = dx / len, ny = dy / len;
+  const t = Math.max(0, Math.min(len, (cx - x1) * nx + (cy - y1) * ny));
+  const closestX = x1 + nx * t, closestY = y1 + ny * t;
+  const distX = cx - closestX, distY = cy - closestY;
+  const dist = Math.sqrt(distX * distX + distY * distY);
+  if (dist < cr) return { nx: distX / dist, ny: distY / dist, depth: cr - dist };
+  return null;
+}
+
+function updateFlippers(dt) {
+  const speed = 0.3;
+  leftFlipper.target = leftFlipperActive ? -0.5 : 0.4;
+  rightFlipper.target = rightFlipperActive ? Math.PI + 0.5 : Math.PI - 0.4;
+  leftFlipper.angle += (leftFlipper.target - leftFlipper.angle) * speed;
+  rightFlipper.angle += (rightFlipper.target - rightFlipper.angle) * speed;
+}
+
+function flipperCollision(flipper, isLeft) {
+  const cos = Math.cos(flipper.angle), sin = Math.sin(flipper.angle);
+  const ex = flipper.x + cos * FLIPPER_LEN;
+  const ey = flipper.y + sin * FLIPPER_LEN;
+  const col = lineCircleCollision(flipper.x, flipper.y, ex, ey, ball.x, ball.y, ball.r + FLIPPER_W);
+  if (col) {
+    ball.x += col.nx * col.depth;
+    ball.y += col.ny * col.depth;
+    const flipActive = isLeft ? leftFlipperActive : rightFlipperActive;
+    const force = flipActive ? FLIPPER_FORCE : 3;
+    ball.vx += col.nx * force;
+    ball.vy += col.ny * force;
+  }
+}
+
+function update() {
+  if (gameState !== 'play') return;
+
+  updateFlippers();
+
+  // Gravity
+  ball.vy += GRAVITY;
+
+  // Apply velocity
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+
+  // Friction
+  ball.vx *= FRICTION;
+  ball.vy *= FRICTION;
+
+  // Wall bounces (left, right, top)
+  if (ball.x - ball.r < 10) { ball.x = 10 + ball.r; ball.vx = Math.abs(ball.vx) * BOUNCE; }
+  if (ball.x + ball.r > W - 50) { ball.x = W - 50 - ball.r; ball.vx = -Math.abs(ball.vx) * BOUNCE; }
+  if (ball.y - ball.r < 10) { ball.y = 10 + ball.r; ball.vy = Math.abs(ball.vy) * BOUNCE; }
+
+  // Bumper collisions
+  for (let b of bumpers) {
+    if (circleCollision(ball.x, ball.y, ball.r, b.x, b.y, b.r)) {
+      const dx = ball.x - b.x, dy = ball.y - b.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const nx = dx / dist, ny = dy / dist;
+      ball.x = b.x + nx * (b.r + ball.r + 1);
+      ball.y = b.y + ny * (b.r + ball.r + 1);
+      const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+      ball.vx = nx * Math.max(speed * BOUNCE, 3);
+      ball.vy = ny * Math.max(speed * BOUNCE, 3);
+      b.hit = 5;
+    }
+    if (b.hit > 0) b.hit--;
+  }
+
+  // Wall segment collisions
+  for (let w of walls) {
+    const col = lineCircleCollision(w.x1, w.y1, w.x2, w.y2, ball.x, ball.y, ball.r + 3);
+    if (col) {
+      ball.x += col.nx * col.depth;
+      ball.y += col.ny * col.depth;
+      const dot = ball.vx * col.nx + ball.vy * col.ny;
+      ball.vx = (ball.vx - 2 * dot * col.nx) * BOUNCE;
+      ball.vy = (ball.vy - 2 * dot * col.ny) * BOUNCE;
+    }
+  }
+
+  // Flipper collisions
+  flipperCollision(leftFlipper, true);
+  flipperCollision(rightFlipper, false);
+
+  // Check hole
+  if (circleCollision(ball.x, ball.y, ball.r * 0.5, holeTarget.x, holeTarget.y, holeTarget.r)) {
+    gameState = 'holed';
+    totalStrokes += strokes;
+    totalPar += holePar;
+  }
+
+  // Ball fell out bottom
+  if (ball.y > H + 20) {
+    resetBall();
+  }
+}
+
+function drawFlipper(f, isLeft) {
+  const cos = Math.cos(f.angle), sin = Math.sin(f.angle);
+  ctx.save();
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = FLIPPER_W * 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(f.x, f.y);
+  ctx.lineTo(f.x + cos * FLIPPER_LEN, f.y + sin * FLIPPER_LEN);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function draw() {
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Play area border
+  ctx.strokeStyle = '#3b3b5c';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(8, 8, W - 56, H - 16);
+
+  // Plunger lane
+  ctx.fillStyle = '#151528';
+  ctx.fillRect(W - 48, 8, 40, H - 16);
+  ctx.strokeStyle = '#3b3b5c';
+  ctx.strokeRect(W - 48, 8, 40, H - 16);
+
+  // Hole target
+  ctx.beginPath();
+  ctx.arc(holeTarget.x, holeTarget.y, holeTarget.r, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a4a1a';
+  ctx.fill();
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Flag
+  ctx.fillStyle = '#ef4444';
+  ctx.fillRect(holeTarget.x, holeTarget.y - 25, 15, 10);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(holeTarget.x, holeTarget.y - 27);
+  ctx.lineTo(holeTarget.x, holeTarget.y);
+  ctx.stroke();
+
+  // Bumpers
+  for (let b of bumpers) {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.fillStyle = b.hit > 0 ? '#fbbf24' : '#4a3b7a';
+    ctx.fill();
+    ctx.strokeStyle = b.hit > 0 ? '#fde68a' : '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Wall segments
+  ctx.strokeStyle = '#6366f1';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  for (let w of walls) {
+    ctx.beginPath();
+    ctx.moveTo(w.x1, w.y1);
+    ctx.lineTo(w.x2, w.y2);
+    ctx.stroke();
+  }
+
+  // Flippers
+  drawFlipper(leftFlipper, true);
+  drawFlipper(rightFlipper, false);
+
+  // Ball
+  if (ball.active || gameState === 'launch') {
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.fill();
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Plunger
+  if (gameState === 'launch') {
+    const py = H - 60 + plungerPull * 50;
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillRect(W - 40, py, 24, 15);
+    ctx.fillStyle = '#6d5aad';
+    ctx.fillRect(W - 36, py + 15, 16, 50);
+
+    if (plungerPull > 0) {
+      ctx.fillStyle = `rgba(167, 139, 250, ${plungerPull * 0.5})`;
+      ctx.fillRect(W - 40, H - 60, 24, py - (H - 60));
+    }
+  }
+
+  // UI overlay
+  if (gameState === 'holed') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, H/2 - 60, W, 120);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    const diff = strokes - holePar;
+    const labels = { '-3': 'Albatross!', '-2': 'Eagle!', '-1': 'Birdie!', '0': 'Par', '1': 'Bogey', '2': 'Double Bogey' };
+    const label = labels[diff.toString()] || (diff < 0 ? 'Amazing!' : '+' + diff);
+    ctx.fillText(`Hole in ${strokes}! ${label}`, W/2, H/2 - 10);
+    ctx.font = '18px system-ui';
+    ctx.fillStyle = '#e0e0ff';
+    ctx.fillText('Tap to continue', W/2, H/2 + 25);
+    strokes = 0;
+  }
+
+  if (gameState === 'gameover') {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Round Complete!', W/2, H/2 - 40);
+    ctx.font = '22px system-ui';
+    ctx.fillStyle = '#e0e0ff';
+    const diff = totalStrokes - totalPar;
+    ctx.fillText(`Total: ${totalStrokes} (Par ${totalPar}, ${diff >= 0 ? '+' : ''}${diff})`, W/2, H/2 + 10);
+    ctx.font = '16px system-ui';
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText('Tap to play again', W/2, H/2 + 50);
+  }
+
+  // Update UI
+  document.getElementById('holeInfo').textContent = `Hole ${currentHole + 1}/${HOLES} | Par ${holePar}`;
+  document.getElementById('scoreInfo').textContent = `Strokes: ${strokes} | Total: ${totalStrokes}`;
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+generateHole(0);
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

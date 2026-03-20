@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gridiron Diplomacy</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 1000; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+
+#game-container {
+  width: 100vw; height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+
+/* Title Screen */
+#title-screen { text-align: center; }
+#title-screen h1 { font-size: 48px; color: #ff6b35; text-shadow: 0 0 20px #ff6b3555; margin-bottom: 10px; }
+#title-screen h2 { font-size: 18px; color: #a78bfa; margin-bottom: 30px; }
+#title-screen .subtitle { color: #888; font-size: 14px; margin-bottom: 40px; max-width: 500px; line-height: 1.6; }
+.btn {
+  background: linear-gradient(135deg, #ff6b35, #c44d1a); border: none; color: #fff;
+  padding: 15px 40px; font-size: 18px; cursor: pointer; font-family: 'Courier New', monospace;
+  border-radius: 4px; margin: 5px; transition: all 0.2s;
+}
+.btn:hover { transform: scale(1.05); box-shadow: 0 0 20px #ff6b3555; }
+.btn-small {
+  background: linear-gradient(135deg, #333, #222); padding: 10px 20px; font-size: 14px;
+  border: 1px solid #555; color: #e0e0ff; cursor: pointer; font-family: 'Courier New', monospace;
+  border-radius: 3px; margin: 4px; transition: all 0.2s;
+}
+.btn-small:hover { background: linear-gradient(135deg, #444, #333); border-color: #ff6b35; }
+.btn-small.selected { border-color: #ff6b35; background: linear-gradient(135deg, #552200, #331100); }
+
+/* Game UI */
+#game-screen { display: none; width: 100%; height: 100%; }
+#war-room {
+  display: grid; grid-template-columns: 250px 1fr 280px;
+  grid-template-rows: 60px 1fr; height: 100%; gap: 0;
+}
+#top-bar {
+  grid-column: 1 / -1; background: #1a1a2e; border-bottom: 2px solid #ff6b35;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
+}
+#top-bar .round-info { color: #ff6b35; font-size: 16px; font-weight: bold; }
+#top-bar .client-info { color: #a78bfa; font-size: 14px; }
+#top-bar .money { color: #4ade80; font-size: 16px; }
+
+#left-panel {
+  background: #12122a; border-right: 1px solid #2a2a4a; padding: 15px;
+  overflow-y: auto; font-size: 13px;
+}
+#left-panel h3 { color: #ff6b35; margin-bottom: 10px; font-size: 14px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+.owner-card {
+  background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 4px;
+  padding: 10px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s;
+}
+.owner-card:hover { border-color: #ff6b35; }
+.owner-card.active { border-color: #ff6b35; background: #221a10; }
+.owner-card .name { color: #e0e0ff; font-weight: bold; font-size: 13px; }
+.owner-card .team { color: #888; font-size: 11px; }
+.owner-card .mood { font-size: 11px; margin-top: 4px; }
+.mood-interested { color: #4ade80; }
+.mood-cautious { color: #fbbf24; }
+.mood-hostile { color: #f87171; }
+.mood-eager { color: #60a5fa; }
+
+#center-panel { display: flex; flex-direction: column; background: #0f0f1a; }
+#dialogue-area {
+  flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column;
+}
+.msg {
+  max-width: 80%; padding: 12px 16px; margin-bottom: 10px; border-radius: 8px;
+  font-size: 14px; line-height: 1.5; animation: fadeIn 0.3s;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.msg-owner { background: #1a1a3e; align-self: flex-start; border-left: 3px solid #60a5fa; }
+.msg-owner .speaker { color: #60a5fa; font-weight: bold; font-size: 12px; margin-bottom: 4px; }
+.msg-player { background: #2a1a10; align-self: flex-end; border-right: 3px solid #ff6b35; }
+.msg-player .speaker { color: #ff6b35; font-weight: bold; font-size: 12px; margin-bottom: 4px; }
+.msg-system { background: #1a2a1a; align-self: center; text-align: center; border: 1px solid #4ade8055; color: #4ade80; font-size: 13px; }
+.msg-event { background: #2a1a2a; align-self: center; text-align: center; border: 1px solid #f8717155; color: #f87171; font-size: 13px; }
+
+#choices-area { padding: 15px 20px; border-top: 1px solid #2a2a4a; background: #12122a; min-height: 80px; }
+#choices-area .choice-btn {
+  display: block; width: 100%; text-align: left; background: #1a1a2e; border: 1px solid #333;
+  color: #e0e0ff; padding: 10px 15px; margin-bottom: 6px; cursor: pointer;
+  font-family: 'Courier New', monospace; font-size: 13px; border-radius: 4px; transition: all 0.2s;
+}
+#choices-area .choice-btn:hover { border-color: #ff6b35; background: #221a10; }
+#choices-area .choice-btn .tag { font-size: 11px; margin-right: 8px; padding: 2px 6px; border-radius: 3px; }
+.tag-bluff { background: #7c3aed33; color: #a78bfa; }
+.tag-honest { background: #16a34a33; color: #4ade80; }
+.tag-pressure { background: #dc262633; color: #f87171; }
+.tag-charm { background: #2563eb33; color: #60a5fa; }
+
+#right-panel {
+  background: #12122a; border-left: 1px solid #2a2a4a; padding: 15px;
+  overflow-y: auto; font-size: 13px;
+}
+#right-panel h3 { color: #ff6b35; margin-bottom: 10px; font-size: 14px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+.stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.stat-label { color: #888; }
+.stat-val { color: #e0e0ff; font-weight: bold; }
+.stat-good { color: #4ade80; }
+.stat-bad { color: #f87171; }
+.bar-container { background: #1a1a2e; height: 8px; border-radius: 4px; margin: 4px 0 10px; }
+.bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+.bar-green { background: linear-gradient(90deg, #16a34a, #4ade80); }
+.bar-orange { background: linear-gradient(90deg, #c44d1a, #ff6b35); }
+.bar-blue { background: linear-gradient(90deg, #1d4ed8, #60a5fa); }
+.bar-purple { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+
+.offer-card {
+  background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 4px;
+  padding: 10px; margin-bottom: 8px;
+}
+.offer-card .team-name { color: #ff6b35; font-weight: bold; }
+.offer-card .offer-val { color: #4ade80; font-size: 16px; font-weight: bold; }
+.offer-card .offer-detail { color: #888; font-size: 11px; }
+
+#tell-indicator {
+  margin-top: 10px; padding: 8px; background: #1a1a3e; border: 1px solid #2a2a4a; border-radius: 4px;
+}
+#tell-indicator .tell-title { color: #a78bfa; font-size: 12px; font-weight: bold; margin-bottom: 4px; }
+#tell-indicator .tell-text { color: #888; font-size: 12px; line-height: 1.4; }
+
+.event-log { margin-top: 15px; }
+.event-item { color: #888; font-size: 11px; margin-bottom: 4px; padding-left: 10px; border-left: 2px solid #333; }
+
+/* Game Over */
+#gameover-screen { display: none; text-align: center; }
+#gameover-screen h1 { font-size: 36px; color: #ff6b35; margin-bottom: 20px; }
+#gameover-screen .final-results { text-align: left; max-width: 500px; margin: 0 auto 30px; }
+.result-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #222; }
+.result-round { color: #a78bfa; }
+.result-team { color: #60a5fa; }
+.result-money { color: #4ade80; font-weight: bold; }
+.grade { font-size: 60px; margin: 20px 0; }
+.grade-s { color: #fbbf24; text-shadow: 0 0 30px #fbbf2455; }
+.grade-a { color: #4ade80; }
+.grade-b { color: #60a5fa; }
+.grade-c { color: #888; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0f0f1a; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="game-container">
+
+<div id="title-screen">
+  <h1>GRIDIRON DIPLOMACY</h1>
+  <h2>NFL Agent Simulator</h2>
+  <p class="subtitle">You are a top NFL agent. Negotiate contracts for your clients by playing team owners against each other. Bluff, charm, pressure, and read their tells. Secure the best deals across multiple rounds.</p>
+  <br>
+  <button class="btn" onclick="startGame()">ENTER THE WAR ROOM</button>
+  <br><br>
+  <p style="color:#666; font-size:12px;">Use dialogue choices to negotiate. Watch body language tells. Play owners against each other for maximum value.</p>
+</div>
+
+<div id="game-screen">
+  <div id="war-room">
+    <div id="top-bar">
+      <span class="round-info" id="round-info">ROUND 1/4</span>
+      <span class="client-info" id="client-info">Client: ---</span>
+      <span class="money" id="total-earnings">Total Earnings: $0M</span>
+    </div>
+    <div id="left-panel">
+      <h3>TEAM OWNERS</h3>
+      <div id="owners-list"></div>
+    </div>
+    <div id="center-panel">
+      <div id="dialogue-area"></div>
+      <div id="choices-area"></div>
+    </div>
+    <div id="right-panel">
+      <h3>NEGOTIATION STATUS</h3>
+      <div id="stats-panel"></div>
+      <h3 style="margin-top:15px;">CURRENT OFFERS</h3>
+      <div id="offers-panel"></div>
+      <div id="tell-indicator">
+        <div class="tell-title">BODY LANGUAGE</div>
+        <div class="tell-text" id="tell-text">Select an owner to begin negotiating.</div>
+      </div>
+      <div class="event-log">
+        <h3 style="margin-top:15px;">NEWS FEED</h3>
+        <div id="news-feed"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="gameover-screen">
+  <h1>SEASON COMPLETE</h1>
+  <div id="final-grade"></div>
+  <div class="final-results" id="final-results"></div>
+  <button class="btn" onclick="startGame()">PLAY AGAIN</button>
+</div>
+
+</div>
+
+<script>
+const POSITIONS = ['Quarterback', 'Wide Receiver', 'Defensive End', 'Running Back'];
+const FIRST_NAMES = ['Marcus', 'DeShawn', 'Tyler', 'Jamal', 'Brandon', 'Chris', 'Darius', 'Mike'];
+const LAST_NAMES = ['Williams', 'Johnson', 'Jackson', 'Smith', 'Davis', 'Brown', 'Jones', 'Wilson'];
+const TEAM_NAMES = ['Titans', 'Eagles', 'Panthers', 'Cowboys', 'Bears', 'Dolphins', 'Ravens', 'Chiefs'];
+const CITY_NAMES = ['Nashville', 'Philadelphia', 'Carolina', 'Dallas', 'Chicago', 'Miami', 'Baltimore', 'Kansas City'];
+const OWNER_FIRST = ['Richard', 'Patricia', 'James', 'Victoria', 'Harold', 'Diana', 'Robert', 'Susan'];
+const OWNER_LAST = ['Sterling', 'Blackwood', 'Thornton', 'Chambers', 'Whitfield', 'Rosswell', 'Kensington', 'Hargrove'];
+
+const MOODS = ['interested', 'cautious', 'hostile', 'eager'];
+const TELLS = {
+  interested: ['leans forward slightly', 'maintains eye contact', 'nods along as you speak', 'uncrossed arms, open posture'],
+  cautious: ['fidgets with pen', 'glances at advisors frequently', 'arms crossed loosely', 'slight frown, measuring you'],
+  hostile: ['jaw clenched tight', 'looks away dismissively', 'taps finger impatiently', 'narrowed eyes, cold stare'],
+  eager: ['wide smile, can barely contain excitement', 'leaning way forward', 'keeps glancing at the contract', 'nodding enthusiastically']
+};
+
+const EVENTS = [
+  { text: 'BREAKING: {player} caught on camera at late-night party', effect: 'scandal', leverage: -15 },
+  { text: 'REPORT: {player} clocked record 40-yard dash at private workout', effect: 'hype', leverage: 15 },
+  { text: 'INJURY SCARE: {player} seen limping after practice', effect: 'injury', leverage: -20 },
+  { text: 'TRADE RUMOR: {team} looking to acquire veteran at same position', effect: 'competition', leverage: -10 },
+  { text: 'ANALYST: "{player} is generational talent, franchise-changing"', effect: 'hype', leverage: 20 },
+  { text: 'REPORT: Two more teams expressing interest in {player}', effect: 'demand', leverage: 12 },
+  { text: 'SALARY CAP: {team} just freed up $15M in cap space', effect: 'budget', leverage: 10 },
+  { text: 'DRAMA: {team} owner feuding with current star player', effect: 'distraction', leverage: 5 },
+];
+
+let state = {};
+
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function fmt$(m) { return '$' + m.toFixed(1) + 'M'; }
+
+function generateOwner(idx) {
+  let budgetBase = randInt(15, 50);
+  let hidden = budgetBase + randInt(-5, 15);
+  return {
+    id: idx,
+    name: OWNER_FIRST[idx] + ' ' + OWNER_LAST[idx],
+    team: CITY_NAMES[idx] + ' ' + TEAM_NAMES[idx],
+    teamShort: TEAM_NAMES[idx],
+    mood: pick(['interested', 'cautious']),
+    budget: budgetBase,
+    hiddenMax: hidden,
+    currentOffer: 0,
+    interest: 50,
+    respect: 50,
+    patience: 100,
+    hasOffered: false,
+    bluffBelief: 50,
+    personality: pick(['aggressive', 'analytical', 'emotional', 'stingy']),
+    active: true
+  };
+}
+
+function generateClient(round) {
+  return {
+    name: pick(FIRST_NAMES) + ' ' + pick(LAST_NAMES),
+    position: POSITIONS[round],
+    rating: randInt(75, 99),
+    marketValue: randInt(18, 45)
+  };
+}
+
+function startGame() {
+  state = {
+    round: 0, totalRounds: 4, totalEarnings: 0, results: [],
+    owners: [], client: null, selectedOwner: null,
+    dialoguePhase: 0, negotiationTurns: 0, maxTurns: 12,
+    events: [], gameOver: false
+  };
+  document.getElementById('title-screen').style.display = 'none';
+  document.getElementById('gameover-screen').style.display = 'none';
+  document.getElementById('game-screen').style.display = 'block';
+  startRound();
+}
+
+function startRound() {
+  let usedIndices = [];
+  state.owners = [];
+  while (state.owners.length < 4) {
+    let idx = randInt(0, 7);
+    if (!usedIndices.includes(idx)) {
+      usedIndices.push(idx);
+      state.owners.push(generateOwner(idx));
+    }
+  }
+  state.client = generateClient(state.round);
+  state.selectedOwner = null;
+  state.dialoguePhase = 0;
+  state.negotiationTurns = 0;
+  state.events = [];
+
+  document.getElementById('round-info').textContent = `ROUND ${state.round + 1}/${state.totalRounds}`;
+  document.getElementById('client-info').textContent = `Client: ${state.client.name} (${state.client.position}, ${state.client.rating} OVR)`;
+  document.getElementById('total-earnings').textContent = `Total Earnings: ${fmt$(state.totalEarnings)}`;
+  document.getElementById('dialogue-area').innerHTML = '';
+  document.getElementById('news-feed').innerHTML = '';
+
+  addSystemMsg(`NEW CLIENT: ${state.client.name}, ${state.client.position}`);
+  addSystemMsg(`Market Value: ~${fmt$(state.client.marketValue)} | Rating: ${state.client.rating} OVR`);
+  addSystemMsg(`You have ${state.maxTurns} negotiation turns. Choose an owner to approach.`);
+
+  renderOwners();
+  renderStats();
+  renderOffers();
+  showOwnerSelection();
+}
+
+function addMsg(type, speaker, text) {
+  let area = document.getElementById('dialogue-area');
+  let div = document.createElement('div');
+  div.className = 'msg msg-' + type;
+  div.innerHTML = `<div class="speaker">${speaker}</div>${text}`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function addSystemMsg(text) {
+  let area = document.getElementById('dialogue-area');
+  let div = document.createElement('div');
+  div.className = 'msg msg-system';
+  div.textContent = text;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function addEventMsg(text) {
+  let area = document.getElementById('dialogue-area');
+  let div = document.createElement('div');
+  div.className = 'msg msg-event';
+  div.textContent = '📰 ' + text;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+  let feed = document.getElementById('news-feed');
+  let item = document.createElement('div');
+  item.className = 'event-item';
+  item.textContent = text;
+  feed.prepend(item);
+}
+
+function renderOwners() {
+  let list = document.getElementById('owners-list');
+  list.innerHTML = '';
+  state.owners.forEach((o, i) => {
+    if (!o.active) return;
+    let div = document.createElement('div');
+    div.className = 'owner-card' + (state.selectedOwner === i ? ' active' : '');
+    div.innerHTML = `
+      <div class="name">${o.name}</div>
+      <div class="team">${o.team}</div>
+      <div class="mood mood-${o.mood}">${o.mood.toUpperCase()}</div>
+      ${o.hasOffered ? `<div style="color:#4ade80;font-size:11px;margin-top:4px;">Offer: ${fmt$(o.currentOffer)}</div>` : ''}
+    `;
+    div.onclick = () => selectOwner(i);
+    list.appendChild(div);
+  });
+}
+
+function renderStats() {
+  let panel = document.getElementById('stats-panel');
+  if (state.selectedOwner === null) {
+    panel.innerHTML = '<p style="color:#666;">Select an owner to view stats.</p>';
+    return;
+  }
+  let o = state.owners[state.selectedOwner];
+  panel.innerHTML = `
+    <div class="stat-row"><span class="stat-label">Interest</span><span class="stat-val">${o.interest}%</span></div>
+    <div class="bar-container"><div class="bar-fill bar-green" style="width:${o.interest}%"></div></div>
+    <div class="stat-row"><span class="stat-label">Respect</span><span class="stat-val">${o.respect}%</span></div>
+    <div class="bar-container"><div class="bar-fill bar-blue" style="width:${o.respect}%"></div></div>
+    <div class="stat-row"><span class="stat-label">Patience</span><span class="stat-val">${o.patience}%</span></div>
+    <div class="bar-container"><div class="bar-fill bar-orange" style="width:${o.patience}%"></div></div>
+    <div class="stat-row"><span class="stat-label">Bluff Belief</span><span class="stat-val">${o.bluffBelief}%</span></div>
+    <div class="bar-container"><div class="bar-fill bar-purple" style="width:${o.bluffBelief}%"></div></div>
+    <div class="stat-row"><span class="stat-label">Turns Left</span><span class="stat-val">${state.maxTurns - state.negotiationTurns}</span></div>
+    <div class="stat-row"><span class="stat-label">Personality</span><span class="stat-val" style="color:#a78bfa;">${o.personality}</span></div>
+  `;
+}
+
+function renderOffers() {
+  let panel = document.getElementById('offers-panel');
+  let offers = state.owners.filter(o => o.hasOffered && o.active);
+  if (offers.length === 0) {
+    panel.innerHTML = '<p style="color:#666;">No offers yet.</p>';
+    return;
+  }
+  panel.innerHTML = offers.map(o => `
+    <div class="offer-card">
+      <div class="team-name">${o.teamShort}</div>
+      <div class="offer-val">${fmt$(o.currentOffer)}</div>
+      <div class="offer-detail">${o.currentOffer >= state.client.marketValue ? 'Above market' : 'Below market'}</div>
+    </div>
+  `).join('');
+}
+
+function updateTell() {
+  if (state.selectedOwner === null) return;
+  let o = state.owners[state.selectedOwner];
+  document.getElementById('tell-text').textContent = pick(TELLS[o.mood]);
+}
+
+function selectOwner(idx) {
+  state.selectedOwner = idx;
+  renderOwners();
+  renderStats();
+  updateTell();
+  if (state.dialoguePhase === 0) {
+    state.dialoguePhase = 1;
+    let o = state.owners[idx];
+    addMsg('owner', o.name, getGreeting(o));
+    showNegotiationChoices();
+  } else {
+    showNegotiationChoices();
+  }
+}
+
+function getGreeting(o) {
+  const greetings = {
+    aggressive: `Alright, let's cut to the chase. What's ${state.client.name} looking for? We don't mess around here in ${o.team.split(' ')[0]}.`,
+    analytical: `I've studied the tape on ${state.client.name}. Impressive stats. Let's discuss numbers rationally.`,
+    emotional: `${state.client.name}! I've been a fan of this kid since college. I'd LOVE to have him on the ${o.teamShort}.`,
+    stingy: `Look, we have interest in ${state.client.name}, but I have to be upfront - we're watching our cap situation carefully.`
+  };
+  return greetings[o.personality];
+}
+
+function showOwnerSelection() {
+  let area = document.getElementById('choices-area');
+  area.innerHTML = '<p style="color:#888;font-size:13px;">Click on a team owner in the left panel to begin negotiating.</p>';
+}
+
+function showNegotiationChoices() {
+  let area = document.getElementById('choices-area');
+  let o = state.owners[state.selectedOwner];
+  let choices = generateChoices(o);
+  area.innerHTML = '';
+  choices.forEach(c => {
+    let btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.innerHTML = `<span class="tag tag-${c.tag}">${c.tag.toUpperCase()}</span> ${c.text}`;
+    btn.onclick = () => makeChoice(c);
+    area.appendChild(btn);
+  });
+
+  // Add switch owner option
+  let switchBtn = document.createElement('button');
+  switchBtn.className = 'choice-btn';
+  switchBtn.innerHTML = '<span class="tag" style="background:#33333355;color:#888;">SWITCH</span> Talk to a different owner';
+  switchBtn.onclick = () => {
+    state.selectedOwner = null;
+    renderOwners();
+    renderStats();
+    showOwnerSelection();
+  };
+  area.appendChild(switchBtn);
+
+  // Add accept best offer if available
+  let bestOffer = state.owners.filter(x => x.hasOffered && x.active).sort((a,b) => b.currentOffer - a.currentOffer)[0];
+  if (bestOffer) {
+    let acceptBtn = document.createElement('button');
+    acceptBtn.className = 'choice-btn';
+    acceptBtn.style.borderColor = '#4ade80';
+    acceptBtn.innerHTML = `<span class="tag" style="background:#16a34a33;color:#4ade80;">ACCEPT</span> Accept ${bestOffer.teamShort}'s offer of ${fmt$(bestOffer.currentOffer)}`;
+    acceptBtn.onclick = () => acceptOffer(bestOffer);
+    area.appendChild(acceptBtn);
+  }
+}
+
+function generateChoices(o) {
+  let choices = [];
+  let hasOtherOffers = state.owners.some(x => x.id !== o.id && x.hasOffered);
+  let bestOther = state.owners.filter(x => x.id !== o.id && x.hasOffered).sort((a,b) => b.currentOffer - a.currentOffer)[0];
+
+  if (!o.hasOffered) {
+    choices.push({ tag: 'honest', text: `We\'re looking for something in the ${fmt$(state.client.marketValue)} range. Can you make an offer?`, action: 'askOffer', modifier: 0 });
+    choices.push({ tag: 'pressure', text: `${state.client.name} is the hottest prospect this season. You need to move fast or lose out.`, action: 'pressure', modifier: 0 });
+    choices.push({ tag: 'charm', text: `${state.client.name} has always dreamed of playing for the ${o.teamShort}. Let's make it happen.`, action: 'charm', modifier: 0 });
+    choices.push({ tag: 'bluff', text: `I've already got teams offering ${fmt$(state.client.marketValue * 1.2)}. Can you beat that?`, action: 'bluffHigh', modifier: 0 });
+  } else {
+    choices.push({ tag: 'pressure', text: `${fmt$(o.currentOffer)} is insulting for a player of this caliber. We need at least ${fmt$(o.currentOffer * 1.3)}.`, action: 'pushHigher', modifier: 0 });
+    choices.push({ tag: 'charm', text: `We love the ${o.teamShort} organization. Sweeten the deal just a bit and we'll sign today.`, action: 'charmMore', modifier: 0 });
+
+    if (hasOtherOffers) {
+      choices.push({ tag: 'honest', text: `The ${bestOther.teamShort} offered ${fmt$(bestOther.currentOffer)}. Can you match or beat that?`, action: 'leverageReal', modifier: 0 });
+    }
+
+    choices.push({ tag: 'bluff', text: `Another team just called - they're offering ${fmt$(o.currentOffer * 1.4)} guaranteed. Last chance.`, action: 'bluffCompetition', modifier: 0 });
+  }
+
+  return choices;
+}
+
+function makeChoice(choice) {
+  state.negotiationTurns++;
+  let o = state.owners[state.selectedOwner];
+
+  addMsg('player', 'You', choice.text.replace(/'/g, "'"));
+
+  // Process choice effects
+  let response = processChoice(o, choice);
+
+  setTimeout(() => {
+    addMsg('owner', o.name, response.text);
+
+    // Apply stat changes
+    o.interest = clamp(o.interest + (response.interest || 0), 0, 100);
+    o.respect = clamp(o.respect + (response.respect || 0), 0, 100);
+    o.patience = clamp(o.patience + (response.patience || 0), 0, 100);
+    o.bluffBelief = clamp(o.bluffBelief + (response.bluffBelief || 0), 0, 100);
+
+    // Update mood
+    if (o.interest > 70 && o.patience > 50) o.mood = 'eager';
+    else if (o.interest > 40 && o.patience > 30) o.mood = 'interested';
+    else if (o.patience < 30) o.mood = 'hostile';
+    else o.mood = 'cautious';
+
+    // Handle offer
+    if (response.offer) {
+      o.hasOffered = true;
+      o.currentOffer = response.offer;
+    }
+
+    // Owner walks away?
+    if (o.patience <= 0 || o.interest <= 0) {
+      o.active = false;
+      addSystemMsg(`${o.name} has walked away from negotiations!`);
+    }
+
+    // Random event every 3 turns
+    if (state.negotiationTurns % 3 === 0 && state.negotiationTurns < state.maxTurns) {
+      triggerEvent();
+    }
+
+    // Check if out of turns
+    if (state.negotiationTurns >= state.maxTurns) {
+      forceEnd();
+      return;
+    }
+
+    renderOwners();
+    renderStats();
+    renderOffers();
+    updateTell();
+    showNegotiationChoices();
+  }, 500);
+}
+
+function processChoice(o, choice) {
+  let mv = state.client.marketValue;
+  let res = { interest: 0, respect: 0, patience: 0, bluffBelief: 0, text: '', offer: null };
+
+  switch (choice.action) {
+    case 'askOffer': {
+      let base = mv * (0.6 + Math.random() * 0.3);
+      if (o.personality === 'stingy') base *= 0.8;
+      if (o.personality === 'emotional') base *= 1.1;
+      res.offer = Math.round(base * 10) / 10;
+      res.interest += 10;
+      res.respect += 5;
+      res.patience -= 5;
+      res.text = `Fair enough. We can start at ${fmt$(res.offer)}. That's a competitive offer for the ${o.teamShort}.`;
+      break;
+    }
+    case 'pressure': {
+      res.patience -= 15;
+      if (o.personality === 'aggressive') {
+        res.interest += 5;
+        res.respect += 5;
+        let offer = mv * (0.7 + Math.random() * 0.3);
+        res.offer = Math.round(offer * 10) / 10;
+        res.text = `I respect the hustle. Fine, here's our opening: ${fmt$(res.offer)}. But don't push me.`;
+      } else if (o.personality === 'stingy') {
+        res.interest -= 10;
+        res.text = `Don't try to rush me. I'll make an offer when I'm ready, and it'll be fair.`;
+      } else {
+        res.interest += 5;
+        let offer = mv * (0.65 + Math.random() * 0.25);
+        res.offer = Math.round(offer * 10) / 10;
+        res.text = `Alright, alright. Let me put something on the table: ${fmt$(res.offer)}.`;
+      }
+      break;
+    }
+    case 'charm': {
+      res.interest += 15;
+      res.respect += 10;
+      res.patience += 5;
+      if (o.personality === 'emotional') {
+        let offer = mv * (0.8 + Math.random() * 0.3);
+        res.offer = Math.round(offer * 10) / 10;
+        res.text = `That means the world to hear! Let me show we're serious: ${fmt$(res.offer)}. We'll treat him like family!`;
+      } else {
+        res.text = `That's nice to hear. We're definitely interested. Let's keep talking numbers.`;
+      }
+      break;
+    }
+    case 'bluffHigh': {
+      let believeChance = o.bluffBelief / 100;
+      if (Math.random() < believeChance) {
+        res.interest += 10;
+        let offer = mv * (0.85 + Math.random() * 0.3);
+        res.offer = Math.round(offer * 10) / 10;
+        res.text = `We can compete with that. Here's our offer: ${fmt$(res.offer)}. The ${o.teamShort} are serious contenders.`;
+        res.bluffBelief -= 10;
+      } else {
+        res.respect -= 15;
+        res.bluffBelief -= 25;
+        res.patience -= 10;
+        res.text = `I've been in this business 20 years. I know a bluff when I hear one. Let's keep this honest.`;
+      }
+      break;
+    }
+    case 'pushHigher': {
+      res.patience -= 10;
+      if (o.currentOffer < o.hiddenMax * 0.9) {
+        let bump = o.currentOffer * (1.1 + Math.random() * 0.15);
+        bump = Math.min(bump, o.hiddenMax);
+        res.offer = Math.round(bump * 10) / 10;
+        res.text = `You drive a hard bargain. I can go to ${fmt$(res.offer)}, but that's stretching it.`;
+        res.interest -= 5;
+      } else {
+        res.text = `I'm at my limit here. ${fmt$(o.currentOffer)} is a great deal. Take it or leave it.`;
+        res.patience -= 10;
+        res.interest -= 10;
+      }
+      break;
+    }
+    case 'charmMore': {
+      res.interest += 10;
+      res.respect += 5;
+      if (o.currentOffer < o.hiddenMax * 0.95) {
+        let bump = o.currentOffer * (1.05 + Math.random() * 0.1);
+        bump = Math.min(bump, o.hiddenMax);
+        res.offer = Math.round(bump * 10) / 10;
+        res.text = `For the right fit, we can move a little. How about ${fmt$(res.offer)}? That shows our commitment.`;
+      } else {
+        res.text = `I appreciate the kind words. Let me see what I can do... I can add some incentive bonuses. Same number though: ${fmt$(o.currentOffer)}.`;
+      }
+      break;
+    }
+    case 'leverageReal': {
+      let bestOther = state.owners.filter(x => x.id !== o.id && x.hasOffered).sort((a,b) => b.currentOffer - a.currentOffer)[0];
+      res.respect += 5;
+      if (bestOther && bestOther.currentOffer > o.currentOffer) {
+        if (o.currentOffer < o.hiddenMax) {
+          let newOffer = Math.min(bestOther.currentOffer * (1 + Math.random() * 0.1), o.hiddenMax);
+          res.offer = Math.round(newOffer * 10) / 10;
+          res.text = `The ${bestOther.teamShort}? We're a better organization. We'll go to ${fmt$(res.offer)}.`;
+          res.interest += 5;
+        } else {
+          res.text = `I can't match that. We've given you our best. The ${o.teamShort} offer stands at ${fmt$(o.currentOffer)}.`;
+          res.patience -= 5;
+        }
+      } else {
+        res.text = `Interesting. Our offer is already competitive. We'll stand firm at ${fmt$(o.currentOffer)}.`;
+      }
+      break;
+    }
+    case 'bluffCompetition': {
+      let believeChance = o.bluffBelief / 100;
+      if (Math.random() < believeChance * 0.8) {
+        if (o.currentOffer < o.hiddenMax) {
+          let desperate = Math.min(o.currentOffer * 1.25, o.hiddenMax);
+          res.offer = Math.round(desperate * 10) / 10;
+          res.text = `Wait, don't sign yet! We'll go to ${fmt$(res.offer)}. The ${o.teamShort} NEED this player!`;
+          res.interest += 10;
+          res.bluffBelief -= 15;
+        } else {
+          res.text = `That's... a lot of money. I wish we could match it but we're maxed out at ${fmt$(o.currentOffer)}.`;
+        }
+      } else {
+        res.respect -= 20;
+        res.patience -= 20;
+        res.bluffBelief -= 30;
+        res.text = `Come on, that's obviously not true. You're losing credibility here. Our offer is ${fmt$(o.currentOffer)} and I'm starting to reconsider even that.`;
+      }
+      break;
+    }
+  }
+  return res;
+}
+
+function triggerEvent() {
+  let evt = pick(EVENTS);
+  let ownerForEvent = pick(state.owners.filter(o => o.active));
+  let text = evt.text.replace('{player}', state.client.name).replace('{team}', ownerForEvent.team);
+  addEventMsg(text);
+
+  state.owners.forEach(o => {
+    if (!o.active) return;
+    o.interest = clamp(o.interest + Math.round(evt.leverage * 0.5), 0, 100);
+    if (evt.leverage > 0 && o.hasOffered && o.currentOffer < o.hiddenMax) {
+      o.currentOffer = Math.round(Math.min(o.currentOffer * 1.05, o.hiddenMax) * 10) / 10;
+    } else if (evt.leverage < 0 && o.hasOffered) {
+      o.currentOffer = Math.round(o.currentOffer * 0.95 * 10) / 10;
+    }
+  });
+
+  renderOffers();
+  renderStats();
+}
+
+function acceptOffer(owner) {
+  let commission = owner.currentOffer * 0.03;
+  state.totalEarnings += owner.currentOffer;
+  state.results.push({
+    client: state.client.name,
+    position: state.client.position,
+    team: owner.team,
+    amount: owner.currentOffer,
+    marketValue: state.client.marketValue
+  });
+
+  addSystemMsg(`DEAL SIGNED! ${state.client.name} to the ${owner.team} for ${fmt$(owner.currentOffer)}!`);
+  addSystemMsg(`Your commission: ${fmt$(commission)} (3%)`);
+
+  document.getElementById('total-earnings').textContent = `Total Earnings: ${fmt$(state.totalEarnings)}`;
+
+  state.round++;
+  if (state.round >= state.totalRounds) {
+    setTimeout(endGame, 1500);
+  } else {
+    setTimeout(() => {
+      addSystemMsg('--- NEXT CLIENT ---');
+      startRound();
+    }, 1500);
+  }
+}
+
+function forceEnd() {
+  let bestOffer = state.owners.filter(x => x.hasOffered && x.active).sort((a,b) => b.currentOffer - a.currentOffer)[0];
+  if (bestOffer) {
+    addSystemMsg(`Time's up! Auto-accepting best offer from ${bestOffer.teamShort}: ${fmt$(bestOffer.currentOffer)}`);
+    acceptOffer(bestOffer);
+  } else {
+    addSystemMsg(`Time's up! No offers received. ${state.client.name} remains unsigned.`);
+    state.results.push({
+      client: state.client.name, position: state.client.position,
+      team: 'UNSIGNED', amount: 0, marketValue: state.client.marketValue
+    });
+    state.round++;
+    if (state.round >= state.totalRounds) {
+      setTimeout(endGame, 1500);
+    } else {
+      setTimeout(() => { addSystemMsg('--- NEXT CLIENT ---'); startRound(); }, 1500);
+    }
+  }
+}
+
+function endGame() {
+  document.getElementById('game-screen').style.display = 'none';
+  document.getElementById('gameover-screen').style.display = 'flex';
+
+  let totalMV = state.results.reduce((s, r) => s + r.marketValue, 0);
+  let totalGot = state.results.reduce((s, r) => s + r.amount, 0);
+  let ratio = totalMV > 0 ? totalGot / totalMV : 0;
+
+  let grade, gradeClass;
+  if (ratio >= 1.2) { grade = 'S'; gradeClass = 'grade-s'; }
+  else if (ratio >= 1.0) { grade = 'A'; gradeClass = 'grade-a'; }
+  else if (ratio >= 0.8) { grade = 'B'; gradeClass = 'grade-b'; }
+  else { grade = 'C'; gradeClass = 'grade-c'; }
+
+  document.getElementById('final-grade').innerHTML = `
+    <div class="grade ${gradeClass}">${grade}</div>
+    <p style="color:#888;">Agent Rating: ${Math.round(ratio * 100)}%</p>
+    <p style="color:#4ade80;font-size:20px;margin:10px 0;">Total Contract Value: ${fmt$(totalGot)}</p>
+  `;
+
+  document.getElementById('final-results').innerHTML = state.results.map(r => `
+    <div class="result-row">
+      <span class="result-round">${r.client} (${r.position})</span>
+      <span class="result-team">${r.team}</span>
+      <span class="result-money">${r.amount > 0 ? fmt$(r.amount) : 'UNSIGNED'}</span>
+    </div>
+  `).join('');
+}
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gun Game Gridiron</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #2a2a4a; border-radius: 4px; cursor: crosshair; margin-top: 10px; }
+#ui { text-align: center; margin: 10px; }
+h1 { color: #ff6b6b; font-size: 24px; margin-bottom: 5px; }
+.info { color: #a0a0c0; font-size: 13px; margin: 3px 0; }
+</style>
+</head>
+<body>
+<h1>🔫 Gun Game Gridiron 🏈</h1>
+<div id="ui">
+<div class="info" id="status">Click START to play</div>
+</div>
+<canvas id="c" width="800" height="500"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+const status = document.getElementById('status');
+
+const W = 800, H = 500;
+const FIELD_L = 50, FIELD_R = 750, FIELD_T = 50, FIELD_B = 450;
+const ENDZONE_W = 70;
+
+let state = 'title'; // title, setup, playing, shooting, scored, gameover
+let offenseScore = 0, defenseScore = 0;
+let quarter = 1;
+let playsLeft = 5;
+let offensePlayers = [];
+let defensePlayers = [];
+let gun = null; // {x, y, holder: player or null}
+let bullet = null; // {x, y, dx, dy, team}
+let hasBullet = true;
+let gunHolder = null;
+let selectedPlayer = null;
+let passingMode = false;
+let message = '';
+let messageTimer = 0;
+let particles = [];
+let flashTimer = 0;
+let offenseHasGun = true;
+let turnover = false;
+
+class Player {
+  constructor(x, y, team, id) {
+    this.x = x; this.y = y;
+    this.team = team; this.id = id;
+    this.alive = true;
+    this.hasGun = false;
+    this.hasBall = false;
+    this.speed = team === 'offense' ? 2.5 : 2;
+    this.targetX = x; this.targetY = y;
+    this.radius = 14;
+    this.trail = [];
+  }
+  draw() {
+    if (!this.alive) {
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#444';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // X mark
+      ctx.strokeStyle = '#ff0000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(this.x - 6, this.y - 6);
+      ctx.lineTo(this.x + 6, this.y + 6);
+      ctx.moveTo(this.x + 6, this.y - 6);
+      ctx.lineTo(this.x - 6, this.y + 6);
+      ctx.stroke();
+      return;
+    }
+    // Trail
+    for (let i = 0; i < this.trail.length; i++) {
+      const t = this.trail[i];
+      ctx.globalAlpha = i / this.trail.length * 0.3;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = this.team === 'offense' ? '#4488ff' : '#ff4444';
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // Player body
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(this.x - 3, this.y - 3, 2, this.x, this.y, this.radius);
+    if (this.team === 'offense') {
+      grad.addColorStop(0, '#6699ff');
+      grad.addColorStop(1, '#2255cc');
+    } else {
+      grad.addColorStop(0, '#ff6666');
+      grad.addColorStop(1, '#cc2222');
+    }
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = this === selectedPlayer ? '#ffff00' : '#ffffff44';
+    ctx.lineWidth = this === selectedPlayer ? 3 : 1;
+    ctx.stroke();
+    // Number
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.id, this.x, this.y);
+    // Gun indicator
+    if (this.hasGun) {
+      ctx.fillStyle = '#ffcc00';
+      ctx.font = '16px serif';
+      ctx.fillText('🔫', this.x + 14, this.y - 14);
+    }
+    // Ball indicator
+    if (this.hasBall) {
+      ctx.fillStyle = '#8B4513';
+      ctx.font = '12px serif';
+      ctx.fillText('🏈', this.x - 16, this.y - 14);
+    }
+  }
+  update() {
+    if (!this.alive) return;
+    this.trail.push({x: this.x, y: this.y});
+    if (this.trail.length > 6) this.trail.shift();
+    const dx = this.targetX - this.x;
+    const dy = this.targetY - this.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 2) {
+      this.x += (dx / dist) * this.speed;
+      this.y += (dy / dist) * this.speed;
+    }
+    this.x = Math.max(FIELD_L, Math.min(FIELD_R, this.x));
+    this.y = Math.max(FIELD_T, Math.min(FIELD_B, this.y));
+  }
+}
+
+function setupPlay() {
+  offensePlayers = [];
+  defensePlayers = [];
+  hasBullet = true;
+  bullet = null;
+  selectedPlayer = null;
+  turnover = false;
+  offenseHasGun = true;
+
+  // Offense (blue) - left side, trying to score right
+  const ox = 300;
+  offensePlayers.push(new Player(ox, 250, 'offense', 'QB')); // QB has gun
+  offensePlayers.push(new Player(ox - 40, 150, 'offense', 'WR'));
+  offensePlayers.push(new Player(ox - 40, 350, 'offense', 'WR'));
+  offensePlayers.push(new Player(ox + 30, 200, 'offense', 'RB'));
+  offensePlayers.push(new Player(ox + 30, 300, 'offense', 'OL'));
+
+  offensePlayers[0].hasGun = true;
+  offensePlayers[0].hasBall = true;
+  gunHolder = offensePlayers[0];
+
+  // Defense (red) - right side
+  const dx = 500;
+  defensePlayers.push(new Player(dx, 250, 'defense', 'LB'));
+  defensePlayers.push(new Player(dx + 50, 150, 'defense', 'CB'));
+  defensePlayers.push(new Player(dx + 50, 350, 'defense', 'CB'));
+  defensePlayers.push(new Player(dx - 30, 180, 'defense', 'DE'));
+  defensePlayers.push(new Player(dx - 30, 320, 'defense', 'DE'));
+
+  selectedPlayer = offensePlayers[0];
+  state = 'playing';
+  message = '';
+}
+
+function showMessage(msg, duration) {
+  message = msg;
+  messageTimer = duration || 120;
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      dx: (Math.random() - 0.5) * 8,
+      dy: (Math.random() - 0.5) * 8,
+      life: 30 + Math.random() * 20,
+      color,
+      size: 2 + Math.random() * 4
+    });
+  }
+}
+
+function shootAt(target) {
+  if (!hasBullet || !gunHolder || !gunHolder.alive) return;
+  const validShooter = offenseHasGun ? gunHolder.team === 'offense' : gunHolder.team === 'defense';
+  if (!validShooter) return;
+
+  // Check targeting rules
+  if (offenseHasGun && target.team === 'offense') return; // Can't shoot own team
+  if (!offenseHasGun && target.team === 'defense') return;
+
+  hasBullet = false;
+  const dx = target.x - gunHolder.x;
+  const dy = target.y - gunHolder.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  bullet = {
+    x: gunHolder.x, y: gunHolder.y,
+    dx: (dx / dist) * 12, dy: (dy / dist) * 12,
+    target: target
+  };
+  flashTimer = 8;
+  spawnParticles(gunHolder.x, gunHolder.y, '#ffff00', 10);
+}
+
+function passGun(target) {
+  if (!gunHolder || !gunHolder.alive) return;
+  if (target.team !== gunHolder.team) return;
+  if (!target.alive) return;
+  // Transfer gun
+  gunHolder.hasGun = false;
+  target.hasGun = true;
+  // Also transfer ball
+  if (gunHolder.hasBall) {
+    gunHolder.hasBall = false;
+    target.hasBall = true;
+  }
+  gunHolder = target;
+  showMessage('Gun passed!', 40);
+  spawnParticles(target.x, target.y, '#ffcc00', 8);
+}
+
+function checkTouchdown() {
+  const allPlayers = offensePlayers.concat(defensePlayers);
+  for (const p of allPlayers) {
+    if (!p.alive || !p.hasBall) continue;
+    if (p.team === 'offense' && p.x >= FIELD_R - ENDZONE_W) {
+      offenseScore += 7;
+      showMessage('TOUCHDOWN! Offense scores!', 120);
+      spawnParticles(p.x, p.y, '#4488ff', 40);
+      state = 'scored';
+      return true;
+    }
+    if (p.team === 'defense' && p.x <= FIELD_L + ENDZONE_W) {
+      defenseScore += 7;
+      showMessage('PICK SIX! Defense scores!', 120);
+      spawnParticles(p.x, p.y, '#ff4444', 40);
+      state = 'scored';
+      return true;
+    }
+  }
+  return false;
+}
+
+function aiUpdate() {
+  // Defense AI: rush toward ball carrier or gun holder
+  for (const d of defensePlayers) {
+    if (!d.alive) continue;
+    let target = null;
+    // Find ball carrier
+    for (const o of offensePlayers) {
+      if (o.alive && o.hasBall) { target = o; break; }
+    }
+    if (target) {
+      d.targetX = target.x + (Math.random() - 0.5) * 40;
+      d.targetY = target.y + (Math.random() - 0.5) * 40;
+    }
+  }
+
+  // Check interception (defense near gun holder)
+  if (offenseHasGun && gunHolder && gunHolder.alive) {
+    for (const d of defensePlayers) {
+      if (!d.alive) continue;
+      const dx = d.x - gunHolder.x;
+      const dy = d.y - gunHolder.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 20) {
+        // Interception!
+        offenseHasGun = false;
+        gunHolder.hasGun = false;
+        gunHolder.hasBall = false;
+        d.hasGun = true;
+        d.hasBall = true;
+        gunHolder = d;
+        turnover = true;
+        showMessage('TURNOVER! Defense has the gun!', 80);
+        spawnParticles(d.x, d.y, '#ff4444', 20);
+        // Defense runs toward offense endzone
+        for (const dd of defensePlayers) {
+          if (dd.alive) {
+            dd.targetX = FIELD_L;
+            dd.targetY = dd.y;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  // If turnover, defense with ball runs to endzone
+  if (turnover && gunHolder && gunHolder.team === 'defense' && gunHolder.alive) {
+    gunHolder.targetX = FIELD_L;
+    gunHolder.speed = 3;
+  }
+
+  // Tackle check (defense touches ball carrier)
+  for (const d of defensePlayers) {
+    if (!d.alive) continue;
+    for (const o of offensePlayers) {
+      if (!o.alive || !o.hasBall) continue;
+      const dx = d.x - o.x;
+      const dy = d.y - o.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 22 && !turnover) {
+        // Sack / tackle
+        showMessage('TACKLED! Play over.', 100);
+        state = 'scored';
+        spawnParticles(o.x, o.y, '#ffffff', 15);
+        return;
+      }
+    }
+  }
+}
+
+function update() {
+  if (state === 'playing') {
+    offensePlayers.forEach(p => p.update());
+    defensePlayers.forEach(p => p.update());
+    aiUpdate();
+
+    // Update bullet
+    if (bullet) {
+      bullet.x += bullet.dx;
+      bullet.y += bullet.dy;
+      spawnParticles(bullet.x, bullet.y, '#ff8800', 1);
+      // Check hit
+      const dx = bullet.x - bullet.target.x;
+      const dy = bullet.y - bullet.target.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 18) {
+        bullet.target.alive = false;
+        spawnParticles(bullet.target.x, bullet.target.y, '#ff0000', 25);
+        showMessage('ELIMINATED #' + bullet.target.id + '!', 60);
+        bullet = null;
+      }
+      // Out of bounds
+      if (bullet && (bullet.x < 0 || bullet.x > W || bullet.y < 0 || bullet.y > H)) {
+        bullet = null;
+        showMessage('Shot missed!', 40);
+      }
+    }
+
+    checkTouchdown();
+  }
+
+  if (state === 'scored') {
+    messageTimer--;
+    if (messageTimer <= 0) {
+      playsLeft--;
+      if (playsLeft <= 0) {
+        state = 'gameover';
+      } else {
+        setupPlay();
+      }
+    }
+  }
+
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.dx;
+    p.y += p.dy;
+    p.dx *= 0.95;
+    p.dy *= 0.95;
+    p.life--;
+    return p.life > 0;
+  });
+
+  if (messageTimer > 0) messageTimer--;
+  if (flashTimer > 0) flashTimer--;
+}
+
+function drawField() {
+  // Field background
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(FIELD_L, FIELD_T, FIELD_R - FIELD_L, FIELD_B - FIELD_T);
+
+  // Endzones
+  ctx.fillStyle = '#2255cc33';
+  ctx.fillRect(FIELD_R - ENDZONE_W, FIELD_T, ENDZONE_W, FIELD_B - FIELD_T);
+  ctx.fillStyle = '#cc222233';
+  ctx.fillRect(FIELD_L, FIELD_T, ENDZONE_W, FIELD_B - FIELD_T);
+
+  // Yard lines
+  ctx.strokeStyle = '#ffffff22';
+  ctx.lineWidth = 1;
+  for (let x = FIELD_L + ENDZONE_W; x < FIELD_R - ENDZONE_W; x += 63) {
+    ctx.beginPath();
+    ctx.moveTo(x, FIELD_T);
+    ctx.lineTo(x, FIELD_B);
+    ctx.stroke();
+  }
+
+  // Field border
+  ctx.strokeStyle = '#ffffff66';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(FIELD_L, FIELD_T, FIELD_R - FIELD_L, FIELD_B - FIELD_T);
+
+  // Endzone text
+  ctx.save();
+  ctx.fillStyle = '#4488ff44';
+  ctx.font = 'bold 24px Courier New';
+  ctx.textAlign = 'center';
+  ctx.translate(FIELD_R - ENDZONE_W / 2, 250);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('TOUCHDOWN', 0, 0);
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = '#ff444444';
+  ctx.font = 'bold 24px Courier New';
+  ctx.textAlign = 'center';
+  ctx.translate(FIELD_L + ENDZONE_W / 2, 250);
+  ctx.rotate(Math.PI / 2);
+  ctx.fillText('DEF ZONE', 0, 0);
+  ctx.restore();
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Offense: ${offenseScore}`, 60, 30);
+  ctx.fillStyle = '#ff6666';
+  ctx.fillText(`Defense: ${defenseScore}`, 250, 30);
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText(`Plays: ${playsLeft}`, 450, 30);
+
+  // Bullet indicator
+  ctx.fillStyle = hasBullet ? '#ffcc00' : '#666';
+  ctx.fillText(`Bullet: ${hasBullet ? '●' : '○'}`, 600, 30);
+
+  // Gun status
+  ctx.fillStyle = offenseHasGun ? '#4488ff' : '#ff4444';
+  ctx.fillText(`Gun: ${offenseHasGun ? 'OFFENSE' : 'DEFENSE'}`, 60, 480);
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#ff6b6b';
+  ctx.font = 'bold 48px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('GUN GAME', W / 2, 120);
+  ctx.fillText('GRIDIRON', W / 2, 170);
+
+  ctx.font = '24px Courier New';
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText('🔫 🏈', W / 2, 210);
+
+  ctx.font = '14px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  const lines = [
+    'Football with a twist - there\'s a GUN on the field!',
+    '',
+    'YOU are the OFFENSE (Blue). Score touchdowns →',
+    '',
+    'Controls:',
+    '• Click YOUR player to select them',
+    '• Right-click field to move selected player',
+    '• Click a TEAMMATE to pass the gun/ball',
+    '• Click an ENEMY to SHOOT (1 bullet per play!)',
+    '',
+    'Rules:',
+    '• Get the ball to the right endzone for a TD',
+    '• Defense will try to intercept the gun!',
+    '• If defense gets the gun, they can shoot back!',
+    '',
+    'Click anywhere to START'
+  ];
+  lines.forEach((line, i) => {
+    ctx.fillText(line, W / 2, 260 + i * 18);
+  });
+}
+
+function drawGameOver() {
+  ctx.fillStyle = '#0f0f1aee';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = 'bold 48px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff6b6b';
+  ctx.fillText('GAME OVER', W / 2, 150);
+
+  ctx.font = '28px Courier New';
+  ctx.fillStyle = '#4488ff';
+  ctx.fillText(`Offense: ${offenseScore}`, W / 2, 220);
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText(`Defense: ${defenseScore}`, W / 2, 260);
+
+  ctx.font = '24px Courier New';
+  ctx.fillStyle = offenseScore > defenseScore ? '#4488ff' : offenseScore < defenseScore ? '#ff4444' : '#ffcc00';
+  const winner = offenseScore > defenseScore ? 'OFFENSE WINS!' : offenseScore < defenseScore ? 'DEFENSE WINS!' : 'TIE GAME!';
+  ctx.fillText(winner, W / 2, 320);
+
+  ctx.font = '16px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText('Click to play again', W / 2, 380);
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    drawTitle();
+    return;
+  }
+
+  if (state === 'gameover') {
+    drawGameOver();
+    return;
+  }
+
+  // Flash effect
+  if (flashTimer > 0) {
+    ctx.fillStyle = `rgba(255,255,200,${flashTimer / 8 * 0.3})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  drawField();
+
+  // Draw players
+  defensePlayers.forEach(p => p.draw());
+  offensePlayers.forEach(p => p.draw());
+
+  // Draw bullet
+  if (bullet) {
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffcc00';
+    ctx.fill();
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#ffcc00';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 50;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  drawHUD();
+
+  // Message
+  if (messageTimer > 0 && message) {
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(W / 2 - 200, H / 2 - 25, 400, 50);
+    ctx.font = 'bold 20px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillText(message, W / 2, H / 2 + 7);
+  }
+
+  // Instructions during play
+  if (state === 'playing') {
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#a0a0c066';
+    ctx.fillText('Left-click: select/pass/shoot | Right-click: move', W - 10, H - 5);
+  }
+}
+
+function getPlayerAt(x, y) {
+  const all = offensePlayers.concat(defensePlayers);
+  for (const p of all) {
+    const dx = p.x - x;
+    const dy = p.y - y;
+    if (Math.sqrt(dx * dx + dy * dy) < p.radius + 4) return p;
+  }
+  return null;
+}
+
+c.addEventListener('click', (e) => {
+  const rect = c.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (W / rect.width);
+  const y = (e.clientY - rect.top) * (H / rect.height);
+
+  if (state === 'title') {
+    offenseScore = 0;
+    defenseScore = 0;
+    playsLeft = 5;
+    setupPlay();
+    return;
+  }
+
+  if (state === 'gameover') {
+    state = 'title';
+    return;
+  }
+
+  if (state !== 'playing') return;
+
+  const clicked = getPlayerAt(x, y);
+
+  if (clicked) {
+    if (clicked.team === 'offense' && clicked.alive) {
+      if (clicked === selectedPlayer) {
+        // Already selected
+      } else if (selectedPlayer && gunHolder && gunHolder === selectedPlayer) {
+        // Pass gun to teammate
+        passGun(clicked);
+      } else {
+        selectedPlayer = clicked;
+      }
+    } else if (clicked.team === 'defense' && clicked.alive) {
+      // Try to shoot
+      if (hasBullet && gunHolder && offenseHasGun) {
+        shootAt(clicked);
+      }
+    }
+  }
+});
+
+c.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const rect = c.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (W / rect.width);
+  const y = (e.clientY - rect.top) * (H / rect.height);
+
+  if (state === 'playing' && selectedPlayer && selectedPlayer.alive) {
+    selectedPlayer.targetX = x;
+    selectedPlayer.targetY = y;
+  }
+});
+
+// Status text
+function updateStatus() {
+  if (state === 'playing') {
+    const s = offenseHasGun ? 'Your ball & gun. Move right to score!' : 'TURNOVER! Defense has the gun!';
+    status.textContent = s;
+  } else if (state === 'title') {
+    status.textContent = 'Click to start';
+  } else if (state === 'gameover') {
+    status.textContent = `Final: Offense ${offenseScore} - Defense ${defenseScore}`;
+  } else {
+    status.textContent = message;
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  updateStatus();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

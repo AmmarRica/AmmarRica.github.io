@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kaiju Bowl</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 1000; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #333; }
+#info { position: fixed; bottom: 10px; text-align: center; font-size: 12px; color: #666; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">P1: A/D Move, W Jump, S Pick Up, Q Breath, E Tail Whip, R Roar | P2: Arrows, I Jump, K Pick Up, U Breath, O Tail, P Roar</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 900, H = 550;
+canvas.width = W; canvas.height = H;
+
+let audioCtx;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function playTone(f, d, t='square', v=0.05) {
+  if (!audioCtx) return;
+  let o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = t; o.frequency.value = f;
+  g.gain.setValueAtTime(v, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + d);
+  o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + d);
+}
+
+const GROUND_Y = 420;
+const GRAVITY = 0.6;
+const ENDZONE_W = 80;
+
+let state = 'title';
+let particles = [];
+let buildings = [];
+let humans = [];
+let ball = null;
+let p1, p2;
+let scoreFlash = 0;
+let keys = {};
+
+document.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  initAudio();
+  if (state === 'title') startGame();
+  if (state === 'gameover' && e.key === ' ') startGame();
+});
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+function createKaiju(x, color, name, facing) {
+  return {
+    x, y: GROUND_Y, w: 60, h: 80, vx: 0, vy: 0,
+    color, name, facing, score: 0,
+    hasBall: false, stunned: 0,
+    breathCool: 0, tailCool: 0, roarCool: 0,
+    animFrame: 0, walking: false
+  };
+}
+
+function startGame() {
+  state = 'play';
+  p1 = createKaiju(200, '#2a8a2a', 'GODZILLA', 1);
+  p2 = createKaiju(700, '#8a2a2a', 'KONG', -1);
+  particles = [];
+  buildings = [];
+  humans = [];
+  scoreFlash = 0;
+
+  // Generate buildings
+  for (let x = ENDZONE_W + 30; x < W - ENDZONE_W - 30; x += 50 + Math.random() * 40) {
+    let h = 40 + Math.random() * 120;
+    buildings.push({
+      x, y: GROUND_Y - h, w: 35 + Math.random() * 20, h,
+      hp: Math.ceil(h / 30), maxHp: Math.ceil(h / 30),
+      color: ['#556','#665','#556','#446','#554'][Math.floor(Math.random()*5)],
+      windows: Math.floor(h / 15)
+    });
+  }
+
+  // Spawn humans
+  for (let i = 0; i < 15; i++) {
+    humans.push({
+      x: ENDZONE_W + Math.random() * (W - ENDZONE_W * 2),
+      y: GROUND_Y, vx: (Math.random() - 0.5) * 2,
+      alive: true, panic: false
+    });
+  }
+
+  // Spawn ball
+  spawnBall();
+}
+
+function spawnBall() {
+  ball = {
+    x: W / 2, y: GROUND_Y - 150,
+    vx: (Math.random() - 0.5) * 3, vy: -2,
+    onGround: false, held: false, r: 12
+  };
+}
+
+function addParticles(x, y, col, n = 10, spread = 5) {
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x, y, dx: (Math.random() - 0.5) * spread * 2,
+      dy: -Math.random() * spread - 1,
+      life: 20 + Math.random() * 20, col,
+      r: 1 + Math.random() * 3, gravity: 0.1
+    });
+  }
+}
+
+function addDebris(x, y, n = 8) {
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x, y, dx: (Math.random() - 0.5) * 8,
+      dy: -Math.random() * 6 - 2,
+      life: 30 + Math.random() * 20, col: ['#888','#666','#999','#555'][Math.floor(Math.random()*4)],
+      r: 2 + Math.random() * 4, gravity: 0.3
+    });
+  }
+}
+
+function rectCollide(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function updateKaiju(k, controls, other) {
+  if (k.stunned > 0) { k.stunned--; return; }
+
+  // Movement
+  k.walking = false;
+  if (keys[controls.left]) { k.x -= 3; k.facing = -1; k.walking = true; }
+  if (keys[controls.right]) { k.x += 3; k.facing = 1; k.walking = true; }
+  if (keys[controls.jump] && k.y >= GROUND_Y) { k.vy = -12; playTone(100, 0.1, 'sawtooth'); }
+
+  // Pick up ball
+  if (keys[controls.pickup] && ball && !ball.held && !k.hasBall) {
+    if (Math.abs(k.x - ball.x) < 40 && Math.abs(k.y - ball.y) < 50) {
+      k.hasBall = true; ball.held = true;
+      playTone(440, 0.1);
+    }
+  }
+
+  // Atomic breath
+  if (keys[controls.breath] && k.breathCool <= 0) {
+    k.breathCool = 90;
+    playTone(80, 0.4, 'sawtooth', 0.1);
+    // Damage buildings and push other in breath path
+    let bx = k.x;
+    let dir = k.facing;
+    for (let i = 0; i < 200; i += 5) {
+      let px = bx + dir * i;
+      addParticles(px, k.y - 40 + Math.random() * 20, k.color === '#2a8a2a' ? '#44ff44' : '#ff4444', 2, 3);
+      // Hit buildings
+      buildings.forEach(b => {
+        if (px > b.x && px < b.x + b.w && k.y - 40 > b.y) {
+          b.hp--;
+          if (b.hp <= 0) {
+            addDebris(b.x + b.w / 2, b.y, 15);
+            playTone(60, 0.2, 'sawtooth');
+          }
+        }
+      });
+      // Hit other kaiju
+      if (Math.abs(px - other.x) < 30 && Math.abs(k.y - 40 - other.y + 40) < 40) {
+        other.stunned = 30;
+        if (other.hasBall) { other.hasBall = false; ball.held = false; ball.x = other.x; ball.y = other.y - 50; ball.vx = dir * 5; ball.vy = -5; }
+        addParticles(other.x, other.y - 40, '#ff0', 8);
+      }
+    }
+    buildings = buildings.filter(b => b.hp > 0);
+  }
+
+  // Tail whip
+  if (keys[controls.tail] && k.tailCool <= 0) {
+    k.tailCool = 60;
+    playTone(150, 0.15, 'sawtooth');
+    let tailDir = -k.facing;
+    addParticles(k.x + tailDir * 40, k.y - 20, '#ff8800', 5, 4);
+    if (Math.abs(k.x + tailDir * 40 - other.x) < 50 && Math.abs(k.y - other.y) < 50) {
+      if (other.hasBall) {
+        other.hasBall = false; ball.held = false;
+        ball.x = other.x; ball.y = other.y - 60;
+        ball.vx = tailDir * 8; ball.vy = -6;
+        playTone(200, 0.2);
+      }
+      other.stunned = 20;
+      other.vx = tailDir * 8;
+      addParticles(other.x, other.y - 30, '#ff0', 10);
+    }
+    // Destroy nearby buildings
+    buildings.forEach(b => {
+      if (Math.abs(k.x + tailDir * 40 - b.x - b.w/2) < 40) {
+        b.hp -= 2;
+        if (b.hp <= 0) addDebris(b.x + b.w/2, b.y, 12);
+      }
+    });
+    buildings = buildings.filter(b => b.hp > 0);
+  }
+
+  // Roar (stun)
+  if (keys[controls.roar] && k.roarCool <= 0) {
+    k.roarCool = 120;
+    playTone(60, 0.5, 'sawtooth', 0.12);
+    setTimeout(() => playTone(50, 0.3, 'sawtooth', 0.08), 200);
+    // Stun if close enough
+    if (Math.abs(k.x - other.x) < 150) {
+      other.stunned = 45;
+      addParticles(other.x, other.y - 40, '#fff', 10);
+    }
+    // Shockwave particles
+    for (let i = 0; i < 20; i++) {
+      let angle = Math.PI * 2 * i / 20;
+      particles.push({
+        x: k.x, y: k.y - 40,
+        dx: Math.cos(angle) * 5, dy: Math.sin(angle) * 3,
+        life: 15, col: '#ffffff88', r: 3, gravity: 0
+      });
+    }
+    // Panic humans
+    humans.forEach(h => { h.panic = true; });
+  }
+
+  // Physics
+  k.vy += GRAVITY;
+  k.x += k.vx;
+  k.y += k.vy;
+  k.vx *= 0.9;
+
+  if (k.y >= GROUND_Y) { k.y = GROUND_Y; k.vy = 0; }
+  k.x = Math.max(20, Math.min(W - 20, k.x));
+
+  // Cooldowns
+  if (k.breathCool > 0) k.breathCool--;
+  if (k.tailCool > 0) k.tailCool--;
+  if (k.roarCool > 0) k.roarCool--;
+
+  // Stomp humans
+  humans.forEach(h => {
+    if (h.alive && Math.abs(k.x - h.x) < 25 && k.y >= GROUND_Y - 5) {
+      h.alive = false;
+      k.score += 1;
+      addParticles(h.x, h.y, '#f00', 5, 3);
+      playTone(800, 0.05);
+    }
+  });
+
+  // Smash buildings by walking through
+  buildings.forEach(b => {
+    if (k.x > b.x - 15 && k.x < b.x + b.w + 15 && k.y > b.y - 10) {
+      b.hp--;
+      if (b.hp <= 0) {
+        addDebris(b.x + b.w / 2, b.y, 10);
+        k.score += 2;
+        playTone(50, 0.15, 'sawtooth');
+      }
+    }
+  });
+  buildings = buildings.filter(b => b.hp > 0);
+
+  // Ball follows kaiju if held
+  if (k.hasBall && ball) {
+    ball.x = k.x + k.facing * 25;
+    ball.y = k.y - 50;
+  }
+
+  // Score TD
+  if (k.hasBall) {
+    let tdZone = k === p1 ? (k.x > W - ENDZONE_W) : (k.x < ENDZONE_W);
+    if (tdZone) {
+      k.score += 7;
+      k.hasBall = false;
+      scoreFlash = 60;
+      playTone(262, 0.2); setTimeout(() => playTone(330, 0.2), 100);
+      setTimeout(() => playTone(392, 0.2), 200); setTimeout(() => playTone(523, 0.3), 300);
+      addParticles(k.x, k.y - 60, '#ff0', 30, 8);
+      setTimeout(spawnBall, 1000);
+    }
+  }
+
+  // Anim
+  if (k.walking) k.animFrame = (k.animFrame + 0.15);
+}
+
+function updateBall() {
+  if (!ball || ball.held) return;
+  ball.vy += GRAVITY * 0.5;
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+  ball.vx *= 0.99;
+
+  if (ball.y > GROUND_Y) { ball.y = GROUND_Y; ball.vy *= -0.5; ball.vx *= 0.9; }
+  if (ball.x < 10) { ball.x = 10; ball.vx *= -0.7; }
+  if (ball.x > W - 10) { ball.x = W - 10; ball.vx *= -0.7; }
+}
+
+function update() {
+  if (state !== 'play') return;
+
+  updateKaiju(p1, { left: 'a', right: 'd', jump: 'w', pickup: 's', breath: 'q', tail: 'e', roar: 'r' }, p2);
+  updateKaiju(p2, { left: 'arrowleft', right: 'arrowright', jump: 'arrowup', pickup: 'arrowdown', breath: 'u', tail: 'o', roar: 'p' }, p1);
+  updateBall();
+
+  // Update humans
+  humans.forEach(h => {
+    if (!h.alive) return;
+    if (h.panic) {
+      let nearK = Math.abs(h.x - p1.x) < Math.abs(h.x - p2.x) ? p1 : p2;
+      h.vx = h.x < nearK.x ? -2 : 2;
+    }
+    h.x += h.vx;
+    if (h.x < 10 || h.x > W - 10) h.vx *= -1;
+  });
+
+  // Respawn humans occasionally
+  if (Math.random() < 0.01 && humans.filter(h => h.alive).length < 10) {
+    humans.push({
+      x: ENDZONE_W + Math.random() * (W - ENDZONE_W * 2),
+      y: GROUND_Y, vx: (Math.random() - 0.5) * 1.5,
+      alive: true, panic: false
+    });
+  }
+
+  // Particles
+  particles.forEach(p => {
+    p.x += p.dx; p.y += p.dy; p.dy += (p.gravity || 0.1); p.life--;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  if (scoreFlash > 0) scoreFlash--;
+
+  // Win condition: first to 28
+  if (p1.score >= 28 || p2.score >= 28) state = 'gameover';
+}
+
+function drawKaiju(k) {
+  let x = k.x, y = k.y, f = k.facing;
+  let c = k.color;
+  let stunAlpha = k.stunned > 0 ? 0.5 + Math.sin(k.stunned) * 0.3 : 1;
+  ctx.globalAlpha = stunAlpha;
+
+  // Legs
+  let legOff = Math.sin(k.animFrame * 2) * 5;
+  ctx.fillStyle = c;
+  ctx.fillRect(x - 15, y - 15 + legOff, 12, 15);
+  ctx.fillRect(x + 3, y - 15 - legOff, 12, 15);
+
+  // Body
+  ctx.fillStyle = c;
+  ctx.fillRect(x - 20, y - 65, 40, 50);
+
+  // Belly
+  let bellyC = k.color === '#2a8a2a' ? '#4aba4a' : '#ba4a4a';
+  ctx.fillStyle = bellyC;
+  ctx.fillRect(x - 12, y - 55, 24, 35);
+
+  // Arms
+  let armY = y - 50;
+  ctx.fillStyle = c;
+  ctx.fillRect(x - 28, armY + Math.sin(k.animFrame) * 3, 10, 20);
+  ctx.fillRect(x + 18, armY - Math.sin(k.animFrame) * 3, 10, 20);
+
+  // Head
+  ctx.fillStyle = c;
+  ctx.fillRect(x - 15 + f * 5, y - 85, 30, 25);
+
+  // Eyes
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(x - 5 + f * 8, y - 80, 6, 6);
+  ctx.fillRect(x + 5 + f * 8, y - 80, 6, 6);
+  ctx.fillStyle = '#f00';
+  ctx.fillRect(x - 3 + f * 10, y - 78, 3, 3);
+  ctx.fillRect(x + 7 + f * 10, y - 78, 3, 3);
+
+  // Mouth
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x - 5 + f * 8, y - 68, 15, 4);
+  // Teeth
+  ctx.fillStyle = '#fff';
+  for (let i = 0; i < 4; i++) {
+    ctx.fillRect(x - 4 + f * 8 + i * 4, y - 68, 2, 3);
+  }
+
+  // Tail
+  ctx.fillStyle = c;
+  let tx = x - f * 25;
+  ctx.fillRect(tx - 8, y - 30, 16, 8);
+  ctx.fillRect(tx - f * 10 - 5, y - 28, 10, 6);
+  ctx.fillRect(tx - f * 20 - 3, y - 26, 6, 4);
+
+  // Spines (for Godzilla)
+  if (k.color === '#2a8a2a') {
+    ctx.fillStyle = '#1a6a1a';
+    for (let i = 0; i < 4; i++) {
+      let sx = x - 5 + i * 5;
+      ctx.beginPath();
+      ctx.moveTo(sx, y - 65 - i * 3);
+      ctx.lineTo(sx + 4, y - 65 - i * 3);
+      ctx.lineTo(sx + 2, y - 75 - i * 3);
+      ctx.fill();
+    }
+  }
+
+  // Breath indicator
+  if (k.breathCool > 60) {
+    ctx.fillStyle = k.color === '#2a8a2a' ? '#44ff4488' : '#ff444488';
+    for (let i = 0; i < 200; i += 8) {
+      let bx = x + f * 20 + f * i;
+      let by = y - 70 + Math.sin(i * 0.1 + k.animFrame) * 8;
+      let size = 6 - i * 0.02;
+      if (size > 0) ctx.fillRect(bx, by, size, size);
+    }
+  }
+
+  ctx.globalAlpha = 1;
+
+  // Name and cooldowns
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText(k.name, x, y - 92);
+
+  // Stun indicator
+  if (k.stunned > 0) {
+    ctx.fillStyle = '#ff0';
+    ctx.font = '12px Courier New';
+    for (let i = 0; i < 3; i++) {
+      let angle = (k.stunned * 0.2 + i * 2.1);
+      ctx.fillText('*', x + Math.cos(angle) * 20, y - 85 + Math.sin(angle) * 10);
+    }
+  }
+}
+
+function drawBuilding(b) {
+  let dmgRatio = b.hp / b.maxHp;
+  ctx.fillStyle = b.color;
+  ctx.fillRect(b.x, b.y, b.w, b.h);
+
+  // Windows
+  let cols = Math.floor(b.w / 10);
+  let rows = b.windows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let lit = Math.random() > 0.3 * (1 - dmgRatio);
+      ctx.fillStyle = lit ? '#ff8' : '#333';
+      ctx.fillRect(b.x + 4 + c * 10, b.y + 5 + r * 15, 5, 8);
+    }
+  }
+
+  // Damage cracks
+  if (dmgRatio < 0.7) {
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(b.x + b.w * 0.3, b.y);
+    ctx.lineTo(b.x + b.w * 0.5, b.y + b.h * 0.4);
+    ctx.lineTo(b.x + b.w * 0.4, b.y + b.h);
+    ctx.stroke();
+  }
+
+  // HP bar
+  ctx.fillStyle = '#333';
+  ctx.fillRect(b.x, b.y - 6, b.w, 4);
+  ctx.fillStyle = dmgRatio > 0.5 ? '#4a4' : dmgRatio > 0.25 ? '#aa4' : '#a44';
+  ctx.fillRect(b.x, b.y - 6, b.w * dmgRatio, 4);
+}
+
+function draw() {
+  // Sky
+  let skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  skyGrad.addColorStop(0, '#0a0a2e');
+  skyGrad.addColorStop(0.5, '#1a1040');
+  skyGrad.addColorStop(1, '#2a1a30');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars
+  for (let i = 0; i < 30; i++) {
+    ctx.fillStyle = '#ffffff44';
+    ctx.fillRect((i * 97 + 13) % W, (i * 43 + 7) % (GROUND_Y - 50), 2, 2);
+  }
+
+  // Moon
+  ctx.fillStyle = '#ddd';
+  ctx.beginPath();
+  ctx.arc(W - 100, 60, 30, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Endzones
+  ctx.fillStyle = '#2244aa55';
+  ctx.fillRect(0, GROUND_Y, ENDZONE_W, H - GROUND_Y);
+  ctx.fillStyle = '#aa224455';
+  ctx.fillRect(W - ENDZONE_W, GROUND_Y, ENDZONE_W, H - GROUND_Y);
+
+  // Endzone labels
+  ctx.save();
+  ctx.fillStyle = '#ffffff44';
+  ctx.font = '14px Courier New';
+  ctx.textAlign = 'center';
+  ctx.translate(ENDZONE_W / 2, GROUND_Y + 50);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('P2 SCORES HERE', 0, 0);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(W - ENDZONE_W / 2, GROUND_Y + 50);
+  ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = '#ffffff44';
+  ctx.font = '14px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('P1 SCORES HERE', 0, 0);
+  ctx.restore();
+
+  // Ground
+  ctx.fillStyle = '#333';
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  ctx.fillStyle = '#444';
+  ctx.fillRect(0, GROUND_Y, W, 3);
+
+  // Road markings
+  ctx.fillStyle = '#555';
+  ctx.fillRect(0, GROUND_Y + 30, W, 40);
+  ctx.setLineDash([20, 15]);
+  ctx.strokeStyle = '#aa0';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y + 50);
+  ctx.lineTo(W, GROUND_Y + 50);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  if (state === 'title') {
+    ctx.fillStyle = '#000000cc';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#f44';
+    ctx.font = 'bold 48px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('KAIJU BOWL', W / 2, 120);
+    ctx.fillStyle = '#ff8';
+    ctx.font = '18px Courier New';
+    ctx.fillText('Giant Monster Football!', W / 2, 160);
+    ctx.fillStyle = '#ccc';
+    ctx.font = '13px Courier New';
+    let lines = [
+      'Two kaiju play football in a destroyed city!',
+      '',
+      'P1 (Green): A/D Move, W Jump, S Grab Ball',
+      '   Q: Atomic Breath  E: Tail Whip  R: Roar',
+      '',
+      'P2 (Red): Arrows Move, Up Jump, Down Grab Ball',
+      '   U: Atomic Breath  O: Tail Whip  P: Roar',
+      '',
+      'Carry the boulder to the opposite endzone!',
+      'Smash buildings & stomp fans for bonus points!',
+      'First to 28 points wins!',
+      '',
+      'Press any key to start'
+    ];
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, 200 + i * 22));
+    return;
+  }
+
+  // Buildings
+  buildings.forEach(b => drawBuilding(b));
+
+  // Humans
+  humans.forEach(h => {
+    if (!h.alive) return;
+    ctx.fillStyle = ['#f88','#8f8','#88f','#ff8','#f8f'][Math.floor(h.x) % 5];
+    ctx.fillRect(h.x - 2, h.y - 8, 4, 8);
+    ctx.fillStyle = '#fca';
+    ctx.fillRect(h.x - 2, h.y - 11, 4, 4);
+    if (h.panic) {
+      ctx.fillStyle = '#fff';
+      ctx.font = '6px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('!', h.x, h.y - 14);
+    }
+  });
+
+  // Ball
+  if (ball && !ball.held) {
+    ctx.fillStyle = '#888';
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y - ball.r, ball.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#666';
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y - ball.r, ball.r - 2, 0, Math.PI * 2);
+    ctx.fill();
+    // Crack details
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(ball.x - 5, ball.y - ball.r - 3);
+    ctx.lineTo(ball.x + 3, ball.y - ball.r + 5);
+    ctx.stroke();
+  }
+
+  // Kaijus
+  drawKaiju(p1);
+  drawKaiju(p2);
+
+  // Ball on kaiju if held
+  if (ball && ball.held) {
+    let holder = p1.hasBall ? p1 : p2;
+    ctx.fillStyle = '#888';
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 40;
+    ctx.fillStyle = p.col;
+    ctx.fillRect(p.x - p.r / 2, p.y - p.r / 2, p.r, p.r);
+  });
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = '#000000cc';
+  ctx.fillRect(0, 0, W, 35);
+
+  ctx.font = 'bold 20px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#4a4';
+  ctx.fillText(`GODZILLA: ${p1.score}`, 20, 25);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#a44';
+  ctx.fillText(`KONG: ${p2.score}`, W - 20, 25);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#888';
+  ctx.font = '12px Courier New';
+  ctx.fillText('First to 28', W / 2, 15);
+  ctx.fillStyle = '#ff8';
+  ctx.fillText(`${p1.score} - ${p2.score}`, W / 2, 28);
+
+  // Cooldown indicators
+  ctx.font = '9px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = p1.breathCool > 0 ? '#666' : '#4f4';
+  ctx.fillText('Q:BREATH', 20, H - 25);
+  ctx.fillStyle = p1.tailCool > 0 ? '#666' : '#4f4';
+  ctx.fillText('E:TAIL', 90, H - 25);
+  ctx.fillStyle = p1.roarCool > 0 ? '#666' : '#4f4';
+  ctx.fillText('R:ROAR', 145, H - 25);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = p2.breathCool > 0 ? '#666' : '#f44';
+  ctx.fillText('U:BREATH', W - 145, H - 25);
+  ctx.fillStyle = p2.tailCool > 0 ? '#666' : '#f44';
+  ctx.fillText('O:TAIL', W - 90, H - 25);
+  ctx.fillStyle = p2.roarCool > 0 ? '#666' : '#f44';
+  ctx.fillText('P:ROAR', W - 20, H - 25);
+
+  // Score flash
+  if (scoreFlash > 0) {
+    ctx.fillStyle = `rgba(255,255,0,${scoreFlash / 60 * 0.3})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff0';
+    ctx.font = 'bold 36px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('TOUCHDOWN!', W / 2, H / 2);
+  }
+
+  // Game over
+  if (state === 'gameover') {
+    ctx.fillStyle = '#000000cc';
+    ctx.fillRect(0, 0, W, H);
+    let winner = p1.score >= 28 ? 'GODZILLA' : 'KONG';
+    let wColor = p1.score >= 28 ? '#4f4' : '#f44';
+    ctx.fillStyle = wColor;
+    ctx.font = 'bold 42px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${winner} WINS!`, W / 2, H / 2 - 40);
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px Courier New';
+    ctx.fillText(`${p1.score} - ${p2.score}`, W / 2, H / 2 + 10);
+    ctx.fillStyle = '#888';
+    ctx.font = '14px Courier New';
+    ctx.fillText('Press SPACE to play again', W / 2, H / 2 + 50);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

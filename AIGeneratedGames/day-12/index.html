@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 12 – Attactics – Game a Day</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; display: block; }
+    #ui { color: #9ca3af; font-size: 0.8rem; margin-top: 0.5rem; max-width: 480px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Attactics</h1>
+  <p class="subtitle">Tactical grid combat — place units, watch them fight</p>
+  <canvas id="game"></canvas>
+  <div id="ui">Tap unit type below · Tap grid to place · Hit FIGHT when ready</div>
+  <script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let W, H;
+
+  function resize() {
+    W = Math.min(480, window.innerWidth - 20);
+    H = Math.min(640, window.innerHeight - 140);
+    canvas.width = W;
+    canvas.height = H;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const GRID_COLS = 8;
+  const GRID_ROWS = 6;
+  let CELL;
+  let gridOffX, gridOffY;
+
+  function recalcGrid() {
+    CELL = Math.floor(Math.min((W - 20) / GRID_COLS, (H - 180) / GRID_ROWS));
+    gridOffX = Math.floor((W - GRID_COLS * CELL) / 2);
+    gridOffY = 60;
+  }
+  recalcGrid();
+
+  // Unit types: sword beats lance, lance beats bow, bow beats sword
+  const TYPES = [
+    { name: 'Sword', color: '#ff4444', strong: 2, weak: 1, symbol: 'S', hp: 10, atk: 3 },
+    { name: 'Lance', color: '#4488ff', strong: 0, weak: 2, symbol: 'L', hp: 8, atk: 4 },
+    { name: 'Bow',   color: '#44dd44', strong: 1, weak: 0, symbol: 'B', hp: 6, atk: 5 }
+  ];
+
+  let state = 'title'; // title, placing, fighting, victory, defeat
+  let round = 1;
+  let selectedType = 0;
+  let playerUnits = [];
+  let enemyUnits = [];
+  let unitsToPlace = 0;
+  let maxUnits = 3;
+  let battleLog = [];
+  let battlePhase = 0; // 0=idle, tick for animation
+  let battleTimer = 0;
+  let particles = [];
+  let animations = [];
+
+  function initRound() {
+    playerUnits = [];
+    enemyUnits = [];
+    battleLog = [];
+    battlePhase = 0;
+    battleTimer = 0;
+    particles = [];
+    animations = [];
+    maxUnits = 3 + Math.floor(round / 2);
+    unitsToPlace = maxUnits;
+    selectedType = 0;
+
+    // Generate enemy formation
+    const enemyCount = 2 + round;
+    for (let i = 0; i < Math.min(enemyCount, 12); i++) {
+      let ex, ey, attempts = 0;
+      do {
+        ex = 4 + Math.floor(Math.random() * 4);
+        ey = Math.floor(Math.random() * GRID_ROWS);
+        attempts++;
+      } while (attempts < 100 && enemyUnits.some(u => u.gx === ex && u.gy === ey));
+
+      const typeIdx = Math.floor(Math.random() * 3);
+      const t = TYPES[typeIdx];
+      enemyUnits.push({
+        gx: ex, gy: ey, type: typeIdx,
+        hp: t.hp + round, maxHp: t.hp + round, atk: t.atk + Math.floor(round / 2),
+        team: 'enemy', alive: true
+      });
+    }
+
+    state = 'placing';
+  }
+
+  function getGridCell(px, py) {
+    const gx = Math.floor((px - gridOffX) / CELL);
+    const gy = Math.floor((py - gridOffY) / CELL);
+    if (gx >= 0 && gx < GRID_COLS && gy >= 0 && gy < GRID_ROWS) return { gx, gy };
+    return null;
+  }
+
+  function unitAt(gx, gy, list) {
+    return list.find(u => u.gx === gx && u.gy === gy && u.alive);
+  }
+
+  // Touch
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const tx = e.touches[0].clientX - rect.left;
+    const ty = e.touches[0].clientY - rect.top;
+    handleTap(tx, ty);
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('touchend', (e) => { e.preventDefault(); }, { passive: false });
+
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    handleTap(e.clientX - rect.left, e.clientY - rect.top);
+  });
+
+  function handleTap(tx, ty) {
+    recalcGrid();
+
+    if (state === 'title') { state = 'placing'; round = 1; initRound(); return; }
+    if (state === 'victory' || state === 'defeat') {
+      if (state === 'victory') { round++; initRound(); }
+      else { state = 'title'; }
+      return;
+    }
+
+    if (state === 'placing') {
+      // Check unit type buttons
+      const btnY = gridOffY + GRID_ROWS * CELL + 20;
+      for (let i = 0; i < 3; i++) {
+        const bx = gridOffX + i * (CELL * 2 + 10);
+        if (tx >= bx && tx <= bx + CELL * 2 && ty >= btnY && ty <= btnY + 40) {
+          selectedType = i;
+          return;
+        }
+      }
+
+      // Check fight button
+      const fightBtnX = W / 2 - 50, fightBtnY = btnY + 55;
+      if (tx >= fightBtnX && tx <= fightBtnX + 100 && ty >= fightBtnY && ty <= fightBtnY + 36) {
+        if (playerUnits.length > 0) {
+          state = 'fighting';
+          battlePhase = 0;
+          battleTimer = 0;
+        }
+        return;
+      }
+
+      // Place unit on grid (left half only for player)
+      const cell = getGridCell(tx, ty);
+      if (cell && cell.gx < 4 && unitsToPlace > 0) {
+        if (!unitAt(cell.gx, cell.gy, playerUnits) && !unitAt(cell.gx, cell.gy, enemyUnits)) {
+          const t = TYPES[selectedType];
+          playerUnits.push({
+            gx: cell.gx, gy: cell.gy, type: selectedType,
+            hp: t.hp, maxHp: t.hp, atk: t.atk,
+            team: 'player', alive: true
+          });
+          unitsToPlace--;
+        }
+      }
+
+      // Tap existing player unit to remove
+      if (cell && cell.gx < 4) {
+        const existing = unitAt(cell.gx, cell.gy, playerUnits);
+        if (existing && unitsToPlace < maxUnits) {
+          // Only remove if we just didn't place
+          // Actually this conflicts - let's use long press or double tap
+          // For simplicity, tap empty to place, tap on existing to cycle type
+          if (existing) {
+            existing.type = (existing.type + 1) % 3;
+            const t = TYPES[existing.type];
+            existing.hp = t.hp;
+            existing.maxHp = t.hp;
+            existing.atk = t.atk;
+          }
+        }
+      }
+    }
+  }
+
+  function findClosestEnemy(unit, targets) {
+    let closest = null, minDist = Infinity;
+    for (const t of targets) {
+      if (!t.alive) continue;
+      const d = Math.abs(t.gx - unit.gx) + Math.abs(t.gy - unit.gy);
+      if (d < minDist) { minDist = d; closest = t; }
+    }
+    return closest;
+  }
+
+  function doAttack(attacker, defender) {
+    let dmg = attacker.atk;
+    const at = TYPES[attacker.type];
+    if (at.strong === defender.type) dmg = Math.ceil(dmg * 1.5);
+    if (at.weak === defender.type) dmg = Math.ceil(dmg * 0.6);
+    defender.hp -= dmg;
+
+    // Animation
+    const ax = gridOffX + attacker.gx * CELL + CELL / 2;
+    const ay = gridOffY + attacker.gy * CELL + CELL / 2;
+    const dx = gridOffX + defender.gx * CELL + CELL / 2;
+    const dy = gridOffY + defender.gy * CELL + CELL / 2;
+    animations.push({ sx: ax, sy: ay, ex: dx, ey: dy, t: 0, dur: 15 });
+
+    for (let i = 0; i < 5; i++) {
+      particles.push({
+        x: dx, y: dy, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+        life: 20, color: TYPES[attacker.type].color
+      });
+    }
+
+    if (defender.hp <= 0) {
+      defender.alive = false;
+      for (let i = 0; i < 10; i++) {
+        particles.push({
+          x: dx, y: dy, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6,
+          life: 30, color: '#ff8844'
+        });
+      }
+    }
+
+    const eff = at.strong === defender.type ? ' (super effective!)' : at.weak === defender.type ? ' (weak...)' : '';
+    battleLog.push(`${attacker.team === 'player' ? 'Your' : 'Enemy'} ${TYPES[attacker.type].name} deals ${dmg} dmg${eff}`);
+    if (battleLog.length > 4) battleLog.shift();
+  }
+
+  function moveToward(unit, target) {
+    const dx = target.gx - unit.gx;
+    const dy = target.gy - unit.gy;
+    let nx = unit.gx, ny = unit.gy;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      nx += Math.sign(dx);
+    } else {
+      ny += Math.sign(dy);
+    }
+    // Check collision
+    const allUnits = [...playerUnits, ...enemyUnits];
+    if (!allUnits.some(u => u.alive && u !== unit && u.gx === nx && u.gy === ny) &&
+        nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) {
+      unit.gx = nx;
+      unit.gy = ny;
+    }
+  }
+
+  function update() {
+    if (state !== 'fighting') {
+      particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.life--; return p.life > 0; });
+      return;
+    }
+
+    battleTimer++;
+    if (battleTimer % 30 !== 0) {
+      particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.life--; return p.life > 0; });
+      animations = animations.filter(a => { a.t++; return a.t < a.dur; });
+      return;
+    }
+
+    // Battle tick
+    const allUnits = [...playerUnits.filter(u => u.alive), ...enemyUnits.filter(u => u.alive)];
+    // Shuffle for fairness
+    for (let i = allUnits.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allUnits[i], allUnits[j]] = [allUnits[j], allUnits[i]];
+    }
+
+    for (const unit of allUnits) {
+      if (!unit.alive) continue;
+      const targets = unit.team === 'player' ? enemyUnits : playerUnits;
+      const target = findClosestEnemy(unit, targets);
+      if (!target) continue;
+
+      const dist = Math.abs(target.gx - unit.gx) + Math.abs(target.gy - unit.gy);
+      if (dist <= 1 || (TYPES[unit.type].name === 'Bow' && dist <= 2)) {
+        doAttack(unit, target);
+      } else {
+        moveToward(unit, target);
+      }
+    }
+
+    // Check win/lose
+    const playerAlive = playerUnits.filter(u => u.alive).length;
+    const enemyAlive = enemyUnits.filter(u => u.alive).length;
+    if (enemyAlive === 0) state = 'victory';
+    if (playerAlive === 0) state = 'defeat';
+  }
+
+  function drawUnit(u) {
+    const x = gridOffX + u.gx * CELL;
+    const y = gridOffY + u.gy * CELL;
+    const t = TYPES[u.type];
+
+    // Shadow
+    ctx.fillStyle = u.team === 'player' ? 'rgba(167,139,250,0.2)' : 'rgba(255,68,68,0.2)';
+    ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
+
+    // Unit body
+    ctx.fillStyle = t.color;
+    ctx.fillRect(x + 4, y + 4, CELL - 8, CELL - 8);
+
+    // Symbol
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.floor(CELL * 0.45)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(t.symbol, x + CELL / 2, y + CELL / 2);
+
+    // HP bar
+    const hpRatio = u.hp / u.maxHp;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(x + 4, y + CELL - 8, CELL - 8, 4);
+    ctx.fillStyle = hpRatio > 0.5 ? '#44ff44' : hpRatio > 0.25 ? '#ffaa00' : '#ff4444';
+    ctx.fillRect(x + 4, y + CELL - 8, (CELL - 8) * hpRatio, 4);
+
+    // Team indicator
+    ctx.fillStyle = u.team === 'player' ? '#a78bfa' : '#ff6644';
+    ctx.fillRect(x + 4, y + 4, CELL - 8, 2);
+  }
+
+  function draw() {
+    recalcGrid();
+    ctx.clearRect(0, 0, W, H);
+
+    if (state === 'title') {
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = 'bold 32px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('ATTACTICS', W / 2, H / 2 - 50);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '14px system-ui';
+      ctx.fillText('Tactical grid combat', W / 2, H / 2 - 15);
+      ctx.fillText('Place units, then fight!', W / 2, H / 2 + 10);
+      ctx.fillStyle = '#ff4444'; ctx.fillText('Sword > Bow', W / 2 - 100, H / 2 + 45);
+      ctx.fillStyle = '#44dd44'; ctx.fillText('Bow > Lance', W / 2, H / 2 + 45);
+      ctx.fillStyle = '#4488ff'; ctx.fillText('Lance > Sword', W / 2 + 110, H / 2 + 45);
+      ctx.fillStyle = '#a78bfa';
+      ctx.fillText('Tap to start', W / 2, H / 2 + 80);
+      return;
+    }
+
+    if (state === 'victory') {
+      ctx.fillStyle = '#44ff44';
+      ctx.font = 'bold 28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('VICTORY!', W / 2, H / 2 - 30);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '16px system-ui';
+      ctx.fillText(`Round ${round} complete!`, W / 2, H / 2 + 10);
+      ctx.fillText('Tap for next round', W / 2, H / 2 + 50);
+      return;
+    }
+
+    if (state === 'defeat') {
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('DEFEATED', W / 2, H / 2 - 30);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '16px system-ui';
+      ctx.fillText(`Reached round ${round}`, W / 2, H / 2 + 10);
+      ctx.fillText('Tap to retry', W / 2, H / 2 + 50);
+      return;
+    }
+
+    // Header
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`Round ${round}`, 10, 20);
+    if (state === 'placing') {
+      ctx.textAlign = 'right';
+      ctx.fillText(`Units: ${unitsToPlace} left`, W - 10, 20);
+    }
+    if (state === 'fighting') {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ff8844';
+      ctx.fillText('FIGHTING!', W / 2, 20);
+    }
+
+    // Divider line
+    ctx.strokeStyle = '#3b3b5c44';
+    ctx.lineWidth = 1;
+    const midX = gridOffX + 4 * CELL;
+    ctx.beginPath();
+    ctx.setLineDash([4, 4]);
+    ctx.moveTo(midX, gridOffY);
+    ctx.lineTo(midX, gridOffY + GRID_ROWS * CELL);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw grid
+    ctx.textBaseline = 'alphabetic';
+    for (let gy = 0; gy < GRID_ROWS; gy++) {
+      for (let gx = 0; gx < GRID_COLS; gx++) {
+        const x = gridOffX + gx * CELL;
+        const y = gridOffY + gy * CELL;
+        ctx.strokeStyle = '#2a2a3e';
+        ctx.strokeRect(x, y, CELL, CELL);
+        if (state === 'placing' && gx < 4) {
+          ctx.fillStyle = 'rgba(167,139,250,0.04)';
+          ctx.fillRect(x, y, CELL, CELL);
+        }
+      }
+    }
+
+    // Labels
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('YOUR SIDE', gridOffX + 2 * CELL, gridOffY - 5);
+    ctx.fillText('ENEMY SIDE', gridOffX + 6 * CELL, gridOffY - 5);
+
+    // Draw units
+    for (const u of [...enemyUnits, ...playerUnits]) {
+      if (!u.alive) continue;
+      drawUnit(u);
+    }
+
+    // Animations
+    for (const a of animations) {
+      const prog = a.t / a.dur;
+      const x = a.sx + (a.ex - a.sx) * Math.sin(prog * Math.PI);
+      const y = a.sy + (a.ey - a.sy) * Math.sin(prog * Math.PI);
+      ctx.globalAlpha = 1 - prog;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Particles
+    for (const p of particles) {
+      ctx.globalAlpha = p.life / 30;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    // UI buttons (placing phase)
+    if (state === 'placing') {
+      const btnY = gridOffY + GRID_ROWS * CELL + 20;
+
+      // Type selection
+      for (let i = 0; i < 3; i++) {
+        const bx = gridOffX + i * (CELL * 2 + 10);
+        const t = TYPES[i];
+        ctx.fillStyle = i === selectedType ? t.color : '#2a2a3e';
+        ctx.fillRect(bx, btnY, CELL * 2, 40);
+        ctx.strokeStyle = i === selectedType ? '#fff' : '#3b3b5c';
+        ctx.lineWidth = i === selectedType ? 2 : 1;
+        ctx.strokeRect(bx, btnY, CELL * 2, 40);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 13px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(t.name, bx + CELL, btnY + 16);
+        ctx.fillStyle = '#ccc';
+        ctx.font = '10px system-ui';
+        const beats = TYPES[t.strong].name;
+        ctx.fillText(`beats ${beats}`, bx + CELL, btnY + 32);
+      }
+
+      // Fight button
+      const fightBtnX = W / 2 - 50, fightBtnY = btnY + 55;
+      ctx.fillStyle = playerUnits.length > 0 ? '#a78bfa' : '#333';
+      ctx.fillRect(fightBtnX, fightBtnY, 100, 36);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 16px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('FIGHT!', W / 2, fightBtnY + 24);
+
+      // Instructions
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '11px system-ui';
+      ctx.fillText('Tap placed unit to change type', W / 2, fightBtnY + 60);
+    }
+
+    // Battle log
+    if (state === 'fighting' && battleLog.length > 0) {
+      const logY = gridOffY + GRID_ROWS * CELL + 15;
+      ctx.fillStyle = 'rgba(15,15,26,0.8)';
+      ctx.fillRect(5, logY, W - 10, battleLog.length * 16 + 8);
+      ctx.font = '11px system-ui';
+      ctx.textAlign = 'left';
+      for (let i = 0; i < battleLog.length; i++) {
+        ctx.fillStyle = '#9ca3af';
+        ctx.fillText(battleLog[i], 12, logY + 16 + i * 16);
+      }
+    }
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

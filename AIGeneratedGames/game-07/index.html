@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Space Bowl 3000</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #2a2a4a; border-radius: 4px; cursor: pointer; margin-top: 5px; }
+h1 { color: #00ffcc; font-size: 22px; margin: 5px 0; text-shadow: 0 0 20px #00ffcc44; }
+.info { color: #a0a0c0; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>🚀 Space Bowl 3000 🏈</h1>
+<div class="info" id="status">Zero-G Football</div>
+<canvas id="c" width="900" height="520"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+const W = 900, H = 520;
+
+let state = 'title';
+let score = [0, 0]; // team0 (cyan/left), team1 (magenta/right)
+let quarter = 1;
+let timeLeft = 60;
+let lastTime = 0;
+let stars = [];
+let particles = [];
+let message = '';
+let msgTimer = 0;
+let selectedPlayer = null;
+let launchMode = false;
+let launchStart = null;
+
+// Field
+const FIELD = { x: 50, y: 40, w: 800, h: 440 };
+const AIRLOCK_W = 50;
+
+// Stars background
+for (let i = 0; i < 200; i++) {
+  stars.push({ x: Math.random() * W, y: Math.random() * H, s: Math.random() * 2 + 0.5, b: Math.random() });
+}
+
+class Body {
+  constructor(x, y, vx, vy, radius, type, team) {
+    this.x = x; this.y = y;
+    this.vx = vx || 0; this.vy = vy || 0;
+    this.radius = radius;
+    this.type = type; // 'player' or 'ball'
+    this.team = team; // 0 or 1
+    this.hasBall = false;
+    this.mass = type === 'ball' ? 0.5 : 1;
+    this.trail = [];
+    this.glow = 0;
+  }
+
+  update() {
+    // Zero-G: no friction, but tiny drag
+    this.vx *= 0.999;
+    this.vy *= 0.999;
+    this.x += this.vx;
+    this.y += this.vy;
+
+    // Bounce off walls
+    if (this.x - this.radius < FIELD.x) {
+      this.x = FIELD.x + this.radius;
+      this.vx = Math.abs(this.vx) * 0.8;
+      spawnSparks(this.x, this.y, '#00ffcc');
+    }
+    if (this.x + this.radius > FIELD.x + FIELD.w) {
+      this.x = FIELD.x + FIELD.w - this.radius;
+      this.vx = -Math.abs(this.vx) * 0.8;
+      spawnSparks(this.x, this.y, '#ff00ff');
+    }
+    if (this.y - this.radius < FIELD.y) {
+      this.y = FIELD.y + this.radius;
+      this.vy = Math.abs(this.vy) * 0.8;
+      spawnSparks(this.x, this.y, '#ffff00');
+    }
+    if (this.y + this.radius > FIELD.y + FIELD.h) {
+      this.y = FIELD.y + FIELD.h - this.radius;
+      this.vy = -Math.abs(this.vy) * 0.8;
+      spawnSparks(this.x, this.y, '#ffff00');
+    }
+
+    this.trail.push({ x: this.x, y: this.y });
+    if (this.trail.length > 15) this.trail.shift();
+    if (this.glow > 0) this.glow -= 0.02;
+  }
+
+  draw() {
+    // Trail
+    for (let i = 0; i < this.trail.length; i++) {
+      const t = this.trail[i];
+      const a = i / this.trail.length * 0.3;
+      ctx.globalAlpha = a;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, this.radius * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = this.type === 'ball' ? '#ffaa00' :
+        this.team === 0 ? '#00ffcc' : '#ff00ff';
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    if (this.type === 'ball') {
+      // Glowing ball
+      const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius * 2);
+      grad.addColorStop(0, '#ffcc00');
+      grad.addColorStop(0.5, '#ff880044');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffcc00';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // Laces
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(this.x - 3, this.y - 2);
+      ctx.lineTo(this.x + 3, this.y - 2);
+      ctx.moveTo(this.x - 2, this.y + 1);
+      ctx.lineTo(this.x + 2, this.y + 1);
+      ctx.stroke();
+    } else {
+      // Player
+      const color0 = this.team === 0 ? '#00ffcc' : '#ff00ff';
+      const color1 = this.team === 0 ? '#008866' : '#880088';
+
+      // Selection ring
+      if (this === selectedPlayer) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Glow
+      if (this.glow > 0) {
+        const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius * 3);
+        g.addColorStop(0, color0 + '44');
+        g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Helmet shape
+      const grad = ctx.createRadialGradient(this.x - 3, this.y - 3, 2, this.x, this.y, this.radius);
+      grad.addColorStop(0, color0);
+      grad.addColorStop(1, color1);
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff66';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Visor
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius * 0.5, -0.5, 0.5);
+      ctx.strokeStyle = '#ffffff88';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Ball indicator
+      if (this.hasBall) {
+        ctx.fillStyle = '#ffcc00';
+        ctx.font = '10px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏈', this.x, this.y - this.radius - 4);
+      }
+    }
+  }
+}
+
+let players = [];
+let ball = null;
+
+function spawnSparks(x, y, color) {
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6,
+      life: 20 + Math.random() * 15,
+      color, size: 1 + Math.random() * 3
+    });
+  }
+}
+
+function setupField() {
+  players = [];
+  // Team 0 (cyan) - left
+  for (let i = 0; i < 5; i++) {
+    const p = new Body(150 + Math.random() * 100, 100 + i * 80, 0, 0, 13, 'player', 0);
+    players.push(p);
+  }
+  // Team 1 (magenta) - right (AI)
+  for (let i = 0; i < 5; i++) {
+    const p = new Body(650 + Math.random() * 100, 100 + i * 80, 0, 0, 13, 'player', 1);
+    players.push(p);
+  }
+  // Ball at center
+  ball = new Body(W / 2, H / 2, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 7, 'ball', -1);
+  selectedPlayer = null;
+  launchMode = false;
+}
+
+function resetAfterScore() {
+  players.forEach(p => {
+    p.vx = 0; p.vy = 0;
+    p.hasBall = false;
+    if (p.team === 0) { p.x = 150 + Math.random() * 100; p.y = 100 + Math.floor(Math.random() * 5) * 80; }
+    else { p.x = 650 + Math.random() * 100; p.y = 100 + Math.floor(Math.random() * 5) * 80; }
+  });
+  ball.x = W / 2; ball.y = H / 2;
+  ball.vx = (Math.random() - 0.5) * 3;
+  ball.vy = (Math.random() - 0.5) * 3;
+  selectedPlayer = null;
+}
+
+function collide(a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < a.radius + b.radius && dist > 0) {
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const overlap = a.radius + b.radius - dist;
+    a.x -= nx * overlap / 2;
+    a.y -= ny * overlap / 2;
+    b.x += nx * overlap / 2;
+    b.y += ny * overlap / 2;
+
+    // Elastic collision
+    const dvx = a.vx - b.vx;
+    const dvy = a.vy - b.vy;
+    const dot = dvx * nx + dvy * ny;
+    if (dot > 0) {
+      const m = 2 / (a.mass + b.mass);
+      a.vx -= m * b.mass * dot * nx * 0.9;
+      a.vy -= m * b.mass * dot * ny * 0.9;
+      b.vx += m * a.mass * dot * nx * 0.9;
+      b.vy += m * a.mass * dot * ny * 0.9;
+    }
+    return true;
+  }
+  return false;
+}
+
+function aiUpdate() {
+  const aiPlayers = players.filter(p => p.team === 1);
+  const closest = aiPlayers.reduce((best, p) => {
+    const d = Math.hypot(p.x - ball.x, p.y - ball.y);
+    return d < best.d ? { p, d } : best;
+  }, { p: null, d: Infinity });
+
+  // One AI player chases ball
+  if (closest.p && Math.random() < 0.02) {
+    const p = closest.p;
+    const dx = ball.x - p.x;
+    const dy = ball.y - p.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 0) {
+      const spd = 2 + Math.random() * 2;
+      p.vx += (dx / dist) * spd * 0.3;
+      p.vy += (dy / dist) * spd * 0.3;
+      p.glow = 1;
+    }
+  }
+
+  // If AI has ball, push toward left airlock
+  for (const p of aiPlayers) {
+    if (p.hasBall && Math.random() < 0.03) {
+      p.vx -= 1.5;
+      p.vy += (Math.random() - 0.5) * 2;
+      p.glow = 1;
+    }
+  }
+
+  // Random movement
+  if (Math.random() < 0.01) {
+    const p = aiPlayers[Math.floor(Math.random() * aiPlayers.length)];
+    p.vx += (Math.random() - 0.5) * 3;
+    p.vy += (Math.random() - 0.5) * 3;
+  }
+}
+
+function checkScoring() {
+  // Ball or ball-carrier in left airlock = team1 scores
+  // Ball or ball-carrier in right airlock = team0 scores
+  let scorer = -1;
+
+  for (const p of players) {
+    if (p.hasBall) {
+      if (p.x < FIELD.x + AIRLOCK_W && p.team === 1) { scorer = 1; break; }
+      if (p.x > FIELD.x + FIELD.w - AIRLOCK_W && p.team === 0) { scorer = 0; break; }
+    }
+  }
+
+  if (scorer === -1 && ball && !players.some(p => p.hasBall)) {
+    if (ball.x < FIELD.x + AIRLOCK_W) scorer = 1;
+    if (ball.x > FIELD.x + FIELD.w - AIRLOCK_W) scorer = 0;
+  }
+
+  if (scorer >= 0) {
+    score[scorer] += 7;
+    const name = scorer === 0 ? 'CYAN' : 'MAGENTA';
+    showMsg(`${name} SCORES! 🚀`, 90);
+    spawnSparks(scorer === 0 ? FIELD.x + FIELD.w : FIELD.x, H / 2, scorer === 0 ? '#00ffcc' : '#ff00ff');
+    for (let i = 0; i < 40; i++) {
+      spawnSparks(
+        FIELD.x + Math.random() * FIELD.w,
+        FIELD.y + Math.random() * FIELD.h,
+        scorer === 0 ? '#00ffcc' : '#ff00ff'
+      );
+    }
+    setTimeout(resetAfterScore, 1500);
+  }
+}
+
+function showMsg(m, t) { message = m; msgTimer = t || 90; }
+
+function update() {
+  if (state !== 'playing') return;
+
+  // Timer
+  timeLeft -= 1 / 60;
+  if (timeLeft <= 0) {
+    state = 'gameover';
+    return;
+  }
+
+  // Update physics
+  players.forEach(p => p.update());
+  if (ball) ball.update();
+
+  // Player-ball collisions
+  for (const p of players) {
+    if (ball && !p.hasBall) {
+      const dx = p.x - ball.x;
+      const dy = p.y - ball.y;
+      if (Math.hypot(dx, dy) < p.radius + ball.radius + 2) {
+        // Pick up ball
+        const prevHolder = players.find(pp => pp.hasBall);
+        if (prevHolder) prevHolder.hasBall = false;
+        p.hasBall = true;
+        ball.vx = 0; ball.vy = 0;
+        p.glow = 1;
+        spawnSparks(p.x, p.y, p.team === 0 ? '#00ffcc' : '#ff00ff');
+      }
+    }
+    // Ball follows holder
+    if (p.hasBall && ball) {
+      ball.x = p.x;
+      ball.y = p.y;
+      ball.vx = p.vx;
+      ball.vy = p.vy;
+    }
+  }
+
+  // Player-player collisions
+  for (let i = 0; i < players.length; i++) {
+    for (let j = i + 1; j < players.length; j++) {
+      if (collide(players[i], players[j])) {
+        // Fumble on hard hit
+        const speed = Math.hypot(players[i].vx - players[j].vx, players[i].vy - players[j].vy);
+        if (speed > 5) {
+          const holder = [players[i], players[j]].find(p => p.hasBall);
+          if (holder && players[i].team !== players[j].team) {
+            holder.hasBall = false;
+            ball.vx = (Math.random() - 0.5) * 6;
+            ball.vy = (Math.random() - 0.5) * 6;
+            spawnSparks(holder.x, holder.y, '#ffff00');
+            showMsg('FUMBLE!', 50);
+          }
+        }
+        spawnSparks((players[i].x + players[j].x) / 2, (players[i].y + players[j].y) / 2, '#ffffff');
+      }
+    }
+  }
+
+  aiUpdate();
+  checkScoring();
+
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.96; p.vy *= 0.96;
+    p.life--;
+    return p.life > 0;
+  });
+
+  if (msgTimer > 0) msgTimer--;
+
+  // Clamp speeds
+  [...players, ball].filter(Boolean).forEach(b => {
+    const spd = Math.hypot(b.vx, b.vy);
+    if (spd > 8) { b.vx *= 8 / spd; b.vy *= 8 / spd; }
+  });
+}
+
+function drawStars() {
+  const t = Date.now() * 0.001;
+  stars.forEach(s => {
+    ctx.globalAlpha = 0.3 + Math.sin(t + s.b * 10) * 0.3 + 0.3;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.s, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawField() {
+  // Neon field border
+  ctx.strokeStyle = '#00ffcc44';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+
+  // Laser sidelines
+  const t = Date.now() * 0.003;
+  ctx.strokeStyle = `rgba(0, 255, 204, ${0.3 + Math.sin(t) * 0.2})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(FIELD.x, FIELD.y);
+  ctx.lineTo(FIELD.x + FIELD.w, FIELD.y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(FIELD.x, FIELD.y + FIELD.h);
+  ctx.lineTo(FIELD.x + FIELD.w, FIELD.y + FIELD.h);
+  ctx.stroke();
+
+  // Airlocks (endzones)
+  ctx.fillStyle = '#00ffcc11';
+  ctx.fillRect(FIELD.x, FIELD.y, AIRLOCK_W, FIELD.h);
+  ctx.fillStyle = '#ff00ff11';
+  ctx.fillRect(FIELD.x + FIELD.w - AIRLOCK_W, FIELD.y, AIRLOCK_W, FIELD.h);
+
+  // Airlock labels
+  ctx.save();
+  ctx.globalAlpha = 0.4;
+  ctx.font = '14px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff00ff';
+  ctx.translate(FIELD.x + AIRLOCK_W / 2, FIELD.y + FIELD.h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('◄ AIRLOCK', 0, 0);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.4;
+  ctx.font = '14px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#00ffcc';
+  ctx.translate(FIELD.x + FIELD.w - AIRLOCK_W / 2, FIELD.y + FIELD.h / 2);
+  ctx.rotate(Math.PI / 2);
+  ctx.fillText('AIRLOCK ►', 0, 0);
+  ctx.restore();
+
+  // Grid lines
+  ctx.strokeStyle = '#ffffff08';
+  ctx.lineWidth = 1;
+  for (let x = FIELD.x; x < FIELD.x + FIELD.w; x += 50) {
+    ctx.beginPath();
+    ctx.moveTo(x, FIELD.y);
+    ctx.lineTo(x, FIELD.y + FIELD.h);
+    ctx.stroke();
+  }
+  for (let y = FIELD.y; y < FIELD.y + FIELD.h; y += 50) {
+    ctx.beginPath();
+    ctx.moveTo(FIELD.x, y);
+    ctx.lineTo(FIELD.x + FIELD.w, y);
+    ctx.stroke();
+  }
+
+  // Center circle
+  ctx.beginPath();
+  ctx.arc(W / 2, H / 2, 40, 0, Math.PI * 2);
+  ctx.strokeStyle = '#ffffff11';
+  ctx.stroke();
+}
+
+function drawHUD() {
+  // Holographic scoreboard
+  ctx.fillStyle = '#00000088';
+  ctx.fillRect(W / 2 - 150, 2, 300, 32);
+  ctx.strokeStyle = '#00ffcc44';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(W / 2 - 150, 2, 300, 32);
+
+  ctx.font = '14px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#00ffcc';
+  ctx.fillText(`CYAN: ${score[0]}`, W / 2 - 80, 22);
+  ctx.fillStyle = '#ff00ff';
+  ctx.fillText(`MAGENTA: ${score[1]}`, W / 2 + 80, 22);
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText(`${Math.ceil(timeLeft)}s`, W / 2, 22);
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawStars();
+
+  ctx.font = 'bold 52px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#00ffcc';
+  ctx.shadowBlur = 30;
+  ctx.shadowColor = '#00ffcc';
+  ctx.fillText('SPACE BOWL', W / 2, 130);
+  ctx.fillStyle = '#ff00ff';
+  ctx.shadowColor = '#ff00ff';
+  ctx.fillText('3000', W / 2, 185);
+  ctx.shadowBlur = 0;
+
+  ctx.font = '14px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  const lines = [
+    'Zero-Gravity Football on a Space Station!',
+    '',
+    'You are CYAN team (left) - Score in the RIGHT airlock!',
+    '',
+    'Controls:',
+    '• Click your player to select them',
+    '• Click & drag from player to launch them (zero-G!)',
+    '• Players float until hitting walls or other players',
+    '• Catch the ball by touching it',
+    '• Hard collisions cause FUMBLES!',
+    '',
+    'Score 7 points per touchdown. 60 second game.',
+    '',
+    'Click to START'
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, 230 + i * 20));
+}
+
+function drawGameOver() {
+  ctx.fillStyle = '#0f0f1aee';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = 'bold 48px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText('GAME OVER', W / 2, 140);
+
+  ctx.font = '28px Courier New';
+  ctx.fillStyle = '#00ffcc';
+  ctx.fillText(`Cyan: ${score[0]}`, W / 2, 210);
+  ctx.fillStyle = '#ff00ff';
+  ctx.fillText(`Magenta: ${score[1]}`, W / 2, 250);
+
+  const winner = score[0] > score[1] ? 'CYAN WINS!' : score[1] > score[0] ? 'MAGENTA WINS!' : 'TIE!';
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = '32px Courier New';
+  ctx.fillText(winner, W / 2, 320);
+
+  ctx.font = '16px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText('Click to play again', W / 2, 380);
+}
+
+function draw() {
+  ctx.fillStyle = '#0a0a15';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') { drawTitle(); return; }
+  if (state === 'gameover') { drawStars(); drawGameOver(); return; }
+
+  drawStars();
+  drawField();
+
+  // Draw launch arrow
+  if (launchMode && launchStart && selectedPlayer) {
+    const dx = launchStart.x - selectedPlayer.x;
+    const dy = launchStart.y - selectedPlayer.y;
+    ctx.strokeStyle = '#ffff0088';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(selectedPlayer.x, selectedPlayer.y);
+    ctx.lineTo(selectedPlayer.x - dx * 2, selectedPlayer.y - dy * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Power indicator
+    const power = Math.min(Math.hypot(dx, dy), 100);
+    ctx.fillStyle = '#ffff00';
+    ctx.font = '12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Power: ${Math.round(power)}%`, selectedPlayer.x, selectedPlayer.y - 25);
+  }
+
+  // Draw all bodies
+  players.forEach(p => p.draw());
+  if (ball) ball.draw();
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 35;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  drawHUD();
+
+  // Message
+  if (msgTimer > 0) {
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(W / 2 - 150, H / 2 - 20, 300, 40);
+    ctx.font = 'bold 22px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillText(message, W / 2, H / 2 + 7);
+  }
+
+  // Instructions
+  ctx.font = '11px Courier New';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#a0a0c066';
+  ctx.fillText('Click & drag player to launch | Players drift in zero-G', W - 10, H - 5);
+}
+
+// Input
+let mouseDown = false;
+let mouseX = 0, mouseY = 0;
+
+function getPos(e) {
+  const rect = c.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (W / rect.width),
+    y: (e.clientY - rect.top) * (H / rect.height)
+  };
+}
+
+c.addEventListener('mousedown', (e) => {
+  const pos = getPos(e);
+
+  if (state === 'title') {
+    state = 'playing';
+    score = [0, 0];
+    timeLeft = 60;
+    setupField();
+    return;
+  }
+  if (state === 'gameover') {
+    state = 'title';
+    return;
+  }
+
+  // Check if clicking a team 0 player
+  for (const p of players) {
+    if (p.team === 0) {
+      const d = Math.hypot(p.x - pos.x, p.y - pos.y);
+      if (d < p.radius + 5) {
+        selectedPlayer = p;
+        launchMode = true;
+        launchStart = pos;
+        mouseDown = true;
+        return;
+      }
+    }
+  }
+});
+
+c.addEventListener('mousemove', (e) => {
+  const pos = getPos(e);
+  mouseX = pos.x;
+  mouseY = pos.y;
+  if (launchMode) {
+    launchStart = pos;
+  }
+});
+
+c.addEventListener('mouseup', (e) => {
+  if (launchMode && selectedPlayer) {
+    const pos = getPos(e);
+    const dx = selectedPlayer.x - pos.x;
+    const dy = selectedPlayer.y - pos.y;
+    const power = Math.min(Math.hypot(dx, dy), 100) / 100;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 5) {
+      selectedPlayer.vx += (dx / dist) * power * 6;
+      selectedPlayer.vy += (dy / dist) * power * 6;
+      selectedPlayer.glow = 1;
+      spawnSparks(selectedPlayer.x, selectedPlayer.y, '#00ffcc');
+    }
+  }
+  launchMode = false;
+  mouseDown = false;
+});
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

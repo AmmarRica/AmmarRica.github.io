@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rocket League Gridiron</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 1.1em; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; border: 2px solid #2a2a4a; border-radius: 4px; }
+#ui { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; }
+#score { font-size: 2em; font-weight: bold; text-shadow: 0 0 10px #a78bfa; }
+#timer { font-size: 1.2em; color: #8888cc; }
+#overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15,15,26,0.92); z-index: 10; }
+#overlay h1 { font-size: 3em; color: #a78bfa; margin-bottom: 10px; text-shadow: 0 0 20px #7c3aed; }
+#overlay h2 { font-size: 1.5em; color: #e0e0ff; margin-bottom: 20px; }
+#overlay .sub { color: #8888cc; margin-bottom: 8px; font-size: 1em; }
+#overlay button { padding: 15px 40px; font-size: 1.3em; background: #7c3aed; color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-top: 15px; pointer-events: all; }
+#overlay button:hover { background: #6d28d9; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <div id="score">0 - 0</div>
+  <div id="timer">2:00</div>
+</div>
+<canvas id="c"></canvas>
+<div id="overlay">
+  <h1>Rocket League Gridiron</h1>
+  <h2>Top-Down Car Football</h2>
+  <div class="sub">Arrow Keys to drive | Space to boost</div>
+  <div class="sub">Push the ball into the opponent's endzone to score!</div>
+  <div class="sub">Boost into opponents to demolish them</div>
+  <div class="sub">Collect boost pickups on the field</div>
+  <button id="startBtn">KICK OFF!</button>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const scoreEl = document.getElementById('score');
+const timerEl = document.getElementById('timer');
+const startBtn = document.getElementById('startBtn');
+
+const W = 900, H = 600;
+canvas.width = W; canvas.height = H;
+
+const FIELD_LEFT = 60, FIELD_RIGHT = W - 60, FIELD_TOP = 40, FIELD_BOTTOM = H - 40;
+const ENDZONE_W = 50;
+const GOAL_TOP = H/2 - 80, GOAL_BOTTOM = H/2 + 80;
+
+let keys = {};
+let gameState = 'title';
+let playerScore = 0, aiScore = 0;
+let timeLeft = 120;
+let lastTime = 0;
+let particles = [];
+let skidMarks = [];
+let boostPickups = [];
+let goalFlash = 0;
+let goalText = '';
+
+document.addEventListener('keydown', e => { keys[e.code] = true; if(e.code === 'Space') e.preventDefault(); });
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+class Car {
+  constructor(x, y, angle, color, isPlayer) {
+    this.x = x; this.y = y; this.angle = angle;
+    this.vx = 0; this.vy = 0;
+    this.color = color; this.isPlayer = isPlayer;
+    this.speed = 0; this.boost = 50; this.maxBoost = 100;
+    this.boosting = false; this.demolished = false;
+    this.respawnTimer = 0;
+    this.w = 28; this.h = 16;
+  }
+  reset(x, y, angle) {
+    this.x = x; this.y = y; this.angle = angle;
+    this.vx = 0; this.vy = 0; this.speed = 0;
+    this.demolished = false; this.respawnTimer = 0;
+    this.boost = 50;
+  }
+  update(dt) {
+    if (this.demolished) {
+      this.respawnTimer -= dt;
+      if (this.respawnTimer <= 0) {
+        this.demolished = false;
+        this.x = this.isPlayer ? FIELD_LEFT + 100 : FIELD_RIGHT - 100;
+        this.y = H/2 + (Math.random()-0.5)*200;
+        this.angle = this.isPlayer ? 0 : Math.PI;
+        this.vx = 0; this.vy = 0; this.speed = 0;
+        this.boost = 50;
+      }
+      return;
+    }
+    const accel = this.boosting ? 600 : 300;
+    const maxSpd = this.boosting ? 350 : 220;
+    const friction = 0.97;
+    const turnSpeed = 3.5;
+
+    if (this.isPlayer) {
+      if (keys['ArrowUp']) this.speed += accel * dt;
+      if (keys['ArrowDown']) this.speed -= accel * 0.6 * dt;
+      if (keys['ArrowLeft']) this.angle -= turnSpeed * dt * (Math.abs(this.speed) > 20 ? 1 : 0.3);
+      if (keys['ArrowRight']) this.angle += turnSpeed * dt * (Math.abs(this.speed) > 20 ? 1 : 0.3);
+      this.boosting = keys['Space'] && this.boost > 0;
+      if (this.boosting) this.boost -= 40 * dt;
+    }
+
+    this.speed = Math.max(-maxSpd*0.5, Math.min(maxSpd, this.speed));
+    this.speed *= friction;
+
+    this.vx = Math.cos(this.angle) * this.speed;
+    this.vy = Math.sin(this.angle) * this.speed;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    // Wall collisions
+    if (this.x < FIELD_LEFT + this.w/2) { this.x = FIELD_LEFT + this.w/2; this.speed *= -0.3; }
+    if (this.x > FIELD_RIGHT - this.w/2) { this.x = FIELD_RIGHT - this.w/2; this.speed *= -0.3; }
+    if (this.y < FIELD_TOP + this.h/2) { this.y = FIELD_TOP + this.h/2; this.speed *= -0.3; }
+    if (this.y > FIELD_BOTTOM - this.h/2) { this.y = FIELD_BOTTOM - this.h/2; this.speed *= -0.3; }
+
+    // Skid marks
+    if (Math.abs(this.speed) > 100 && (this.isPlayer ? (keys['ArrowLeft'] || keys['ArrowRight']) : true)) {
+      if (Math.random() < 0.3) {
+        skidMarks.push({ x: this.x, y: this.y, alpha: 0.4 });
+        if (skidMarks.length > 200) skidMarks.shift();
+      }
+    }
+
+    // Exhaust particles
+    if (this.boosting || Math.abs(this.speed) > 80) {
+      const ex = this.x - Math.cos(this.angle) * this.w/2;
+      const ey = this.y - Math.sin(this.angle) * this.h/2;
+      particles.push({
+        x: ex, y: ey,
+        vx: -Math.cos(this.angle) * 80 + (Math.random()-0.5)*40,
+        vy: -Math.sin(this.angle) * 80 + (Math.random()-0.5)*40,
+        life: 0.4, maxLife: 0.4,
+        color: this.boosting ? '#ff6600' : '#666',
+        size: this.boosting ? 5 : 3
+      });
+    }
+  }
+  draw() {
+    if (this.demolished) return;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    // Car body
+    ctx.fillStyle = this.color;
+    ctx.fillRect(-this.w/2, -this.h/2, this.w, this.h);
+    // Windshield
+    ctx.fillStyle = '#aaddff';
+    ctx.fillRect(this.w/4, -this.h/3, this.w/5, this.h*2/3);
+    // Boost glow
+    if (this.boosting) {
+      ctx.fillStyle = '#ff4400';
+      ctx.beginPath();
+      ctx.arc(-this.w/2 - 5, 0, 6 + Math.random()*3, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+    // Boost meter for player
+    if (this.isPlayer) {
+      ctx.fillStyle = '#333';
+      ctx.fillRect(this.x - 15, this.y - this.h/2 - 8, 30, 4);
+      ctx.fillStyle = this.boost > 20 ? '#ff8800' : '#ff2200';
+      ctx.fillRect(this.x - 15, this.y - this.h/2 - 8, 30 * (this.boost / this.maxBoost), 4);
+    }
+  }
+}
+
+class Ball {
+  constructor() { this.reset(); this.radius = 10; }
+  reset() {
+    this.x = W/2; this.y = H/2;
+    this.vx = 0; this.vy = 0;
+  }
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.vx *= 0.99; this.vy *= 0.99;
+    // Walls
+    if (this.y - this.radius < FIELD_TOP) { this.y = FIELD_TOP + this.radius; this.vy *= -0.7; }
+    if (this.y + this.radius > FIELD_BOTTOM) { this.y = FIELD_BOTTOM - this.radius; this.vy *= -0.7; }
+    // Side walls (not in goal area)
+    if (this.x - this.radius < FIELD_LEFT) {
+      if (this.y < GOAL_TOP || this.y > GOAL_BOTTOM) {
+        this.x = FIELD_LEFT + this.radius; this.vx *= -0.7;
+      }
+    }
+    if (this.x + this.radius > FIELD_RIGHT) {
+      if (this.y < GOAL_TOP || this.y > GOAL_BOTTOM) {
+        this.x = FIELD_RIGHT - this.radius; this.vx *= -0.7;
+      }
+    }
+  }
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#cccccc';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Laces
+    ctx.strokeStyle = '#cc0000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(this.x - 3, this.y - 4);
+    ctx.lineTo(this.x + 3, this.y - 4);
+    ctx.moveTo(this.x - 3, this.y);
+    ctx.lineTo(this.x + 3, this.y);
+    ctx.moveTo(this.x - 3, this.y + 4);
+    ctx.lineTo(this.x + 3, this.y + 4);
+    ctx.stroke();
+  }
+}
+
+let player, aiCars, ball;
+
+function initGame() {
+  player = new Car(FIELD_LEFT + 100, H/2, 0, '#3b82f6', true);
+  aiCars = [
+    new Car(FIELD_RIGHT - 100, H/2 - 60, Math.PI, '#ef4444', false),
+    new Car(FIELD_RIGHT - 100, H/2 + 60, Math.PI, '#ef4444', false),
+    new Car(FIELD_RIGHT - 160, H/2, Math.PI, '#dc2626', false)
+  ];
+  ball = new Ball();
+  particles = [];
+  skidMarks = [];
+  playerScore = 0; aiScore = 0;
+  timeLeft = 120;
+  goalFlash = 0;
+  spawnBoostPickups();
+}
+
+function spawnBoostPickups() {
+  boostPickups = [];
+  const positions = [
+    {x: W/2, y: FIELD_TOP + 40}, {x: W/2, y: FIELD_BOTTOM - 40},
+    {x: W/4, y: H/2}, {x: W*3/4, y: H/2},
+    {x: W/3, y: FIELD_TOP + 60}, {x: W*2/3, y: FIELD_BOTTOM - 60}
+  ];
+  positions.forEach(p => boostPickups.push({...p, active: true, timer: 0}));
+}
+
+function checkCarBallCollision(car, b) {
+  if (car.demolished) return;
+  const dx = b.x - car.x, dy = b.y - car.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist < b.radius + 18) {
+    const nx = dx/dist, ny = dy/dist;
+    const pushForce = Math.abs(car.speed) * 1.2 + 100;
+    b.vx += nx * pushForce * 0.8 + car.vx * 0.5;
+    b.vy += ny * pushForce * 0.8 + car.vy * 0.5;
+    // Push ball out
+    b.x = car.x + nx * (b.radius + 19);
+    b.y = car.y + ny * (b.radius + 19);
+    // Spark particles
+    for (let i = 0; i < 5; i++) {
+      particles.push({
+        x: b.x, y: b.y,
+        vx: (Math.random()-0.5)*200, vy: (Math.random()-0.5)*200,
+        life: 0.3, maxLife: 0.3, color: '#ffff00', size: 3
+      });
+    }
+  }
+}
+
+function checkCarCarCollision(a, b) {
+  if (a.demolished || b.demolished) return;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist < 24) {
+    const nx = dx/dist, ny = dy/dist;
+    // Demolish check
+    if (a.boosting && a.isPlayer) {
+      b.demolished = true;
+      b.respawnTimer = 3;
+      for (let i = 0; i < 20; i++) {
+        particles.push({
+          x: b.x, y: b.y,
+          vx: (Math.random()-0.5)*400, vy: (Math.random()-0.5)*400,
+          life: 0.6, maxLife: 0.6,
+          color: ['#ff0000','#ff6600','#ffff00','#ffffff'][Math.floor(Math.random()*4)],
+          size: 4 + Math.random()*4
+        });
+      }
+      return;
+    }
+    if (b.boosting && !b.isPlayer) {
+      a.demolished = true;
+      a.respawnTimer = 3;
+      for (let i = 0; i < 20; i++) {
+        particles.push({
+          x: a.x, y: a.y,
+          vx: (Math.random()-0.5)*400, vy: (Math.random()-0.5)*400,
+          life: 0.6, maxLife: 0.6,
+          color: ['#3b82f6','#60a5fa','#ffffff','#ffff00'][Math.floor(Math.random()*4)],
+          size: 4 + Math.random()*4
+        });
+      }
+      return;
+    }
+    // Bounce
+    const relV = (a.vx - b.vx)*nx + (a.vy - b.vy)*ny;
+    a.vx -= relV * nx * 0.5;
+    a.vy -= relV * ny * 0.5;
+    b.vx += relV * nx * 0.5;
+    b.vy += relV * ny * 0.5;
+    a.speed *= 0.5; b.speed *= 0.5;
+    a.x -= nx * 2; a.y -= ny * 2;
+    b.x += nx * 2; b.y += ny * 2;
+  }
+}
+
+function updateAI(car, dt) {
+  if (car.demolished) return;
+  const toBallX = ball.x - car.x;
+  const toBallY = ball.y - car.y;
+  const distToBall = Math.sqrt(toBallX*toBallX + toBallY*toBallY);
+
+  // Target: either the ball or a position behind the ball to push it toward player's endzone
+  let targetX, targetY;
+  if (ball.x > W/2) {
+    // Ball on AI side, go get it
+    targetX = ball.x + 20;
+    targetY = ball.y;
+  } else {
+    // Ball on player side, push toward player goal
+    targetX = ball.x - 30;
+    targetY = ball.y;
+  }
+
+  const targetAngle = Math.atan2(targetY - car.y, targetX - car.x);
+  let angleDiff = targetAngle - car.angle;
+  while (angleDiff > Math.PI) angleDiff -= Math.PI*2;
+  while (angleDiff < -Math.PI) angleDiff += Math.PI*2;
+
+  car.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 3.5 * dt);
+  car.speed += 280 * dt;
+  car.speed = Math.min(car.speed, 200);
+
+  // Boost when close and lined up
+  car.boosting = distToBall < 150 && Math.abs(angleDiff) < 0.5 && car.boost > 10;
+  if (car.boosting) {
+    car.boost -= 40 * dt;
+    car.speed = Math.min(car.speed + 400 * dt, 330);
+  }
+  car.boost = Math.min(car.boost + 5 * dt, car.maxBoost);
+}
+
+function checkGoals() {
+  // Player scores on right side
+  if (ball.x > FIELD_RIGHT && ball.y > GOAL_TOP && ball.y < GOAL_BOTTOM) {
+    playerScore++;
+    goalFlash = 1.5;
+    goalText = 'TOUCHDOWN!';
+    resetPositions();
+    return;
+  }
+  // AI scores on left side
+  if (ball.x < FIELD_LEFT && ball.y > GOAL_TOP && ball.y < GOAL_BOTTOM) {
+    aiScore++;
+    goalFlash = 1.5;
+    goalText = 'AI SCORES!';
+    resetPositions();
+    return;
+  }
+}
+
+function resetPositions() {
+  ball.reset();
+  player.reset(FIELD_LEFT + 100, H/2, 0);
+  aiCars[0].reset(FIELD_RIGHT - 100, H/2 - 60, Math.PI);
+  aiCars[1].reset(FIELD_RIGHT - 100, H/2 + 60, Math.PI);
+  aiCars[2].reset(FIELD_RIGHT - 160, H/2, Math.PI);
+}
+
+function drawField() {
+  // Field
+  ctx.fillStyle = '#1a4d1a';
+  ctx.fillRect(FIELD_LEFT, FIELD_TOP, FIELD_RIGHT - FIELD_LEFT, FIELD_BOTTOM - FIELD_TOP);
+
+  // Yard lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const x = FIELD_LEFT + ENDZONE_W + (FIELD_RIGHT - FIELD_LEFT - ENDZONE_W*2) * i/10;
+    ctx.beginPath(); ctx.moveTo(x, FIELD_TOP); ctx.lineTo(x, FIELD_BOTTOM); ctx.stroke();
+  }
+
+  // Endzones
+  ctx.fillStyle = 'rgba(59,130,246,0.3)';
+  ctx.fillRect(FIELD_RIGHT - ENDZONE_W, FIELD_TOP, ENDZONE_W, FIELD_BOTTOM - FIELD_TOP);
+  ctx.fillStyle = 'rgba(239,68,68,0.3)';
+  ctx.fillRect(FIELD_LEFT, FIELD_TOP, ENDZONE_W, FIELD_BOTTOM - FIELD_TOP);
+
+  // Goals
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  // Left goal
+  ctx.beginPath();
+  ctx.moveTo(FIELD_LEFT, GOAL_TOP); ctx.lineTo(FIELD_LEFT - 10, GOAL_TOP);
+  ctx.lineTo(FIELD_LEFT - 10, GOAL_BOTTOM); ctx.lineTo(FIELD_LEFT, GOAL_BOTTOM);
+  ctx.stroke();
+  // Right goal
+  ctx.beginPath();
+  ctx.moveTo(FIELD_RIGHT, GOAL_TOP); ctx.lineTo(FIELD_RIGHT + 10, GOAL_TOP);
+  ctx.lineTo(FIELD_RIGHT + 10, GOAL_BOTTOM); ctx.lineTo(FIELD_RIGHT, GOAL_BOTTOM);
+  ctx.stroke();
+
+  // Center circle
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.beginPath();
+  ctx.arc(W/2, H/2, 50, 0, Math.PI*2);
+  ctx.stroke();
+
+  // Field border
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(FIELD_LEFT, FIELD_TOP, FIELD_RIGHT - FIELD_LEFT, FIELD_BOTTOM - FIELD_TOP);
+}
+
+function drawSkidMarks() {
+  skidMarks.forEach((s, i) => {
+    s.alpha *= 0.999;
+    if (s.alpha < 0.01) { skidMarks.splice(i, 1); return; }
+    ctx.fillStyle = `rgba(40,40,40,${s.alpha})`;
+    ctx.fillRect(s.x - 2, s.y - 1, 4, 2);
+  });
+}
+
+function drawBoostPickups() {
+  boostPickups.forEach(p => {
+    if (!p.active) {
+      p.timer -= 1/60;
+      if (p.timer <= 0) p.active = true;
+      return;
+    }
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    const glow = 0.5 + 0.3 * Math.sin(Date.now() * 0.005);
+    ctx.shadowColor = '#ff8800';
+    ctx.shadowBlur = 10 * glow;
+    ctx.fillStyle = '#ff8800';
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('B', 0, 4);
+    ctx.restore();
+  });
+}
+
+function checkBoostPickup(car) {
+  if (car.demolished) return;
+  boostPickups.forEach(p => {
+    if (!p.active) return;
+    const dx = p.x - car.x, dy = p.y - car.y;
+    if (dx*dx + dy*dy < 400) {
+      car.boost = Math.min(car.maxBoost, car.boost + 30);
+      p.active = false;
+      p.timer = 5;
+    }
+  });
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    const alpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = alpha;
+    ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function update(dt) {
+  if (gameState !== 'playing') return;
+
+  timeLeft -= dt;
+  if (timeLeft <= 0) {
+    timeLeft = 0;
+    gameState = 'gameover';
+    showGameOver();
+    return;
+  }
+
+  player.update(dt);
+  aiCars.forEach(c => { updateAI(c, dt); c.update(dt); });
+  ball.update(dt);
+
+  checkCarBallCollision(player, ball);
+  aiCars.forEach(c => checkCarBallCollision(c, ball));
+  aiCars.forEach(c => checkCarCarCollision(player, c));
+  for (let i = 0; i < aiCars.length; i++)
+    for (let j = i+1; j < aiCars.length; j++)
+      checkCarCarCollision(aiCars[i], aiCars[j]);
+
+  checkBoostPickup(player);
+  aiCars.forEach(c => checkBoostPickup(c));
+
+  checkGoals();
+
+  if (goalFlash > 0) goalFlash -= dt;
+
+  const mins = Math.floor(timeLeft / 60);
+  const secs = Math.floor(timeLeft % 60);
+  scoreEl.textContent = `${playerScore} - ${aiScore}`;
+  timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  drawField();
+  drawSkidMarks();
+  drawBoostPickups();
+  updateParticles(1/60);
+
+  ball.draw();
+  player.draw();
+  aiCars.forEach(c => c.draw());
+
+  // Demolished indicators
+  aiCars.forEach(c => {
+    if (c.demolished) {
+      ctx.fillStyle = 'rgba(239,68,68,0.5)';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Respawn: ${c.respawnTimer.toFixed(1)}s`, c.x, c.y);
+    }
+  });
+  if (player.demolished) {
+    ctx.fillStyle = 'rgba(59,130,246,0.8)';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`DEMOLISHED! ${player.respawnTimer.toFixed(1)}s`, W/2, H/2 - 40);
+  }
+
+  // Goal flash
+  if (goalFlash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${goalFlash * 0.3})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 48px Arial';
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = Math.min(1, goalFlash);
+    ctx.fillText(goalText, W/2, H/2);
+    ctx.globalAlpha = 1;
+  }
+
+  // Labels
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = 'bold 11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('YOUR GOAL', FIELD_RIGHT - ENDZONE_W/2, FIELD_TOP - 8);
+  ctx.fillStyle = '#ef4444';
+  ctx.fillText('AI GOAL', FIELD_LEFT + ENDZONE_W/2, FIELD_TOP - 8);
+}
+
+function showGameOver() {
+  const win = playerScore > aiScore;
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `
+    <h1>${win ? 'YOU WIN!' : playerScore === aiScore ? 'DRAW!' : 'YOU LOSE!'}</h1>
+    <h2>Final Score: ${playerScore} - ${aiScore}</h2>
+    <button id="restartBtn">PLAY AGAIN</button>
+  `;
+  document.getElementById('restartBtn').onclick = startGame;
+}
+
+function startGame() {
+  initGame();
+  gameState = 'playing';
+  overlay.classList.add('hidden');
+}
+
+function gameLoop(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+startBtn.onclick = startGame;
+initGame();
+lastTime = performance.now();
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

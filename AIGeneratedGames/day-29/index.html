@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 29 – Hot Foot</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    .sub { color: #9ca3af; font-size: 0.85rem; margin-bottom: 0.5rem; }
+    canvas {
+      border: 1px solid #3b3b5c;
+      border-radius: 8px;
+      max-width: 480px;
+      width: 100%;
+      touch-action: none;
+    }
+    #ui { color: #9ca3af; font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Hot Foot</h1>
+  <p class="sub">Tap platforms to jump before they burn!</p>
+  <canvas id="game" width="480" height="640"></canvas>
+  <div id="ui"></div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+
+let W = 480, H = 640;
+function resize() {
+  const s = Math.min(window.innerWidth / W, (window.innerHeight - 120) / H, 1);
+  canvas.style.width = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Game state
+const STATE = { MENU: 0, PLAY: 1, OVER: 2, WIN: 3 };
+let state = STATE.MENU;
+let score = 0;
+let level = 1;
+let lives = 3;
+let player = { x: 0, y: 0, platIdx: 0, jumping: false, jumpT: 0, fromX: 0, fromY: 0, toX: 0, toY: 0 };
+let platforms = [];
+let particles = [];
+let time = 0;
+let combo = 0;
+let highScore = 0;
+
+const PLAT_ROWS = 5;
+const PLAT_COLS = 4;
+const PLAT_W = 80;
+const PLAT_H = 28;
+const PLAT_GAP_X = 110;
+const PLAT_GAP_Y = 100;
+const PLAT_OFFSET_X = 50;
+const PLAT_OFFSET_Y = 140;
+const JUMP_DUR = 0.25;
+
+// Platform phases: 0=safe(blue), 1=warming(yellow), 2=hot(red), 3=cooling
+const PHASE_SAFE = 0, PHASE_WARM = 1, PHASE_HOT = 2;
+
+function createPlatforms() {
+  platforms = [];
+  for (let r = 0; r < PLAT_ROWS; r++) {
+    for (let c = 0; c < PLAT_COLS; c++) {
+      const off = (r % 2 === 1) ? PLAT_GAP_X * 0.5 : 0;
+      platforms.push({
+        x: PLAT_OFFSET_X + c * PLAT_GAP_X + off,
+        y: PLAT_OFFSET_Y + r * PLAT_GAP_Y,
+        w: PLAT_W, h: PLAT_H,
+        phase: PHASE_SAFE,
+        timer: Math.random() * 3 + 1.5,
+        cycleSpeed: (0.8 + Math.random() * 0.6) / (0.7 + level * 0.15),
+        row: r, col: c
+      });
+    }
+  }
+}
+
+function initGame() {
+  score = 0;
+  lives = 3;
+  level = 1;
+  combo = 0;
+  startLevel();
+}
+
+function startLevel() {
+  createPlatforms();
+  player.platIdx = 0;
+  player.x = platforms[0].x + PLAT_W / 2;
+  player.y = platforms[0].y - 15;
+  player.jumping = false;
+  particles = [];
+  // Reset timers with varied offsets
+  platforms.forEach((p, i) => {
+    p.phase = PHASE_SAFE;
+    p.timer = Math.random() * 3 + 1 + (i * 0.2);
+    p.cycleSpeed = (0.7 + Math.random() * 0.5) / (0.6 + level * 0.12);
+  });
+}
+
+function getPhaseColor(phase, timer) {
+  if (phase === PHASE_SAFE) return { r: 80, g: 140, b: 255 };
+  if (phase === PHASE_WARM) return { r: 255, g: 220, b: 50 };
+  return { r: 255, g: 60, b: 40 };
+}
+
+function getPhaseGlow(phase) {
+  if (phase === PHASE_SAFE) return 'rgba(80,140,255,0.3)';
+  if (phase === PHASE_WARM) return 'rgba(255,220,50,0.4)';
+  return 'rgba(255,60,40,0.5)';
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: -Math.random() * 3 - 1,
+      life: 0.5 + Math.random() * 0.5,
+      color, size: 2 + Math.random() * 3
+    });
+  }
+}
+
+function dist(x1, y1, x2, y2) {
+  return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+}
+
+function findNearest(tx, ty) {
+  let best = -1, bestD = Infinity;
+  platforms.forEach((p, i) => {
+    if (i === player.platIdx) return;
+    const cx = p.x + p.w / 2;
+    const cy = p.y;
+    const d = dist(tx, ty, cx, cy);
+    if (d < bestD && d < 150) {
+      bestD = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+function jumpTo(idx) {
+  if (player.jumping || idx < 0) return;
+  const p = platforms[idx];
+  player.jumping = true;
+  player.jumpT = 0;
+  player.fromX = player.x;
+  player.fromY = player.y;
+  player.toX = p.x + p.w / 2;
+  player.toY = p.y - 15;
+  player.platIdx = idx;
+
+  if (p.phase === PHASE_HOT) {
+    lives--;
+    combo = 0;
+    spawnParticles(player.toX, player.toY, '#ff3c28', 15);
+    if (lives <= 0) {
+      state = STATE.OVER;
+      highScore = Math.max(highScore, score);
+    }
+  } else {
+    combo++;
+    let pts = 10 * combo;
+    if (p.phase === PHASE_WARM) pts *= 2; // bonus for risky jump
+    score += pts;
+    spawnParticles(player.toX, player.toY, '#a78bfa', 8);
+  }
+}
+
+// Touch/click handling
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = W / rect.width;
+  const sy = H / rect.height;
+  const touch = e.touches ? e.touches[0] : e;
+  return { x: (touch.clientX - rect.left) * sx, y: (touch.clientY - rect.top) * sy };
+}
+
+canvas.addEventListener('touchstart', handleInput, { passive: false });
+canvas.addEventListener('mousedown', handleInput);
+
+function handleInput(e) {
+  e.preventDefault();
+  const pos = getCanvasPos(e);
+
+  if (state === STATE.MENU) {
+    state = STATE.PLAY;
+    initGame();
+    return;
+  }
+  if (state === STATE.OVER || state === STATE.WIN) {
+    state = STATE.MENU;
+    return;
+  }
+  if (state === STATE.PLAY && !player.jumping) {
+    const idx = findNearest(pos.x, pos.y);
+    if (idx >= 0) jumpTo(idx);
+  }
+}
+
+// Level completion check
+function checkLevelClear() {
+  // Must reach a platform in the last row
+  const p = platforms[player.platIdx];
+  if (p.row === PLAT_ROWS - 1) {
+    level++;
+    if (level > 10) {
+      state = STATE.WIN;
+      highScore = Math.max(highScore, score);
+    } else {
+      score += 100 * level;
+      startLevel();
+    }
+  }
+}
+
+// Update
+let lastT = 0;
+function update(dt) {
+  if (state !== STATE.PLAY) return;
+  time += dt;
+
+  // Update platform phases
+  platforms.forEach(p => {
+    p.timer -= dt;
+    if (p.timer <= 0) {
+      p.phase = (p.phase + 1) % 3;
+      if (p.phase === PHASE_SAFE) p.timer = 2.0 + Math.random() * 2;
+      else if (p.phase === PHASE_WARM) p.timer = 1.2 + Math.random() * 0.8;
+      else p.timer = 1.5 + Math.random() * 1.0;
+      p.timer *= p.cycleSpeed;
+    }
+  });
+
+  // Check if standing platform turned hot
+  if (!player.jumping) {
+    const cp = platforms[player.platIdx];
+    if (cp.phase === PHASE_HOT) {
+      lives--;
+      combo = 0;
+      spawnParticles(player.x, player.y, '#ff3c28', 15);
+      if (lives <= 0) {
+        state = STATE.OVER;
+        highScore = Math.max(highScore, score);
+      }
+    }
+  }
+
+  // Update jump
+  if (player.jumping) {
+    player.jumpT += dt;
+    const t = Math.min(player.jumpT / JUMP_DUR, 1);
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    player.x = player.fromX + (player.toX - player.fromX) * ease;
+    const arcH = -80;
+    player.y = player.fromY + (player.toY - player.fromY) * ease + arcH * Math.sin(t * Math.PI);
+    if (t >= 1) {
+      player.jumping = false;
+      player.x = player.toX;
+      player.y = player.toY;
+      checkLevelClear();
+    }
+  }
+
+  // Update particles
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 5 * dt;
+    p.life -= dt;
+  });
+  particles = particles.filter(p => p.life > 0);
+}
+
+// Draw
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === STATE.MENU) {
+    drawMenu();
+    return;
+  }
+  if (state === STATE.OVER) {
+    drawGameOver();
+    return;
+  }
+  if (state === STATE.WIN) {
+    drawWin();
+    return;
+  }
+
+  // Draw lava floor
+  const grad = ctx.createLinearGradient(0, H - 60, 0, H);
+  grad.addColorStop(0, 'rgba(255,60,20,0.0)');
+  grad.addColorStop(1, 'rgba(255,60,20,0.3)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, H - 60, W, 60);
+
+  // Draw "GOAL" indicator on last row
+  ctx.fillStyle = 'rgba(167,139,250,0.15)';
+  const lastRowY = PLAT_OFFSET_Y + (PLAT_ROWS - 1) * PLAT_GAP_Y - 20;
+  ctx.fillRect(0, lastRowY, W, PLAT_H + 40);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText('GOAL ROW →', W - 10, lastRowY + 15);
+
+  // Draw platforms
+  platforms.forEach((p, i) => {
+    const col = getPhaseColor(p.phase, p.timer);
+    const glow = getPhaseGlow(p.phase);
+
+    // Glow
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 15;
+
+    // Platform body
+    ctx.fillStyle = `rgb(${col.r},${col.g},${col.b})`;
+    ctx.beginPath();
+    ctx.roundRect(p.x, p.y, p.w, p.h, 6);
+    ctx.fill();
+
+    // Phase timer bar
+    ctx.shadowBlur = 0;
+    let maxTime = p.phase === PHASE_SAFE ? 4 : p.phase === PHASE_WARM ? 2 : 2.5;
+    let frac = Math.max(0, p.timer / (maxTime * p.cycleSpeed));
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(p.x + 4, p.y + p.h - 6, p.w - 8, 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillRect(p.x + 4, p.y + p.h - 6, (p.w - 8) * frac, 3);
+
+    // Highlight current platform
+    if (i === player.platIdx && !player.jumping) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(p.x - 2, p.y - 2, p.w + 4, p.h + 4, 8);
+      ctx.stroke();
+    }
+  });
+
+  ctx.shadowBlur = 0;
+
+  // Draw player
+  ctx.fillStyle = '#a78bfa';
+  ctx.beginPath();
+  ctx.arc(player.x, player.y - 8, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#e0e0ff';
+  ctx.beginPath();
+  ctx.arc(player.x - 3, player.y - 10, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(player.x + 3, player.y - 10, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  // Feet
+  ctx.fillStyle = '#7c3aed';
+  ctx.fillRect(player.x - 6, player.y - 2, 5, 4);
+  ctx.fillRect(player.x + 1, player.y - 2, 5, 4);
+
+  // Draw particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 18px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Score: ${score}`, 10, 30);
+  ctx.textAlign = 'center';
+  ctx.fillText(`Level ${level}/10`, W / 2, 30);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = lives > 1 ? '#e0e0ff' : '#ff6060';
+  ctx.fillText('♥'.repeat(lives), W - 10, 30);
+
+  if (combo > 1) {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${combo}x Combo!`, W / 2, 55);
+  }
+
+  ctx.textAlign = 'left';
+  ui.textContent = 'Tap a nearby platform to jump. Reach the goal row to advance!';
+}
+
+function drawMenu() {
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('HOT FOOT', W / 2, H / 2 - 80);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px system-ui';
+  ctx.fillText('The floor is lava!', W / 2, H / 2 - 40);
+  ctx.fillText('Hop between platforms before', W / 2, H / 2);
+  ctx.fillText('they heat up and burn you.', W / 2, H / 2 + 25);
+
+  ctx.fillStyle = '#ffd700';
+  ctx.fillText('Yellow = warming, Red = DANGER!', W / 2, H / 2 + 65);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillText('Tap to Start', W / 2, H / 2 + 120);
+
+  if (highScore > 0) {
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText(`High Score: ${highScore}`, W / 2, H / 2 + 160);
+  }
+
+  // Animated platforms demo
+  const t = Date.now() / 1000;
+  for (let i = 0; i < 3; i++) {
+    const phase = Math.floor((t + i) % 3);
+    const col = getPhaseColor(phase);
+    ctx.fillStyle = `rgb(${col.r},${col.g},${col.b})`;
+    ctx.beginPath();
+    ctx.roundRect(140 + i * 80, H / 2 + 190, 60, 20, 4);
+    ctx.fill();
+  }
+}
+
+function drawGameOver() {
+  ctx.fillStyle = '#ff4040';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('BURNED!', W / 2, H / 2 - 40);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px system-ui';
+  ctx.fillText(`Score: ${score}`, W / 2, H / 2 + 10);
+  ctx.fillText(`Level: ${level}/10`, W / 2, H / 2 + 40);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap to try again', W / 2, H / 2 + 90);
+}
+
+function drawWin() {
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('YOU WIN!', W / 2, H / 2 - 40);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px system-ui';
+  ctx.fillText(`Final Score: ${score}`, W / 2, H / 2 + 10);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap to play again', W / 2, H / 2 + 60);
+}
+
+function gameLoop(ts) {
+  const dt = Math.min((ts - lastT) / 1000, 0.05);
+  lastT = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+lastT = performance.now();
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

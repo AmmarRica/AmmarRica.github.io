@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gridiron Kicker</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 12px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #2a2a4a; margin-top: 10px; image-rendering: pixelated; }
+.info { margin-top: 10px; font-size: 14px; color: #a0a0c0; text-align: center; }
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="540"></canvas>
+<div class="info" id="info">SPACE = charge power | LEFT/RIGHT = aim | Release SPACE to kick</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 480, H = 540;
+
+// NES-ish palette
+const COL = {
+  field: '#38a832', fieldDark: '#2d8a28', sky: '#5c94fc', white: '#fcfcfc',
+  yellow: '#f8d830', brown: '#a0522d', skin: '#f8b878', red: '#e44040',
+  darkGreen: '#1a5c18', blue: '#3838c8', gray: '#808080', black: '#000000'
+};
+
+let state = 'title'; // title, aiming, powering, flying, result, gameover
+let score = 0, round = 1, lives = 3;
+let power = 0, angle = 0, charging = false;
+let wind = 0;
+let ball = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+let resultTimer = 0, resultText = '';
+let kickDistance = 20; // yards
+
+function resetKick() {
+  power = 0; angle = 0; charging = false;
+  wind = (Math.random() - 0.5) * 6;
+  state = 'aiming';
+}
+
+function startRound() {
+  kickDistance = 20 + (round - 1) * 5;
+  if (kickDistance > 60) kickDistance = 60;
+  resetKick();
+}
+
+function kick() {
+  let pw = power / 100;
+  let ang = angle * Math.PI / 180;
+  let dist = kickDistance;
+  let speed = pw * (8 + dist * 0.08);
+  ball.x = W / 2;
+  ball.y = H - 80;
+  ball.z = 0;
+  ball.vx = Math.sin(ang) * speed * 0.5 + wind * 0.15;
+  ball.vy = -speed * (0.6 + pw * 0.3);
+  ball.vz = speed * 0.8;
+  state = 'flying';
+}
+
+// Pixel-art style drawing helpers
+function drawRect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
+}
+
+function drawText(text, x, y, color, size, align) {
+  ctx.fillStyle = color || COL.white;
+  ctx.font = (size || 16) + 'px monospace';
+  ctx.textAlign = align || 'center';
+  ctx.fillText(text, Math.floor(x), Math.floor(y));
+}
+
+function drawField() {
+  // Sky
+  drawRect(0, 0, W, 200, COL.sky);
+  // Sun
+  drawRect(380, 40, 30, 30, COL.yellow);
+  // Clouds
+  drawRect(50, 60, 40, 12, COL.white);
+  drawRect(45, 66, 50, 12, COL.white);
+  drawRect(180, 40, 35, 10, COL.white);
+  drawRect(175, 46, 45, 10, COL.white);
+
+  // Field - perspective
+  for (let y = 200; y < H; y++) {
+    let t = (y - 200) / (H - 200);
+    let g = t % 0.15 < 0.075 ? COL.field : COL.fieldDark;
+    drawRect(0, y, W, 1, g);
+  }
+
+  // Yard lines
+  for (let i = 0; i < 8; i++) {
+    let yy = 220 + i * 40;
+    let spread = 60 + (yy - 200) * 0.8;
+    let lx = W / 2 - spread;
+    let rx = W / 2 + spread;
+    ctx.strokeStyle = COL.white;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(lx, yy);
+    ctx.lineTo(rx, yy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawGoalpost() {
+  let gpY = 220;
+  let gpW = 80;
+  let gpH = 60;
+  let cx = W / 2;
+  // Uprights
+  drawRect(cx - gpW / 2 - 3, gpY - gpH, 6, gpH + 20, COL.yellow);
+  drawRect(cx + gpW / 2 - 3, gpY - gpH, 6, gpH + 20, COL.yellow);
+  // Crossbar
+  drawRect(cx - gpW / 2 - 3, gpY, gpW + 6, 5, COL.yellow);
+  // Center post
+  drawRect(cx - 2, gpY, 4, 30, COL.yellow);
+}
+
+function drawKicker() {
+  let kx = W / 2 + angle * 0.5;
+  let ky = H - 60;
+  // Body
+  drawRect(kx - 6, ky - 24, 12, 16, COL.blue);
+  // Head
+  drawRect(kx - 4, ky - 32, 8, 8, COL.skin);
+  // Helmet
+  drawRect(kx - 5, ky - 34, 10, 6, COL.red);
+  // Legs
+  drawRect(kx - 5, ky - 8, 4, 10, COL.white);
+  drawRect(kx + 1, ky - 8, 4, 10, COL.white);
+  // Feet
+  drawRect(kx - 6, ky + 2, 5, 3, COL.black);
+  drawRect(kx + 1, ky + 2, 5, 3, COL.black);
+}
+
+function drawBallOnGround() {
+  let bx = W / 2 + angle * 0.3;
+  let by = H - 65;
+  drawRect(bx - 3, by - 4, 6, 8, COL.brown);
+  drawRect(bx - 1, by - 2, 2, 4, COL.white);
+}
+
+function drawFlyingBall() {
+  let scale = 1 + ball.z * 0.02;
+  let sx = 4 * scale, sy = 6 * scale;
+  ctx.fillStyle = COL.brown;
+  ctx.beginPath();
+  ctx.ellipse(ball.x, ball.y, sx, sy, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Laces
+  ctx.fillStyle = COL.white;
+  ctx.fillRect(ball.x - 1, ball.y - sy * 0.5, 2, sy);
+  // Shadow
+  let shadowY = H - 80 + ball.z * 0.3;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(ball.x, shadowY, sx * 1.2, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawPowerBar() {
+  let bx = 30, by = H - 180, bw = 20, bh = 150;
+  drawRect(bx - 2, by - 2, bw + 4, bh + 4, COL.black);
+  drawRect(bx, by, bw, bh, '#1a1a3a');
+  let fillH = (power / 100) * bh;
+  let col = power < 40 ? '#40c040' : power < 70 ? COL.yellow : COL.red;
+  drawRect(bx, by + bh - fillH, bw, fillH, col);
+  drawText('PWR', bx + bw / 2, by - 8, COL.white, 10);
+}
+
+function drawAngleIndicator() {
+  let ax = W - 50, ay = H - 120;
+  drawText('AIM', ax, ay - 40, COL.white, 10);
+  // Arrow showing angle
+  ctx.strokeStyle = COL.yellow;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  let rad = angle * Math.PI / 180;
+  ctx.lineTo(ax + Math.sin(rad) * 30, ay - Math.cos(rad) * 30);
+  ctx.stroke();
+  // Base
+  drawRect(ax - 2, ay - 2, 4, 4, COL.white);
+}
+
+function drawWindIndicator() {
+  let wx = W / 2, wy = 15;
+  drawText('WIND', wx, wy, COL.white, 10);
+  let windStr = Math.abs(wind).toFixed(1);
+  let dir = wind > 0 ? '→' : wind < 0 ? '←' : '-';
+  drawText(dir + ' ' + windStr, wx, wy + 15, wind > 2 || wind < -2 ? COL.red : COL.yellow, 12);
+}
+
+function drawHUD() {
+  drawText('SCORE: ' + score, 60, 15, COL.white, 14, 'left');
+  drawText('ROUND: ' + round, W - 60, 15, COL.white, 14, 'right');
+  drawText('LIVES: ' + '♥'.repeat(lives), W / 2, 35, COL.red, 14);
+  drawText(kickDistance + ' YDS', W / 2, 215, COL.yellow, 12);
+}
+
+function drawTitle() {
+  drawRect(0, 0, W, H, '#0f0f1a');
+  drawText('GRIDIRON', W / 2, 160, COL.yellow, 40);
+  drawText('KICKER', W / 2, 210, COL.yellow, 40);
+  // Pixel football
+  drawRect(W / 2 - 20, 260, 40, 60, COL.brown);
+  drawRect(W / 2 - 2, 270, 4, 40, COL.white);
+  drawRect(W / 2 - 10, 288, 20, 4, COL.white);
+
+  drawText('PRESS SPACE TO START', W / 2, 370, COL.white, 16);
+  drawText('HOLD SPACE = POWER', W / 2, 410, '#808090', 12);
+  drawText('LEFT/RIGHT = AIM', W / 2, 430, '#808090', 12);
+  drawText('RELEASE SPACE = KICK!', W / 2, 450, '#808090', 12);
+}
+
+function drawGameOver() {
+  drawRect(0, 0, W, H, '#0f0f1a');
+  drawText('GAME OVER', W / 2, 200, COL.red, 36);
+  drawText('FINAL SCORE: ' + score, W / 2, 260, COL.yellow, 24);
+  drawText('ROUNDS: ' + round, W / 2, 300, COL.white, 18);
+  drawText('PRESS SPACE TO RESTART', W / 2, 380, COL.white, 14);
+}
+
+function drawResult() {
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, H / 2 - 40, W, 80);
+  let col = resultText === 'GOOD!' ? '#40e040' : COL.red;
+  drawText(resultText, W / 2, H / 2 + 10, col, 36);
+}
+
+let keys = {};
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') e.preventDefault();
+  if (keys[e.code]) return;
+  keys[e.code] = true;
+
+  if (state === 'title' && e.code === 'Space') {
+    score = 0; round = 1; lives = 3;
+    startRound();
+  } else if (state === 'aiming' && e.code === 'Space') {
+    state = 'powering';
+    charging = true;
+    power = 0;
+  } else if (state === 'gameover' && e.code === 'Space') {
+    state = 'title';
+  }
+});
+
+document.addEventListener('keyup', e => {
+  keys[e.code] = false;
+  if (state === 'powering' && e.code === 'Space') {
+    charging = false;
+    kick();
+  }
+});
+
+let lastTime = 0;
+function update(timestamp) {
+  let dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+
+  if (state === 'aiming') {
+    if (keys['ArrowLeft']) angle -= 80 * dt;
+    if (keys['ArrowRight']) angle += 80 * dt;
+    angle = Math.max(-30, Math.min(30, angle));
+  }
+
+  if (state === 'powering') {
+    power += 120 * dt;
+    if (power >= 100) { power = 100; charging = false; kick(); }
+  }
+
+  if (state === 'flying') {
+    ball.x += ball.vx * 60 * dt;
+    ball.y += ball.vy * 60 * dt;
+    ball.vz -= 9.8 * dt;
+    ball.z += ball.vz * 60 * dt;
+    ball.vx += wind * 0.003;
+
+    // Check if ball reached goalpost area
+    if (ball.y <= 225) {
+      let gpLeft = W / 2 - 40;
+      let gpRight = W / 2 + 40;
+      let gpTop = 160;
+      if (ball.x >= gpLeft && ball.x <= gpRight && ball.z > 10) {
+        resultText = 'GOOD!';
+        let bonus = Math.floor(kickDistance / 5);
+        score += 3 + bonus;
+        round++;
+      } else {
+        resultText = 'NO GOOD!';
+        lives--;
+      }
+      state = 'result';
+      resultTimer = 2;
+    }
+    // Ball hit ground
+    if (ball.z < 0 && ball.vz < 0 && ball.y < H - 90) {
+      resultText = 'NO GOOD!';
+      lives--;
+      state = 'result';
+      resultTimer = 2;
+    }
+    // Off screen
+    if (ball.x < -20 || ball.x > W + 20 || ball.y < -50) {
+      resultText = 'NO GOOD!';
+      lives--;
+      state = 'result';
+      resultTimer = 2;
+    }
+  }
+
+  if (state === 'result') {
+    resultTimer -= dt;
+    if (resultTimer <= 0) {
+      if (lives <= 0) {
+        state = 'gameover';
+      } else {
+        startRound();
+      }
+    }
+  }
+
+  // Draw
+  if (state === 'title') {
+    drawTitle();
+  } else if (state === 'gameover') {
+    drawGameOver();
+  } else {
+    drawField();
+    drawGoalpost();
+    drawHUD();
+    drawWindIndicator();
+    if (state === 'aiming' || state === 'powering') {
+      drawKicker();
+      drawBallOnGround();
+      drawAngleIndicator();
+    }
+    if (state === 'powering') {
+      drawPowerBar();
+    }
+    if (state === 'flying') {
+      drawKicker();
+      drawFlyingBall();
+    }
+    if (state === 'result') {
+      if (resultTimer > 1) drawFlyingBall();
+      drawResult();
+    }
+  }
+
+  requestAnimationFrame(update);
+}
+
+requestAnimationFrame(update);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

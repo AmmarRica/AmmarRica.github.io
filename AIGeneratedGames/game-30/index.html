@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Instant Replay Detective</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const C = document.getElementById('c');
+const ctx = C.getContext('2d');
+let W, H;
+function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+const TITLE = 0, WATCHING = 1, REVIEWING = 2, RULING = 3, RESULT = 4, GAMEOVER = 5;
+let state = TITLE;
+let mouseX = 0, mouseY = 0, clicked = false;
+
+C.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+C.addEventListener('click', e => { mouseX = e.clientX; mouseY = e.clientY; clicked = true; });
+
+// Game state
+let level = 0, totalLevels = 10;
+let score = 0, streak = 0;
+let challengeTimer = 0, maxChallengeTime = 30 * 60; // 30 seconds
+let currentPlay = null;
+let frame = 0, totalFrames = 120;
+let paused = false;
+let playbackSpeed = 1;
+let zoomLevel = 1, zoomX = 0.5, zoomY = 0.5;
+let currentAngle = 0; // 0=sideline, 1=endzone, 2=overhead
+const angleNames = ['SIDELINE', 'END ZONE', 'OVERHEAD'];
+let ruling = '';
+
+// Play types
+const playTypes = [
+  { type: 'catch_or_trap', question: 'Was this a CATCH or a TRAP?', answers: ['CATCH', 'TRAP'] },
+  { type: 'in_bounds', question: 'Was the receiver IN BOUNDS or OUT?', answers: ['IN BOUNDS', 'OUT OF BOUNDS'] },
+  { type: 'touchdown', question: 'Did the ball CROSS the goal line?', answers: ['TOUCHDOWN', 'NO TOUCHDOWN'] },
+  { type: 'fumble', question: 'Was the ball carrier DOWN or was it a FUMBLE?', answers: ['DOWN', 'FUMBLE'] }
+];
+
+// Generate plays
+function generatePlay(lvl) {
+  const typeIdx = lvl % playTypes.length;
+  const playDef = playTypes[typeIdx];
+  const correctIdx = Math.random() < 0.5 ? 0 : 1;
+  const difficulty = Math.min(0.9, 0.3 + lvl * 0.06); // Higher = more ambiguous
+
+  // Generate animation data based on play type
+  const play = {
+    type: playDef.type,
+    question: playDef.question,
+    answers: playDef.answers,
+    correctAnswer: correctIdx,
+    difficulty: difficulty,
+    receiver: { startX: 0.2, startY: 0.6, endX: 0, endY: 0 },
+    ball: { startX: 0.5, startY: 0.7, catchFrame: 60 },
+    defender: { startX: 0.3, startY: 0.5 },
+    sidelineY: 0.85, // boundary line
+    goalLineX: 0.15 // goal line
+  };
+
+  switch (playDef.type) {
+    case 'catch_or_trap':
+      play.receiver.endX = 0.5;
+      play.receiver.endY = 0.4;
+      // If trap, ball touches ground slightly before hands
+      play.isTrap = correctIdx === 1;
+      play.ballGroundFrame = play.isTrap ? 55 - Math.floor(difficulty * 8) : 999;
+      break;
+    case 'in_bounds':
+      play.receiver.endX = 0.7 + (correctIdx === 1 ? 0.12 : -0.02);
+      play.receiver.endY = 0.8 + (correctIdx === 1 ? 0.07 : 0.02);
+      // The closer to the line, the harder
+      if (correctIdx === 0) play.receiver.endY = play.sidelineY - 0.03 + difficulty * 0.025;
+      else play.receiver.endY = play.sidelineY + 0.01 + (1 - difficulty) * 0.03;
+      break;
+    case 'touchdown':
+      play.receiver.startX = 0.3;
+      play.receiver.startY = 0.5;
+      play.receiver.endX = correctIdx === 0 ? play.goalLineX - 0.02 : play.goalLineX + 0.03 + (1 - difficulty) * 0.05;
+      play.receiver.endY = 0.5;
+      break;
+    case 'fumble':
+      play.receiver.startX = 0.6;
+      play.receiver.endX = 0.35;
+      play.receiver.endY = 0.5;
+      play.isDown = correctIdx === 0;
+      play.contactFrame = 70;
+      play.kneeFrame = play.isDown ? 65 + Math.floor((1 - difficulty) * 10) : 85;
+      break;
+  }
+
+  return play;
+}
+
+function startLevel() {
+  currentPlay = generatePlay(level);
+  frame = 0;
+  paused = false;
+  playbackSpeed = 1;
+  zoomLevel = 1;
+  currentAngle = 0;
+  challengeTimer = 0;
+  ruling = '';
+  state = WATCHING;
+}
+
+function getPlayerPos(startX, startY, endX, endY, f, total) {
+  const t = Math.min(1, f / total);
+  const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  return {
+    x: startX + (endX - startX) * ease,
+    y: startY + (endY - startY) * ease
+  };
+}
+
+function drawTV() {
+  const tvX = (W - 700) / 2;
+  const tvY = 60;
+  const tvW = 700, tvH = 400;
+
+  // TV frame
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(tvX - 10, tvY - 10, tvW + 20, tvH + 20);
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(tvX - 10, tvY - 10, tvW + 20, tvH + 20);
+
+  // Screen
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(tvX, tvY, tvW, tvH);
+  ctx.clip();
+
+  // Apply zoom
+  const cx = tvX + tvW * zoomX;
+  const cy = tvY + tvH * zoomY;
+  ctx.translate(cx, cy);
+  ctx.scale(zoomLevel, zoomLevel);
+  ctx.translate(-cx, -cy);
+
+  // Field background based on angle
+  ctx.fillStyle = '#1a4a1a';
+  ctx.fillRect(tvX, tvY, tvW, tvH);
+
+  // Yard lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  if (currentAngle === 2) { // overhead
+    for (let i = 0; i <= 10; i++) {
+      const x = tvX + (tvW / 10) * i;
+      ctx.beginPath(); ctx.moveTo(x, tvY); ctx.lineTo(x, tvY + tvH); ctx.stroke();
+    }
+  } else {
+    for (let i = 0; i <= 10; i++) {
+      const x = tvX + (tvW / 10) * i;
+      ctx.beginPath(); ctx.moveTo(x, tvY); ctx.lineTo(x, tvY + tvH); ctx.stroke();
+    }
+  }
+
+  const p = currentPlay;
+  const t = Math.min(1, frame / totalFrames);
+
+  // Draw boundary/goal line
+  if (p.type === 'in_bounds') {
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    const lineY = tvY + tvH * p.sidelineY;
+    ctx.beginPath();
+    ctx.moveTo(tvX, lineY);
+    ctx.lineTo(tvX + tvW, lineY);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('SIDELINE', tvX + 10, lineY - 5);
+  }
+
+  if (p.type === 'touchdown') {
+    ctx.strokeStyle = '#f1c40f';
+    ctx.lineWidth = 3;
+    const lineX = tvX + tvW * p.goalLineX;
+    ctx.beginPath();
+    ctx.moveTo(lineX, tvY);
+    ctx.lineTo(lineX, tvY + tvH);
+    ctx.stroke();
+    ctx.fillStyle = '#c0392b44';
+    ctx.fillRect(tvX, tvY, tvW * p.goalLineX, tvH);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('END ZONE', tvX + tvW * p.goalLineX / 2, tvY + tvH / 2);
+  }
+
+  // Draw receiver
+  const recv = getPlayerPos(p.receiver.startX, p.receiver.startY, p.receiver.endX, p.receiver.endY, frame, totalFrames);
+  const rx = tvX + tvW * recv.x;
+  const ry = tvY + tvH * recv.y;
+
+  // Defender chasing
+  const def = getPlayerPos(p.defender.startX, p.defender.startY, p.receiver.endX + 0.05, p.receiver.endY + 0.03, frame, totalFrames * 1.1);
+  const dx = tvX + tvW * def.x;
+  const dy = tvY + tvH * def.y;
+
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.arc(dx, dy, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('DEF', dx, dy + 3);
+
+  // Draw receiver
+  ctx.fillStyle = '#3498db';
+  ctx.beginPath();
+  ctx.arc(rx, ry, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('WR', rx, ry + 3);
+
+  // Draw ball
+  if (frame < p.ball.catchFrame) {
+    // Ball in air from QB
+    const ballT = frame / p.ball.catchFrame;
+    const bx = tvX + tvW * (p.ball.startX + (recv.x - p.ball.startX) * ballT);
+    const by = tvY + tvH * (p.ball.startY + (recv.y - p.ball.startY) * ballT) - Math.sin(ballT * Math.PI) * 60;
+    ctx.fillStyle = '#8B4513';
+    ctx.beginPath();
+    ctx.ellipse(bx, by, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Ball caught (or trapped)
+    if (p.type === 'catch_or_trap' && p.isTrap && frame >= p.ballGroundFrame && frame < p.ball.catchFrame) {
+      // Ball touches ground briefly
+      ctx.fillStyle = '#8B4513';
+      ctx.beginPath();
+      ctx.ellipse(rx, ry + 14, 6, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = '#8B4513';
+      ctx.beginPath();
+      ctx.ellipse(rx, ry - 14, 6, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Fumble specific
+  if (p.type === 'fumble' && frame >= p.contactFrame) {
+    // Contact indicator
+    if (frame === p.contactFrame || (frame > p.contactFrame && frame < p.contactFrame + 10)) {
+      ctx.fillStyle = 'rgba(255,255,0,0.5)';
+      ctx.beginPath();
+      ctx.arc(rx, ry, 20 + (frame - p.contactFrame) * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Knee down indicator (subtle)
+    if (frame >= p.kneeFrame) {
+      if (p.isDown) {
+        // Draw knee touching
+        ctx.fillStyle = '#3498db';
+        ctx.fillRect(rx - 5, ry + 10, 10, 5);
+      } else {
+        // Ball loose
+        const ballLooseT = (frame - p.kneeFrame) / 30;
+        const blx = rx + ballLooseT * 40;
+        const bly = ry - 10 + Math.sin(ballLooseT * 5) * 15;
+        ctx.fillStyle = '#8B4513';
+        ctx.beginPath();
+        ctx.ellipse(blx, bly, 6, 4, ballLooseT * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Feet position for in-bounds
+  if (p.type === 'in_bounds' && frame > p.ball.catchFrame) {
+    // Show feet near sideline
+    const footY = ry + 12;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(rx - 6, footY, 4, 6);
+    ctx.fillRect(rx + 2, footY, 4, 6);
+
+    // Highlight the critical area
+    if (state === REVIEWING && zoomLevel > 1.3) {
+      ctx.strokeStyle = '#f1c40f';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(rx, footY + 3, 15, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  ctx.restore();
+
+  // Scanlines effect
+  ctx.fillStyle = 'rgba(0,0,0,0.05)';
+  for (let y = tvY; y < tvY + tvH; y += 3) {
+    ctx.fillRect(tvX, y, tvW, 1);
+  }
+
+  // TV overlay: broadcast graphics
+  // Network bug
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(tvX + tvW - 80, tvY + 5, 75, 22);
+  ctx.fillStyle = '#e74c3c';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('REPLAY', tvX + tvW - 10, tvY + 20);
+
+  // Angle indicator
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(tvX + 5, tvY + 5, 100, 22);
+  ctx.fillStyle = '#fff';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(angleNames[currentAngle], tvX + 10, tvY + 20);
+
+  // Frame counter
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(tvX + 5, tvY + tvH - 25, 120, 20);
+  ctx.fillStyle = '#2ecc71';
+  ctx.font = '11px monospace';
+  ctx.fillText(`Frame ${frame}/${totalFrames}`, tvX + 10, tvY + tvH - 10);
+
+  // Zoom indicator
+  if (zoomLevel > 1) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(tvX + tvW - 70, tvY + tvH - 25, 65, 20);
+    ctx.fillStyle = '#f1c40f';
+    ctx.fillText(`${zoomLevel.toFixed(1)}x`, tvX + tvW - 65, tvY + tvH - 10);
+  }
+
+  return { tvX, tvY, tvW, tvH };
+}
+
+function drawControls(tvX, tvY, tvW, tvH) {
+  const controlY = tvY + tvH + 20;
+  const cx = W / 2;
+
+  // Playback controls
+  const buttons = [
+    { label: '|<', x: cx - 180, action: () => { frame = 0; } },
+    { label: '<<', x: cx - 130, action: () => { frame = Math.max(0, frame - 5); } },
+    { label: '<', x: cx - 80, action: () => { frame = Math.max(0, frame - 1); } },
+    { label: paused ? '>' : '||', x: cx - 20, action: () => { paused = !paused; } },
+    { label: '>', x: cx + 40, action: () => { frame = Math.min(totalFrames, frame + 1); } },
+    { label: '>>', x: cx + 90, action: () => { frame = Math.min(totalFrames, frame + 5); } },
+    { label: '>|', x: cx + 140, action: () => { frame = totalFrames; } }
+  ];
+
+  buttons.forEach(b => {
+    const hover = mouseX > b.x && mouseX < b.x + 40 && mouseY > controlY && mouseY < controlY + 35;
+    ctx.fillStyle = hover ? '#a78bfa' : '#2c3e50';
+    ctx.fillRect(b.x, controlY, 40, 35);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.label, b.x + 20, controlY + 23);
+
+    if (clicked && hover) b.action();
+  });
+
+  // Timeline scrubber
+  const scrubY = controlY + 45;
+  const scrubX = tvX;
+  const scrubW = tvW;
+  ctx.fillStyle = '#333';
+  ctx.fillRect(scrubX, scrubY, scrubW, 10);
+  const progress = frame / totalFrames;
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(scrubX, scrubY, scrubW * progress, 10);
+  // Scrub handle
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(scrubX + scrubW * progress, scrubY + 5, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (clicked && mouseY > scrubY - 10 && mouseY < scrubY + 20 && mouseX > scrubX && mouseX < scrubX + scrubW) {
+    frame = Math.floor(((mouseX - scrubX) / scrubW) * totalFrames);
+    paused = true;
+  }
+
+  // Angle and zoom buttons
+  const toolY = scrubY + 25;
+
+  // Angles
+  angleNames.forEach((name, i) => {
+    const bx = tvX + i * 110;
+    const active = currentAngle === i;
+    ctx.fillStyle = active ? '#a78bfa' : '#2c3e50';
+    ctx.fillRect(bx, toolY, 100, 28);
+    ctx.fillStyle = active ? '#000' : '#fff';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(name, bx + 50, toolY + 18);
+
+    if (clicked && mouseX > bx && mouseX < bx + 100 && mouseY > toolY && mouseY < toolY + 28) {
+      currentAngle = i;
+    }
+  });
+
+  // Zoom controls
+  const zButtons = [
+    { label: 'ZOOM -', x: tvX + tvW - 220, action: () => { zoomLevel = Math.max(1, zoomLevel - 0.5); } },
+    { label: 'ZOOM +', x: tvX + tvW - 110, action: () => { zoomLevel = Math.min(3, zoomLevel + 0.5); } }
+  ];
+  zButtons.forEach(b => {
+    const hover = mouseX > b.x && mouseX < b.x + 100 && mouseY > toolY && mouseY < toolY + 28;
+    ctx.fillStyle = hover ? '#f1c40f' : '#2c3e50';
+    ctx.fillRect(b.x, toolY, 100, 28);
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.label, b.x + 50, toolY + 18);
+    if (clicked && hover) b.action();
+  });
+
+  return toolY + 35;
+}
+
+function drawRuling(bottomY) {
+  if (state !== REVIEWING && state !== RULING) return;
+
+  const p = currentPlay;
+  const rulingY = bottomY + 10;
+
+  // Challenge timer
+  const timeLeft = Math.max(0, Math.ceil((maxChallengeTime - challengeTimer) / 60));
+  ctx.fillStyle = timeLeft < 10 ? '#e74c3c' : '#f1c40f';
+  ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`CHALLENGE CLOCK: ${timeLeft}s`, W / 2, rulingY);
+
+  // Question
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText(p.question, W / 2, rulingY + 30);
+
+  // Answer buttons
+  p.answers.forEach((ans, i) => {
+    const bx = W / 2 - 200 + i * 220;
+    const by = rulingY + 45;
+    const hover = mouseX > bx && mouseX < bx + 180 && mouseY > by && mouseY < by + 40;
+    ctx.fillStyle = hover ? '#a78bfa' : '#2c3e50';
+    ctx.fillRect(bx, by, 180, 40);
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, 180, 40);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(ans, bx + 90, by + 25);
+
+    if (clicked && hover) {
+      ruling = ans;
+      const correct = i === p.correctAnswer;
+      if (correct) {
+        score += Math.max(10, 50 - Math.floor(challengeTimer / 60));
+        streak++;
+      } else {
+        streak = 0;
+      }
+      state = RESULT;
+    }
+  });
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // TV broadcast style
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(W / 2 - 300, H * 0.1, 600, 60);
+  ctx.fillStyle = '#e74c3c';
+  ctx.fillRect(W / 2 - 300, H * 0.1, 8, 60);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 36px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('INSTANT REPLAY', W / 2, H * 0.15);
+
+  ctx.fillStyle = '#f1c40f';
+  ctx.font = 'bold 28px monospace';
+  ctx.fillText('DETECTIVE', W / 2, H * 0.22);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  const lines = [
+    'You are the replay official!',
+    '',
+    'Watch controversial plays unfold',
+    'Use frame-by-frame controls to examine the action',
+    'Switch camera angles and zoom in',
+    'Make the correct ruling before time runs out!',
+    '',
+    'Play types: Catch/Trap, In/Out of Bounds,',
+    'Touchdown, Fumble/Down',
+    '',
+    'Score based on accuracy and speed!'
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.33 + i * 22));
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.82, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('START', W / 2, H * 0.82 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.82 && mouseY < H * 0.82 + 45) {
+    level = 0; score = 0; streak = 0;
+    startLevel();
+  }
+}
+
+function drawResult() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  const p = currentPlay;
+  const correct = p.answers.indexOf(ruling) === p.correctAnswer;
+
+  // TV style ruling box
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(W / 2 - 300, H * 0.15, 600, 200);
+  ctx.strokeStyle = correct ? '#2ecc71' : '#e74c3c';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(W / 2 - 300, H * 0.15, 600, 200);
+
+  ctx.fillStyle = correct ? '#2ecc71' : '#e74c3c';
+  ctx.font = 'bold 32px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(correct ? 'CORRECT RULING!' : 'OVERTURNED!', W / 2, H * 0.22);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px monospace';
+  ctx.fillText(`Your call: ${ruling}`, W / 2, H * 0.28);
+  ctx.fillStyle = '#f1c40f';
+  ctx.fillText(`Correct: ${p.answers[p.correctAnswer]}`, W / 2, H * 0.33);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px monospace';
+  ctx.fillText(`Score: ${score} | Streak: ${streak}`, W / 2, H * 0.42);
+  ctx.fillText(`Level ${level + 1} of ${totalLevels}`, W / 2, H * 0.47);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.55, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('NEXT PLAY', W / 2, H * 0.55 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.55 && mouseY < H * 0.55 + 45) {
+    level++;
+    if (level >= totalLevels) {
+      state = GAMEOVER;
+    } else {
+      startLevel();
+    }
+  }
+}
+
+function drawGameOver() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(W / 2 - 300, H * 0.15, 600, 80);
+  ctx.fillStyle = '#e74c3c';
+  ctx.fillRect(W / 2 - 300, H * 0.15, 8, 80);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 32px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('FINAL REVIEW', W / 2, H * 0.2);
+
+  ctx.fillStyle = '#f1c40f';
+  ctx.font = 'bold 48px monospace';
+  ctx.fillText(`SCORE: ${score}`, W / 2, H * 0.38);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px monospace';
+  const rating = score >= 400 ? 'Hall of Fame Official!' : score >= 250 ? 'Pro Bowl Official' : score >= 100 ? 'Journeyman Ref' : 'Replacement Ref';
+  ctx.fillText(`Rating: ${rating}`, W / 2, H * 0.48);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.6, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('REPLAY', W / 2, H * 0.6 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.6 && mouseY < H * 0.6 + 45) {
+    state = TITLE;
+  }
+}
+
+function update() {
+  if (state === WATCHING) {
+    if (!paused) frame += playbackSpeed;
+    if (frame >= totalFrames) {
+      frame = totalFrames;
+      paused = true;
+      state = REVIEWING;
+    }
+  }
+  if (state === REVIEWING) {
+    challengeTimer++;
+    if (!paused) frame = (frame + playbackSpeed) % (totalFrames + 1);
+    if (challengeTimer >= maxChallengeTime) {
+      // Time's up - auto wrong
+      ruling = currentPlay.answers[1 - currentPlay.correctAnswer];
+      streak = 0;
+      state = RESULT;
+    }
+  }
+}
+
+function gameLoop() {
+  update();
+
+  switch (state) {
+    case TITLE:
+      drawTitle();
+      break;
+    case WATCHING:
+    case REVIEWING: {
+      ctx.fillStyle = '#0f0f1a';
+      ctx.fillRect(0, 0, W, H);
+
+      // HUD
+      ctx.fillStyle = '#e0e0ff';
+      ctx.font = '14px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Level ${level + 1}/${totalLevels} | Score: ${score} | Streak: ${streak}`, 80, 30);
+
+      if (state === WATCHING) {
+        ctx.fillStyle = '#f1c40f';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText('WATCHING PLAY...', W - 20, 30);
+      } else {
+        ctx.fillStyle = '#2ecc71';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText('UNDER REVIEW - Make your call!', W - 20, 30);
+      }
+
+      const tv = drawTV();
+      const bottomY = drawControls(tv.tvX, tv.tvY, tv.tvW, tv.tvH);
+      drawRuling(bottomY);
+      break;
+    }
+    case RESULT:
+      drawResult();
+      break;
+    case GAMEOVER:
+      drawGameOver();
+      break;
+  }
+
+  clicked = false;
+  requestAnimationFrame(gameLoop);
+}
+
+// Keyboard controls
+document.addEventListener('keydown', e => {
+  if (state === WATCHING || state === REVIEWING) {
+    if (e.key === ' ') { e.preventDefault(); paused = !paused; }
+    if (e.key === 'ArrowLeft') { frame = Math.max(0, frame - 1); paused = true; }
+    if (e.key === 'ArrowRight') { frame = Math.min(totalFrames, frame + 1); paused = true; }
+    if (e.key === '1') currentAngle = 0;
+    if (e.key === '2') currentAngle = 1;
+    if (e.key === '3') currentAngle = 2;
+    if (e.key === '+' || e.key === '=') zoomLevel = Math.min(3, zoomLevel + 0.5);
+    if (e.key === '-') zoomLevel = Math.max(1, zoomLevel - 0.5);
+  }
+});
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 13 – Devilition – Game a Day</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1a1a28; display: block; }
+    #ui { color: #9ca3af; font-size: 0.8rem; margin-top: 0.5rem; max-width: 480px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Devilition</h1>
+  <p class="subtitle">Demolition puzzle — place bombs to collapse structures</p>
+  <canvas id="game"></canvas>
+  <div id="ui">Tap structure to place bombs · Hit DETONATE · Collapse below the line</div>
+  <script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let W, H;
+
+  function resize() {
+    W = Math.min(480, window.innerWidth - 20);
+    H = Math.min(640, window.innerHeight - 140);
+    canvas.width = W;
+    canvas.height = H;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const BLOCK = 24;
+  const GRAVITY = 0.35;
+  const GROUND_Y_RATIO = 0.88;
+
+  let state = 'title';
+  let level = 0;
+  let blocks = [];
+  let bombs = [];
+  let debris = [];
+  let particles = [];
+  let maxBombs = 3;
+  let bombsPlaced = 0;
+  let targetLineY = 0;
+  let groundY = 0;
+  let detonating = false;
+  let detPhase = 0;
+  let detTimer = 0;
+  let shakeTimer = 0;
+  let settled = false;
+  let settleTimer = 0;
+  let result = ''; // 'win' or 'fail'
+
+  // Block: { x, y, w, h, type, destroyed, vx, vy, settled }
+  // type: 'concrete'=strong, 'brick'=normal, 'glass'=fragile, 'steel'=indestructible
+
+  const STRUCTURES = [
+    // Level 0: Simple tower
+    () => {
+      const bls = [];
+      const cx = W / 2;
+      // Tower
+      for (let row = 0; row < 6; row++) {
+        for (let col = -1; col <= 1; col++) {
+          bls.push({ x: cx + col * BLOCK - BLOCK / 2, y: groundY - (row + 1) * BLOCK, w: BLOCK, h: BLOCK, type: 'brick' });
+        }
+      }
+      return { blocks: bls, maxBombs: 2, targetRatio: 0.4 };
+    },
+    // Level 1: Wide building
+    () => {
+      const bls = [];
+      const cx = W / 2;
+      for (let row = 0; row < 4; row++) {
+        for (let col = -3; col <= 3; col++) {
+          const type = row === 0 ? 'concrete' : 'brick';
+          bls.push({ x: cx + col * BLOCK - BLOCK / 2, y: groundY - (row + 1) * BLOCK, w: BLOCK, h: BLOCK, type });
+        }
+      }
+      // Roof
+      for (let col = -2; col <= 2; col++) {
+        bls.push({ x: cx + col * BLOCK - BLOCK / 2, y: groundY - 5 * BLOCK, w: BLOCK, h: BLOCK, type: 'concrete' });
+      }
+      return { blocks: bls, maxBombs: 3, targetRatio: 0.35 };
+    },
+    // Level 2: Tower with steel supports
+    () => {
+      const bls = [];
+      const cx = W / 2;
+      for (let row = 0; row < 8; row++) {
+        for (let col = -1; col <= 1; col++) {
+          const type = (row === 0 || row === 4) && (col === -1 || col === 1) ? 'steel' :
+                       row % 3 === 0 ? 'concrete' : 'brick';
+          bls.push({ x: cx + col * BLOCK - BLOCK / 2, y: groundY - (row + 1) * BLOCK, w: BLOCK, h: BLOCK, type });
+        }
+      }
+      return { blocks: bls, maxBombs: 3, targetRatio: 0.5 };
+    },
+    // Level 3: Bridge
+    () => {
+      const bls = [];
+      const cx = W / 2;
+      // Pillars
+      for (let row = 0; row < 4; row++) {
+        bls.push({ x: cx - 4 * BLOCK, y: groundY - (row + 1) * BLOCK, w: BLOCK, h: BLOCK, type: row === 0 ? 'steel' : 'brick' });
+        bls.push({ x: cx + 3 * BLOCK, y: groundY - (row + 1) * BLOCK, w: BLOCK, h: BLOCK, type: row === 0 ? 'steel' : 'brick' });
+      }
+      // Deck
+      for (let col = -4; col <= 4; col++) {
+        bls.push({ x: cx + col * BLOCK - BLOCK / 2, y: groundY - 4 * BLOCK, w: BLOCK, h: BLOCK, type: 'concrete' });
+        bls.push({ x: cx + col * BLOCK - BLOCK / 2, y: groundY - 5 * BLOCK, w: BLOCK, h: BLOCK, type: 'brick' });
+      }
+      return { blocks: bls, maxBombs: 4, targetRatio: 0.35 };
+    },
+    // Level 4: Pyramid
+    () => {
+      const bls = [];
+      const cx = W / 2;
+      for (let row = 0; row < 6; row++) {
+        const cols = 6 - row;
+        for (let c = 0; c < cols; c++) {
+          const x = cx + (c - cols / 2) * BLOCK;
+          const type = row === 0 ? 'concrete' : row < 2 ? 'brick' : 'glass';
+          bls.push({ x, y: groundY - (row + 1) * BLOCK, w: BLOCK, h: BLOCK, type });
+        }
+      }
+      return { blocks: bls, maxBombs: 3, targetRatio: 0.45 };
+    },
+    // Level 5: Skyscraper
+    () => {
+      const bls = [];
+      const cx = W / 2;
+      for (let row = 0; row < 10; row++) {
+        for (let col = -2; col <= 2; col++) {
+          const isEdge = col === -2 || col === 2;
+          const type = (row % 4 === 0 && isEdge) ? 'steel' :
+                       row % 3 === 0 ? 'concrete' : 'brick';
+          bls.push({ x: cx + col * BLOCK - BLOCK / 2, y: groundY - (row + 1) * BLOCK, w: BLOCK, h: BLOCK, type });
+        }
+      }
+      return { blocks: bls, maxBombs: 4, targetRatio: 0.4 };
+    }
+  ];
+
+  function loadLevel(n) {
+    const gen = STRUCTURES[n % STRUCTURES.length]();
+    blocks = gen.blocks.map(b => ({
+      ...b, destroyed: false, vx: 0, vy: 0, settled: true, angle: 0, angVel: 0
+    }));
+    maxBombs = gen.maxBombs;
+    bombsPlaced = 0;
+    bombs = [];
+    debris = [];
+    particles = [];
+    detonating = false;
+    detPhase = 0;
+    detTimer = 0;
+    shakeTimer = 0;
+    settled = false;
+    settleTimer = 0;
+    result = '';
+    groundY = Math.floor(H * GROUND_Y_RATIO);
+    // Target line: structure must collapse below this
+    const structTop = Math.min(...blocks.map(b => b.y));
+    const structHeight = groundY - structTop;
+    targetLineY = groundY - structHeight * gen.targetRatio;
+  }
+
+  function getBlockAt(px, py) {
+    for (const b of blocks) {
+      if (!b.destroyed && px >= b.x && px < b.x + b.w && py >= b.y && py < b.y + b.h) return b;
+    }
+    return null;
+  }
+
+  // Touch
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const tx = e.touches[0].clientX - rect.left;
+    const ty = e.touches[0].clientY - rect.top;
+    handleTap(tx, ty);
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('touchend', (e) => { e.preventDefault(); }, { passive: false });
+
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    handleTap(e.clientX - rect.left, e.clientY - rect.top);
+  });
+
+  function handleTap(tx, ty) {
+    if (state === 'title') { state = 'placing'; level = 0; loadLevel(0); return; }
+    if (state === 'result') {
+      if (result === 'win') {
+        level++;
+        if (level >= STRUCTURES.length) {
+          state = 'complete';
+          return;
+        }
+        loadLevel(level);
+        state = 'placing';
+      } else {
+        loadLevel(level);
+        state = 'placing';
+      }
+      return;
+    }
+    if (state === 'complete') { state = 'title'; return; }
+
+    if (state === 'placing' && !detonating) {
+      // Detonate button
+      const btnX = W / 2 - 60, btnY = H - 50;
+      if (tx >= btnX && tx <= btnX + 120 && ty >= btnY && ty <= btnY + 36 && bombs.length > 0) {
+        state = 'detonating';
+        detonating = true;
+        detPhase = 0;
+        detTimer = 0;
+        return;
+      }
+
+      // Place/remove bomb on block
+      const block = getBlockAt(tx, ty);
+      if (block && block.type !== 'steel') {
+        // Check if bomb already here
+        const existing = bombs.findIndex(b => b.block === block);
+        if (existing >= 0) {
+          bombs.splice(existing, 1);
+          bombsPlaced--;
+        } else if (bombsPlaced < maxBombs) {
+          bombs.push({ block, x: block.x + block.w / 2, y: block.y + block.h / 2 });
+          bombsPlaced++;
+        }
+      }
+    }
+  }
+
+  function explodeBomb(bomb) {
+    const bx = bomb.x, by = bomb.y;
+    const BLAST_RADIUS = BLOCK * 2.5;
+
+    for (let i = 0; i < 20; i++) {
+      particles.push({
+        x: bx, y: by,
+        vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10 - 3,
+        life: 30 + Math.random() * 30,
+        color: ['#ff4400', '#ff8800', '#ffcc00', '#ff6622'][Math.floor(Math.random() * 4)]
+      });
+    }
+
+    for (const b of blocks) {
+      if (b.destroyed) continue;
+      const dx = (b.x + b.w / 2) - bx;
+      const dy = (b.y + b.h / 2) - by;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < BLAST_RADIUS) {
+        if (b.type === 'steel') continue;
+        const force = 1 - dist / BLAST_RADIUS;
+        if (b.type === 'glass' || force > 0.3) {
+          b.destroyed = true;
+          b.settled = false;
+          // Create debris
+          for (let i = 0; i < 3; i++) {
+            debris.push({
+              x: b.x + Math.random() * b.w, y: b.y + Math.random() * b.h,
+              w: 4 + Math.random() * 8, h: 4 + Math.random() * 8,
+              vx: (dx / (dist || 1)) * force * 6 + (Math.random() - 0.5) * 3,
+              vy: (dy / (dist || 1)) * force * 6 - Math.random() * 4,
+              color: b.type === 'glass' ? '#8888cc' : b.type === 'concrete' ? '#777' : '#aa6644',
+              angle: Math.random() * Math.PI * 2, angVel: (Math.random() - 0.5) * 0.3,
+              life: 120
+            });
+          }
+        } else {
+          // Damaged but not destroyed - push it
+          b.vx += (dx / (dist || 1)) * force * 3;
+          b.vy += (dy / (dist || 1)) * force * 3 - 2;
+          b.settled = false;
+        }
+      }
+    }
+
+    shakeTimer = 15;
+  }
+
+  function update() {
+    if (state === 'detonating') {
+      detTimer++;
+      if (detTimer % 15 === 0 && detPhase < bombs.length) {
+        explodeBomb(bombs[detPhase]);
+        detPhase++;
+      }
+      if (detPhase >= bombs.length && detTimer > bombs.length * 15 + 10) {
+        detonating = false;
+        state = 'settling';
+        settleTimer = 0;
+      }
+    }
+
+    // Physics
+    if (state === 'settling' || state === 'detonating') {
+      let allSettled = true;
+
+      for (const b of blocks) {
+        if (b.destroyed || b.settled) continue;
+        allSettled = false;
+
+        b.vy += GRAVITY;
+        b.x += b.vx;
+        b.y += b.vy;
+        b.vx *= 0.98;
+
+        // Ground collision
+        if (b.y + b.h > groundY) {
+          b.y = groundY - b.h;
+          b.vy *= -0.3;
+          b.vx *= 0.7;
+          if (Math.abs(b.vy) < 0.5) {
+            b.vy = 0;
+            b.settled = true;
+          }
+        }
+
+        // Wall collision
+        if (b.x < 0) { b.x = 0; b.vx = Math.abs(b.vx) * 0.5; }
+        if (b.x + b.w > W) { b.x = W - b.w; b.vx = -Math.abs(b.vx) * 0.5; }
+
+        // Block-on-block collision (simplified)
+        for (const other of blocks) {
+          if (other === b || other.destroyed) continue;
+          if (b.x < other.x + other.w && b.x + b.w > other.x &&
+              b.y < other.y + other.h && b.y + b.h > other.y) {
+            // Push apart vertically
+            if (b.y + b.h / 2 < other.y + other.h / 2) {
+              b.y = other.y - b.h;
+              if (b.vy > 0) {
+                b.vy *= -0.2;
+                if (Math.abs(b.vy) < 0.5) { b.vy = 0; b.settled = true; }
+              }
+            } else {
+              b.y = other.y + other.h;
+              b.vy = Math.abs(b.vy) * 0.3;
+            }
+          }
+        }
+      }
+
+      // Unsupported blocks fall
+      for (const b of blocks) {
+        if (b.destroyed || !b.settled) continue;
+        // Check if supported
+        const below = blocks.some(other =>
+          !other.destroyed && other !== b &&
+          b.x < other.x + other.w - 2 && b.x + b.w > other.x + 2 &&
+          Math.abs((b.y + b.h) - other.y) < 2
+        );
+        const onGround = b.y + b.h >= groundY - 1;
+        if (!below && !onGround) {
+          b.settled = false;
+          b.vy = 0.5;
+          allSettled = false;
+        }
+      }
+
+      // Debris
+      for (let i = debris.length - 1; i >= 0; i--) {
+        const d = debris[i];
+        d.vy += GRAVITY;
+        d.x += d.vx; d.y += d.vy;
+        d.angle += d.angVel;
+        d.life--;
+        if (d.y > groundY) { d.y = groundY; d.vy *= -0.3; d.vx *= 0.8; }
+        if (d.life <= 0) debris.splice(i, 1);
+      }
+
+      if (state === 'settling') {
+        settleTimer++;
+        if (allSettled || settleTimer > 300) {
+          // Check win condition
+          const remaining = blocks.filter(b => !b.destroyed);
+          const highest = remaining.length > 0 ? Math.min(...remaining.map(b => b.y)) : groundY;
+          if (highest >= targetLineY) {
+            result = 'win';
+          } else {
+            result = 'fail';
+          }
+          state = 'result';
+        }
+      }
+    }
+
+    // Particles
+    particles = particles.filter(p => {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--;
+      return p.life > 0;
+    });
+
+    if (shakeTimer > 0) shakeTimer--;
+  }
+
+  const BLOCK_COLORS = {
+    brick: '#aa6644',
+    concrete: '#777788',
+    glass: '#6688bb',
+    steel: '#556677'
+  };
+  const BLOCK_HIGHLIGHT = {
+    brick: '#cc8866',
+    concrete: '#8888aa',
+    glass: '#88aadd',
+    steel: '#778899'
+  };
+
+  function draw() {
+    ctx.save();
+    if (shakeTimer > 0) {
+      ctx.translate((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
+    }
+    ctx.clearRect(-10, -10, W + 20, H + 20);
+
+    if (state === 'title') {
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = 'bold 32px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('DEVILITION', W / 2, H / 2 - 50);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '14px system-ui';
+      ctx.fillText('Demolition puzzle', W / 2, H / 2 - 10);
+      ctx.fillText('Place bombs on weak points', W / 2, H / 2 + 15);
+      ctx.fillText('Collapse the structure below the line', W / 2, H / 2 + 40);
+      ctx.fillText('Tap to start', W / 2, H / 2 + 80);
+      ctx.restore();
+      return;
+    }
+
+    if (state === 'complete') {
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = 'bold 28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('ALL LEVELS CLEAR!', W / 2, H / 2 - 20);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '16px system-ui';
+      ctx.fillText('Master demolisher!', W / 2, H / 2 + 20);
+      ctx.fillText('Tap to replay', W / 2, H / 2 + 60);
+      ctx.restore();
+      return;
+    }
+
+    groundY = Math.floor(H * GROUND_Y_RATIO);
+
+    // Ground
+    ctx.fillStyle = '#2a2a3a';
+    ctx.fillRect(0, groundY, W, H - groundY);
+    ctx.fillStyle = '#3a3a4a';
+    ctx.fillRect(0, groundY, W, 3);
+
+    // Target line
+    ctx.strokeStyle = '#ff444488';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, targetLineY);
+    ctx.lineTo(W, targetLineY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ff4444';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText('TARGET LINE', 5, targetLineY - 5);
+
+    // Blocks
+    for (const b of blocks) {
+      if (b.destroyed) continue;
+      ctx.fillStyle = BLOCK_COLORS[b.type];
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.fillStyle = BLOCK_HIGHLIGHT[b.type];
+      ctx.fillRect(b.x, b.y, b.w, 2);
+      ctx.fillRect(b.x, b.y, 2, b.h);
+      ctx.strokeStyle = '#1a1a28';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+
+      if (b.type === 'steel') {
+        // Steel cross pattern
+        ctx.strokeStyle = '#889';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(b.x + 3, b.y + 3);
+        ctx.lineTo(b.x + b.w - 3, b.y + b.h - 3);
+        ctx.moveTo(b.x + b.w - 3, b.y + 3);
+        ctx.lineTo(b.x + 3, b.y + b.h - 3);
+        ctx.stroke();
+      }
+      if (b.type === 'glass') {
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = '#aaccff';
+        ctx.fillRect(b.x + 3, b.y + 3, b.w / 3, b.h / 3);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Bombs
+    for (const bomb of bombs) {
+      const b = bomb.block;
+      if (b.destroyed) continue;
+      ctx.fillStyle = '#ff2200';
+      ctx.beginPath();
+      ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffcc00';
+      ctx.font = 'bold 10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('B', b.x + b.w / 2, b.y + b.h / 2 + 1);
+      ctx.textBaseline = 'alphabetic';
+      // Fuse
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(b.x + b.w / 2, b.y + b.h / 2 - 7);
+      ctx.quadraticCurveTo(b.x + b.w / 2 + 6, b.y + b.h / 2 - 14, b.x + b.w / 2 + 3, b.y + b.h / 2 - 16);
+      ctx.stroke();
+    }
+
+    // Debris
+    for (const d of debris) {
+      ctx.save();
+      ctx.translate(d.x + d.w / 2, d.y + d.h / 2);
+      ctx.rotate(d.angle);
+      ctx.globalAlpha = Math.min(1, d.life / 30);
+      ctx.fillStyle = d.color;
+      ctx.fillRect(-d.w / 2, -d.h / 2, d.w, d.h);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Particles
+    for (const p of particles) {
+      ctx.globalAlpha = p.life / 60;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // HUD
+    ctx.fillStyle = 'rgba(15,15,26,0.7)';
+    ctx.fillRect(0, 0, W, 32);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 13px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Level ${level + 1}/${STRUCTURES.length}`, 10, 20);
+    ctx.textAlign = 'right';
+    ctx.fillText(`Bombs: ${maxBombs - bombsPlaced}/${maxBombs}`, W - 10, 20);
+
+    // Type legend
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'left';
+    const legY = 38;
+    const legends = [
+      { color: BLOCK_COLORS.brick, label: 'Brick' },
+      { color: BLOCK_COLORS.concrete, label: 'Concrete (strong)' },
+      { color: BLOCK_COLORS.glass, label: 'Glass (fragile)' },
+      { color: BLOCK_COLORS.steel, label: 'Steel (immune)' }
+    ];
+    for (let i = 0; i < legends.length; i++) {
+      ctx.fillStyle = legends[i].color;
+      ctx.fillRect(10 + i * 110, legY, 8, 8);
+      ctx.fillStyle = '#9ca3af';
+      ctx.fillText(legends[i].label, 22 + i * 110, legY + 8);
+    }
+
+    // Detonate button (placing state)
+    if (state === 'placing' && !detonating) {
+      const btnX = W / 2 - 60, btnY = H - 50;
+      ctx.fillStyle = bombs.length > 0 ? '#ff4400' : '#333';
+      ctx.fillRect(btnX, btnY, 120, 36);
+      ctx.strokeStyle = bombs.length > 0 ? '#ff6622' : '#555';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(btnX, btnY, 120, 36);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 16px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('DETONATE', W / 2, btnY + 24);
+    }
+
+    // Result overlay
+    if (state === 'result') {
+      ctx.fillStyle = 'rgba(15,15,26,0.7)';
+      ctx.fillRect(0, H / 2 - 60, W, 120);
+      ctx.font = 'bold 28px system-ui';
+      ctx.textAlign = 'center';
+      if (result === 'win') {
+        ctx.fillStyle = '#44ff44';
+        ctx.fillText('DEMOLISHED!', W / 2, H / 2 - 15);
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '14px system-ui';
+        ctx.fillText('Structure collapsed below the target line', W / 2, H / 2 + 15);
+        ctx.fillText('Tap for next level', W / 2, H / 2 + 45);
+      } else {
+        ctx.fillStyle = '#ff4444';
+        ctx.fillText('NOT ENOUGH!', W / 2, H / 2 - 15);
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '14px system-ui';
+        ctx.fillText('Structure still above the target line', W / 2, H / 2 + 15);
+        ctx.fillText('Tap to retry', W / 2, H / 2 + 45);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

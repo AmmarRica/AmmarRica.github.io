@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 44 – Lords of Diskonia</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    #ui { color: #e0e0ff; font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; gap: 1rem; }
+    canvas {
+      border: 2px solid #3b3b5c;
+      border-radius: 8px;
+      background: #1e1e2e;
+      max-width: 480px;
+      width: 100%;
+    }
+    #msg {
+      margin-top: 0.5rem;
+      color: #a78bfa;
+      font-size: 1rem;
+      min-height: 1.5em;
+      text-align: center;
+    }
+    button {
+      margin-top: 0.5rem;
+      padding: 0.5rem 1.5rem;
+      background: #a78bfa;
+      color: #0f0f1a;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: none;
+    }
+</style>
+</head>
+<body>
+  <h1>Lords of Diskonia</h1>
+  <p class="subtitle">Flick discs to capture territory. Drag to aim & set power.</p>
+  <div id="ui">
+    <span id="scoreP">You: 0</span>
+    <span id="turnInfo">Your Turn</span>
+    <span id="scoreE">CPU: 0</span>
+  </div>
+  <canvas id="c"></canvas>
+  <div id="msg"></div>
+  <button id="restartBtn" onclick="initGame()">Play Again</button>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const msgEl = document.getElementById('msg');
+const restartBtn = document.getElementById('restartBtn');
+const scoreP = document.getElementById('scoreP');
+const scoreE = document.getElementById('scoreE');
+const turnInfo = document.getElementById('turnInfo');
+
+const W = 480, H = 600;
+canvas.width = W; canvas.height = H;
+
+const ZONE_ROWS = 3, ZONE_COLS = 3;
+const ZONE_W = 120, ZONE_H = 120;
+const ZONE_X0 = (W - ZONE_COLS * ZONE_W) / 2;
+const ZONE_Y0 = 60;
+const DISC_R = 18;
+const FRICTION = 0.97;
+const MIN_SPEED = 0.3;
+const MAX_POWER = 22;
+const DISCS_PER_PLAYER = 5;
+
+let zones, playerDiscs, enemyDiscs, allDiscs;
+let dragging = false, dragStart = null, dragCurrent = null;
+let currentTurn = 'player'; // 'player' or 'enemy'
+let playerDiscsLeft, enemyDiscsLeft;
+let animating = false;
+let gameOver = false;
+let playerScore = 0, enemyScore = 0;
+
+function initGame() {
+  restartBtn.style.display = 'none';
+  msgEl.textContent = '';
+  gameOver = false;
+  animating = false;
+  currentTurn = 'player';
+  playerDiscsLeft = DISCS_PER_PLAYER;
+  enemyDiscsLeft = DISCS_PER_PLAYER;
+  playerDiscs = [];
+  enemyDiscs = [];
+  allDiscs = [];
+
+  zones = [];
+  for (let r = 0; r < ZONE_ROWS; r++) {
+    for (let c = 0; c < ZONE_COLS; c++) {
+      zones.push({
+        x: ZONE_X0 + c * ZONE_W,
+        y: ZONE_Y0 + r * ZONE_H,
+        w: ZONE_W,
+        h: ZONE_H,
+        owner: null
+      });
+    }
+  }
+  updateScores();
+  updateTurnInfo();
+  draw();
+}
+
+function spawnX() { return W / 2; }
+function playerSpawnY() { return H - 60; }
+function enemySpawnY() { return H - 60; }
+
+function flickDisc(disc, vx, vy) {
+  disc.vx = vx;
+  disc.vy = vy;
+  animating = true;
+  requestAnimationFrame(physicsTick);
+}
+
+function physicsTick() {
+  let moving = false;
+  for (const d of allDiscs) {
+    if (Math.abs(d.vx) > MIN_SPEED || Math.abs(d.vy) > MIN_SPEED) {
+      d.x += d.vx;
+      d.y += d.vy;
+      d.vx *= FRICTION;
+      d.vy *= FRICTION;
+      // walls
+      if (d.x - DISC_R < 0) { d.x = DISC_R; d.vx *= -0.6; }
+      if (d.x + DISC_R > W) { d.x = W - DISC_R; d.vx *= -0.6; }
+      if (d.y - DISC_R < 0) { d.y = DISC_R; d.vy *= -0.6; }
+      if (d.y + DISC_R > H) { d.y = H - DISC_R; d.vy *= -0.6; }
+      moving = true;
+    } else {
+      d.vx = 0;
+      d.vy = 0;
+    }
+  }
+  // disc-disc collisions
+  for (let i = 0; i < allDiscs.length; i++) {
+    for (let j = i + 1; j < allDiscs.length; j++) {
+      resolveCollision(allDiscs[i], allDiscs[j]);
+    }
+  }
+  draw();
+  if (moving) {
+    requestAnimationFrame(physicsTick);
+  } else {
+    animating = false;
+    recalcZones();
+    updateScores();
+    checkGameEnd();
+    if (!gameOver) {
+      if (currentTurn === 'player') {
+        currentTurn = 'enemy';
+        updateTurnInfo();
+        setTimeout(doEnemyTurn, 600);
+      } else {
+        currentTurn = 'player';
+        updateTurnInfo();
+        // skip if player has no discs
+        if (playerDiscsLeft <= 0) {
+          currentTurn = 'enemy';
+          updateTurnInfo();
+          if (enemyDiscsLeft > 0) setTimeout(doEnemyTurn, 600);
+          else checkGameEnd();
+        }
+      }
+    }
+  }
+}
+
+function resolveCollision(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < DISC_R * 2 && dist > 0) {
+    const nx = dx / dist, ny = dy / dist;
+    const overlap = DISC_R * 2 - dist;
+    a.x -= nx * overlap / 2;
+    a.y -= ny * overlap / 2;
+    b.x += nx * overlap / 2;
+    b.y += ny * overlap / 2;
+    const dvx = a.vx - b.vx, dvy = a.vy - b.vy;
+    const dot = dvx * nx + dvy * ny;
+    if (dot > 0) {
+      a.vx -= dot * nx * 0.8;
+      a.vy -= dot * ny * 0.8;
+      b.vx += dot * nx * 0.8;
+      b.vy += dot * ny * 0.8;
+    }
+  }
+}
+
+function recalcZones() {
+  for (const z of zones) {
+    let pCount = 0, eCount = 0;
+    for (const d of playerDiscs) {
+      if (discInZone(d, z)) pCount++;
+    }
+    for (const d of enemyDiscs) {
+      if (discInZone(d, z)) eCount++;
+    }
+    if (pCount > eCount) z.owner = 'player';
+    else if (eCount > pCount) z.owner = 'enemy';
+    else if (pCount === 0 && eCount === 0) z.owner = null;
+    // tie = no change if both > 0, keep previous
+  }
+}
+
+function discInZone(d, z) {
+  return d.x > z.x && d.x < z.x + z.w && d.y > z.y && d.y < z.y + z.h;
+}
+
+function updateScores() {
+  playerScore = zones.filter(z => z.owner === 'player').length;
+  enemyScore = zones.filter(z => z.owner === 'enemy').length;
+  scoreP.textContent = `You: ${playerScore}`;
+  scoreE.textContent = `CPU: ${enemyScore}`;
+}
+
+function updateTurnInfo() {
+  if (gameOver) {
+    turnInfo.textContent = '';
+    return;
+  }
+  const discsLeft = currentTurn === 'player' ? playerDiscsLeft : enemyDiscsLeft;
+  turnInfo.textContent = currentTurn === 'player'
+    ? `Your Turn (${playerDiscsLeft} left)`
+    : `CPU Turn (${enemyDiscsLeft} left)`;
+}
+
+function checkGameEnd() {
+  if (playerDiscsLeft <= 0 && enemyDiscsLeft <= 0 && !animating) {
+    gameOver = true;
+    if (playerScore > enemyScore) {
+      msgEl.textContent = `You win! ${playerScore} - ${enemyScore}`;
+    } else if (enemyScore > playerScore) {
+      msgEl.textContent = `CPU wins! ${enemyScore} - ${playerScore}`;
+    } else {
+      msgEl.textContent = `It's a tie! ${playerScore} - ${enemyScore}`;
+    }
+    restartBtn.style.display = 'inline-block';
+  }
+}
+
+function doEnemyTurn() {
+  if (gameOver || enemyDiscsLeft <= 0) return;
+  enemyDiscsLeft--;
+  // find best empty or player zone to target
+  let targetZone = null;
+  const emptyZones = zones.filter(z => z.owner !== 'enemy');
+  if (emptyZones.length > 0) {
+    targetZone = emptyZones[Math.floor(Math.random() * emptyZones.length)];
+  } else {
+    targetZone = zones[Math.floor(Math.random() * zones.length)];
+  }
+
+  const tx = targetZone.x + targetZone.w / 2 + (Math.random() - 0.5) * 40;
+  const ty = targetZone.y + targetZone.h / 2 + (Math.random() - 0.5) * 40;
+  const sx = W / 2 + (Math.random() - 0.5) * 60;
+  const sy = H - 60;
+
+  const disc = { x: sx, y: sy, vx: 0, vy: 0, team: 'enemy' };
+  enemyDiscs.push(disc);
+  allDiscs.push(disc);
+
+  const dx = tx - sx, dy = ty - sy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const power = Math.min(MAX_POWER, dist * 0.04 + 5);
+  const nx = dx / dist, ny = dy / dist;
+
+  flickDisc(disc, nx * power, ny * power);
+  updateTurnInfo();
+}
+
+// Touch and mouse controls
+let pointerDown = false;
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const t = e.touches ? e.touches[0] : e;
+  return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+}
+
+function onStart(e) {
+  e.preventDefault();
+  if (animating || gameOver || currentTurn !== 'player' || playerDiscsLeft <= 0) return;
+  const pos = getPos(e);
+  dragStart = pos;
+  dragCurrent = pos;
+  dragging = true;
+  draw();
+}
+
+function onMove(e) {
+  e.preventDefault();
+  if (!dragging) return;
+  dragCurrent = getPos(e);
+  draw();
+}
+
+function onEnd(e) {
+  e.preventDefault();
+  if (!dragging) return;
+  dragging = false;
+  const dx = dragStart.x - dragCurrent.x;
+  const dy = dragStart.y - dragCurrent.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 10) { draw(); return; }
+
+  playerDiscsLeft--;
+  const power = Math.min(MAX_POWER, dist * 0.08);
+  const nx = dx / dist, ny = dy / dist;
+  const disc = { x: spawnX(), y: playerSpawnY(), vx: 0, vy: 0, team: 'player' };
+  playerDiscs.push(disc);
+  allDiscs.push(disc);
+  flickDisc(disc, nx * power, ny * power);
+  updateTurnInfo();
+  dragStart = null;
+  dragCurrent = null;
+}
+
+canvas.addEventListener('touchstart', onStart, { passive: false });
+canvas.addEventListener('touchmove', onMove, { passive: false });
+canvas.addEventListener('touchend', onEnd, { passive: false });
+canvas.addEventListener('mousedown', onStart);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup', onEnd);
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw zones
+  for (const z of zones) {
+    ctx.fillStyle = z.owner === 'player' ? 'rgba(99,102,241,0.25)' :
+                    z.owner === 'enemy' ? 'rgba(239,68,68,0.25)' :
+                    'rgba(255,255,255,0.05)';
+    ctx.fillRect(z.x, z.y, z.w, z.h);
+    ctx.strokeStyle = '#3b3b5c';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(z.x, z.y, z.w, z.h);
+
+    // Zone label
+    if (z.owner) {
+      ctx.fillStyle = z.owner === 'player' ? '#818cf8' : '#f87171';
+      ctx.font = 'bold 12px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(z.owner === 'player' ? 'YOU' : 'CPU', z.x + z.w / 2, z.y + 16);
+    }
+  }
+
+  // Draw spawn area
+  if (currentTurn === 'player' && !animating && playerDiscsLeft > 0) {
+    ctx.fillStyle = 'rgba(167,139,250,0.1)';
+    ctx.fillRect(0, H - 100, W, 100);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Drag here to aim & flick', W / 2, H - 20);
+  }
+
+  // Draw discs
+  for (const d of playerDiscs) {
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, DISC_R, 0, Math.PI * 2);
+    ctx.fillStyle = '#818cf8';
+    ctx.fill();
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // inner
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, DISC_R * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#a78bfa';
+    ctx.fill();
+  }
+  for (const d of enemyDiscs) {
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, DISC_R, 0, Math.PI * 2);
+    ctx.fillStyle = '#dc2626';
+    ctx.fill();
+    ctx.strokeStyle = '#f87171';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, DISC_R * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#f87171';
+    ctx.fill();
+  }
+
+  // Draw aiming line
+  if (dragging && dragStart && dragCurrent) {
+    const dx = dragStart.x - dragCurrent.x;
+    const dy = dragStart.y - dragCurrent.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const power = Math.min(MAX_POWER, dist * 0.08);
+    const powerPct = power / MAX_POWER;
+
+    // Arrow from spawn point in flick direction
+    const nx = dx / (dist || 1), ny = dy / (dist || 1);
+    const sx = spawnX(), sy = playerSpawnY();
+
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + nx * power * 8, sy + ny * power * 8);
+    ctx.strokeStyle = `rgba(167,139,250,${0.4 + powerPct * 0.6})`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Power indicator
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Power: ${Math.round(powerPct * 100)}%`, W / 2, H - 105);
+
+    // Ghost disc at spawn
+    ctx.beginPath();
+    ctx.arc(sx, sy, DISC_R, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(129,140,248,0.4)';
+    ctx.fill();
+  }
+
+  // Discs remaining indicators
+  const indicatorY = H - 8;
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#818cf8';
+  for (let i = 0; i < playerDiscsLeft; i++) {
+    ctx.beginPath();
+    ctx.arc(20 + i * 22, indicatorY, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#dc2626';
+  ctx.textAlign = 'right';
+  for (let i = 0; i < enemyDiscsLeft; i++) {
+    ctx.beginPath();
+    ctx.arc(W - 20 - i * 22, indicatorY, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+initGame();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

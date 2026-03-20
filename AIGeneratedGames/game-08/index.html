@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Steampunk Scrimmage</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #5a3a1a; border-radius: 4px; cursor: pointer; margin-top: 5px; }
+h1 { color: #d4a044; font-size: 22px; margin: 5px 0; }
+.info { color: #a0a0c0; font-size: 12px; }
+#controls { display: flex; gap: 10px; margin: 5px; flex-wrap: wrap; justify-content: center; }
+#controls button { background: #2a1a0a; color: #d4a044; border: 1px solid #8a6a3a; padding: 5px 12px; cursor: pointer; font-family: 'Courier New'; font-size: 12px; border-radius: 3px; }
+#controls button:hover { background: #3a2a1a; }
+#controls button.active { background: #5a3a1a; border-color: #d4a044; }
+#controls button:disabled { opacity: 0.4; cursor: default; }
+</style>
+</head>
+<body>
+<h1>⚙️ Steampunk Scrimmage 🏈</h1>
+<div class="info" id="status">Turn-based steampunk football</div>
+<div id="controls"></div>
+<canvas id="c" width="850" height="550"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+const W = 850, H = 550;
+const controlsDiv = document.getElementById('controls');
+const statusEl = document.getElementById('status');
+
+let state = 'title';
+let turn = 'player'; // player or ai
+let phase = 'select'; // select, action, animate
+let score = [0, 0];
+let turnNum = 0;
+let maxTurns = 20;
+
+// Hex grid
+const HEX_R = 28;
+const HEX_W = HEX_R * Math.sqrt(3);
+const HEX_H = HEX_R * 2;
+const GRID_COLS = 16;
+const GRID_ROWS = 9;
+const GRID_OX = 65;
+const GRID_OY = 80;
+
+let grid = [];
+let units = [];
+let selectedUnit = null;
+let actionMode = null; // 'move', 'pass', 'cannon', 'smoke', 'gear'
+let highlightedCells = [];
+let ball = null; // {col, row} or held by unit
+let message = '';
+let msgTimer = 0;
+let particles = [];
+let gears = []; // decorative gears
+let animQueue = [];
+
+// Decorative gears
+for (let i = 0; i < 12; i++) {
+  gears.push({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    r: 10 + Math.random() * 25,
+    speed: (Math.random() - 0.5) * 0.02,
+    teeth: 6 + Math.floor(Math.random() * 8),
+    opacity: 0.05 + Math.random() * 0.08
+  });
+}
+
+function hexToPixel(col, row) {
+  const x = GRID_OX + col * HEX_W + (row % 2 === 1 ? HEX_W / 2 : 0);
+  const y = GRID_OY + row * HEX_H * 0.75;
+  return { x, y };
+}
+
+function pixelToHex(px, py) {
+  let best = null, bestDist = Infinity;
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      const { x, y } = hexToPixel(c, r);
+      const d = Math.hypot(px - x, py - y);
+      if (d < bestDist) { bestDist = d; best = { col: c, row: r }; }
+    }
+  }
+  return bestDist < HEX_R * 1.1 ? best : null;
+}
+
+function hexNeighbors(col, row) {
+  const even = row % 2 === 0;
+  const dirs = even ?
+    [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1]] :
+    [[-1, 0], [1, 0], [0, -1], [0, 1], [1, -1], [1, 1]];
+  return dirs.map(([dc, dr]) => ({ col: col + dc, row: row + dr }))
+    .filter(h => h.col >= 0 && h.col < GRID_COLS && h.row >= 0 && h.row < GRID_ROWS);
+}
+
+function hexDistance(c1, r1, c2, r2) {
+  // Convert to cube coords
+  function toCube(col, row) {
+    const x = col - (row - (row & 1)) / 2;
+    const z = row;
+    const y = -x - z;
+    return { x, y, z };
+  }
+  const a = toCube(c1, r1);
+  const b = toCube(c2, r2);
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y), Math.abs(a.z - b.z));
+}
+
+function getUnitAt(col, row) {
+  return units.find(u => u.col === col && u.row === row && u.alive);
+}
+
+function getContraptionAt(col, row) {
+  const cell = grid[row]?.[col];
+  return cell ? cell.contraption : null;
+}
+
+class Unit {
+  constructor(col, row, team, type) {
+    this.col = col; this.row = row;
+    this.team = team; // 0=player(brass), 1=ai(copper)
+    this.type = type; // 'runner', 'blocker', 'engineer'
+    this.steam = 100;
+    this.maxSteam = 100;
+    this.alive = true;
+    this.hasBall = false;
+    this.moved = false;
+  }
+  steamCost(action) {
+    switch (action) {
+      case 'move': return 15;
+      case 'pass': return 20;
+      case 'cannon': return 40;
+      case 'smoke': return 30;
+      case 'gear': return 35;
+      default: return 10;
+    }
+  }
+  canAct(action) {
+    return this.steam >= this.steamCost(action) && this.alive;
+  }
+}
+
+function initGame() {
+  grid = [];
+  for (let r = 0; r < GRID_ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < GRID_COLS; c++) {
+      grid[r][c] = { contraption: null, smoke: 0 };
+    }
+  }
+
+  units = [];
+  // Player team (brass) - left side
+  units.push(new Unit(2, 2, 0, 'runner'));
+  units.push(new Unit(2, 4, 0, 'runner'));
+  units.push(new Unit(1, 3, 0, 'blocker'));
+  units.push(new Unit(3, 6, 0, 'engineer'));
+  units.push(new Unit(2, 7, 0, 'runner'));
+
+  // AI team (copper) - right side
+  units.push(new Unit(13, 2, 1, 'runner'));
+  units.push(new Unit(13, 4, 1, 'runner'));
+  units.push(new Unit(14, 3, 1, 'blocker'));
+  units.push(new Unit(12, 6, 1, 'engineer'));
+  units.push(new Unit(13, 7, 1, 'runner'));
+
+  // Ball starts with player runner
+  units[0].hasBall = true;
+
+  selectedUnit = null;
+  actionMode = null;
+  highlightedCells = [];
+  turn = 'player';
+  phase = 'select';
+  turnNum = 0;
+  score = [0, 0];
+}
+
+function showMsg(m, t) { message = m; msgTimer = t || 80; }
+
+function spawnSteam(x, y) {
+  for (let i = 0; i < 6; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 2, vy: -Math.random() * 2 - 1,
+      life: 25 + Math.random() * 15, color: '#cccccc', size: 3 + Math.random() * 5, type: 'steam'
+    });
+  }
+}
+
+function spawnSparks(x, y, color) {
+  for (let i = 0; i < 10; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5,
+      life: 15 + Math.random() * 10, color: color || '#d4a044', size: 1 + Math.random() * 3, type: 'spark'
+    });
+  }
+}
+
+function updateControls() {
+  controlsDiv.innerHTML = '';
+  if (state !== 'playing' || turn !== 'player' || !selectedUnit) return;
+
+  const u = selectedUnit;
+  const actions = [
+    { id: 'move', label: `Move (${u.steamCost('move')}⚡)`, enabled: u.canAct('move') },
+    { id: 'pass', label: `Pass (${u.steamCost('pass')}⚡)`, enabled: u.canAct('pass') && u.hasBall },
+    { id: 'cannon', label: `Cannon (${u.steamCost('cannon')}⚡)`, enabled: u.canAct('cannon') && u.type === 'engineer' },
+    { id: 'smoke', label: `Smoke (${u.steamCost('smoke')}⚡)`, enabled: u.canAct('smoke') && u.type === 'engineer' },
+    { id: 'gear', label: `Bridge (${u.steamCost('gear')}⚡)`, enabled: u.canAct('gear') && u.type === 'engineer' },
+    { id: 'endturn', label: 'End Turn', enabled: true },
+  ];
+
+  actions.forEach(a => {
+    const btn = document.createElement('button');
+    btn.textContent = a.label;
+    btn.disabled = !a.enabled;
+    if (a.id === actionMode) btn.classList.add('active');
+    btn.onclick = () => {
+      if (a.id === 'endturn') {
+        endPlayerTurn();
+      } else {
+        actionMode = a.id;
+        computeHighlights();
+        updateControls();
+      }
+    };
+    controlsDiv.appendChild(btn);
+  });
+
+  // Steam display
+  const steamDiv = document.createElement('button');
+  steamDiv.textContent = `Steam: ${u.steam}/${u.maxSteam}`;
+  steamDiv.disabled = true;
+  controlsDiv.appendChild(steamDiv);
+}
+
+function computeHighlights() {
+  highlightedCells = [];
+  if (!selectedUnit || !actionMode) return;
+  const u = selectedUnit;
+
+  if (actionMode === 'move') {
+    hexNeighbors(u.col, u.row).forEach(h => {
+      if (!getUnitAt(h.col, h.row) && !getContraptionAt(h.col, h.row)) {
+        highlightedCells.push(h);
+      }
+      // Gear bridge: can move 2 hexes if there's a bridge
+      if (getContraptionAt(h.col, h.row) === 'gear') {
+        hexNeighbors(h.col, h.row).forEach(h2 => {
+          if (!getUnitAt(h2.col, h2.row) && h2.col !== u.col && h2.row !== u.row) {
+            highlightedCells.push(h2);
+          }
+        });
+      }
+    });
+  } else if (actionMode === 'pass') {
+    units.filter(t => t.team === u.team && t !== u && t.alive).forEach(t => {
+      if (hexDistance(u.col, u.row, t.col, t.row) <= 5) {
+        highlightedCells.push({ col: t.col, row: t.row });
+      }
+    });
+  } else if (actionMode === 'cannon' || actionMode === 'smoke' || actionMode === 'gear') {
+    hexNeighbors(u.col, u.row).forEach(h => {
+      if (!getUnitAt(h.col, h.row)) {
+        highlightedCells.push(h);
+      }
+    });
+  }
+}
+
+function performAction(targetCol, targetRow) {
+  const u = selectedUnit;
+  if (!u || !actionMode) return;
+
+  const valid = highlightedCells.some(h => h.col === targetCol && h.row === targetRow);
+  if (!valid) return;
+
+  const pos = hexToPixel(u.col, u.row);
+
+  if (actionMode === 'move') {
+    u.steam -= u.steamCost('move');
+    u.col = targetCol;
+    u.row = targetRow;
+    spawnSteam(pos.x, pos.y);
+    showMsg('Moved!', 30);
+  } else if (actionMode === 'pass') {
+    const target = getUnitAt(targetCol, targetRow);
+    if (target && target.team === u.team) {
+      u.steam -= u.steamCost('pass');
+      u.hasBall = false;
+      target.hasBall = true;
+      spawnSparks(pos.x, pos.y, '#d4a044');
+      showMsg('Ball passed!', 30);
+    }
+  } else if (actionMode === 'cannon') {
+    u.steam -= u.steamCost('cannon');
+    grid[targetRow][targetCol].contraption = 'cannon';
+    spawnSparks(hexToPixel(targetCol, targetRow).x, hexToPixel(targetCol, targetRow).y, '#ff8800');
+    showMsg('Cannon built!', 30);
+  } else if (actionMode === 'smoke') {
+    u.steam -= u.steamCost('smoke');
+    grid[targetRow][targetCol].smoke = 5;
+    const tp = hexToPixel(targetCol, targetRow);
+    for (let i = 0; i < 20; i++) spawnSteam(tp.x + (Math.random() - 0.5) * 20, tp.y + (Math.random() - 0.5) * 20);
+    showMsg('Smoke screen!', 30);
+  } else if (actionMode === 'gear') {
+    u.steam -= u.steamCost('gear');
+    grid[targetRow][targetCol].contraption = 'gear';
+    spawnSparks(hexToPixel(targetCol, targetRow).x, hexToPixel(targetCol, targetRow).y, '#d4a044');
+    showMsg('Gear bridge built!', 30);
+  }
+
+  // Check cannon launch: if ball carrier moves onto cannon
+  const carrier = units.find(uu => uu.hasBall && uu.alive);
+  if (carrier) {
+    const cellContraption = getContraptionAt(carrier.col, carrier.row);
+    if (cellContraption === 'cannon') {
+      // Launch ball forward!
+      const launchCol = Math.min(GRID_COLS - 1, carrier.col + 3);
+      const target2 = units.find(uu => uu.team === carrier.team && uu.alive && !uu.hasBall &&
+        hexDistance(uu.col, uu.row, launchCol, carrier.row) <= 2);
+      if (target2) {
+        carrier.hasBall = false;
+        target2.hasBall = true;
+        grid[carrier.row][carrier.col].contraption = null;
+        spawnSparks(hexToPixel(carrier.col, carrier.row).x, hexToPixel(carrier.col, carrier.row).y, '#ff4400');
+        showMsg('CANNON LAUNCH!', 50);
+      }
+    }
+  }
+
+  checkTouchdown();
+  actionMode = null;
+  highlightedCells = [];
+  updateControls();
+}
+
+function checkTouchdown() {
+  for (const u of units) {
+    if (!u.alive || !u.hasBall) continue;
+    if (u.team === 0 && u.col >= GRID_COLS - 2) {
+      score[0] += 7;
+      showMsg('TOUCHDOWN! Player scores!', 90);
+      resetPositions();
+      return;
+    }
+    if (u.team === 1 && u.col <= 1) {
+      score[1] += 7;
+      showMsg('TOUCHDOWN! AI scores!', 90);
+      resetPositions();
+      return;
+    }
+  }
+}
+
+function resetPositions() {
+  // Reset unit positions
+  const p = units.filter(u => u.team === 0 && u.alive);
+  const a = units.filter(u => u.team === 1 && u.alive);
+  const pCols = [2, 2, 1, 3, 2];
+  const pRows = [2, 4, 3, 6, 7];
+  p.forEach((u, i) => {
+    if (i < pCols.length) { u.col = pCols[i]; u.row = pRows[i]; }
+    u.hasBall = false; u.steam = Math.min(u.steam + 30, 100);
+  });
+  const aCols = [13, 13, 14, 12, 13];
+  const aRows = [2, 4, 3, 6, 7];
+  a.forEach((u, i) => {
+    if (i < aCols.length) { u.col = aCols[i]; u.row = aRows[i]; }
+    u.hasBall = false; u.steam = Math.min(u.steam + 30, 100);
+  });
+  if (p.length > 0) p[0].hasBall = true;
+  // Clear contraptions
+  for (let r = 0; r < GRID_ROWS; r++)
+    for (let cc = 0; cc < GRID_COLS; cc++)
+      grid[r][cc] = { contraption: null, smoke: 0 };
+}
+
+function endPlayerTurn() {
+  selectedUnit = null;
+  actionMode = null;
+  highlightedCells = [];
+  controlsDiv.innerHTML = '';
+  turn = 'ai';
+  turnNum++;
+
+  // Restore some steam
+  units.filter(u => u.team === 0 && u.alive).forEach(u => u.steam = Math.min(u.steam + 10, 100));
+
+  setTimeout(doAiTurn, 500);
+}
+
+function doAiTurn() {
+  // Simple AI: move toward player endzone, try to intercept ball
+  const aiUnits = units.filter(u => u.team === 1 && u.alive);
+  const carrier = units.find(u => u.team === 0 && u.hasBall && u.alive);
+
+  for (const u of aiUnits) {
+    if (u.steam < 15) continue;
+
+    // If near ball carrier, try to tackle
+    if (carrier && hexDistance(u.col, u.row, carrier.col, carrier.row) <= 1) {
+      // Tackle! Force fumble
+      const neighbors = hexNeighbors(carrier.col, carrier.row);
+      const empty = neighbors.find(h => !getUnitAt(h.col, h.row));
+      if (empty) {
+        carrier.hasBall = false;
+        // Closest AI picks it up
+        u.hasBall = true;
+        showMsg('INTERCEPTED!', 60);
+        const pp = hexToPixel(carrier.col, carrier.row);
+        spawnSparks(pp.x, pp.y, '#ff4444');
+        u.steam -= 15;
+        continue;
+      }
+    }
+
+    // Move toward carrier or toward endzone
+    let targetCol, targetRow;
+    if (carrier) {
+      targetCol = carrier.col;
+      targetRow = carrier.row;
+    } else {
+      targetCol = 0;
+      targetRow = u.row;
+    }
+
+    const neighbors = hexNeighbors(u.col, u.row);
+    let bestMove = null, bestDist = hexDistance(u.col, u.row, targetCol, targetRow);
+    for (const h of neighbors) {
+      if (getUnitAt(h.col, h.row)) continue;
+      if (grid[h.row]?.[h.col]?.smoke > 0) continue;
+      const d = hexDistance(h.col, h.row, targetCol, targetRow);
+      if (d < bestDist) { bestDist = d; bestMove = h; }
+    }
+    if (bestMove && u.steam >= 15) {
+      u.col = bestMove.col;
+      u.row = bestMove.row;
+      u.steam -= 15;
+      spawnSteam(hexToPixel(u.col, u.row).x, hexToPixel(u.col, u.row).y);
+    }
+
+    // If AI has ball, run toward endzone
+    if (u.hasBall) {
+      const n2 = hexNeighbors(u.col, u.row);
+      let best2 = null, bd2 = u.col;
+      for (const h of n2) {
+        if (getUnitAt(h.col, h.row)) continue;
+        if (h.col < bd2) { bd2 = h.col; best2 = h; }
+      }
+      if (best2 && u.steam >= 15) {
+        u.col = best2.col;
+        u.row = best2.row;
+        u.steam -= 15;
+      }
+    }
+  }
+
+  // Restore AI steam
+  aiUnits.forEach(u => u.steam = Math.min(u.steam + 10, 100));
+
+  // Reduce smoke
+  for (let r = 0; r < GRID_ROWS; r++)
+    for (let cc = 0; cc < GRID_COLS; cc++)
+      if (grid[r][cc].smoke > 0) grid[r][cc].smoke--;
+
+  checkTouchdown();
+
+  turn = 'player';
+  if (turnNum >= maxTurns) {
+    state = 'gameover';
+  }
+  statusEl.textContent = `Turn ${turnNum}/${maxTurns} | Your turn - Select a unit`;
+}
+
+// Drawing
+function drawGear(x, y, r, teeth, rotation) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
+  ctx.beginPath();
+  for (let i = 0; i < teeth; i++) {
+    const a1 = (i / teeth) * Math.PI * 2;
+    const a2 = ((i + 0.3) / teeth) * Math.PI * 2;
+    const a3 = ((i + 0.5) / teeth) * Math.PI * 2;
+    const a4 = ((i + 0.8) / teeth) * Math.PI * 2;
+    const ri = r * 0.75;
+    const ro = r;
+    if (i === 0) ctx.moveTo(Math.cos(a1) * ri, Math.sin(a1) * ri);
+    ctx.lineTo(Math.cos(a2) * ro, Math.sin(a2) * ro);
+    ctx.lineTo(Math.cos(a3) * ro, Math.sin(a3) * ro);
+    ctx.lineTo(Math.cos(a4) * ri, Math.sin(a4) * ri);
+  }
+  ctx.closePath();
+  ctx.restore();
+}
+
+function drawHex(x, y, r, fill, stroke) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 3 * i - Math.PI / 6;
+    const px = x + r * Math.cos(a);
+    const py = y + r * Math.sin(a);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
+}
+
+function drawField() {
+  const t = Date.now() * 0.001;
+
+  // Background gears
+  gears.forEach(g => {
+    ctx.globalAlpha = g.opacity;
+    ctx.strokeStyle = '#8a6a3a';
+    ctx.lineWidth = 1;
+    drawGear(g.x, g.y, g.r, g.teeth, t * g.speed * 50);
+    ctx.stroke();
+  });
+  ctx.globalAlpha = 1;
+
+  // Hex grid
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let cc = 0; cc < GRID_COLS; cc++) {
+      const { x, y } = hexToPixel(cc, r);
+      // Endzone coloring
+      let fill = '#1a1a2a';
+      if (cc <= 1) fill = '#2a1a1a';
+      if (cc >= GRID_COLS - 2) fill = '#1a2a1a';
+
+      // Highlight
+      if (highlightedCells.some(h => h.col === cc && h.row === r)) {
+        fill = '#3a3a1a';
+      }
+
+      // Smoke
+      if (grid[r][cc].smoke > 0) {
+        fill = '#333333';
+      }
+
+      drawHex(x, y, HEX_R - 1, fill, '#3a2a1a');
+
+      // Contraptions
+      const con = grid[r][cc].contraption;
+      if (con === 'cannon') {
+        ctx.fillStyle = '#8a4a0a';
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#cc6600';
+        ctx.fillRect(x - 2, y - 10, 4, 10);
+        ctx.font = '10px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ff8800';
+        ctx.fillText('C', x, y + 4);
+      }
+      if (con === 'gear') {
+        ctx.strokeStyle = '#d4a044';
+        ctx.lineWidth = 2;
+        drawGear(x, y, 10, 6, t * 2);
+        ctx.stroke();
+      }
+
+      // Smoke effect
+      if (grid[r][cc].smoke > 0) {
+        ctx.globalAlpha = grid[r][cc].smoke / 5 * 0.5;
+        ctx.fillStyle = '#888888';
+        ctx.beginPath();
+        ctx.arc(x, y, HEX_R - 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // Endzone labels
+  ctx.font = '12px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff444466';
+  ctx.fillText('AI ENDZONE', hexToPixel(0, 4).x + 10, hexToPixel(0, 4).y);
+  ctx.fillStyle = '#44ff4466';
+  ctx.fillText('YOUR ENDZONE', hexToPixel(GRID_COLS - 1, 4).x - 10, hexToPixel(GRID_COLS - 1, 4).y);
+}
+
+function drawUnits() {
+  for (const u of units) {
+    if (!u.alive) continue;
+    const { x, y } = hexToPixel(u.col, u.row);
+
+    // Selection
+    if (u === selectedUnit) {
+      ctx.beginPath();
+      ctx.arc(x, y, HEX_R - 2, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffcc00';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    // Body
+    const colors = u.team === 0
+      ? { main: '#c8962e', dark: '#8a6a1a', light: '#e8b84e' }
+      : { main: '#b87333', dark: '#7a4a1a', light: '#d8934e' };
+
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(x - 3, y - 3, 2, x, y, 12);
+    grad.addColorStop(0, colors.light);
+    grad.addColorStop(1, colors.dark);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff44';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Type indicator
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    const typeChar = u.type === 'runner' ? 'R' : u.type === 'blocker' ? 'B' : 'E';
+    ctx.fillText(typeChar, x, y + 3);
+
+    // Steam gauge
+    const barW = 20, barH = 3;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(x - barW / 2, y + 14, barW, barH);
+    ctx.fillStyle = u.steam > 30 ? '#44cc44' : '#cc4444';
+    ctx.fillRect(x - barW / 2, y + 14, barW * (u.steam / u.maxSteam), barH);
+
+    // Ball
+    if (u.hasBall) {
+      ctx.fillStyle = '#8B4513';
+      ctx.beginPath();
+      ctx.ellipse(x, y - 16, 6, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#1a1a2aCC';
+  ctx.fillRect(0, 0, W, 35);
+  ctx.font = '14px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#d4a044';
+  ctx.fillText(`You: ${score[0]}`, 20, 22);
+  ctx.fillStyle = '#b87333';
+  ctx.fillText(`AI: ${score[1]}`, 150, 22);
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText(`Turn: ${turnNum}/${maxTurns}`, 300, 22);
+  ctx.fillStyle = turn === 'player' ? '#44cc44' : '#cc4444';
+  ctx.fillText(turn === 'player' ? 'YOUR TURN' : 'AI THINKING...', 500, 22);
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  const t = Date.now() * 0.001;
+  gears.forEach(g => {
+    ctx.globalAlpha = g.opacity * 2;
+    ctx.strokeStyle = '#8a6a3a';
+    ctx.lineWidth = 2;
+    drawGear(g.x, g.y, g.r, g.teeth, t * g.speed * 50);
+    ctx.stroke();
+  });
+  ctx.globalAlpha = 1;
+
+  ctx.font = 'bold 44px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#d4a044';
+  ctx.fillText('STEAMPUNK', W / 2, 110);
+  ctx.fillText('SCRIMMAGE', W / 2, 160);
+
+  ctx.font = '14px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  const lines = [
+    'Victorian steampunk football with mechanical automatons!',
+    '',
+    'Turn-based strategy on a hex grid.',
+    'Each unit has a STEAM gauge - actions cost steam!',
+    '',
+    'Unit Types: [R]unner, [B]locker, [E]ngineer',
+    'Engineers can build: Cannons, Smoke Screens, Gear Bridges',
+    '',
+    'Controls:',
+    '• Click a unit to select it',
+    '• Choose an action from the buttons above',
+    '• Click a highlighted hex to perform the action',
+    '• Get the ball to the RIGHT endzone to score!',
+    '',
+    'Click to START'
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, 210 + i * 20));
+}
+
+function drawGameOver() {
+  ctx.fillStyle = '#0f0f1aee';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = 'bold 44px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#d4a044';
+  ctx.fillText('GAME OVER', W / 2, 150);
+
+  ctx.font = '24px Courier New';
+  ctx.fillStyle = '#c8962e';
+  ctx.fillText(`You: ${score[0]}`, W / 2, 220);
+  ctx.fillStyle = '#b87333';
+  ctx.fillText(`AI: ${score[1]}`, W / 2, 260);
+
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = '28px Courier New';
+  ctx.fillText(score[0] > score[1] ? 'YOU WIN!' : score[1] > score[0] ? 'AI WINS!' : 'DRAW!', W / 2, 320);
+
+  ctx.font = '16px Courier New';
+  ctx.fillStyle = '#a0a0c0';
+  ctx.fillText('Click to play again', W / 2, 380);
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') { drawTitle(); return; }
+  if (state === 'gameover') { drawGameOver(); return; }
+
+  drawField();
+  drawUnits();
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 40;
+    if (p.type === 'steam') {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    }
+  });
+  ctx.globalAlpha = 1;
+
+  drawHUD();
+
+  if (msgTimer > 0) {
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(W / 2 - 180, H / 2 - 20, 360, 40);
+    ctx.font = 'bold 20px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#d4a044';
+    ctx.fillText(message, W / 2, H / 2 + 7);
+  }
+}
+
+function update() {
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy;
+    if (p.type === 'steam') { p.vy -= 0.05; p.size += 0.1; }
+    p.vx *= 0.95; p.vy *= 0.95;
+    p.life--;
+    return p.life > 0;
+  });
+  if (msgTimer > 0) msgTimer--;
+}
+
+c.addEventListener('click', (e) => {
+  const rect = c.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (W / rect.width);
+  const my = (e.clientY - rect.top) * (H / rect.height);
+
+  if (state === 'title') {
+    state = 'playing';
+    initGame();
+    statusEl.textContent = 'Select a unit to begin!';
+    return;
+  }
+  if (state === 'gameover') {
+    state = 'title';
+    return;
+  }
+  if (turn !== 'player') return;
+
+  const hex = pixelToHex(mx, my);
+  if (!hex) return;
+
+  // If we have an action mode and clicked a valid cell
+  if (actionMode && highlightedCells.some(h => h.col === hex.col && h.row === hex.row)) {
+    performAction(hex.col, hex.row);
+    return;
+  }
+
+  // Select unit
+  const unit = getUnitAt(hex.col, hex.row);
+  if (unit && unit.team === 0) {
+    selectedUnit = unit;
+    actionMode = null;
+    highlightedCells = [];
+    updateControls();
+    statusEl.textContent = `Selected ${unit.type} (Steam: ${unit.steam})`;
+  }
+});
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

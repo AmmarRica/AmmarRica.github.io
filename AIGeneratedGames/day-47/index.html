@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 47 – Pilot Quest</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    #ui { color: #e0e0ff; font-size: 0.85rem; margin-bottom: 0.5rem; display: flex; gap: 0.8rem; flex-wrap: wrap; justify-content: center; }
+    canvas {
+      border: 2px solid #3b3b5c;
+      border-radius: 8px;
+      background: #1e1e2e;
+      max-width: 480px;
+      width: 100%;
+    }
+    #msg {
+      margin-top: 0.5rem;
+      color: #a78bfa;
+      font-size: 0.9rem;
+      min-height: 1.5em;
+      text-align: center;
+    }
+    button {
+      margin-top: 0.5rem;
+      padding: 0.5rem 1.5rem;
+      background: #a78bfa;
+      color: #0f0f1a;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: none;
+    }
+</style>
+</head>
+<body>
+  <h1>Pilot Quest</h1>
+  <p class="subtitle">Drag up/down to fly. Tap right side to shoot. Complete missions!</p>
+  <div id="ui">
+    <span id="scoreInfo">Score: 0</span>
+    <span id="fuelInfo">Fuel: 100%</span>
+    <span id="missionInfo">Mission: --</span>
+    <span id="healthInfo">HP: 3</span>
+  </div>
+  <canvas id="c"></canvas>
+  <div id="msg"></div>
+  <button id="restartBtn" onclick="initGame()">Play Again</button>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const msgEl = document.getElementById('msg');
+const restartBtn = document.getElementById('restartBtn');
+const scoreInfoEl = document.getElementById('scoreInfo');
+const fuelInfoEl = document.getElementById('fuelInfo');
+const missionInfoEl = document.getElementById('missionInfo');
+const healthInfoEl = document.getElementById('healthInfo');
+
+const W = 480, H = 480;
+canvas.width = W; canvas.height = H;
+
+// Game state
+let plane, score, fuel, health, maxHealth;
+let mountains, clouds, obstacles, pickups, bullets, particles;
+let scrollSpeed, distance;
+let mission, missionProgress, missionTarget;
+let missions;
+let gameOver, gameRunning;
+let touchY, isTouching, shootCooldown;
+let stormActive, stormTimer;
+
+const MISSIONS = [
+  { type: 'distance', target: 500, desc: 'Fly 500m' },
+  { type: 'cargo', target: 3, desc: 'Collect 3 cargo crates' },
+  { type: 'rescue', target: 2, desc: 'Rescue 2 survivors' },
+  { type: 'destroy', target: 5, desc: 'Destroy 5 enemies' },
+  { type: 'distance', target: 1000, desc: 'Fly 1000m' },
+  { type: 'cargo', target: 5, desc: 'Collect 5 cargo crates' },
+  { type: 'rescue', target: 3, desc: 'Rescue 3 survivors' },
+  { type: 'destroy', target: 8, desc: 'Destroy 8 enemies' },
+  { type: 'distance', target: 2000, desc: 'Survive 2000m!' },
+];
+
+function initGame() {
+  restartBtn.style.display = 'none';
+  gameOver = false;
+  gameRunning = true;
+  score = 0;
+  fuel = 100;
+  health = 3;
+  maxHealth = 3;
+  distance = 0;
+  scrollSpeed = 2;
+  shootCooldown = 0;
+  stormActive = false;
+  stormTimer = 0;
+  touchY = H / 2;
+  isTouching = false;
+
+  plane = { x: 80, y: H / 2, w: 40, h: 20, targetY: H / 2, tilt: 0 };
+  mountains = [];
+  clouds = [];
+  obstacles = [];
+  pickups = [];
+  bullets = [];
+  particles = [];
+
+  // Init mountains
+  for (let i = 0; i < 20; i++) {
+    mountains.push({
+      x: i * 60,
+      h: 60 + Math.random() * 100,
+      w: 40 + Math.random() * 40
+    });
+  }
+  // Init clouds
+  for (let i = 0; i < 8; i++) {
+    clouds.push({
+      x: Math.random() * W,
+      y: 20 + Math.random() * 150,
+      w: 40 + Math.random() * 60,
+      speed: 0.3 + Math.random() * 0.5
+    });
+  }
+
+  missionProgress = 0;
+  mission = 0;
+  missionTarget = MISSIONS[0];
+  updateUI();
+  msgEl.textContent = `Mission: ${missionTarget.desc}`;
+  requestAnimationFrame(gameLoop);
+}
+
+function updateUI() {
+  scoreInfoEl.textContent = `Score: ${score}`;
+  fuelInfoEl.textContent = `Fuel: ${Math.round(fuel)}%`;
+  healthInfoEl.textContent = `HP: ${health}`;
+  missionInfoEl.textContent = `M${mission + 1}: ${missionProgress}/${missionTarget.target}`;
+}
+
+function spawnObstacle() {
+  const r = Math.random();
+  if (r < 0.3) {
+    // Enemy plane
+    obstacles.push({
+      type: 'enemy',
+      x: W + 20,
+      y: 50 + Math.random() * (H - 150),
+      w: 30, h: 14,
+      hp: 1,
+      speed: 1.5 + Math.random()
+    });
+  } else if (r < 0.5) {
+    // Storm cloud
+    obstacles.push({
+      type: 'storm',
+      x: W + 40,
+      y: 30 + Math.random() * (H - 200),
+      w: 80, h: 60,
+      speed: scrollSpeed * 0.8
+    });
+  } else if (r < 0.65) {
+    // Mountain peak (tall)
+    obstacles.push({
+      type: 'mountain',
+      x: W + 20,
+      y: H,
+      w: 50 + Math.random() * 40,
+      h: 150 + Math.random() * 150,
+      speed: scrollSpeed
+    });
+  }
+}
+
+function spawnPickup() {
+  const r = Math.random();
+  let type;
+  if (missionTarget.type === 'cargo' && r < 0.4) type = 'cargo';
+  else if (missionTarget.type === 'rescue' && r < 0.4) type = 'survivor';
+  else if (r < 0.5) type = 'fuel';
+  else if (r < 0.7) type = 'cargo';
+  else type = 'survivor';
+
+  pickups.push({
+    type: type,
+    x: W + 20,
+    y: 50 + Math.random() * (H - 150),
+    w: 24, h: 24,
+    speed: scrollSpeed
+  });
+}
+
+function shoot() {
+  if (shootCooldown > 0) return;
+  shootCooldown = 12;
+  bullets.push({
+    x: plane.x + plane.w,
+    y: plane.y,
+    vx: 8,
+    vy: plane.tilt * 0.3
+  });
+}
+
+function update() {
+  if (!gameRunning || gameOver) return;
+
+  distance += scrollSpeed * 0.1;
+  fuel -= 0.02 + scrollSpeed * 0.003;
+  if (fuel <= 0) {
+    fuel = 0;
+    health = 0;
+    endGame();
+    return;
+  }
+
+  // Difficulty ramp
+  scrollSpeed = 2 + distance * 0.001;
+  if (scrollSpeed > 6) scrollSpeed = 6;
+
+  // Plane physics
+  if (isTouching) {
+    plane.targetY = touchY;
+  }
+  const dy = plane.targetY - plane.y;
+  plane.tilt = Math.max(-0.5, Math.min(0.5, dy * 0.02));
+  plane.y += dy * 0.08;
+  if (plane.y < 20) plane.y = 20;
+  if (plane.y > H - 30) plane.y = H - 30;
+
+  // Shoot cooldown
+  if (shootCooldown > 0) shootCooldown--;
+
+  // Storm
+  stormTimer--;
+  if (stormTimer <= 0 && Math.random() < 0.002) {
+    stormActive = true;
+    stormTimer = 180;
+  }
+  if (stormTimer <= 0) stormActive = false;
+  if (stormActive) {
+    plane.y += (Math.random() - 0.5) * 3;
+  }
+
+  // Spawn
+  if (Math.random() < 0.02 + distance * 0.00005) spawnObstacle();
+  if (Math.random() < 0.012) spawnPickup();
+
+  // Mountains scroll
+  for (const m of mountains) {
+    m.x -= scrollSpeed * 0.5;
+    if (m.x + m.w < 0) {
+      m.x = W + Math.random() * 60;
+      m.h = 60 + Math.random() * 100;
+    }
+  }
+
+  // Clouds
+  for (const c of clouds) {
+    c.x -= c.speed + scrollSpeed * 0.3;
+    if (c.x + c.w < 0) {
+      c.x = W + Math.random() * 100;
+      c.y = 20 + Math.random() * 150;
+    }
+  }
+
+  // Obstacles
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const o = obstacles[i];
+    o.x -= (o.speed || scrollSpeed);
+    if (o.x + (o.w || 50) < -20) { obstacles.splice(i, 1); continue; }
+
+    // Collision with plane
+    if (rectsOverlap(plane, o)) {
+      if (o.type === 'enemy' || o.type === 'mountain') {
+        takeDamage();
+        spawnParticles(plane.x, plane.y, '#f87171', 8);
+        obstacles.splice(i, 1);
+      } else if (o.type === 'storm') {
+        plane.y += (Math.random() - 0.5) * 8;
+      }
+    }
+  }
+
+  // Bullets
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.x > W + 10) { bullets.splice(i, 1); continue; }
+
+    // Hit enemies
+    let hit = false;
+    for (let j = obstacles.length - 1; j >= 0; j--) {
+      const o = obstacles[j];
+      if (o.type === 'enemy' && b.x > o.x && b.x < o.x + o.w && b.y > o.y - o.h / 2 && b.y < o.y + o.h / 2) {
+        o.hp--;
+        if (o.hp <= 0) {
+          spawnParticles(o.x, o.y, '#fbbf24', 10);
+          score += 50;
+          obstacles.splice(j, 1);
+          if (missionTarget.type === 'destroy') {
+            missionProgress++;
+            checkMission();
+          }
+        }
+        hit = true;
+        break;
+      }
+    }
+    if (hit) bullets.splice(i, 1);
+  }
+
+  // Pickups
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const p = pickups[i];
+    p.x -= p.speed;
+    if (p.x + p.w < 0) { pickups.splice(i, 1); continue; }
+
+    if (rectsOverlap(plane, p)) {
+      if (p.type === 'fuel') {
+        fuel = Math.min(100, fuel + 25);
+        score += 20;
+        spawnParticles(p.x, p.y, '#22c55e', 6);
+      } else if (p.type === 'cargo') {
+        score += 30;
+        spawnParticles(p.x, p.y, '#fbbf24', 6);
+        if (missionTarget.type === 'cargo') {
+          missionProgress++;
+          checkMission();
+        }
+      } else if (p.type === 'survivor') {
+        score += 40;
+        spawnParticles(p.x, p.y, '#60a5fa', 6);
+        if (missionTarget.type === 'rescue') {
+          missionProgress++;
+          checkMission();
+        }
+      }
+      pickups.splice(i, 1);
+    }
+  }
+
+  // Distance mission
+  if (missionTarget.type === 'distance') {
+    missionProgress = Math.floor(distance);
+    checkMission();
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  updateUI();
+}
+
+function rectsOverlap(a, b) {
+  const ax = a.x - (a.w || 0) / 2, ay = a.y - (a.h || 0) / 2;
+  const aw = a.w || 0, ah = a.h || 0;
+  let bx, by, bw, bh;
+  if (b.type === 'mountain') {
+    bx = b.x; by = b.y - b.h; bw = b.w; bh = b.h;
+  } else {
+    bx = b.x; by = b.y - (b.h || 0) / 2; bw = b.w || 0; bh = b.h || 0;
+  }
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function takeDamage() {
+  health--;
+  if (health <= 0) endGame();
+}
+
+function endGame() {
+  gameOver = true;
+  gameRunning = false;
+  msgEl.textContent = `Game Over! Score: ${score} | Distance: ${Math.floor(distance)}m`;
+  restartBtn.style.display = 'inline-block';
+}
+
+function checkMission() {
+  if (missionProgress >= missionTarget.target) {
+    score += 100;
+    mission++;
+    if (mission >= MISSIONS.length) {
+      gameOver = true;
+      gameRunning = false;
+      msgEl.textContent = `All missions complete! Final score: ${score}`;
+      restartBtn.style.display = 'inline-block';
+      return;
+    }
+    missionTarget = MISSIONS[mission];
+    missionProgress = 0;
+    msgEl.textContent = `New mission: ${missionTarget.desc}`;
+  }
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4,
+      color,
+      life: 20 + Math.random() * 20
+    });
+  }
+}
+
+// Touch controls
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return {
+    x: (t.clientX - rect.left) * W / rect.width,
+    y: (t.clientY - rect.top) * H / rect.height
+  };
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const pos = getPos(e);
+  isTouching = true;
+  touchY = pos.y;
+  // Tap right half to shoot
+  if (pos.x > W / 2) shoot();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const pos = getPos(e);
+  touchY = pos.y;
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  isTouching = false;
+}, { passive: false });
+
+canvas.addEventListener('mousedown', (e) => {
+  const pos = getPos(e);
+  isTouching = true;
+  touchY = pos.y;
+  if (pos.x > W / 2) shoot();
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (!isTouching) return;
+  touchY = getPos(e).y;
+});
+canvas.addEventListener('mouseup', () => { isTouching = false; });
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Sky gradient
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, '#1a1040');
+  skyGrad.addColorStop(0.6, '#2a1858');
+  skyGrad.addColorStop(1, '#1e1e2e');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Storm overlay
+  if (stormActive) {
+    ctx.fillStyle = `rgba(50,50,80,${0.2 + Math.random() * 0.15})`;
+    ctx.fillRect(0, 0, W, H);
+    // Lightning flash
+    if (Math.random() < 0.03) {
+      ctx.fillStyle = 'rgba(200,200,255,0.3)';
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // Clouds
+  for (const c of clouds) {
+    ctx.fillStyle = 'rgba(200,200,255,0.08)';
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, c.w / 2, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Mountains
+  for (const m of mountains) {
+    ctx.fillStyle = '#1a1830';
+    ctx.beginPath();
+    ctx.moveTo(m.x, H);
+    ctx.lineTo(m.x + m.w / 2, H - m.h);
+    ctx.lineTo(m.x + m.w, H);
+    ctx.closePath();
+    ctx.fill();
+    // Snow cap
+    ctx.fillStyle = '#3b3b5c';
+    ctx.beginPath();
+    ctx.moveTo(m.x + m.w / 2, H - m.h);
+    ctx.lineTo(m.x + m.w / 2 - 8, H - m.h + 15);
+    ctx.lineTo(m.x + m.w / 2 + 8, H - m.h + 15);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Obstacle mountains
+  for (const o of obstacles) {
+    if (o.type === 'mountain') {
+      ctx.fillStyle = '#2a1830';
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y);
+      ctx.lineTo(o.x + o.w / 2, o.y - o.h);
+      ctx.lineTo(o.x + o.w, o.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#4a2850';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  // Storm obstacles
+  for (const o of obstacles) {
+    if (o.type === 'storm') {
+      ctx.fillStyle = 'rgba(100,80,120,0.6)';
+      ctx.beginPath();
+      ctx.ellipse(o.x + o.w / 2, o.y + o.h / 2, o.w / 2, o.h / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Lightning bolt inside
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(o.x + o.w / 2, o.y + 5);
+      ctx.lineTo(o.x + o.w / 2 - 5, o.y + o.h / 2);
+      ctx.lineTo(o.x + o.w / 2 + 5, o.y + o.h / 2);
+      ctx.lineTo(o.x + o.w / 2, o.y + o.h - 5);
+      ctx.stroke();
+    }
+  }
+
+  // Enemy planes
+  for (const o of obstacles) {
+    if (o.type === 'enemy') {
+      ctx.save();
+      ctx.translate(o.x + o.w / 2, o.y);
+      // Body
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h);
+      // Wings
+      ctx.fillStyle = '#b91c1c';
+      ctx.fillRect(-o.w / 2 + 5, -o.h, 8, o.h * 2);
+      // Nose
+      ctx.beginPath();
+      ctx.moveTo(-o.w / 2, -o.h / 2);
+      ctx.lineTo(-o.w / 2 - 6, 0);
+      ctx.lineTo(-o.w / 2, o.h / 2);
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Pickups
+  for (const p of pickups) {
+    ctx.save();
+    ctx.translate(p.x + p.w / 2, p.y);
+    if (p.type === 'fuel') {
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('F', 0, 5);
+    } else if (p.type === 'cargo') {
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.fillStyle = '#92400e';
+      ctx.font = 'bold 12px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('C', 0, 5);
+    } else if (p.type === 'survivor') {
+      ctx.fillStyle = '#60a5fa';
+      ctx.beginPath();
+      ctx.arc(0, -4, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(-4, 2, 8, 10);
+    }
+    ctx.restore();
+  }
+
+  // Bullets
+  ctx.fillStyle = '#fbbf24';
+  for (const b of bullets) {
+    ctx.fillRect(b.x - 4, b.y - 1.5, 8, 3);
+  }
+
+  // Plane
+  ctx.save();
+  ctx.translate(plane.x, plane.y);
+  ctx.rotate(plane.tilt);
+  // Body
+  ctx.fillStyle = '#818cf8';
+  ctx.fillRect(-plane.w / 2, -plane.h / 2, plane.w, plane.h);
+  // Wings
+  ctx.fillStyle = '#6366f1';
+  ctx.fillRect(-plane.w / 2 + 8, -plane.h, 10, plane.h * 2);
+  // Tail
+  ctx.fillStyle = '#a78bfa';
+  ctx.beginPath();
+  ctx.moveTo(-plane.w / 2, -plane.h / 2);
+  ctx.lineTo(-plane.w / 2 - 8, -plane.h);
+  ctx.lineTo(-plane.w / 2, 0);
+  ctx.fill();
+  // Nose
+  ctx.beginPath();
+  ctx.moveTo(plane.w / 2, -plane.h / 2);
+  ctx.lineTo(plane.w / 2 + 10, 0);
+  ctx.lineTo(plane.w / 2, plane.h / 2);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fill();
+  // Cockpit
+  ctx.fillStyle = '#c4b5fd';
+  ctx.fillRect(plane.w / 2 - 8, -4, 8, 8);
+  // Engine flame
+  ctx.fillStyle = `rgba(251,191,36,${0.5 + Math.random() * 0.5})`;
+  ctx.fillRect(-plane.w / 2 - 8 - Math.random() * 4, -3, 8, 6);
+  ctx.restore();
+
+  // Particles
+  for (const p of particles) {
+    const alpha = p.life / 40;
+    ctx.fillStyle = p.color.replace(')', `,${alpha})`).replace('rgb', 'rgba');
+    ctx.globalAlpha = alpha;
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD - fuel bar
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(10, H - 20, 100, 10);
+  ctx.fillStyle = fuel > 25 ? '#22c55e' : '#dc2626';
+  ctx.fillRect(10, H - 20, fuel, 10);
+  ctx.strokeStyle = '#3b3b5c';
+  ctx.strokeRect(10, H - 20, 100, 10);
+
+  // Distance
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${Math.floor(distance)}m`, W - 10, H - 10);
+
+  // Game over
+  if (gameOver) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = mission >= MISSIONS.length ? '#22c55e' : '#dc2626';
+    ctx.font = 'bold 32px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(mission >= MISSIONS.length ? 'ALL CLEAR!' : 'CRASHED!', W / 2, H / 2 - 30);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '18px system-ui';
+    ctx.fillText(`Score: ${score}`, W / 2, H / 2 + 5);
+    ctx.fillText(`Distance: ${Math.floor(distance)}m`, W / 2, H / 2 + 30);
+  }
+}
+
+let lastTime = 0;
+function gameLoop(time) {
+  if (time - lastTime > 16) {
+    update();
+    draw();
+    lastTime = time;
+  }
+  if (gameRunning || gameOver) requestAnimationFrame(gameLoop);
+}
+
+initGame();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

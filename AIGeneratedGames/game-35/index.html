@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Halftime Heist</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #a78bfa; margin-top: 5px; cursor: none; }
+#info { color: #a78bfa; margin-top: 8px; font-size: 12px; text-align: center; max-width: 600px; }
+</style>
+</head>
+<body>
+<canvas id="game" width="600" height="500"></canvas>
+<div id="info">WASD/Arrows: Move | E: Use distraction | Space: Interact | Steal the game ball!</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 500;
+
+const TILE = 25;
+const COLS = Math.floor(W / TILE);
+const ROWS = Math.floor(H / TILE);
+
+let state = 'title'; // title, playing, caught, victory, levelcomplete
+let level = 0;
+let timeLeft = 0;
+let maxTime = 0;
+let player = { x: 0, y: 0, dir: 0, visible: true, popcorn: 3, wave: 2 };
+let guards = [];
+let cameras = [];
+let walls = [];
+let crowds = [];
+let ballPos = { x: 0, y: 0 };
+let distractions = [];
+let alertLevel = 0;
+let alertDecay = 0;
+let particles = [];
+let keys = {};
+let moveTimer = 0;
+let catchMessage = '';
+let levelNames = ['Local Park', 'College Stadium', 'Minor League', 'Pro Stadium', 'Super Bowl'];
+
+// Map generation
+function generateLevel(lvl) {
+  walls = [];
+  guards = [];
+  cameras = [];
+  crowds = [];
+  distractions = [];
+  particles = [];
+  alertLevel = 0;
+
+  player.x = 1;
+  player.y = ROWS - 2;
+  player.popcorn = 3 - Math.floor(lvl / 2);
+  player.wave = 2 - Math.floor(lvl / 3);
+  player.popcorn = Math.max(1, player.popcorn);
+  player.wave = Math.max(0, player.wave);
+  player.visible = true;
+
+  // Time limit decreases with level
+  maxTime = (90 - lvl * 10) * 60;
+  timeLeft = maxTime;
+
+  // Ball position (center field area)
+  ballPos.x = Math.floor(COLS / 2);
+  ballPos.y = Math.floor(ROWS / 2) - 2;
+
+  // Create perimeter walls
+  for (let x = 0; x < COLS; x++) {
+    walls.push({ x, y: 0 });
+    walls.push({ x, y: ROWS - 1 });
+  }
+  for (let y = 0; y < ROWS; y++) {
+    walls.push({ x: 0, y });
+    walls.push({ x: COLS - 1, y });
+  }
+
+  // Stadium structure - barriers and corridors
+  // Stands (top/bottom sections)
+  for (let x = 2; x < COLS - 2; x++) {
+    if (x !== Math.floor(COLS / 2) && x !== Math.floor(COLS / 2) - 1) {
+      walls.push({ x, y: 3 });
+      walls.push({ x, y: ROWS - 4 });
+    }
+  }
+
+  // Side barriers
+  for (let y = 5; y < ROWS - 5; y++) {
+    if (y !== Math.floor(ROWS / 2) && y !== Math.floor(ROWS / 2) + 1) {
+      walls.push({ x: 3, y });
+      walls.push({ x: COLS - 4, y });
+    }
+    // Inner barriers (higher levels)
+    if (lvl >= 2 && y % 3 === 0) {
+      walls.push({ x: 6, y });
+      walls.push({ x: COLS - 7, y });
+    }
+  }
+
+  // Central field barriers
+  if (lvl >= 1) {
+    for (let x = 8; x < COLS - 8; x++) {
+      if (Math.abs(x - ballPos.x) > 2) {
+        if (x % 3 !== 0) walls.push({ x, y: ballPos.y + 2 });
+      }
+    }
+  }
+
+  if (lvl >= 3) {
+    for (let x = 8; x < COLS - 8; x++) {
+      if (Math.abs(x - ballPos.x) > 3) {
+        if (x % 4 !== 0) walls.push({ x, y: ballPos.y - 2 });
+      }
+    }
+  }
+
+  // Opening in bottom wall for player entrance
+  walls = walls.filter(w => !(w.y === ROWS - 1 && w.x >= Math.floor(COLS / 2) - 1 && w.x <= Math.floor(COLS / 2)));
+
+  // Guards
+  let guardCount = 2 + lvl * 2;
+  let guardPatterns = [
+    // Horizontal patrol
+    (x, y, range) => ({ x, y, patrolX1: x - range, patrolX2: x + range, patrolY1: y, patrolY2: y, dx: 1, dy: 0, speed: 0.03 + lvl * 0.008, alert: false, alertTimer: 0, viewDist: 3 + lvl, viewAngle: 0 }),
+    // Vertical patrol
+    (x, y, range) => ({ x, y, patrolX1: x, patrolX2: x, patrolY1: y - range, patrolY2: y + range, dx: 0, dy: 1, speed: 0.03 + lvl * 0.008, alert: false, alertTimer: 0, viewDist: 3 + lvl, viewAngle: Math.PI / 2 }),
+  ];
+
+  for (let i = 0; i < guardCount; i++) {
+    let gx, gy, valid;
+    let attempts = 0;
+    do {
+      gx = 4 + Math.floor(Math.random() * (COLS - 8));
+      gy = 4 + Math.floor(Math.random() * (ROWS - 8));
+      valid = !isWall(gx, gy) && (Math.abs(gx - player.x) > 4 || Math.abs(gy - player.y) > 4);
+      attempts++;
+    } while (!valid && attempts < 50);
+
+    let patternFn = guardPatterns[i % 2];
+    let range = 2 + Math.floor(Math.random() * 3);
+    let g = patternFn(gx, gy, range);
+    // Clamp patrols to valid area
+    g.patrolX1 = Math.max(2, g.patrolX1);
+    g.patrolX2 = Math.min(COLS - 3, g.patrolX2);
+    g.patrolY1 = Math.max(2, g.patrolY1);
+    g.patrolY2 = Math.min(ROWS - 3, g.patrolY2);
+    guards.push(g);
+  }
+
+  // Cameras (higher levels)
+  if (lvl >= 1) {
+    let camCount = lvl;
+    for (let i = 0; i < camCount; i++) {
+      cameras.push({
+        x: 5 + Math.floor(Math.random() * (COLS - 10)),
+        y: 2,
+        angle: Math.PI / 2,
+        sweepSpeed: 0.01 + lvl * 0.005,
+        sweepDir: 1,
+        range: 4 + lvl
+      });
+    }
+  }
+
+  // Crowd patches (provide cover)
+  for (let i = 0; i < 4 + lvl; i++) {
+    let cx = 2 + Math.floor(Math.random() * (COLS - 4));
+    let cy = 4 + Math.floor(Math.random() * (ROWS - 8));
+    if (!isWall(cx, cy) && (Math.abs(cx - ballPos.x) > 2 || Math.abs(cy - ballPos.y) > 2)) {
+      crowds.push({ x: cx, y: cy, distracted: false, timer: 0 });
+    }
+  }
+}
+
+function isWall(x, y) {
+  return walls.some(w => w.x === x && w.y === y);
+}
+
+function isGuard(x, y) {
+  return guards.some(g => Math.floor(g.x) === x && Math.floor(g.y) === y);
+}
+
+function canMove(x, y) {
+  if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return false;
+  if (isWall(x, y)) return false;
+  return true;
+}
+
+function lineOfSight(x1, y1, x2, y2, maxDist) {
+  let dx = x2 - x1, dy = y2 - y1;
+  let dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > maxDist) return false;
+  // Simple raycast
+  let steps = Math.ceil(dist * 2);
+  for (let i = 1; i < steps; i++) {
+    let t = i / steps;
+    let cx = Math.floor(x1 + dx * t);
+    let cy = Math.floor(y1 + dy * t);
+    if (isWall(cx, cy)) return false;
+  }
+  return true;
+}
+
+function usePopcorn() {
+  if (player.popcorn <= 0) return;
+  player.popcorn--;
+  // Throw popcorn to distract nearest guard
+  let throwX = player.x + Math.cos(player.dir * Math.PI / 2) * 3;
+  let throwY = player.y + Math.sin(player.dir * Math.PI / 2) * 3;
+  distractions.push({ x: throwX, y: throwY, timer: 180, type: 'popcorn' });
+  addParticles(throwX * TILE + TILE / 2, throwY * TILE + TILE / 2, '#fbbf24', 10);
+}
+
+function useWave() {
+  if (player.wave <= 0) return;
+  player.wave--;
+  // Start a wave - distracts all crowds and nearby guards
+  for (let c of crowds) {
+    c.distracted = true;
+    c.timer = 240;
+  }
+  distractions.push({ x: player.x, y: player.y, timer: 180, type: 'wave' });
+  addParticles(player.x * TILE + TILE / 2, player.y * TILE + TILE / 2, '#a78bfa', 20);
+}
+
+function addParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+      life: 20 + Math.random() * 20, color, size: 2 + Math.random() * 2
+    });
+  }
+}
+
+document.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === ' ') e.preventDefault();
+
+  if (state === 'title' && (e.key === ' ' || e.key === 'Enter')) {
+    level = 0;
+    generateLevel(level);
+    state = 'playing';
+  }
+
+  if (state === 'caught' && e.key === ' ') {
+    generateLevel(level);
+    state = 'playing';
+  }
+
+  if (state === 'levelcomplete' && e.key === ' ') {
+    level++;
+    if (level >= 5) {
+      state = 'victory';
+    } else {
+      generateLevel(level);
+      state = 'playing';
+    }
+  }
+
+  if (state === 'victory' && e.key === ' ') {
+    state = 'title';
+  }
+
+  if (state === 'playing') {
+    if (e.key.toLowerCase() === 'e') {
+      // Use distraction - prefer popcorn, then wave
+      if (player.popcorn > 0) usePopcorn();
+      else if (player.wave > 0) useWave();
+    }
+    if (e.key === ' ') {
+      // Pick up ball
+      if (player.x === ballPos.x && player.y === ballPos.y) {
+        state = 'levelcomplete';
+        addParticles(player.x * TILE + TILE / 2, player.y * TILE + TILE / 2, '#fbbf24', 30);
+      }
+    }
+  }
+});
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+function update() {
+  if (state !== 'playing') return;
+
+  timeLeft--;
+  if (timeLeft <= 0) {
+    catchMessage = 'Halftime is over! Time ran out!';
+    state = 'caught';
+    return;
+  }
+
+  // Player movement
+  moveTimer++;
+  if (moveTimer >= 6) {
+    let moved = false;
+    let nx = player.x, ny = player.y;
+    if (keys['arrowup'] || keys['w']) { ny--; player.dir = 3; moved = true; }
+    else if (keys['arrowdown'] || keys['s']) { ny++; player.dir = 1; moved = true; }
+    else if (keys['arrowleft'] || keys['a']) { nx--; player.dir = 2; moved = true; }
+    else if (keys['arrowright'] || keys['d']) { nx++; player.dir = 0; moved = true; }
+
+    if (moved && canMove(nx, ny)) {
+      player.x = nx;
+      player.y = ny;
+      moveTimer = 0;
+
+      // Auto-pickup ball
+      if (player.x === ballPos.x && player.y === ballPos.y) {
+        state = 'levelcomplete';
+        addParticles(player.x * TILE + TILE / 2, player.y * TILE + TILE / 2, '#fbbf24', 30);
+        return;
+      }
+    }
+  }
+
+  // Check if player in crowd (hidden)
+  player.visible = true;
+  for (let c of crowds) {
+    if (Math.abs(c.x - player.x) <= 1 && Math.abs(c.y - player.y) <= 1 && c.distracted) {
+      player.visible = false;
+    }
+  }
+
+  // Update guards
+  for (let g of guards) {
+    // Check if distracted
+    let distracted = false;
+    for (let d of distractions) {
+      if (d.timer > 0) {
+        let dx = d.x - g.x;
+        let dy = d.y - g.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 5) {
+          // Move toward distraction
+          distracted = true;
+          if (Math.abs(dx) > 0.2) g.x += Math.sign(dx) * g.speed;
+          if (Math.abs(dy) > 0.2) g.y += Math.sign(dy) * g.speed;
+          break;
+        }
+      }
+    }
+
+    if (!distracted) {
+      // Patrol
+      g.x += g.dx * g.speed;
+      g.y += g.dy * g.speed;
+
+      if (g.dx !== 0) {
+        if (g.x >= g.patrolX2) { g.dx = -1; g.viewAngle = Math.PI; }
+        if (g.x <= g.patrolX1) { g.dx = 1; g.viewAngle = 0; }
+      }
+      if (g.dy !== 0) {
+        if (g.y >= g.patrolY2) { g.dy = -1; g.viewAngle = -Math.PI / 2; }
+        if (g.y <= g.patrolY1) { g.dy = 1; g.viewAngle = Math.PI / 2; }
+      }
+
+      // Update view angle based on movement
+      if (g.dx > 0) g.viewAngle = 0;
+      else if (g.dx < 0) g.viewAngle = Math.PI;
+      if (g.dy > 0) g.viewAngle = Math.PI / 2;
+      else if (g.dy < 0) g.viewAngle = -Math.PI / 2;
+    }
+
+    // Detection
+    if (player.visible) {
+      let dx = player.x - g.x;
+      let dy = player.y - g.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < g.viewDist && lineOfSight(g.x, g.y, player.x, player.y, g.viewDist)) {
+        let angle = Math.atan2(dy, dx);
+        let angleDiff = Math.abs(angle - g.viewAngle);
+        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+        if (angleDiff < Math.PI * 0.5 || dist < 1.5) {
+          g.alert = true;
+          g.alertTimer = 60;
+          alertLevel += 2;
+          // Chase!
+          if (dist > 0.3) {
+            g.x += (dx / dist) * g.speed * 2;
+            g.y += (dy / dist) * g.speed * 2;
+          }
+          // Caught?
+          if (dist < 1.2) {
+            catchMessage = 'Caught by security!';
+            state = 'caught';
+            return;
+          }
+        }
+      }
+    }
+
+    if (g.alertTimer > 0) g.alertTimer--;
+    else g.alert = false;
+  }
+
+  // Update cameras
+  for (let cam of cameras) {
+    cam.angle += cam.sweepSpeed * cam.sweepDir;
+    if (cam.angle > Math.PI * 0.8) cam.sweepDir = -1;
+    if (cam.angle < Math.PI * 0.2) cam.sweepDir = 1;
+
+    // Camera detection
+    if (player.visible) {
+      let dx = player.x - cam.x;
+      let dy = player.y - cam.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < cam.range) {
+        let angle = Math.atan2(dy, dx);
+        let angleDiff = Math.abs(angle - cam.angle);
+        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+        if (angleDiff < 0.3) {
+          alertLevel += 3;
+          if (alertLevel > 100) {
+            catchMessage = 'Spotted on camera! Security alerted!';
+            state = 'caught';
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  // Alert decay
+  alertLevel = Math.max(0, alertLevel - 0.3);
+
+  // Update distractions
+  for (let d of distractions) d.timer--;
+  distractions = distractions.filter(d => d.timer > 0);
+
+  // Update crowds
+  for (let c of crowds) {
+    if (c.distracted) {
+      c.timer--;
+      if (c.timer <= 0) c.distracted = false;
+    }
+  }
+
+  // Particles
+  for (let p of particles) {
+    p.x += p.vx; p.y += p.vy; p.life--; p.vx *= 0.95; p.vy *= 0.95;
+  }
+  particles = particles.filter(p => p.life > 0);
+}
+
+function drawTile(x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+}
+
+function render() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    drawTitle();
+    return;
+  }
+
+  if (state === 'victory') {
+    drawVictory();
+    return;
+  }
+
+  // Draw floor
+  for (let x = 0; x < COLS; x++) {
+    for (let y = 0; y < ROWS; y++) {
+      let shade = ((x + y) % 2 === 0) ? '#1a1a28' : '#1e1e30';
+      // Field area
+      if (x > 3 && x < COLS - 4 && y > 3 && y < ROWS - 4) {
+        shade = ((x + y) % 2 === 0) ? '#1a3a1a' : '#1e3e1e';
+      }
+      drawTile(x, y, shade);
+    }
+  }
+
+  // Draw walls
+  for (let w of walls) {
+    ctx.fillStyle = '#3a3a4e';
+    ctx.fillRect(w.x * TILE, w.y * TILE, TILE, TILE);
+    ctx.strokeStyle = '#4a4a5e';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(w.x * TILE, w.y * TILE, TILE, TILE);
+  }
+
+  // Draw crowds
+  for (let c of crowds) {
+    ctx.fillStyle = c.distracted ? '#6a5a2a' : '#4a3a2a';
+    ctx.fillRect((c.x - 1) * TILE, (c.y - 1) * TILE, TILE * 3, TILE * 3);
+    ctx.fillStyle = c.distracted ? '#aa8844' : '#887744';
+    ctx.font = '10px monospace';
+    ctx.fillText(c.distracted ? 'WAVE!' : 'crowd', c.x * TILE - 4, c.y * TILE + 14);
+  }
+
+  // Draw ball
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.ellipse(ballPos.x * TILE + TILE / 2, ballPos.y * TILE + TILE / 2, 8, 5, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // Glow
+  ctx.shadowColor = '#fbbf24';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.ellipse(ballPos.x * TILE + TILE / 2, ballPos.y * TILE + TILE / 2, 8, 5, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Draw camera vision cones
+  for (let cam of cameras) {
+    ctx.fillStyle = 'rgba(255, 50, 50, 0.1)';
+    ctx.beginPath();
+    ctx.moveTo(cam.x * TILE + TILE / 2, cam.y * TILE + TILE / 2);
+    ctx.arc(cam.x * TILE + TILE / 2, cam.y * TILE + TILE / 2, cam.range * TILE, cam.angle - 0.3, cam.angle + 0.3);
+    ctx.closePath();
+    ctx.fill();
+    // Camera icon
+    ctx.fillStyle = '#ff4444';
+    ctx.fillRect(cam.x * TILE + 8, cam.y * TILE + 8, 10, 10);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '8px monospace';
+    ctx.fillText('C', cam.x * TILE + 10, cam.y * TILE + 16);
+  }
+
+  // Draw guard vision cones
+  for (let g of guards) {
+    let gx = g.x * TILE + TILE / 2;
+    let gy = g.y * TILE + TILE / 2;
+
+    ctx.fillStyle = g.alert ? 'rgba(255, 50, 50, 0.15)' : 'rgba(255, 200, 50, 0.08)';
+    ctx.beginPath();
+    ctx.moveTo(gx, gy);
+    ctx.arc(gx, gy, g.viewDist * TILE, g.viewAngle - Math.PI * 0.4, g.viewAngle + Math.PI * 0.4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Guard body
+    ctx.fillStyle = g.alert ? '#ff4444' : '#cc8800';
+    ctx.beginPath();
+    ctx.arc(gx, gy, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('G', gx, gy + 3);
+    ctx.textAlign = 'left';
+
+    // Alert indicator
+    if (g.alert) {
+      ctx.fillStyle = '#ff0000';
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('!', gx + 8, gy - 8);
+    }
+  }
+
+  // Draw distractions
+  for (let d of distractions) {
+    let dx = d.x * TILE + TILE / 2;
+    let dy = d.y * TILE + TILE / 2;
+    ctx.fillStyle = d.type === 'popcorn' ? '#fbbf24' : '#a78bfa';
+    ctx.globalAlpha = d.timer / 180;
+    ctx.beginPath();
+    ctx.arc(dx, dy, 6 + Math.sin(d.timer * 0.1) * 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.font = '10px monospace';
+    ctx.fillText(d.type === 'popcorn' ? 'POP' : 'WAVE', dx - 10, dy - 10);
+  }
+
+  // Draw player
+  let px = player.x * TILE + TILE / 2;
+  let py = player.y * TILE + TILE / 2;
+
+  if (!player.visible) {
+    ctx.globalAlpha = 0.4;
+  }
+
+  // Player shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(px, py + 10, 8, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Player body
+  ctx.fillStyle = '#4488ff';
+  ctx.beginPath();
+  ctx.arc(px, py, 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Direction indicator
+  let dirAngles = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+  let da = dirAngles[player.dir];
+  ctx.fillStyle = '#88bbff';
+  ctx.beginPath();
+  ctx.arc(px + Math.cos(da) * 5, py + Math.sin(da) * 5, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 1;
+
+  // Particles
+  for (let p of particles) {
+    ctx.globalAlpha = p.life / 40;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, W, 22);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '12px monospace';
+  ctx.fillText('Level ' + (level + 1) + ': ' + levelNames[level], 5, 15);
+
+  // Time
+  let secs = Math.max(0, Math.floor(timeLeft / 60));
+  ctx.fillStyle = secs < 15 ? '#ef4444' : '#fbbf24';
+  ctx.fillText('Time: ' + secs + 's', W / 2 - 30, 15);
+
+  // Items
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText('Popcorn:' + player.popcorn + ' Wave:' + player.wave, W - 180, 15);
+
+  // Alert bar
+  if (alertLevel > 0) {
+    ctx.fillStyle = '#333';
+    ctx.fillRect(W / 2 - 60, H - 18, 120, 10);
+    ctx.fillStyle = alertLevel > 70 ? '#ef4444' : alertLevel > 40 ? '#fbbf24' : '#4ade80';
+    ctx.fillRect(W / 2 - 60, H - 18, (alertLevel / 100) * 120, 10);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '8px monospace';
+    ctx.fillText('ALERT', W / 2 - 14, H - 10);
+  }
+
+  // Hidden indicator
+  if (!player.visible) {
+    ctx.fillStyle = '#4ade80';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('HIDDEN', px, py - 16);
+    ctx.textAlign = 'left';
+  }
+
+  // Caught overlay
+  if (state === 'caught') {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('BUSTED!', W / 2, H / 2 - 30);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '14px monospace';
+    ctx.fillText(catchMessage, W / 2, H / 2 + 10);
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillText('SPACE to retry', W / 2, H / 2 + 50);
+    ctx.textAlign = 'left';
+  }
+
+  // Level complete
+  if (state === 'levelcomplete') {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('BALL STOLEN!', W / 2, H / 2 - 40);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = '16px monospace';
+    ctx.fillText(levelNames[level] + ' cleared!', W / 2, H / 2);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '14px monospace';
+    let timeBonus = Math.floor(timeLeft / 60) * 10;
+    ctx.fillText('Time bonus: +' + timeBonus + ' pts', W / 2, H / 2 + 30);
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillText(level < 4 ? 'SPACE for next stadium' : 'SPACE for final results', W / 2, H / 2 + 70);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Spy movie aesthetic
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 36px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('HALFTIME HEIST', W / 2, 70);
+
+  ctx.fillStyle = '#ef4444';
+  ctx.font = '14px monospace';
+  ctx.fillText('TOP SECRET MISSION', W / 2, 95);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '12px monospace';
+  let y = 140;
+  const lines = [
+    'MISSION BRIEFING:',
+    '',
+    'Infiltrate the stadium during halftime.',
+    'Steal the game ball from the 50-yard line.',
+    'Avoid security guards and cameras.',
+    '',
+    'CONTROLS:',
+    'WASD / Arrow Keys - Move',
+    'E - Use distraction (popcorn throw / wave)',
+    'Walk into crowds for cover (after wave)',
+    '',
+    '5 stadiums with increasing security.',
+    'Time is limited - halftime does not last forever!',
+    '',
+    'Good luck, agent.'
+  ];
+  for (let line of lines) {
+    ctx.fillStyle = line === 'MISSION BRIEFING:' || line === 'CONTROLS:' ? '#fbbf24' : '#a78bfa';
+    ctx.fillText(line, W / 2, y);
+    y += 20;
+  }
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText('PRESS SPACE TO BEGIN MISSION', W / 2, H - 30);
+  ctx.textAlign = 'left';
+
+  // Decorative border
+  ctx.strokeStyle = '#fbbf2444';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(15, 15, W - 30, H - 30);
+  ctx.strokeRect(20, 20, W - 40, H - 40);
+}
+
+function drawVictory() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 32px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('MISSION COMPLETE!', W / 2, 100);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '18px monospace';
+  ctx.fillText('All 5 stadiums infiltrated!', W / 2, 150);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  ctx.fillText('You are the greatest halftime heist agent', W / 2, 210);
+  ctx.fillText('the world has ever known.', W / 2, 235);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px monospace';
+  ctx.fillText('Status: LEGENDARY', W / 2, 290);
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '12px monospace';
+  ctx.fillText('SPACE to play again', W / 2, 370);
+  ctx.textAlign = 'left';
+
+  ctx.strokeStyle = '#fbbf2444';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(15, 15, W - 30, H - 30);
+}
+
+function gameLoop() {
+  update();
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

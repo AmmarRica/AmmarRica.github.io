@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>Day 20 - Campanella</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0f0f1a;color:#e0e0ff;min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+a.back{position:fixed;top:12px;left:12px;color:#a78bfa;text-decoration:none;font-size:0.9rem;z-index:100;background:#1e1e2e;padding:6px 12px;border-radius:8px;border:1px solid #3b3b5c}
+canvas{display:block;touch-action:none}
+#ui{position:fixed;top:12px;right:12px;text-align:right;z-index:100;font-size:0.85rem;background:#1e1e2ecc;padding:8px 12px;border-radius:8px}
+#ui .bells{color:#fbbf24;font-weight:700;font-size:1.1rem}
+#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e1e2ef0;color:#a78bfa;padding:24px 36px;border-radius:12px;border:2px solid #a78bfa;font-size:1.2rem;text-align:center;display:none;z-index:200;max-width:90vw}
+#msg button{margin-top:12px;background:#a78bfa;color:#0f0f1a;border:none;padding:8px 24px;border-radius:8px;font-size:1rem;cursor:pointer}
+</style>
+</head>
+<body>
+<a class="back" href="../index.html">< Back</a>
+<div id="ui"><div class="bells" id="bellLabel">Bells: 0/5</div><div id="roomLabel">Room: Hub</div></div>
+<div id="msg"><div id="msgText"></div><button id="msgBtn">OK</button></div>
+<canvas id="c"></canvas>
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+let W,H,TILE=28;
+function resize(){W=Math.min(480,window.innerWidth);H=Math.min(700,window.innerHeight);canvas.width=W;canvas.height=H}
+resize();window.addEventListener('resize',resize);
+
+const COLS=Math.floor(480/TILE),ROWS=Math.floor(700/TILE);
+const GRAVITY=0.5,JUMP_FORCE=-10,MOVE_SPEED=3;
+
+let player={x:120,y:400,vx:0,vy:0,w:20,h:24,onGround:false,facing:1};
+let bellsCollected=0,totalBells=5,gameWon=false;
+let currentRoom='hub';
+let camera={x:0,y:0};
+
+// Room definitions
+const rooms={};
+function makeRoom(name,w,h,platforms,bells,doors,enemies,bgColor){
+  rooms[name]={name,w:w*TILE,h:h*TILE,platforms,bells:bells.map(b=>({...b,collected:false})),doors,enemies:enemies||[],bgColor:bgColor||'#0f0f1a'};
+}
+
+// Hub room
+makeRoom('hub',20,22,[
+  {x:0,y:20,w:20,h:2},{x:2,y:16,w:5,h:1},{x:10,y:17,w:4,h:1},{x:15,y:14,w:4,h:1},
+  {x:0,y:12,w:6,h:1},{x:8,y:10,w:5,h:1},{x:14,y:8,w:5,h:1},{x:1,y:6,w:4,h:1},
+  {x:7,y:4,w:6,h:1}
+],[
+  {x:9*TILE,y:3*TILE,ring:false}
+],[
+  {x:0,y:18*TILE,w:TILE,h:2*TILE,target:'cave',spawnX:17*TILE,spawnY:14*TILE,color:'#6366f1',label:'Cave'},
+  {x:19*TILE,y:18*TILE,w:TILE,h:2*TILE,target:'tower',spawnX:TILE,spawnY:18*TILE,color:'#f59e0b',label:'Tower'},
+  {x:0,y:10*TILE,w:TILE,h:2*TILE,target:'forest',spawnX:17*TILE,spawnY:8*TILE,color:'#22c55e',label:'Forest'},
+  {x:19*TILE,y:6*TILE,w:TILE,h:2*TILE,target:'sky',spawnX:TILE,spawnY:16*TILE,color:'#06b6d4',label:'Sky'}
+],[],'#0f0f1a');
+
+// Cave room
+makeRoom('cave',20,20,[
+  {x:0,y:18,w:20,h:2},{x:3,y:15,w:4,h:1},{x:10,y:16,w:5,h:1},{x:16,y:14,w:3,h:1},
+  {x:0,y:12,w:7,h:1},{x:9,y:10,w:4,h:1},{x:14,y:8,w:5,h:1},{x:2,y:7,w:4,h:1},
+  {x:7,y:5,w:6,h:1}
+],[
+  {x:9*TILE,y:4*TILE,ring:false}
+],[
+  {x:19*TILE,y:14*TILE,w:TILE,h:2*TILE,target:'hub',spawnX:TILE,spawnY:18*TILE,color:'#a78bfa',label:'Hub'}
+],[
+  {x:6*TILE,y:17*TILE,w:20,h:20,vx:1,minX:3*TILE,maxX:14*TILE},
+  {x:12*TILE,y:9*TILE,w:20,h:20,vx:-1,minX:9*TILE,maxX:18*TILE}
+],'#0d0d18');
+
+// Tower room
+makeRoom('tower',16,25,[
+  {x:0,y:23,w:16,h:2},{x:2,y:21,w:5,h:1},{x:10,y:20,w:5,h:1},{x:0,y:18,w:4,h:1},
+  {x:6,y:17,w:4,h:1},{x:11,y:15,w:4,h:1},{x:1,y:13,w:5,h:1},{x:8,y:11,w:6,h:1},
+  {x:0,y:9,w:5,h:1},{x:7,y:7,w:5,h:1},{x:12,y:5,w:3,h:1},{x:3,y:3,w:6,h:1}
+],[
+  {x:5*TILE,y:2*TILE,ring:false}
+],[
+  {x:0,y:20*TILE,w:TILE,h:2*TILE,target:'hub',spawnX:18*TILE,spawnY:18*TILE,color:'#a78bfa',label:'Hub'}
+],[
+  {x:3*TILE,y:20*TILE,w:18,h:18,vx:1.2,minX:2*TILE,maxX:9*TILE},
+  {x:8*TILE,y:10*TILE,w:18,h:18,vx:-1,minX:7*TILE,maxX:13*TILE},
+  {x:2*TILE,y:8*TILE,w:18,h:18,vx:0.8,minX:0,maxX:4*TILE}
+],'#12101f');
+
+// Forest room
+makeRoom('forest',22,18,[
+  {x:0,y:16,w:22,h:2},{x:2,y:13,w:3,h:1},{x:7,y:14,w:3,h:1},{x:12,y:12,w:4,h:1},
+  {x:17,y:10,w:4,h:1},{x:10,y:9,w:4,h:1},{x:4,y:8,w:4,h:1},{x:0,y:6,w:3,h:1},
+  {x:6,y:5,w:4,h:1},{x:13,y:4,w:4,h:1},{x:18,y:6,w:3,h:1}
+],[
+  {x:14*TILE,y:3*TILE,ring:false}
+],[
+  {x:21*TILE,y:8*TILE,w:TILE,h:2*TILE,target:'hub',spawnX:TILE,spawnY:10*TILE,color:'#a78bfa',label:'Hub'}
+],[
+  {x:8*TILE,y:15*TILE,w:20,h:20,vx:1.5,minX:2*TILE,maxX:15*TILE},
+  {x:15*TILE,y:11*TILE,w:20,h:20,vx:-1,minX:12*TILE,maxX:20*TILE}
+],'#0a120a');
+
+// Sky room
+makeRoom('sky',20,22,[
+  {x:0,y:20,w:6,h:2},{x:8,y:18,w:4,h:1},{x:14,y:16,w:5,h:1},
+  {x:3,y:14,w:4,h:1},{x:9,y:12,w:3,h:1},{x:14,y:10,w:4,h:1},
+  {x:5,y:8,w:4,h:1},{x:11,y:6,w:3,h:1},{x:2,y:4,w:5,h:1},{x:9,y:2,w:6,h:1}
+],[
+  {x:11*TILE,y:1*TILE,ring:false}
+],[
+  {x:0,y:18*TILE,w:TILE,h:2*TILE,target:'hub',spawnX:18*TILE,spawnY:6*TILE,color:'#a78bfa',label:'Hub'}
+],[
+  {x:10*TILE,y:17*TILE,w:16,h:16,vx:1.3,minX:8*TILE,maxX:18*TILE},
+  {x:6*TILE,y:7*TILE,w:16,h:16,vx:-1.2,minX:2*TILE,maxX:12*TILE}
+],'#0a0f1a');
+
+function getRoom(){return rooms[currentRoom]}
+
+function enterRoom(roomName,sx,sy){
+  currentRoom=roomName;
+  player.x=sx;player.y=sy;player.vx=0;player.vy=0;
+  document.getElementById('roomLabel').textContent='Room: '+roomName.charAt(0).toUpperCase()+roomName.slice(1);
+}
+
+// Touch controls
+let touchLeft=false,touchRight=false,jumpPressed=false;
+let touchStartX=0,touchStartY=0;
+
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  for(let t of e.changedTouches){
+    let rect=canvas.getBoundingClientRect();
+    let tx=t.clientX-rect.left,ty=t.clientY-rect.top;
+    if(ty<H*0.4){jumpPressed=true}
+    else if(tx<W/3){touchLeft=true}
+    else if(tx>W*2/3){touchRight=true}
+    else{jumpPressed=true}
+  }
+},{passive:false});
+canvas.addEventListener('touchend',e=>{
+  e.preventDefault();
+  for(let t of e.changedTouches){
+    let rect=canvas.getBoundingClientRect();
+    let tx=t.clientX-rect.left;
+    if(tx<W/3)touchLeft=false;
+    else if(tx>W*2/3)touchRight=false;
+  }
+  jumpPressed=false;
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault()},{passive:false});
+
+// Keyboard fallback
+let keys={};
+window.addEventListener('keydown',e=>{keys[e.key]=true});
+window.addEventListener('keyup',e=>{keys[e.key]=false});
+
+let particles=[];
+function spawnBellParticles(x,y){
+  for(let i=0;i<15;i++){
+    particles.push({x,y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4-2,life:60,color:'#fbbf24'});
+  }
+}
+
+function update(){
+  if(gameWon)return;
+  let room=getRoom();
+  // Input
+  let moveDir=0;
+  if(touchLeft||keys['ArrowLeft']||keys['a'])moveDir=-1;
+  if(touchRight||keys['ArrowRight']||keys['d'])moveDir=1;
+  player.vx=moveDir*MOVE_SPEED;
+  if(moveDir!==0)player.facing=moveDir;
+  if((jumpPressed||keys['ArrowUp']||keys['w']||keys[' '])&&player.onGround){
+    player.vy=JUMP_FORCE;player.onGround=false;
+  }
+  // Physics
+  player.vy+=GRAVITY;
+  player.x+=player.vx;player.y+=player.vy;
+  player.onGround=false;
+  // Platform collision
+  room.platforms.forEach(p=>{
+    let px=p.x*TILE,py=p.y*TILE,pw=p.w*TILE,ph=p.h*TILE;
+    if(player.x+player.w>px&&player.x<px+pw){
+      // Landing on top
+      if(player.vy>=0&&player.y+player.h>py&&player.y+player.h<py+ph+player.vy+2){
+        player.y=py-player.h;player.vy=0;player.onGround=true;
+      }
+      // Hitting bottom
+      if(player.vy<0&&player.y<py+ph&&player.y>py){
+        player.y=py+ph;player.vy=0;
+      }
+    }
+    if(player.y+player.h>py&&player.y<py+ph){
+      if(player.vx>0&&player.x+player.w>px&&player.x<px){player.x=px-player.w}
+      if(player.vx<0&&player.x<px+pw&&player.x+player.w>px+pw){player.x=px+pw}
+    }
+  });
+  // Room bounds
+  if(player.x<0)player.x=0;
+  if(player.x+player.w>room.w)player.x=room.w-player.w;
+  if(player.y>room.h){player.y=room.h-player.h-TILE*2;player.vy=0}
+  // Enemies
+  room.enemies.forEach(en=>{
+    en.x+=en.vx;
+    if(en.x<en.minX||en.x>en.maxX)en.vx*=-1;
+    // Player collision
+    if(player.x+player.w>en.x&&player.x<en.x+en.w&&player.y+player.h>en.y&&player.y<en.y+en.h){
+      if(player.vy>0&&player.y+player.h-en.y<12){
+        // Stomp
+        player.vy=JUMP_FORCE*0.7;
+        en.x=-1000;
+      }else{
+        // Hurt - knockback
+        player.vx=player.x<en.x?-5:5;player.vy=-6;
+      }
+    }
+  });
+  // Bells
+  room.bells.forEach(b=>{
+    if(b.collected)return;
+    let bx=b.x,by=b.y;
+    if(Math.abs(player.x+player.w/2-bx)<TILE&&Math.abs(player.y+player.h/2-by)<TILE){
+      b.collected=true;bellsCollected++;
+      document.getElementById('bellLabel').textContent='Bells: '+bellsCollected+'/'+totalBells;
+      spawnBellParticles(bx,by);
+      if(bellsCollected>=totalBells){
+        gameWon=true;
+        setTimeout(()=>{
+          document.getElementById('msg').style.display='block';
+          document.getElementById('msgText').textContent='All bells collected! You win!';
+          document.getElementById('msgBtn').textContent='Play Again';
+          document.getElementById('msgBtn').onclick=()=>{
+            document.getElementById('msg').style.display='none';
+            resetGame();
+          };
+        },500);
+      }
+    }
+  });
+  // Doors
+  room.doors.forEach(d=>{
+    if(player.x+player.w>d.x&&player.x<d.x+d.w&&player.y+player.h>d.y&&player.y<d.y+d.h){
+      enterRoom(d.target,d.spawnX,d.spawnY);
+    }
+  });
+  // Particles
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.1;p.life--});
+  particles=particles.filter(p=>p.life>0);
+  // Camera
+  camera.x=Math.max(0,Math.min(room.w-W,player.x-W/2));
+  camera.y=Math.max(0,Math.min(room.h-H,player.y-H/2));
+}
+
+function draw(){
+  let room=getRoom();
+  ctx.fillStyle=room.bgColor;ctx.fillRect(0,0,W,H);
+  ctx.save();
+  ctx.translate(-camera.x,-camera.y);
+  // Platforms
+  room.platforms.forEach(p=>{
+    let px=p.x*TILE,py=p.y*TILE,pw=p.w*TILE,ph=p.h*TILE;
+    ctx.fillStyle='#2d2d4a';ctx.fillRect(px,py,pw,ph);
+    ctx.fillStyle='#3d3d6a';ctx.fillRect(px,py,pw,3);
+  });
+  // Doors
+  room.doors.forEach(d=>{
+    ctx.fillStyle=d.color+'88';ctx.fillRect(d.x,d.y,d.w,d.h);
+    ctx.save();ctx.translate(d.x+d.w/2,d.y+d.h/2);ctx.rotate(-Math.PI/2);
+    ctx.fillStyle=d.color;ctx.font='bold 10px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(d.label,0,0);ctx.restore();
+  });
+  // Bells
+  room.bells.forEach(b=>{
+    if(b.collected)return;
+    let t=Date.now()*0.003;
+    let by=b.y+Math.sin(t)*4;
+    ctx.fillStyle='#fbbf24';
+    ctx.beginPath();ctx.arc(b.x,by,10,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#f59e0b';
+    ctx.beginPath();ctx.arc(b.x,by+4,4,0,Math.PI);ctx.fill();
+    // Glow
+    ctx.save();ctx.globalAlpha=0.2+Math.sin(t)*0.1;
+    ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(b.x,by,18,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  });
+  // Enemies
+  room.enemies.forEach(en=>{
+    if(en.x<-500)return;
+    ctx.fillStyle='#ef4444';
+    ctx.fillRect(en.x,en.y,en.w,en.h);
+    ctx.fillStyle='#fff';
+    ctx.fillRect(en.x+4,en.y+4,5,5);
+    ctx.fillRect(en.x+en.w-9,en.y+4,5,5);
+  });
+  // Player
+  let px=player.x,py=player.y;
+  ctx.fillStyle='#a78bfa';
+  ctx.fillRect(px,py,player.w,player.h);
+  // Eyes
+  let ex=player.facing>0?12:4;
+  ctx.fillStyle='#fff';ctx.fillRect(px+ex,py+6,4,4);
+  ctx.fillStyle='#0f0f1a';ctx.fillRect(px+ex+(player.facing>0?1:1),py+7,2,2);
+  // Particles
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life/60;
+    ctx.fillStyle=p.color;
+    ctx.fillRect(p.x-2,p.y-2,4,4);
+  });
+  ctx.globalAlpha=1;
+  ctx.restore();
+  // Touch zones hint
+  ctx.save();ctx.globalAlpha=0.08;
+  ctx.fillStyle='#a78bfa';ctx.fillRect(0,H*0.4,W/3,H*0.6);
+  ctx.fillRect(W*2/3,H*0.4,W/3,H*0.6);
+  ctx.fillStyle='#fbbf24';ctx.fillRect(0,0,W,H*0.4);
+  ctx.restore();
+  ctx.fillStyle='#ffffff22';ctx.font='12px system-ui';ctx.textAlign='center';
+  ctx.fillText('<',W/6,H-20);ctx.fillText('>',W*5/6,H-20);ctx.fillText('JUMP',W/2,30);
+}
+
+function resetGame(){
+  gameWon=false;bellsCollected=0;
+  document.getElementById('bellLabel').textContent='Bells: 0/'+totalBells;
+  Object.values(rooms).forEach(r=>{r.bells.forEach(b=>b.collected=false);r.enemies.forEach(e=>{e.x=(e.minX+e.maxX)/2})});
+  enterRoom('hub',120,400);
+}
+
+function loop(){update();draw();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

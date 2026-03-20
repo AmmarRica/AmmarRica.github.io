@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 45 – Night Manor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas {
+      border: 2px solid #3b3b5c;
+      border-radius: 8px;
+      background: #0a0a12;
+      max-width: 480px;
+      width: 100%;
+    }
+    #msg {
+      margin-top: 0.5rem;
+      color: #a78bfa;
+      font-size: 0.9rem;
+      min-height: 1.5em;
+      text-align: center;
+      max-width: 480px;
+    }
+    button {
+      margin-top: 0.5rem;
+      padding: 0.5rem 1.5rem;
+      background: #a78bfa;
+      color: #0f0f1a;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: none;
+    }
+</style>
+</head>
+<body>
+  <h1>Night Manor</h1>
+  <p class="subtitle">Explore the manor. Find keys. Escape before the ghost finds you.</p>
+  <canvas id="c"></canvas>
+  <div id="msg">Tap to interact with objects. Find 3 keys to unlock the exit.</div>
+  <button id="restartBtn" onclick="initGame()">Play Again</button>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const msgEl = document.getElementById('msg');
+const restartBtn = document.getElementById('restartBtn');
+
+const W = 480, H = 600;
+canvas.width = W; canvas.height = H;
+
+// Room definitions
+const ROOMS = {
+  foyer: {
+    name: 'Foyer',
+    desc: 'A dark entrance hall. Dusty portraits watch you.',
+    bg: '#12101e',
+    doors: [
+      { label: 'Library →', room: 'library', x: 400, y: 250, w: 70, h: 100 },
+      { label: '← Kitchen', room: 'kitchen', x: 10, y: 250, w: 70, h: 100 },
+      { label: 'Upstairs ↑', room: 'hallway', x: 190, y: 80, w: 100, h: 60 },
+      { label: 'EXIT', room: 'exit', x: 190, y: 500, w: 100, h: 60, locked: true, keysNeeded: 3 }
+    ],
+    items: [
+      { id: 'note1', type: 'note', x: 240, y: 380, w: 40, h: 40, icon: 'scroll',
+        text: '"Three keys hidden in the dark. The ghost follows every 10 moves..."' }
+    ],
+    furniture: [
+      { type: 'table', x: 200, y: 350, w: 80, h: 50 },
+      { type: 'portrait', x: 120, y: 100, w: 50, h: 70 },
+      { type: 'portrait', x: 310, y: 100, w: 50, h: 70 }
+    ]
+  },
+  library: {
+    name: 'Library',
+    desc: 'Shelves of ancient books. Something glints on a shelf.',
+    bg: '#151020',
+    doors: [
+      { label: '← Foyer', room: 'foyer', x: 10, y: 250, w: 70, h: 100 },
+      { label: 'Study →', room: 'study', x: 400, y: 250, w: 70, h: 100 }
+    ],
+    items: [
+      { id: 'key1', type: 'key', x: 300, y: 150, w: 35, h: 35, icon: 'key',
+        text: 'You found a rusty iron key!' }
+    ],
+    furniture: [
+      { type: 'bookshelf', x: 100, y: 80, w: 280, h: 120 },
+      { type: 'chair', x: 200, y: 400, w: 50, h: 50 }
+    ]
+  },
+  study: {
+    name: 'Study',
+    desc: 'A dusty desk with scattered papers. The air is cold.',
+    bg: '#100e1a',
+    doors: [
+      { label: '← Library', room: 'library', x: 10, y: 250, w: 70, h: 100 }
+    ],
+    items: [
+      { id: 'candle', type: 'tool', x: 350, y: 180, w: 35, h: 45, icon: 'candle',
+        text: 'A lit candle. It might reveal hidden things.' },
+      { id: 'note2', type: 'note', x: 200, y: 320, w: 40, h: 40, icon: 'scroll',
+        text: '"The cellar hides a secret behind the wine rack..."' }
+    ],
+    furniture: [
+      { type: 'desk', x: 150, y: 280, w: 180, h: 80 },
+      { type: 'chair', x: 220, y: 370, w: 50, h: 50 }
+    ]
+  },
+  kitchen: {
+    name: 'Kitchen',
+    desc: 'Pots and pans hang from hooks. A trapdoor leads down.',
+    bg: '#0e0c18',
+    doors: [
+      { label: 'Foyer →', room: 'foyer', x: 400, y: 250, w: 70, h: 100 },
+      { label: 'Cellar ↓', room: 'cellar', x: 190, y: 460, w: 100, h: 60 }
+    ],
+    items: [
+      { id: 'note3', type: 'note', x: 100, y: 180, w: 40, h: 40, icon: 'scroll',
+        text: '"Use the candle in the cellar to see the hidden key."' }
+    ],
+    furniture: [
+      { type: 'table', x: 150, y: 300, w: 160, h: 60 },
+      { type: 'stove', x: 60, y: 120, w: 80, h: 80 }
+    ]
+  },
+  cellar: {
+    name: 'Cellar',
+    desc: 'Dark and damp. Wine racks line the walls.',
+    bg: '#080610',
+    doors: [
+      { label: 'Kitchen ↑', room: 'kitchen', x: 190, y: 80, w: 100, h: 60 }
+    ],
+    items: [
+      { id: 'key2', type: 'key', x: 350, y: 350, w: 35, h: 35, icon: 'key',
+        text: 'You found a silver key hidden behind the wine rack!',
+        requiresItem: 'candle' }
+    ],
+    furniture: [
+      { type: 'winerack', x: 280, y: 200, w: 120, h: 250 },
+      { type: 'barrel', x: 80, y: 350, w: 60, h: 60 }
+    ]
+  },
+  hallway: {
+    name: 'Upstairs Hallway',
+    desc: 'Creaking floorboards. Doors on either side.',
+    bg: '#110f1c',
+    doors: [
+      { label: 'Foyer ↓', room: 'foyer', x: 190, y: 480, w: 100, h: 60 },
+      { label: 'Bedroom →', room: 'bedroom', x: 400, y: 250, w: 70, h: 100 },
+      { label: '← Attic', room: 'attic', x: 10, y: 250, w: 70, h: 100 }
+    ],
+    items: [],
+    furniture: [
+      { type: 'portrait', x: 220, y: 120, w: 50, h: 70 },
+      { type: 'table', x: 180, y: 300, w: 120, h: 40 }
+    ]
+  },
+  bedroom: {
+    name: 'Bedroom',
+    desc: 'A four-poster bed draped in cobwebs.',
+    bg: '#0f0d1a',
+    doors: [
+      { label: '← Hallway', room: 'hallway', x: 10, y: 250, w: 70, h: 100 }
+    ],
+    items: [
+      { id: 'riddle', type: 'puzzle', x: 240, y: 200, w: 50, h: 50, icon: 'box',
+        text: 'A locked box. Riddle: "I have keys but no locks. I have space but no room. You can enter but can\'t go inside. What am I?"',
+        answer: 'keyboard', reward: 'key3' }
+    ],
+    furniture: [
+      { type: 'bed', x: 140, y: 150, w: 200, h: 120 },
+      { type: 'table', x: 100, y: 400, w: 80, h: 50 }
+    ]
+  },
+  attic: {
+    name: 'Attic',
+    desc: 'Dusty boxes and old furniture. Something moves in the shadows.',
+    bg: '#0d0b16',
+    doors: [
+      { label: 'Hallway →', room: 'hallway', x: 400, y: 250, w: 70, h: 100 }
+    ],
+    items: [
+      { id: 'note4', type: 'note', x: 150, y: 300, w: 40, h: 40, icon: 'scroll',
+        text: '"The bedroom holds a puzzle. The answer is something you type on..."' }
+    ],
+    furniture: [
+      { type: 'box', x: 80, y: 200, w: 60, h: 60 },
+      { type: 'box', x: 300, y: 350, w: 80, h: 60 }
+    ]
+  }
+};
+
+let currentRoom, inventory, collectedItems, moves, ghostRoom, ghostMoves;
+let gameOver, won;
+let dialogText, dialogCallback;
+let inputMode, inputText, inputCallback;
+let flashTimer, flashColor;
+
+function initGame() {
+  restartBtn.style.display = 'none';
+  currentRoom = 'foyer';
+  inventory = [];
+  collectedItems = new Set();
+  moves = 0;
+  ghostRoom = 'attic';
+  ghostMoves = 0;
+  gameOver = false;
+  won = false;
+  dialogText = null;
+  inputMode = false;
+  inputText = '';
+  flashTimer = 0;
+  msgEl.textContent = 'Tap doors to move, tap items to collect. Find 3 keys!';
+  draw();
+}
+
+function getKeysCount() {
+  return inventory.filter(i => i.startsWith('key')).length;
+}
+
+function moveGhost() {
+  ghostMoves++;
+  if (ghostMoves % 3 !== 0) return; // ghost moves every 3 player moves
+  // Ghost moves toward player through connected rooms
+  const path = bfsPath(ghostRoom, currentRoom);
+  if (path && path.length > 1) {
+    ghostRoom = path[1];
+  }
+  if (ghostRoom === currentRoom) {
+    gameOver = true;
+    won = false;
+    flashColor = 'rgba(200,0,0,0.5)';
+    flashTimer = 60;
+    msgEl.textContent = 'The ghost caught you!';
+    restartBtn.style.display = 'inline-block';
+  }
+}
+
+function bfsPath(from, to) {
+  const visited = new Set();
+  const queue = [[from]];
+  visited.add(from);
+  while (queue.length > 0) {
+    const path = queue.shift();
+    const node = path[path.length - 1];
+    if (node === to) return path;
+    const room = ROOMS[node];
+    if (!room) continue;
+    for (const door of room.doors) {
+      if (door.room === 'exit') continue;
+      if (!visited.has(door.room)) {
+        visited.add(door.room);
+        queue.push([...path, door.room]);
+      }
+    }
+  }
+  return null;
+}
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return {
+    x: (t.clientX - rect.left) * W / rect.width,
+    y: (t.clientY - rect.top) * H / rect.height
+  };
+}
+
+function handleTap(pos) {
+  if (gameOver) return;
+
+  // Input mode for riddle
+  if (inputMode) return;
+
+  // Dialog dismiss
+  if (dialogText) {
+    if (dialogCallback) dialogCallback();
+    dialogText = null;
+    dialogCallback = null;
+    draw();
+    return;
+  }
+
+  const room = ROOMS[currentRoom];
+
+  // Check doors
+  for (const door of room.doors) {
+    if (pos.x >= door.x && pos.x <= door.x + door.w &&
+        pos.y >= door.y && pos.y <= door.y + door.h) {
+      if (door.locked && door.keysNeeded) {
+        if (getKeysCount() >= door.keysNeeded) {
+          gameOver = true;
+          won = true;
+          msgEl.textContent = `You escaped the manor in ${moves} moves!`;
+          restartBtn.style.display = 'inline-block';
+          flashColor = 'rgba(100,200,100,0.3)';
+          flashTimer = 60;
+        } else {
+          dialogText = `The door is locked. You need ${door.keysNeeded} keys. You have ${getKeysCount()}.`;
+        }
+      } else {
+        currentRoom = door.room;
+        moves++;
+        moveGhost();
+        if (ghostRoom === currentRoom && !gameOver) {
+          gameOver = true;
+          won = false;
+          msgEl.textContent = 'You walked into the ghost!';
+          restartBtn.style.display = 'inline-block';
+        }
+        msgEl.textContent = ROOMS[currentRoom].desc;
+      }
+      draw();
+      return;
+    }
+  }
+
+  // Check items
+  for (const item of room.items) {
+    if (collectedItems.has(item.id)) continue;
+    if (pos.x >= item.x && pos.x <= item.x + item.w &&
+        pos.y >= item.y && pos.y <= item.y + item.h) {
+      if (item.requiresItem && !inventory.includes(item.requiresItem)) {
+        dialogText = 'It\'s too dark to see here. You need a light source.';
+        draw();
+        return;
+      }
+      if (item.type === 'puzzle') {
+        // Riddle puzzle
+        dialogText = item.text;
+        dialogCallback = () => {
+          inputMode = true;
+          inputText = '';
+          inputCallback = (answer) => {
+            if (answer.toLowerCase().trim() === item.answer) {
+              collectedItems.add(item.id);
+              inventory.push(item.reward);
+              dialogText = 'Correct! You found a golden key inside!';
+              msgEl.textContent = `Keys: ${getKeysCount()}/3`;
+            } else {
+              dialogText = 'Wrong answer. Try again later.';
+            }
+            draw();
+          };
+          draw();
+        };
+      } else {
+        collectedItems.add(item.id);
+        if (item.type === 'key' || item.type === 'tool') {
+          inventory.push(item.id);
+        }
+        dialogText = item.text;
+        if (item.type === 'key') {
+          msgEl.textContent = `Keys: ${getKeysCount()}/3`;
+        }
+      }
+      draw();
+      return;
+    }
+  }
+}
+
+// Virtual keyboard for riddle
+const KEYS = 'qwertyuiop|asdfghjkl|zxcvbnm'.split('|');
+const KEY_H = 36, KEY_Y_START = 420;
+
+function drawKeyboard() {
+  const rows = KEYS;
+  for (let r = 0; r < rows.length; r++) {
+    const chars = rows[r].split('');
+    const rowW = chars.length * 40;
+    const startX = (W - rowW) / 2;
+    const y = KEY_Y_START + r * (KEY_H + 6);
+    for (let c = 0; c < chars.length; c++) {
+      const x = startX + c * 40;
+      ctx.fillStyle = '#2a2a3e';
+      ctx.fillRect(x, y, 36, KEY_H);
+      ctx.strokeStyle = '#4a4a6e';
+      ctx.strokeRect(x, y, 36, KEY_H);
+      ctx.fillStyle = '#e0e0ff';
+      ctx.font = '16px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(chars[c], x + 18, y + KEY_H / 2);
+    }
+  }
+  // Backspace and Enter buttons
+  const btnY = KEY_Y_START + 3 * (KEY_H + 6);
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(60, btnY, 100, KEY_H);
+  ctx.fillStyle = '#fff';
+  ctx.font = '14px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Delete', 110, btnY + KEY_H / 2);
+
+  ctx.fillStyle = '#22c55e';
+  ctx.fillRect(W - 160, btnY, 100, KEY_H);
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Submit', W - 110, btnY + KEY_H / 2);
+
+  // Input display
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(80, KEY_Y_START - 50, W - 160, 40);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.strokeRect(80, KEY_Y_START - 50, W - 160, 40);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(inputText + '|', W / 2, KEY_Y_START - 28);
+}
+
+function handleKeyboardTap(pos) {
+  const rows = KEYS;
+  for (let r = 0; r < rows.length; r++) {
+    const chars = rows[r].split('');
+    const rowW = chars.length * 40;
+    const startX = (W - rowW) / 2;
+    const y = KEY_Y_START + r * (KEY_H + 6);
+    for (let c = 0; c < chars.length; c++) {
+      const x = startX + c * 40;
+      if (pos.x >= x && pos.x <= x + 36 && pos.y >= y && pos.y <= y + KEY_H) {
+        if (inputText.length < 15) inputText += chars[c];
+        draw();
+        return;
+      }
+    }
+  }
+  // Check backspace / enter
+  const btnY = KEY_Y_START + 3 * (KEY_H + 6);
+  if (pos.x >= 60 && pos.x <= 160 && pos.y >= btnY && pos.y <= btnY + KEY_H) {
+    inputText = inputText.slice(0, -1);
+    draw();
+    return;
+  }
+  if (pos.x >= W - 160 && pos.x <= W - 60 && pos.y >= btnY && pos.y <= btnY + KEY_H) {
+    inputMode = false;
+    if (inputCallback) inputCallback(inputText);
+    inputCallback = null;
+    return;
+  }
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const pos = getPos(e);
+  if (inputMode) handleKeyboardTap(pos);
+  else handleTap(pos);
+}, { passive: false });
+canvas.addEventListener('mousedown', (e) => {
+  const pos = getPos(e);
+  if (inputMode) handleKeyboardTap(pos);
+  else handleTap(pos);
+});
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  const room = ROOMS[currentRoom];
+
+  // Background
+  ctx.fillStyle = room.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Ambient darkness effect
+  const grad = ctx.createRadialGradient(W/2, H/2, 50, W/2, H/2, 350);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.6)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Room name
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 18px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(room.name, W / 2, 30);
+
+  // Ghost proximity warning
+  if (!gameOver) {
+    const path = bfsPath(ghostRoom, currentRoom);
+    if (path) {
+      const dist = path.length - 1;
+      if (dist <= 2 && dist > 0) {
+        ctx.fillStyle = dist === 1 ? '#f87171' : '#fbbf24';
+        ctx.font = '13px system-ui';
+        ctx.fillText(dist === 1 ? '!! Ghost is nearby !!' : '~ Something stirs ~', W / 2, 52);
+      }
+    }
+  }
+
+  // Draw furniture
+  for (const f of room.furniture) {
+    ctx.fillStyle = '#1a1828';
+    ctx.strokeStyle = '#3b3b5c';
+    ctx.lineWidth = 1;
+    if (f.type === 'portrait') {
+      ctx.fillRect(f.x, f.y, f.w, f.h);
+      ctx.strokeRect(f.x, f.y, f.w, f.h);
+      // Face hint
+      ctx.fillStyle = '#2a2840';
+      ctx.fillRect(f.x + 10, f.y + 10, f.w - 20, f.h - 20);
+      ctx.fillStyle = '#555';
+      ctx.font = '20px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('👤', f.x + f.w / 2, f.y + f.h / 2 + 8);
+    } else if (f.type === 'bookshelf') {
+      ctx.fillRect(f.x, f.y, f.w, f.h);
+      ctx.strokeRect(f.x, f.y, f.w, f.h);
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = ['#4a2040', '#203a4a', '#3a4020', '#402040'][i];
+        ctx.fillRect(f.x + 5 + i * 68, f.y + 5, 60, f.h - 10);
+      }
+    } else if (f.type === 'bed') {
+      ctx.fillStyle = '#1a1828';
+      ctx.fillRect(f.x, f.y, f.w, f.h);
+      ctx.strokeRect(f.x, f.y, f.w, f.h);
+      ctx.fillStyle = '#2a2040';
+      ctx.fillRect(f.x + 10, f.y + 10, f.w - 20, f.h - 20);
+    } else {
+      ctx.fillRect(f.x, f.y, f.w, f.h);
+      ctx.strokeRect(f.x, f.y, f.w, f.h);
+    }
+  }
+
+  // Draw doors
+  for (const door of room.doors) {
+    const locked = door.locked && getKeysCount() < (door.keysNeeded || 0);
+    ctx.fillStyle = locked ? '#3a1515' : '#1e1e2e';
+    ctx.fillRect(door.x, door.y, door.w, door.h);
+    ctx.strokeStyle = locked ? '#dc2626' : '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(door.x, door.y, door.w, door.h);
+    // Doorknob
+    ctx.beginPath();
+    ctx.arc(door.x + door.w - 12, door.y + door.h / 2, 4, 0, Math.PI * 2);
+    ctx.fillStyle = locked ? '#dc2626' : '#fbbf24';
+    ctx.fill();
+    // Label
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(door.label, door.x + door.w / 2, door.y + door.h + 14);
+    if (locked) {
+      ctx.fillStyle = '#dc2626';
+      ctx.font = '16px system-ui';
+      ctx.fillText('🔒', door.x + door.w / 2, door.y + door.h / 2 + 6);
+    }
+  }
+
+  // Draw items
+  for (const item of room.items) {
+    if (collectedItems.has(item.id)) continue;
+    if (item.requiresItem && !inventory.includes(item.requiresItem)) {
+      // Show as dark/hidden
+      ctx.fillStyle = 'rgba(60,40,80,0.4)';
+      ctx.fillRect(item.x, item.y, item.w, item.h);
+      ctx.fillStyle = '#555';
+      ctx.font = '12px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('???', item.x + item.w / 2, item.y + item.h / 2 + 4);
+    } else {
+      // Glow effect
+      ctx.shadowColor = item.type === 'key' ? '#fbbf24' : '#a78bfa';
+      ctx.shadowBlur = 15;
+      ctx.fillStyle = item.type === 'key' ? '#2a2010' : '#1e1e2e';
+      ctx.fillRect(item.x, item.y, item.w, item.h);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = item.type === 'key' ? '#fbbf24' : '#a78bfa';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(item.x, item.y, item.w, item.h);
+      // Icon
+      ctx.font = '20px system-ui';
+      ctx.textAlign = 'center';
+      const icons = { key: '🔑', scroll: '📜', candle: '🕯️', box: '📦' };
+      ctx.fillStyle = '#fff';
+      ctx.fillText(icons[item.icon] || '?', item.x + item.w / 2, item.y + item.h / 2 + 7);
+    }
+  }
+
+  // Inventory bar
+  ctx.fillStyle = 'rgba(30,30,46,0.9)';
+  ctx.fillRect(0, H - 50, W, 50);
+  ctx.strokeStyle = '#3b3b5c';
+  ctx.strokeRect(0, H - 50, W, 50);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('Inventory:', 10, H - 30);
+  for (let i = 0; i < inventory.length; i++) {
+    const icons = { key1: '🔑', key2: '🔑', key3: '🔑', candle: '🕯️' };
+    ctx.font = '22px system-ui';
+    ctx.fillText(icons[inventory[i]] || '📦', 90 + i * 40, H - 22);
+  }
+  // Move counter
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Moves: ${moves}`, W - 10, H - 30);
+
+  // Dialog overlay
+  if (dialogText) {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#1e1e2e';
+    const dh = 140;
+    const dy = (H - dh) / 2;
+    ctx.fillRect(40, dy, W - 80, dh);
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(40, dy, W - 80, dh);
+    // Word wrap text
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '14px system-ui';
+    ctx.textAlign = 'center';
+    wrapText(dialogText, W / 2, dy + 30, W - 120, 20);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '12px system-ui';
+    ctx.fillText('(tap to continue)', W / 2, dy + dh - 15);
+  }
+
+  // Input mode (keyboard)
+  if (inputMode) {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, KEY_Y_START - 70, W, H - KEY_Y_START + 70);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Type your answer:', W / 2, KEY_Y_START - 60);
+    drawKeyboard();
+  }
+
+  // Flash effect
+  if (flashTimer > 0) {
+    ctx.fillStyle = flashColor;
+    ctx.fillRect(0, 0, W, H);
+    flashTimer--;
+    requestAnimationFrame(draw);
+  }
+
+  // Game over overlay
+  if (gameOver) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = won ? '#22c55e' : '#dc2626';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(won ? 'ESCAPED!' : 'GAME OVER', W / 2, H / 2 - 20);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '16px system-ui';
+    ctx.fillText(won ? `You escaped in ${moves} moves!` : 'The ghost got you...', W / 2, H / 2 + 20);
+  }
+}
+
+function wrapText(text, x, y, maxW, lineH) {
+  const words = text.split(' ');
+  let line = '';
+  for (const word of words) {
+    const testLine = line + word + ' ';
+    if (ctx.measureText(testLine).width > maxW && line) {
+      ctx.fillText(line, x, y);
+      line = word + ' ';
+      y += lineH;
+    } else {
+      line = testLine;
+    }
+  }
+  ctx.fillText(line, x, y);
+}
+
+initGame();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

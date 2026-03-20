@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Draft Day Poker</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; overflow-y: auto; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+#game-area {
+  max-width: 900px; margin: 0 auto; padding: 50px 20px 20px;
+  min-height: 100vh; position: relative;
+}
+#overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(15,15,26,0.95); display: flex; align-items: center; justify-content: center;
+  z-index: 200; flex-direction: column; gap: 16px;
+}
+#overlay h1 { font-size: 44px; color: #fbbf24; text-shadow: 0 0 20px #fbbf2488; }
+#overlay h2 { font-size: 22px; color: #a78bfa; }
+#overlay p { font-size: 14px; max-width: 560px; text-align: center; line-height: 1.6; color: #c0c0e0; }
+#overlay button {
+  background: #a78bfa; color: #0f0f1a; border: none; padding: 12px 32px;
+  font-size: 18px; font-weight: bold; border-radius: 10px; cursor: pointer;
+}
+#overlay button:hover { background: #c4b5fd; }
+.hidden { display: none !important; }
+#hud {
+  display: flex; justify-content: space-between; padding: 10px 0; margin-bottom: 10px;
+  border-bottom: 1px solid #a78bfa44; font-size: 15px; flex-wrap: wrap; gap: 8px;
+}
+.hud-item { display: flex; align-items: center; gap: 6px; }
+#table {
+  background: #1a2a1a; border-radius: 16px; padding: 20px;
+  border: 3px solid #4a3a2a; margin-bottom: 16px; position: relative;
+  min-height: 200px;
+  background-image: radial-gradient(ellipse at center, #1a3a1a 0%, #0a1a0a 100%);
+}
+#table::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(45deg, transparent, transparent 20px, #ffffff02 20px, #ffffff02 40px);
+  border-radius: 14px; pointer-events: none;
+}
+.smoke-overlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at 30% 40%, rgba(100,100,120,0.08) 0%, transparent 60%),
+              radial-gradient(ellipse at 70% 60%, rgba(100,100,120,0.06) 0%, transparent 50%);
+  border-radius: 14px; pointer-events: none;
+}
+#community-cards { display: flex; gap: 8px; justify-content: center; margin: 10px 0; min-height: 130px; align-items: center; flex-wrap: wrap; }
+#player-hand { display: flex; gap: 8px; justify-content: center; margin: 10px 0; flex-wrap: wrap; }
+.card {
+  width: 100px; height: 130px; background: #1a1a2e; border: 2px solid #a78bfa;
+  border-radius: 10px; padding: 8px; cursor: default; position: relative;
+  transition: all 0.3s; display: flex; flex-direction: column; justify-content: space-between;
+  flex-shrink: 0;
+}
+.card:hover { transform: translateY(-4px); border-color: #fbbf24; }
+.card.facedown { background: #2a1a3e; border-color: #4a3a6a; }
+.card.facedown::after {
+  content: '🏈'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 28px;
+}
+.card .pos { font-size: 11px; font-weight: bold; color: #a78bfa; }
+.card .name { font-size: 12px; font-weight: bold; color: #fbbf24; margin: 2px 0; line-height: 1.2; }
+.card .stats { font-size: 10px; color: #c0c0e0; line-height: 1.4; }
+.card .ovr { position: absolute; top: 4px; right: 6px; font-size: 18px; font-weight: bold; color: #22c55e; }
+.card.selected { border-color: #22c55e; box-shadow: 0 0 12px #22c55e44; }
+#ai-section { display: flex; gap: 16px; justify-content: center; margin: 10px 0; flex-wrap: wrap; }
+.ai-gm {
+  background: #1a1a2e; border: 1px solid #a78bfa44; border-radius: 10px;
+  padding: 10px 14px; text-align: center; min-width: 120px;
+}
+.ai-gm .gm-name { font-weight: bold; color: #a78bfa; font-size: 14px; }
+.ai-gm .gm-picks { color: #fbbf24; font-size: 13px; }
+.ai-gm .gm-tell { font-size: 20px; margin: 4px 0; }
+.ai-gm .gm-bet { color: #ef4444; font-size: 12px; }
+#actions {
+  display: flex; gap: 10px; justify-content: center; margin: 16px 0; flex-wrap: wrap;
+}
+#actions button {
+  background: #2a2a4e; color: #e0e0ff; border: 2px solid #a78bfa;
+  padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px;
+  font-weight: bold; transition: all 0.2s;
+}
+#actions button:hover { background: #3a3a6e; }
+#actions button:disabled { opacity: 0.4; cursor: default; }
+#actions button.primary { background: #a78bfa; color: #0f0f1a; }
+#roster {
+  background: #1a1a2e; border-radius: 10px; padding: 14px; margin-top: 10px;
+  border: 1px solid #a78bfa44;
+}
+#roster h3 { color: #a78bfa; margin-bottom: 8px; font-size: 15px; }
+#roster-cards { display: flex; gap: 6px; flex-wrap: wrap; }
+.roster-card {
+  background: #2a2a4e; border: 1px solid #a78bfa44; border-radius: 6px;
+  padding: 4px 8px; font-size: 11px; color: #c0c0e0;
+}
+.roster-card .rc-pos { color: #a78bfa; font-weight: bold; }
+.roster-card .rc-ovr { color: #22c55e; font-weight: bold; }
+#msg {
+  text-align: center; font-size: 18px; font-weight: bold; color: #fbbf24;
+  margin: 10px 0; min-height: 28px;
+  text-shadow: 0 0 10px #fbbf2444;
+}
+#pot-display { text-align: center; font-size: 16px; color: #fbbf24; margin: 6px 0; }
+</style>
+</head>
+<body>
+<div id="overlay">
+  <h1>🃏 Draft Day Poker</h1>
+  <h2>Cards + NFL Draft Strategy</h2>
+  <p>Each card is an NFL prospect with stats. Build the best roster hand!
+  <br><br><b>Combinations:</b><br>
+  Full House = Complete O-Line (5 OL) - Huge bonus<br>
+  Flush = All same position (depth) - Big bonus<br>
+  Straight = Balanced team (1 of each pos) - Great bonus<br>
+  Pair/Trips = Position depth<br><br>
+  Bet draft picks as currency. Read AI GM tells. 7 rounds of drafting. Build the highest total team value!</p>
+  <button onclick="startGame()">Enter the War Room</button>
+</div>
+<div id="game-area" class="hidden">
+  <div id="hud">
+    <div class="hud-item">📋 Round: <b id="round-num">1</b>/7</div>
+    <div class="hud-item">🎯 Draft Picks: <b id="picks-display">10</b></div>
+    <div class="hud-item">📊 Team Value: <b id="value-display">0</b></div>
+    <div class="hud-item" id="hand-label-display">🃏 Hand: <b id="hand-display">-</b></div>
+  </div>
+  <div id="msg"></div>
+  <div id="table">
+    <div class="smoke-overlay"></div>
+    <div style="text-align:center;color:#a78bfa88;font-size:12px;margin-bottom:6px">COMMUNITY PROSPECTS</div>
+    <div id="community-cards"></div>
+    <div id="pot-display"></div>
+    <div id="ai-section"></div>
+  </div>
+  <div style="text-align:center;color:#a78bfa88;font-size:12px;margin:8px 0 4px">YOUR HAND</div>
+  <div id="player-hand"></div>
+  <div id="actions"></div>
+  <div id="roster">
+    <h3>Your Roster</h3>
+    <div id="roster-cards"></div>
+  </div>
+</div>
+<script>
+const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'CB', 'S', 'K'];
+const FIRST_NAMES = ['Marcus', 'Jaylen', 'Dak', 'Trey', 'Brock', 'Drake', 'Jalen', 'Caleb', 'Bo', 'CJ',
+  'Malik', 'Bryce', 'Will', 'Aidan', 'Joe', 'Trevor', 'Micah', 'Chase', 'Ja\'Marr', 'Sauce'];
+const LAST_NAMES = ['Williams', 'Johnson', 'Smith', 'Davis', 'Brown', 'Wilson', 'Thomas', 'Anderson',
+  'Jackson', 'White', 'Harris', 'Robinson', 'Clark', 'Lewis', 'Walker', 'Young', 'King', 'Wright'];
+
+const AI_GMS = [
+  { name: 'Coach Rex', style: 'aggressive', tell: '😤', bluffTell: '😏' },
+  { name: 'GM Patricia', style: 'cautious', tell: '🤔', bluffTell: '😌' },
+  { name: 'Scout Dave', style: 'wild', tell: '🤩', bluffTell: '😎' }
+];
+
+let gameRound = 1, maxRounds = 7;
+let playerPicks = 10;
+let playerHand = [], communityCards = [], deck = [];
+let pot = 0, currentBet = 0;
+let aiGMs = [];
+let playerRoster = [];
+let phase = 'deal'; // deal, bet1, flop, bet2, turn, bet3, showdown
+let bettingRound = 0;
+let currentAiTurn = -1;
+
+function generateCard() {
+  let pos = POSITIONS[Math.floor(Math.random() * POSITIONS.length)];
+  let first = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+  let last = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+  let ovr = 55 + Math.floor(Math.random() * 40);
+  let spd = 50 + Math.floor(Math.random() * 50);
+  let str = 50 + Math.floor(Math.random() * 50);
+  let iq = 50 + Math.floor(Math.random() * 50);
+  return { pos, name: first + ' ' + last, ovr, spd, str, iq, value: ovr };
+}
+
+function generateDeck() {
+  deck = [];
+  for (let i = 0; i < 60; i++) deck.push(generateCard());
+  // Shuffle
+  for (let i = deck.length - 1; i > 0; i--) {
+    let j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+}
+
+function drawCard() { return deck.pop(); }
+
+function evaluateHand(cards) {
+  if (cards.length < 2) return { name: 'Incomplete', value: 0 };
+  let posCounts = {};
+  let totalOVR = 0;
+  for (let c of cards) {
+    posCounts[c.pos] = (posCounts[c.pos] || 0) + 1;
+    totalOVR += c.ovr;
+  }
+
+  let positions = Object.keys(posCounts);
+  let counts = Object.values(posCounts).sort((a, b) => b - a);
+  let uniquePos = positions.length;
+
+  // Full House: 5 OL
+  if (posCounts['OL'] >= 5) return { name: 'Full O-Line!', value: totalOVR * 3, bonus: 'Complete offensive line!' };
+
+  // Flush: all same position (3+)
+  if (counts[0] >= 4) return { name: 'Quad Depth (' + positions.find(p => posCounts[p] >= 4) + ')', value: totalOVR * 2.5, bonus: 'Incredible depth!' };
+  if (counts[0] >= 3) return { name: 'Trip Depth (' + positions.find(p => posCounts[p] >= 3) + ')', value: totalOVR * 2, bonus: 'Great position depth!' };
+
+  // Straight: 5+ unique positions
+  if (uniquePos >= 5) return { name: 'Balanced Roster', value: totalOVR * 2.2, bonus: 'Well-rounded team!' };
+
+  // Two pair
+  if (counts[0] >= 2 && counts[1] >= 2) return { name: 'Two Pairs', value: totalOVR * 1.6 };
+
+  // Pair
+  if (counts[0] >= 2) return { name: 'Position Pair', value: totalOVR * 1.3 };
+
+  return { name: 'Mixed Roster', value: totalOVR };
+}
+
+function startGame() {
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('game-area').classList.remove('hidden');
+  playerPicks = 10;
+  playerRoster = [];
+  gameRound = 1;
+  startRound();
+}
+
+function startRound() {
+  generateDeck();
+  playerHand = [drawCard(), drawCard()];
+  communityCards = [];
+  pot = 0;
+  currentBet = 0;
+  bettingRound = 0;
+
+  aiGMs = AI_GMS.map(gm => ({
+    ...gm,
+    picks: 8 + Math.floor(Math.random() * 5),
+    hand: [drawCard(), drawCard()],
+    folded: false,
+    totalBet: 0,
+    bluffing: Math.random() < 0.3
+  }));
+
+  // Ante
+  pot += 1;
+  playerPicks -= 1;
+  for (let ai of aiGMs) {
+    pot += 1;
+    ai.picks -= 1;
+    ai.totalBet += 1;
+  }
+  currentBet = 1;
+
+  showMsg('Round ' + gameRound + ' - Cards dealt! Ante: 1 pick');
+  phase = 'bet1';
+  renderAll();
+}
+
+function showMsg(text) {
+  document.getElementById('msg').textContent = text;
+}
+
+function renderAll() {
+  document.getElementById('round-num').textContent = gameRound;
+  document.getElementById('picks-display').textContent = playerPicks;
+
+  let allCards = [...playerRoster, ...playerHand, ...communityCards];
+  let handEval = evaluateHand(allCards);
+  document.getElementById('value-display').textContent = Math.floor(handEval.value);
+  document.getElementById('hand-display').textContent = handEval.name;
+
+  // Community cards
+  let cc = document.getElementById('community-cards');
+  cc.innerHTML = '';
+  for (let c of communityCards) cc.appendChild(createCardEl(c));
+  // Placeholder for unrevealed
+  let remaining = 5 - communityCards.length;
+  for (let i = 0; i < remaining; i++) {
+    let div = document.createElement('div');
+    div.className = 'card facedown';
+    cc.appendChild(div);
+  }
+
+  // Player hand
+  let ph = document.getElementById('player-hand');
+  ph.innerHTML = '';
+  for (let c of playerHand) ph.appendChild(createCardEl(c));
+
+  // Pot
+  document.getElementById('pot-display').textContent = '🏆 Pot: ' + pot + ' picks';
+
+  // AI GMs
+  let aiSec = document.getElementById('ai-section');
+  aiSec.innerHTML = '';
+  for (let ai of aiGMs) {
+    let div = document.createElement('div');
+    div.className = 'ai-gm';
+    if (ai.folded) div.style.opacity = '0.4';
+    let handInfo = phase === 'showdown' && !ai.folded ?
+      evaluateHand([...ai.hand, ...communityCards]).name : '';
+    div.innerHTML = `
+      <div class="gm-name">${ai.name}</div>
+      <div class="gm-tell">${ai.folded ? '🚫' : (ai.bluffing ? ai.bluffTell : ai.tell)}</div>
+      <div class="gm-picks">${ai.picks} picks left</div>
+      <div class="gm-bet">Bet: ${ai.totalBet}</div>
+      ${phase === 'showdown' && !ai.folded ? '<div style="font-size:11px;color:#fbbf24;margin-top:4px">' + handInfo + '</div>' : ''}
+    `;
+    if (phase === 'showdown' && !ai.folded) {
+      for (let c of ai.hand) {
+        let cardEl = createCardEl(c);
+        cardEl.style.width = '70px';
+        cardEl.style.height = '90px';
+        cardEl.style.fontSize = '9px';
+        div.appendChild(cardEl);
+      }
+    }
+    aiSec.appendChild(div);
+  }
+
+  // Actions
+  renderActions();
+
+  // Roster
+  let rc = document.getElementById('roster-cards');
+  rc.innerHTML = '';
+  for (let c of playerRoster) {
+    let div = document.createElement('div');
+    div.className = 'roster-card';
+    div.innerHTML = `<span class="rc-pos">${c.pos}</span> ${c.name.split(' ')[1]} <span class="rc-ovr">${c.ovr}</span>`;
+    rc.appendChild(div);
+  }
+}
+
+function createCardEl(card) {
+  let div = document.createElement('div');
+  div.className = 'card';
+  let posColor = {
+    'QB': '#ef4444', 'RB': '#22c55e', 'WR': '#3b82f6', 'TE': '#fbbf24',
+    'OL': '#888', 'DL': '#cc44ff', 'LB': '#ff8844', 'CB': '#44ffcc', 'S': '#ff6b6b', 'K': '#aaaaaa'
+  };
+  div.style.borderColor = posColor[card.pos] || '#a78bfa';
+  div.innerHTML = `
+    <div>
+      <div class="pos" style="color:${posColor[card.pos]}">${card.pos}</div>
+      <div class="name">${card.name}</div>
+    </div>
+    <div class="ovr">${card.ovr}</div>
+    <div class="stats">SPD ${card.spd} | STR ${card.str}<br>IQ ${card.iq}</div>
+  `;
+  return div;
+}
+
+function renderActions() {
+  let act = document.getElementById('actions');
+  act.innerHTML = '';
+  if (phase === 'showdown') {
+    let btn = document.createElement('button');
+    btn.className = 'primary';
+    btn.textContent = gameRound >= maxRounds ? 'See Final Results' : 'Next Round';
+    btn.onclick = () => {
+      if (gameRound >= maxRounds) endGame();
+      else { gameRound++; startRound(); }
+    };
+    act.appendChild(btn);
+    return;
+  }
+  if (phase.startsWith('bet')) {
+    let canRaise = playerPicks >= currentBet + 2;
+    let checkBtn = document.createElement('button');
+    checkBtn.textContent = currentBet > 0 ? 'Call (' + currentBet + ')' : 'Check';
+    checkBtn.disabled = currentBet > playerPicks;
+    checkBtn.onclick = () => playerAction('call');
+    act.appendChild(checkBtn);
+
+    let raiseBtn = document.createElement('button');
+    raiseBtn.textContent = 'Raise (+2)';
+    raiseBtn.disabled = !canRaise;
+    raiseBtn.onclick = () => playerAction('raise');
+    act.appendChild(raiseBtn);
+
+    let foldBtn = document.createElement('button');
+    foldBtn.textContent = 'Fold';
+    foldBtn.onclick = () => playerAction('fold');
+    act.appendChild(foldBtn);
+  }
+}
+
+function playerAction(action) {
+  if (action === 'fold') {
+    showMsg('You folded. Lost your ante.');
+    // AI wins pot
+    let activAI = aiGMs.filter(a => !a.folded);
+    if (activAI.length > 0) {
+      activAI[0].picks += pot;
+    }
+    advanceToShowdown();
+    return;
+  }
+  if (action === 'call') {
+    playerPicks -= currentBet;
+    pot += currentBet;
+  }
+  if (action === 'raise') {
+    let raise = currentBet + 2;
+    playerPicks -= raise;
+    pot += raise;
+    currentBet = 2;
+  }
+
+  // AI turns
+  processAIBets();
+  advancePhase();
+}
+
+function processAIBets() {
+  for (let ai of aiGMs) {
+    if (ai.folded) continue;
+    let handStr = evaluateHand([...ai.hand, ...communityCards]).value;
+    let threshold = ai.style === 'aggressive' ? 80 : ai.style === 'cautious' ? 120 : 60;
+
+    if (ai.bluffing) {
+      // Bluff - bet even with weak hand
+      if (ai.picks >= currentBet + 1) {
+        let bet = currentBet + (Math.random() < 0.3 ? 1 : 0);
+        ai.picks -= bet;
+        ai.totalBet += bet;
+        pot += bet;
+      }
+    } else if (handStr < threshold && currentBet > 1 && Math.random() < 0.4) {
+      ai.folded = true;
+      showMsg(ai.name + ' folds!');
+    } else if (ai.picks >= currentBet) {
+      ai.picks -= currentBet;
+      ai.totalBet += currentBet;
+      pot += currentBet;
+    } else {
+      ai.folded = true;
+    }
+  }
+  currentBet = 0;
+}
+
+function advancePhase() {
+  if (phase === 'bet1') {
+    // Flop - reveal 3 community cards
+    communityCards.push(drawCard(), drawCard(), drawCard());
+    phase = 'bet2';
+    showMsg('The Flop! 3 prospects revealed.');
+  } else if (phase === 'bet2') {
+    // Turn
+    communityCards.push(drawCard());
+    phase = 'bet3';
+    showMsg('The Turn! 4th prospect revealed.');
+  } else if (phase === 'bet3') {
+    // River
+    communityCards.push(drawCard());
+    phase = 'showdown';
+    resolveShowdown();
+  }
+  renderAll();
+}
+
+function advanceToShowdown() {
+  // Reveal all remaining community cards
+  while (communityCards.length < 5) communityCards.push(drawCard());
+  phase = 'showdown';
+  renderAll();
+}
+
+function resolveShowdown() {
+  let playerVal = evaluateHand([...playerHand, ...communityCards]);
+  let bestAI = null, bestAIVal = 0;
+
+  for (let ai of aiGMs) {
+    if (ai.folded) continue;
+    let val = evaluateHand([...ai.hand, ...communityCards]);
+    if (val.value > bestAIVal) {
+      bestAIVal = val.value;
+      bestAI = ai;
+    }
+  }
+
+  if (playerVal.value >= bestAIVal) {
+    playerPicks += pot;
+    // Add best community cards to roster
+    let bestCards = [...playerHand, ...communityCards].sort((a, b) => b.ovr - a.ovr);
+    playerRoster.push(bestCards[0]);
+    if (bestCards.length > 1) playerRoster.push(bestCards[1]);
+    showMsg('You win the round! +' + pot + ' picks! ' + (playerVal.bonus || playerVal.name));
+  } else {
+    if (bestAI) {
+      bestAI.picks += pot;
+      // Still get a consolation pick
+      let consolation = communityCards.sort((a, b) => b.ovr - a.ovr)[2];
+      if (consolation) playerRoster.push(consolation);
+      showMsg(bestAI.name + ' wins with ' + evaluateHand([...bestAI.hand, ...communityCards]).name + '!');
+    }
+  }
+
+  pot = 0;
+  renderAll();
+}
+
+function endGame() {
+  let finalEval = evaluateHand(playerRoster);
+  let totalValue = playerRoster.reduce((s, c) => s + c.ovr, 0);
+  let ov = document.getElementById('overlay');
+  ov.classList.remove('hidden');
+
+  let grade;
+  if (totalValue > 600) grade = 'A+';
+  else if (totalValue > 500) grade = 'A';
+  else if (totalValue > 400) grade = 'B+';
+  else if (totalValue > 300) grade = 'B';
+  else if (totalValue > 200) grade = 'C';
+  else grade = 'D';
+
+  ov.innerHTML = `
+    <h1>📋 Draft Complete!</h1>
+    <h2>Draft Grade: ${grade}</h2>
+    <p>Total Roster Value: ${totalValue}<br>
+    Best Hand: ${finalEval.name}<br>
+    Remaining Picks: ${playerPicks}<br>
+    Players Drafted: ${playerRoster.length}<br><br>
+    ${finalEval.bonus || 'Keep building that roster!'}</p>
+    <button onclick="startGame()">New Draft</button>
+  `;
+}
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Frogger</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 1.1em; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; border: 2px solid #333; border-radius: 4px; image-rendering: pixelated; }
+#overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f0f1acc; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+#overlay h2 { font-size: 2.5em; color: #4ade80; margin-bottom: 10px; }
+#overlay p { color: #e0e0ff; margin: 5px 0; font-size: 1em; max-width: 500px; text-align: center; line-height: 1.6; }
+#overlay button { margin-top: 20px; padding: 12px 30px; font-size: 1.2em; background: #4ade80; color: #0f0f1a; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+#overlay button:hover { background: #6ee7a0; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="overlay">
+<h2>FOOTBALL FROGGER</h2>
+<p>Cross the field dodging defenders to reach the endzone!<br><br>
+Arrow Keys / WASD - Move<br>
+Dodge defenders rushing across the lanes<br>
+Grab power-ups for advantages:<br>
+⚡ Speed Boost | ⭐ Invincibility | 🔽 Shrink (smaller hitbox)<br><br>
+3 Lives. Score multiplier for speed!<br>
+Reach the endzone to SCORE!</p>
+<button id="startBtn">PLAY BALL!</button>
+</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = 600;
+canvas.height = 700;
+
+const TILE = 40;
+const COLS = Math.floor(canvas.width / TILE);
+const ROWS = Math.floor(canvas.height / TILE);
+const LANE_COUNT = 12;
+
+let gameState = 'title';
+let score = 0, lives = 3, level = 1;
+let player, lanes, powerUps;
+let keys = {};
+let moveCD = 0;
+let invincible = 0, speedBoost = 0, shrink = 0;
+let frameCount = 0;
+let crossTimer = 0;
+let particles = [];
+
+function initGame() {
+  player = { x: Math.floor(COLS / 2), y: ROWS - 2, size: 1 };
+  createLanes();
+  powerUps = [];
+  spawnPowerUps();
+  crossTimer = 0;
+}
+
+function createLanes() {
+  lanes = [];
+  for (let i = 0; i < LANE_COUNT; i++) {
+    const row = ROWS - 3 - i;
+    if (row < 1) continue;
+    const speed = (0.5 + Math.random() * 1.5 + level * 0.2) * (Math.random() < 0.5 ? 1 : -1);
+    const defenders = [];
+    const count = 2 + Math.floor(Math.random() * 3);
+    const gap = canvas.width / count;
+    for (let j = 0; j < count; j++) {
+      defenders.push({
+        x: j * gap + Math.random() * gap * 0.5,
+        w: 30 + Math.random() * 20,
+        type: Math.random() < 0.3 ? 'lineman' : 'linebacker'
+      });
+    }
+    lanes.push({ row, speed, defenders });
+  }
+}
+
+function spawnPowerUps() {
+  for (let i = 0; i < 3; i++) {
+    powerUps.push({
+      x: 1 + Math.floor(Math.random() * (COLS - 2)),
+      y: 2 + Math.floor(Math.random() * (ROWS - 5)),
+      type: ['speed', 'invincible', 'shrink'][Math.floor(Math.random() * 3)],
+      active: true
+    });
+  }
+}
+
+function update() {
+  if (gameState !== 'playing') return;
+  frameCount++;
+  crossTimer++;
+
+  if (moveCD > 0) moveCD--;
+
+  // Movement
+  let moved = false;
+  if (moveCD <= 0) {
+    if (keys['ArrowLeft'] || keys['a']) { player.x = Math.max(0, player.x - 1); moved = true; }
+    if (keys['ArrowRight'] || keys['d']) { player.x = Math.min(COLS - 1, player.x + 1); moved = true; }
+    if (keys['ArrowUp'] || keys['w']) { player.y = Math.max(0, player.y - 1); moved = true; }
+    if (keys['ArrowDown'] || keys['s']) { player.y = Math.min(ROWS - 1, player.y + 1); moved = true; }
+    if (moved) moveCD = speedBoost > 0 ? 4 : 8;
+  }
+
+  // Decrement buffs
+  if (invincible > 0) invincible--;
+  if (speedBoost > 0) speedBoost--;
+  if (shrink > 0) shrink--;
+  else player.size = 1;
+
+  // Move defenders
+  lanes.forEach(lane => {
+    lane.defenders.forEach(d => {
+      d.x += lane.speed * (1 + level * 0.1);
+      if (d.x > canvas.width + 40) d.x = -d.w;
+      if (d.x < -d.w - 40) d.x = canvas.width;
+    });
+  });
+
+  // Collision check
+  if (invincible <= 0) {
+    const px = player.x * TILE + TILE / 2;
+    const py = player.y * TILE + TILE / 2;
+    const prad = shrink > 0 ? 8 : 14;
+    lanes.forEach(lane => {
+      if (lane.row !== player.y) return;
+      lane.defenders.forEach(d => {
+        const dx = d.x + d.w / 2;
+        const dy = lane.row * TILE + TILE / 2;
+        if (Math.abs(px - dx) < (d.w / 2 + prad) && Math.abs(py - dy) < 18) {
+          hitPlayer();
+        }
+      });
+    });
+  }
+
+  // Power-up pickup
+  powerUps.forEach(p => {
+    if (p.active && p.x === player.x && p.y === player.y) {
+      p.active = false;
+      if (p.type === 'speed') { speedBoost = 300; addParticles(p.x * TILE + TILE/2, p.y * TILE + TILE/2, '#ffcc00'); }
+      if (p.type === 'invincible') { invincible = 240; addParticles(p.x * TILE + TILE/2, p.y * TILE + TILE/2, '#ff66ff'); }
+      if (p.type === 'shrink') { shrink = 360; player.size = 0.5; addParticles(p.x * TILE + TILE/2, p.y * TILE + TILE/2, '#66ccff'); }
+    }
+  });
+
+  // Reach endzone (top row)
+  if (player.y <= 0) {
+    const timeBonus = Math.max(1, Math.floor(30 - crossTimer / 60));
+    const levelScore = 100 * level + timeBonus * 10;
+    score += levelScore;
+    level++;
+    addParticles(player.x * TILE + TILE/2, player.y * TILE + TILE/2, '#4ade80');
+    initGame();
+  }
+
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy; p.life--;
+    return p.life > 0;
+  });
+}
+
+function hitPlayer() {
+  lives--;
+  addParticles(player.x * TILE + TILE/2, player.y * TILE + TILE/2, '#ff4444');
+  if (lives <= 0) {
+    gameState = 'gameover';
+    showOverlay();
+  } else {
+    player.x = Math.floor(COLS / 2);
+    player.y = ROWS - 2;
+    invincible = 60;
+  }
+}
+
+function addParticles(x, y, color) {
+  for (let i = 0; i < 15; i++) {
+    particles.push({
+      x, y, vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5,
+      life: 20 + Math.random()*20, color, size: 2 + Math.random()*3
+    });
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Field background
+  ctx.fillStyle = '#1a4a1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Grid lines (yard markers)
+  ctx.strokeStyle = '#ffffff11';
+  for (let y = 0; y < ROWS; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y * TILE); ctx.lineTo(canvas.width, y * TILE); ctx.stroke();
+  }
+
+  // Endzone
+  ctx.fillStyle = '#cc000055';
+  ctx.fillRect(0, 0, canvas.width, TILE);
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('END ZONE', canvas.width / 2, TILE * 0.7);
+
+  // Safe zone
+  ctx.fillStyle = '#0a2a0a';
+  ctx.fillRect(0, (ROWS - 2) * TILE, canvas.width, TILE * 2);
+
+  // Lane backgrounds
+  lanes.forEach(lane => {
+    ctx.fillStyle = '#0f250f';
+    ctx.fillRect(0, lane.row * TILE, canvas.width, TILE);
+  });
+
+  // Defenders
+  lanes.forEach(lane => {
+    lane.defenders.forEach(d => {
+      const x = d.x;
+      const y = lane.row * TILE;
+      // Body
+      ctx.fillStyle = d.type === 'lineman' ? '#cc2222' : '#dd4444';
+      ctx.fillRect(x, y + 4, d.w, TILE - 8);
+      // Helmet
+      ctx.fillStyle = '#ffffff';
+      const hx = lane.speed > 0 ? x + d.w - 8 : x;
+      ctx.beginPath();
+      ctx.arc(hx + 4, y + TILE/2, 7, 0, Math.PI * 2);
+      ctx.fill();
+      // Jersey number
+      ctx.fillStyle = '#fff';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.type === 'lineman' ? '77' : '52', x + d.w/2, y + TILE/2 + 3);
+    });
+  });
+
+  // Power-ups
+  powerUps.forEach(p => {
+    if (!p.active) return;
+    const px = p.x * TILE + TILE / 2;
+    const py = p.y * TILE + TILE / 2;
+    ctx.font = '20px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const bob = Math.sin(frameCount * 0.1) * 3;
+    if (p.type === 'speed') ctx.fillText('⚡', px, py + bob);
+    if (p.type === 'invincible') ctx.fillText('⭐', px, py + bob);
+    if (p.type === 'shrink') ctx.fillText('🔽', px, py + bob);
+  });
+
+  // Player
+  const px = player.x * TILE + TILE / 2;
+  const py = player.y * TILE + TILE / 2;
+  const psize = player.size;
+
+  if (invincible > 0 && frameCount % 6 < 3) {
+    ctx.shadowColor = '#ff66ff';
+    ctx.shadowBlur = 15;
+  }
+
+  // Player body
+  ctx.fillStyle = '#2266dd';
+  ctx.fillRect(px - 10 * psize, py - 14 * psize, 20 * psize, 28 * psize);
+  // Helmet
+  ctx.fillStyle = '#ffcc00';
+  ctx.beginPath();
+  ctx.arc(px, py - 14 * psize, 8 * psize, 0, Math.PI * 2);
+  ctx.fill();
+  // Football
+  ctx.fillStyle = '#8B4513';
+  ctx.beginPath();
+  ctx.ellipse(px + 8 * psize, py - 5 * psize, 6 * psize, 3 * psize, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  // Speed trail
+  if (speedBoost > 0) {
+    ctx.fillStyle = '#ffcc0044';
+    ctx.fillRect(px - 8, py + 10, 16, 8);
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 40;
+    ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = '#000000cc';
+  ctx.fillRect(0, canvas.height - 35, canvas.width, 35);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Score: ${score}`, 15, canvas.height - 14);
+  ctx.fillText(`Lives: ${'❤️'.repeat(lives)}`, 180, canvas.height - 14);
+  ctx.fillText(`Level: ${level}`, 380, canvas.height - 14);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ffcc00';
+  if (speedBoost > 0) ctx.fillText('⚡SPEED', canvas.width - 15, canvas.height - 14);
+  if (invincible > 0) ctx.fillText('⭐STAR', canvas.width - 100, canvas.height - 14);
+  if (shrink > 0) ctx.fillText('🔽SMALL', canvas.width - 180, canvas.height - 14);
+
+  if (gameState === 'playing') {
+    update();
+  }
+  requestAnimationFrame(draw);
+}
+
+function showOverlay() {
+  const ov = document.getElementById('overlay');
+  ov.style.display = 'flex';
+  ov.querySelector('h2').textContent = 'GAME OVER';
+  ov.querySelector('p').textContent = `Final Score: ${score} | Reached Level ${level}`;
+  ov.querySelector('button').textContent = 'TRY AGAIN';
+}
+
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  document.getElementById('overlay').style.display = 'none';
+  gameState = 'playing';
+  score = 0; lives = 3; level = 1;
+  invincible = 0; speedBoost = 0; shrink = 0;
+  initGame();
+});
+
+draw();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

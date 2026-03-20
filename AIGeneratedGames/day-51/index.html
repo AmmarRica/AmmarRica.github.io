@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 51 – Seaside Drive</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 1rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.8rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 1rem; font-size: 0.9rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; max-width: 480px; width: 100%; }
+    #hint { color: #9ca3af; font-size: 0.8rem; text-align: center; margin-top: 0.5rem; max-width: 480px; }
+</style>
+</head>
+<body>
+  <h1>Seaside Drive</h1>
+  <p class="subtitle">Day 51 – Coastal Driving</p>
+  <canvas id="gc"></canvas>
+  <div id="hint">Tap & hold left/right side to steer. Collect fuel, avoid traffic!</div>
+
+<script>
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = 480, H = 640;
+canvas.width = W; canvas.height = H;
+
+let state = 'title'; // title, playing, gameover
+let steerInput = 0; // -1 left, 0 none, 1 right
+let distance = 0;
+let speed = 3;
+let maxSpeed = 6;
+let fuel = 100;
+let score = 0;
+let hiScore = parseInt(localStorage.getItem('seasideDriveHi') || '0');
+let playerX = W / 2;
+let playerAngle = 0;
+let roadOffset = 0;
+let cars = [];
+let fuelPickups = [];
+let particles = [];
+let seagulls = [];
+let clouds = [];
+let shakeTimer = 0;
+let lastCarSpawn = 0;
+let lastFuelSpawn = 0;
+let timeOfDay = 0; // 0-1 cycles through day
+
+// road curve data
+let roadSegments = [];
+const SEG_LEN = 5;
+const ROAD_W = 200;
+const DRAW_DIST = 150;
+
+function init() {
+  distance = 0; speed = 3; fuel = 100; score = 0;
+  playerX = W / 2; playerAngle = 0;
+  cars = []; fuelPickups = []; particles = [];
+  shakeTimer = 0; lastCarSpawn = 0; lastFuelSpawn = 0;
+  timeOfDay = 0.2;
+  roadSegments = [];
+  for (let i = 0; i < 500; i++) {
+    roadSegments.push({
+      curve: Math.sin(i * 0.02) * 0.015 + Math.sin(i * 0.007) * 0.02
+    });
+  }
+  clouds = [];
+  for (let i = 0; i < 8; i++) {
+    clouds.push({ x: Math.random() * W, y: 20 + Math.random() * 80, w: 40 + Math.random() * 60, speed: 0.2 + Math.random() * 0.3 });
+  }
+  seagulls = [];
+  for (let i = 0; i < 4; i++) {
+    seagulls.push({ x: Math.random() * W, y: 50 + Math.random() * 60, phase: Math.random() * Math.PI * 2, speed: 0.5 + Math.random() });
+  }
+}
+
+function getRoadCenter(segIdx) {
+  let cx = W / 2;
+  const startSeg = Math.floor(distance / SEG_LEN);
+  for (let i = startSeg; i <= segIdx && i < roadSegments.length; i++) {
+    cx += roadSegments[i % roadSegments.length].curve * (segIdx - i) * 2;
+  }
+  return cx;
+}
+
+function spawnCar() {
+  const seg = Math.floor(distance / SEG_LEN) + DRAW_DIST - 10;
+  const cx = getRoadCenter(seg);
+  const lane = Math.random() < 0.5 ? -1 : 1;
+  cars.push({
+    segIdx: seg,
+    laneOff: lane * (ROAD_W * 0.2),
+    color: ['#ef4444','#3b82f6','#fbbf24','#34d399','#f97316'][Math.floor(Math.random()*5)],
+    speed: 1 + Math.random() * 2,
+    w: 24, h: 40
+  });
+}
+
+function spawnFuel() {
+  const seg = Math.floor(distance / SEG_LEN) + DRAW_DIST - 5;
+  const lane = (Math.random() - 0.5) * ROAD_W * 0.6;
+  fuelPickups.push({ segIdx: seg, laneOff: lane });
+}
+
+function getSegScreen(segIdx) {
+  const baseSeg = Math.floor(distance / SEG_LEN);
+  const relSeg = segIdx - baseSeg;
+  const perspective = relSeg / DRAW_DIST;
+  if (perspective <= 0) return null;
+  const scale = 1 / perspective;
+  const y = H * 0.45 + (H * 0.55) * (1 - 1 / (1 + relSeg * 0.08));
+  const cx = getRoadCenter(segIdx);
+  const w = ROAD_W * (1 - perspective * 0.7);
+  return { x: cx, y: H - (relSeg * SEG_LEN - (distance % SEG_LEN)) * (H * 0.55 / (DRAW_DIST * SEG_LEN)), cx, w: Math.max(w, 20), scale: Math.max(1 - perspective, 0.1) };
+}
+
+function drawSky() {
+  timeOfDay = (timeOfDay + 0.00005) % 1;
+  let skyTop, skyBot, sunColor;
+  if (timeOfDay < 0.25) { // dawn
+    const t = timeOfDay / 0.25;
+    skyTop = lerpColor('#0a0a2e', '#4a90d9', t);
+    skyBot = lerpColor('#1a1a3e', '#f0a050', t);
+    sunColor = '#f0a050';
+  } else if (timeOfDay < 0.5) { // day
+    skyTop = '#4a90d9'; skyBot = '#87ceeb'; sunColor = '#fff4a0';
+  } else if (timeOfDay < 0.75) { // dusk
+    const t = (timeOfDay - 0.5) / 0.25;
+    skyTop = lerpColor('#4a90d9', '#1a0a3e', t);
+    skyBot = lerpColor('#87ceeb', '#d05030', t);
+    sunColor = '#ff6030';
+  } else { // night
+    skyTop = '#0a0a2e'; skyBot = '#1a1a3e'; sunColor = '#888';
+  }
+
+  const grad = ctx.createLinearGradient(0, 0, 0, H * 0.5);
+  grad.addColorStop(0, skyTop);
+  grad.addColorStop(1, skyBot);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H * 0.5);
+
+  // sun/moon
+  const sunX = W * 0.7 + Math.sin(timeOfDay * Math.PI * 2) * 100;
+  const sunY = 60 + Math.cos(timeOfDay * Math.PI * 2) * 40;
+  ctx.fillStyle = sunColor;
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, 25, 0, Math.PI * 2);
+  ctx.fill();
+
+  // clouds
+  clouds.forEach(c => {
+    c.x += c.speed;
+    if (c.x > W + 60) c.x = -60;
+    ctx.fillStyle = timeOfDay > 0.6 ? '#ffffff15' : '#ffffff55';
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, c.w, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(c.x + c.w * 0.3, c.y - 8, c.w * 0.5, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // seagulls
+  seagulls.forEach(s => {
+    s.x += s.speed;
+    s.phase += 0.08;
+    if (s.x > W + 20) s.x = -20;
+    const wing = Math.sin(s.phase) * 8;
+    ctx.strokeStyle = '#e0e0ff88';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(s.x - 8, s.y + wing);
+    ctx.quadraticCurveTo(s.x, s.y - 3, s.x + 8, s.y + wing);
+    ctx.stroke();
+  });
+
+  // ocean
+  const oceanY = H * 0.35;
+  const oceanGrad = ctx.createLinearGradient(0, oceanY, 0, H * 0.5);
+  const oceanColor = timeOfDay > 0.6 ? '#0a1a3a' : '#1a6090';
+  oceanGrad.addColorStop(0, oceanColor);
+  oceanGrad.addColorStop(1, timeOfDay > 0.6 ? '#0f2040' : '#2080b0');
+  ctx.fillStyle = oceanGrad;
+  ctx.fillRect(0, oceanY, W, H * 0.15);
+
+  // waves
+  ctx.strokeStyle = '#ffffff20';
+  ctx.lineWidth = 1;
+  for (let w = 0; w < 5; w++) {
+    ctx.beginPath();
+    for (let x = 0; x < W; x += 3) {
+      const wy = oceanY + 10 + w * 12 + Math.sin(x * 0.03 + Date.now() * 0.002 + w) * 3;
+      if (x === 0) ctx.moveTo(x, wy); else ctx.lineTo(x, wy);
+    }
+    ctx.stroke();
+  }
+}
+
+function lerpColor(a, b, t) {
+  const ah = parseInt(a.slice(1), 16), bh = parseInt(b.slice(1), 16);
+  const ar = (ah >> 16) & 255, ag = (ah >> 8) & 255, ab = ah & 255;
+  const br = (bh >> 16) & 255, bg = (bh >> 8) & 255, bb = bh & 255;
+  const rr = Math.round(ar + (br - ar) * t);
+  const rg = Math.round(ag + (bg - ag) * t);
+  const rb = Math.round(ab + (bb - ab) * t);
+  return `rgb(${rr},${rg},${rb})`;
+}
+
+function drawRoad() {
+  const baseSeg = Math.floor(distance / SEG_LEN);
+
+  // draw from back to front
+  for (let i = DRAW_DIST; i >= 1; i--) {
+    const seg = baseSeg + i;
+    const nextSeg = baseSeg + i - 1;
+    const relI = i / DRAW_DIST;
+    const nextRelI = (i - 1) / DRAW_DIST;
+
+    const y1 = H * 0.48 + (H * 0.52) * (1 - Math.pow(relI, 0.8));
+    const y2 = H * 0.48 + (H * 0.52) * (1 - Math.pow(nextRelI, 0.8));
+
+    // road center offset from curves
+    let cx1 = W / 2, cx2 = W / 2;
+    let cumCurve = 0;
+    for (let j = baseSeg; j <= seg; j++) {
+      cumCurve += roadSegments[j % roadSegments.length].curve;
+    }
+    cx1 = W / 2 + cumCurve * 800 * (1 - relI);
+
+    cumCurve = 0;
+    for (let j = baseSeg; j <= nextSeg; j++) {
+      cumCurve += roadSegments[j % roadSegments.length].curve;
+    }
+    cx2 = W / 2 + cumCurve * 800 * (1 - nextRelI);
+
+    const w1 = ROAD_W * (1 - relI * 0.85);
+    const w2 = ROAD_W * (1 - nextRelI * 0.85);
+
+    // grass
+    const grassColor = (seg % 4 < 2) ? '#1a3a1a' : '#1e3e1e';
+    ctx.fillStyle = grassColor;
+    ctx.fillRect(0, y1, W, y2 - y1 + 1);
+
+    // road surface
+    ctx.fillStyle = (seg % 4 < 2) ? '#3a3a4a' : '#353545';
+    ctx.beginPath();
+    ctx.moveTo(cx1 - w1, y1); ctx.lineTo(cx1 + w1, y1);
+    ctx.lineTo(cx2 + w2, y2); ctx.lineTo(cx2 - w2, y2);
+    ctx.fill();
+
+    // road edge (cliff side)
+    ctx.fillStyle = '#6b5b3b';
+    ctx.beginPath();
+    ctx.moveTo(cx1 + w1, y1); ctx.lineTo(cx1 + w1 + 10 * (1-relI), y1);
+    ctx.lineTo(cx2 + w2 + 10 * (1-nextRelI), y2); ctx.lineTo(cx2 + w2, y2);
+    ctx.fill();
+
+    // center line
+    if (seg % 6 < 3) {
+      ctx.fillStyle = '#fbbf2488';
+      ctx.beginPath();
+      ctx.moveTo(cx1 - 2, y1); ctx.lineTo(cx1 + 2, y1);
+      ctx.lineTo(cx2 + 2, y2); ctx.lineTo(cx2 - 2, y2);
+      ctx.fill();
+    }
+
+    // edge line
+    ctx.fillStyle = '#e0e0ff44';
+    ctx.beginPath();
+    ctx.moveTo(cx1 - w1, y1); ctx.lineTo(cx1 - w1 + 3, y1);
+    ctx.lineTo(cx2 - w2 + 3, y2); ctx.lineTo(cx2 - w2, y2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx1 + w1 - 3, y1); ctx.lineTo(cx1 + w1, y1);
+    ctx.lineTo(cx2 + w2, y2); ctx.lineTo(cx2 + w2 - 3, y2);
+    ctx.fill();
+
+    // guardrail on cliff side (right)
+    if (seg % 3 === 0 && i < DRAW_DIST - 2) {
+      ctx.fillStyle = '#aaa';
+      const gx = cx1 + w1 + 5 * (1-relI);
+      ctx.fillRect(gx, y1, 2 * (1-relI), y2-y1);
+    }
+  }
+}
+
+function getScreenForSeg(segIdx) {
+  const baseSeg = Math.floor(distance / SEG_LEN);
+  const i = segIdx - baseSeg;
+  if (i < 0 || i > DRAW_DIST) return null;
+  const relI = i / DRAW_DIST;
+  const y = H * 0.48 + (H * 0.52) * (1 - Math.pow(relI, 0.8));
+  let cumCurve = 0;
+  for (let j = baseSeg; j <= segIdx; j++) {
+    cumCurve += roadSegments[j % roadSegments.length].curve;
+  }
+  const cx = W / 2 + cumCurve * 800 * (1 - relI);
+  const w = ROAD_W * (1 - relI * 0.85);
+  const scale = 1 - relI;
+  return { cx, y, w, scale };
+}
+
+function drawCar(car) {
+  const screen = getScreenForSeg(car.segIdx);
+  if (!screen || screen.scale < 0.05) return;
+  const x = screen.cx + car.laneOff * screen.scale;
+  const y = screen.y;
+  const s = screen.scale;
+  const cw = car.w * s;
+  const ch = car.h * s;
+
+  // car body
+  ctx.fillStyle = car.color;
+  ctx.fillRect(x - cw/2, y - ch, cw, ch);
+  // windshield
+  ctx.fillStyle = '#a0d0ff55';
+  ctx.fillRect(x - cw*0.35, y - ch*0.85, cw*0.7, ch*0.3);
+  // headlights
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillRect(x - cw/2, y - ch*0.1, cw*0.2, ch*0.1);
+  ctx.fillRect(x + cw*0.3, y - ch*0.1, cw*0.2, ch*0.1);
+}
+
+function drawFuelPickup(fp) {
+  const screen = getScreenForSeg(fp.segIdx);
+  if (!screen || screen.scale < 0.05) return;
+  const x = screen.cx + fp.laneOff * screen.scale;
+  const y = screen.y;
+  const s = screen.scale;
+  const bob = Math.sin(Date.now() * 0.005 + fp.segIdx) * 3 * s;
+
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath();
+  ctx.arc(x, y - 10 * s + bob, 10 * s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = `${Math.max(8, 14 * s)}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.fillText('F', x, y - 6 * s + bob);
+}
+
+function drawPlayer() {
+  const px = playerX;
+  const py = H * 0.82;
+  const shake = shakeTimer > 0 ? (Math.random() - 0.5) * shakeTimer : 0;
+
+  ctx.save();
+  ctx.translate(px + shake, py);
+  ctx.rotate(playerAngle * 0.03);
+
+  // shadow
+  ctx.fillStyle = '#00000033';
+  ctx.beginPath();
+  ctx.ellipse(0, 20, 22, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // car body
+  ctx.fillStyle = '#a78bfa';
+  ctx.beginPath();
+  ctx.moveTo(-18, 25); ctx.lineTo(-20, -5); ctx.lineTo(-15, -30);
+  ctx.lineTo(15, -30); ctx.lineTo(20, -5); ctx.lineTo(18, 25);
+  ctx.closePath(); ctx.fill();
+
+  // roof
+  ctx.fillStyle = '#8b6fdf';
+  ctx.beginPath();
+  ctx.moveTo(-12, -5); ctx.lineTo(-10, -22);
+  ctx.lineTo(10, -22); ctx.lineTo(12, -5);
+  ctx.closePath(); ctx.fill();
+
+  // windshield
+  ctx.fillStyle = '#a0d0ff88';
+  ctx.beginPath();
+  ctx.moveTo(-11, -5); ctx.lineTo(-9, -20);
+  ctx.lineTo(9, -20); ctx.lineTo(11, -5);
+  ctx.closePath(); ctx.fill();
+
+  // headlights
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillRect(-16, -28, 6, 4);
+  ctx.fillRect(10, -28, 6, 4);
+
+  // taillights
+  ctx.fillStyle = '#ef4444';
+  ctx.fillRect(-17, 20, 6, 4);
+  ctx.fillRect(11, 20, 6, 4);
+
+  ctx.restore();
+}
+
+function update() {
+  if (state === 'title') {
+    drawTitle();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  if (state === 'playing') {
+    // extend road if needed
+    const baseSeg = Math.floor(distance / SEG_LEN);
+    while (roadSegments.length < baseSeg + DRAW_DIST + 100) {
+      const i = roadSegments.length;
+      roadSegments.push({
+        curve: Math.sin(i * 0.02) * 0.015 + Math.sin(i * 0.007) * 0.02 + Math.sin(i * 0.003) * 0.01
+      });
+    }
+
+    // steering
+    playerAngle += steerInput * 0.3;
+    playerAngle *= 0.92;
+    playerX += playerAngle;
+
+    // road curve effect
+    const curSeg = roadSegments[baseSeg % roadSegments.length];
+    playerX -= curSeg.curve * speed * 50;
+
+    // clamp to road
+    const roadLeft = W/2 - ROAD_W + 20;
+    const roadRight = W/2 + ROAD_W - 20;
+    if (playerX < roadLeft) { playerX = roadLeft; speed *= 0.98; shakeTimer = 5; }
+    if (playerX > roadRight) { playerX = roadRight; speed *= 0.98; shakeTimer = 5; }
+
+    // speed / distance
+    speed = Math.min(maxSpeed, speed + 0.002);
+    distance += speed;
+    score = Math.floor(distance / 10);
+
+    // fuel
+    fuel -= 0.03 + speed * 0.005;
+    if (fuel <= 0) { fuel = 0; state = 'gameover'; if (score > hiScore) { hiScore = score; localStorage.setItem('seasideDriveHi', hiScore); } }
+
+    // spawn cars
+    lastCarSpawn += speed;
+    if (lastCarSpawn > 200 + Math.random() * 150) {
+      spawnCar();
+      lastCarSpawn = 0;
+    }
+
+    // spawn fuel
+    lastFuelSpawn += speed;
+    if (lastFuelSpawn > 400 + Math.random() * 200) {
+      spawnFuel();
+      lastFuelSpawn = 0;
+    }
+
+    // update cars
+    const playerSeg = baseSeg;
+    cars.forEach(c => {
+      c.segIdx -= c.speed * 0.3;
+    });
+    // collision
+    cars.forEach(c => {
+      if (Math.abs(c.segIdx - playerSeg) < 3) {
+        const screen = getScreenForSeg(Math.floor(c.segIdx));
+        if (screen) {
+          const cx = screen.cx + c.laneOff * screen.scale;
+          if (Math.abs(cx - playerX) < 30) {
+            speed = Math.max(1, speed - 2);
+            shakeTimer = 15;
+            fuel -= 10;
+            spawnParticles(playerX, H * 0.8, '#ef4444', 15);
+            c.segIdx = -100;
+          }
+        }
+      }
+    });
+    cars = cars.filter(c => c.segIdx > baseSeg - 10 && c.segIdx < baseSeg + DRAW_DIST + 10);
+
+    // fuel pickups
+    fuelPickups.forEach(f => {
+      if (Math.abs(f.segIdx - playerSeg) < 3) {
+        const screen = getScreenForSeg(Math.floor(f.segIdx));
+        if (screen) {
+          const fx = screen.cx + f.laneOff * screen.scale;
+          if (Math.abs(fx - playerX) < 35) {
+            fuel = Math.min(100, fuel + 20);
+            spawnParticles(playerX, H * 0.8, '#4ade80', 12);
+            f.segIdx = -100;
+          }
+        }
+      }
+    });
+    fuelPickups = fuelPickups.filter(f => f.segIdx > baseSeg - 5);
+
+    // shake decay
+    if (shakeTimer > 0) shakeTimer -= 0.5;
+
+    // particles
+    particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; p.vy += 0.15; });
+    particles = particles.filter(p => p.life > 0);
+
+    // exhaust particles
+    if (Math.random() < 0.3) {
+      particles.push({
+        x: playerX + (Math.random()-0.5) * 10,
+        y: H * 0.85,
+        vx: (Math.random()-0.5) * 1,
+        vy: 1 + Math.random(),
+        life: 20, color: '#666', r: 2 + Math.random() * 2
+      });
+    }
+  }
+
+  draw();
+  requestAnimationFrame(update);
+}
+
+function spawnParticles(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    particles.push({ x, y, vx: (Math.random()-0.5)*6, vy: (Math.random()-0.5)*6, life: 25, color, r: 2+Math.random()*3 });
+  }
+}
+
+function draw() {
+  drawSky();
+  drawRoad();
+
+  // draw fuel pickups
+  fuelPickups.forEach(drawFuelPickup);
+
+  // draw cars (sort by distance, far first)
+  cars.sort((a, b) => b.segIdx - a.segIdx).forEach(drawCar);
+
+  drawPlayer();
+
+  // particles
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.life / 25);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = '#0f0f1aCC';
+  ctx.fillRect(0, H - 60, W, 60);
+
+  // score
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 18px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Score: ${score}`, 10, H - 35);
+  ctx.font = '12px system-ui';
+  ctx.fillStyle = '#9ca3af';
+  ctx.fillText(`Best: ${hiScore}`, 10, H - 15);
+
+  // speed
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 16px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${Math.floor(speed * 30)} km/h`, W/2, H - 25);
+
+  // fuel bar
+  ctx.fillStyle = '#333';
+  ctx.fillRect(W - 140, H - 45, 130, 16);
+  ctx.fillStyle = fuel > 25 ? '#4ade80' : fuel > 10 ? '#fbbf24' : '#ef4444';
+  ctx.fillRect(W - 140, H - 45, 130 * (fuel / 100), 16);
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('FUEL', W - 75, H - 33);
+
+  // gameover overlay
+  if (state === 'gameover') {
+    ctx.fillStyle = '#0f0f1aBB';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('OUT OF FUEL!', W/2, H/3);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = 'bold 24px system-ui';
+    ctx.fillText(`Score: ${score}`, W/2, H/3 + 50);
+    if (score >= hiScore) {
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '18px system-ui';
+      ctx.fillText('NEW HIGH SCORE!', W/2, H/3 + 85);
+    }
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '16px system-ui';
+    ctx.fillText('Tap to restart', W/2, H/3 + 130);
+  }
+}
+
+function drawTitle() {
+  drawSky();
+  drawRoad();
+  ctx.fillStyle = '#0f0f1a99';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 40px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Seaside Drive', W/2, H/3);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px system-ui';
+  ctx.fillText('Endless coastal cruise', W/2, H/3 + 40);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '14px system-ui';
+  ctx.fillText('Tap left/right to steer', W/2, H/3 + 80);
+  ctx.fillText('Collect fuel, avoid traffic', W/2, H/3 + 105);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillText('Tap to Start', W/2, H/3 + 160);
+  if (hiScore > 0) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '14px system-ui';
+    ctx.fillText(`Best: ${hiScore}`, W/2, H/3 + 195);
+  }
+  distance += 2; // animate background
+}
+
+// Touch controls
+let touchId = null;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (state === 'title') { state = 'playing'; init(); return; }
+  if (state === 'gameover') { state = 'playing'; init(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  const x = (t.clientX - rect.left) / rect.width;
+  steerInput = x < 0.5 ? -1 : 1;
+  touchId = t.identifier;
+});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (state !== 'playing') return;
+  const rect = canvas.getBoundingClientRect();
+  for (let i = 0; i < e.touches.length; i++) {
+    const t = e.touches[i];
+    const x = (t.clientX - rect.left) / rect.width;
+    steerInput = x < 0.5 ? -1 : 1;
+  }
+});
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  steerInput = 0;
+});
+
+// Mouse fallback
+canvas.addEventListener('mousedown', e => {
+  if (state === 'title') { state = 'playing'; init(); return; }
+  if (state === 'gameover') { state = 'playing'; init(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  steerInput = x < 0.5 ? -1 : 1;
+});
+
+canvas.addEventListener('mouseup', () => { steerInput = 0; });
+canvas.addEventListener('mouseleave', () => { steerInput = 0; });
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (state === 'title' || state === 'gameover') { state = 'playing'; init(); return; }
+  if (e.key === 'ArrowLeft' || e.key === 'a') steerInput = -1;
+  if (e.key === 'ArrowRight' || e.key === 'd') steerInput = 1;
+});
+document.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowRight' || e.key === 'd') steerInput = 0;
+});
+
+init();
+update();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

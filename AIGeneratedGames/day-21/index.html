@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>Day 21 - Golfaria</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0f0f1a;color:#e0e0ff;min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+a.back{position:fixed;top:12px;left:12px;color:#a78bfa;text-decoration:none;font-size:0.9rem;z-index:100;background:#1e1e2e;padding:6px 12px;border-radius:8px;border:1px solid #3b3b5c}
+canvas{display:block;touch-action:none}
+#ui{position:fixed;top:12px;right:12px;text-align:right;z-index:100;font-size:0.85rem;background:#1e1e2ecc;padding:8px 12px;border-radius:8px}
+.stat{color:#a78bfa;font-weight:700}
+#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e1e2ef0;color:#a78bfa;padding:24px 36px;border-radius:12px;border:2px solid #a78bfa;font-size:1.2rem;text-align:center;display:none;z-index:200;max-width:90vw}
+#msg button{margin-top:12px;background:#a78bfa;color:#0f0f1a;border:none;padding:8px 24px;border-radius:8px;font-size:1rem;cursor:pointer}
+</style>
+</head>
+<body>
+<a class="back" href="../index.html">< Back</a>
+<div id="ui">
+  <div><span class="stat" id="roomLabel">Room 1/8</span></div>
+  <div>Strokes: <span class="stat" id="strokeLabel">0</span></div>
+  <div>HP: <span class="stat" id="hpLabel">5</span></div>
+</div>
+<div id="msg"><div id="msgText"></div><button id="msgBtn">OK</button></div>
+<canvas id="c"></canvas>
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+let W,H;
+function resize(){W=Math.min(480,window.innerWidth);H=Math.min(720,window.innerHeight);canvas.width=W;canvas.height=H}
+resize();window.addEventListener('resize',resize);
+
+const FRICTION=0.985,BOUNCE=0.7,BALL_R=8,HOLE_R=14;
+let ball,hole,walls,enemies,powerups,aiming=false,aimStart={x:0,y:0},aimEnd={x:0,y:0};
+let strokes=0,hp=5,maxHp=5,currentRoom=0,totalRooms=8;
+let particles=[],texts=[],gameOver=false;
+
+function genRoom(idx){
+  walls=[];enemies=[];powerups=[];
+  let margin=30;
+  // Border walls
+  walls.push({x:0,y:0,w:W,h:margin}); // top
+  walls.push({x:0,y:H-margin,w:W,h:margin}); // bottom
+  walls.push({x:0,y:0,w:margin,h:H}); // left
+  walls.push({x:W-margin,y:0,w:margin,h:H}); // right
+
+  ball={x:W/2,y:H-80,vx:0,vy:0,r:BALL_R};
+
+  // Per-room layouts
+  let layouts=[
+    // Room 0: simple intro
+    {walls:[{x:100,y:200,w:180,h:20},{x:200,y:400,w:180,h:20}],hole:{x:W/2,y:100},enemies:[],powerups:[]},
+    // Room 1: corridor
+    {walls:[{x:margin,y:250,w:200,h:20},{x:W-margin-200,y:350,w:200,h:20},{x:150,y:150,w:20,h:120}],hole:{x:100,y:80},enemies:[{x:250,y:300,r:12,vx:1.5,vy:0,hp:1}],powerups:[]},
+    // Room 2: maze-like
+    {walls:[{x:margin,y:180,w:150,h:15},{x:W/2,y:180,w:150,h:15},{x:150,y:300,w:15,h:150},{x:W/2+30,y:250,w:15,h:150},{x:margin,y:450,w:200,h:15}],hole:{x:W-80,y:80},enemies:[{x:200,y:250,r:14,vx:0,vy:1.2,hp:1},{x:350,y:400,r:14,vx:1,vy:0,hp:1}],powerups:[{x:80,y:350,type:'hp'}]},
+    // Room 3: open arena
+    {walls:[{x:W/2-40,y:H/2-40,w:80,h:80}],hole:{x:W/2,y:80},enemies:[{x:100,y:200,r:16,vx:2,vy:1,hp:2},{x:350,y:300,r:16,vx:-1.5,vy:1.5,hp:2},{x:200,y:150,r:12,vx:1,vy:-1,hp:1}],powerups:[]},
+    // Room 4: narrow passages
+    {walls:[{x:margin,y:150,w:W-margin*2-60,h:15},{x:60,y:280,w:W-margin*2-60,h:15},{x:margin,y:410,w:W-margin*2-60,h:15},{x:60,y:540,w:W-margin*2-60,h:15}],hole:{x:W-60,y:80},enemies:[{x:200,y:200,r:10,vx:2,vy:0,hp:1},{x:300,y:330,r:10,vx:-2,vy:0,hp:1},{x:150,y:460,r:10,vx:1.5,vy:0,hp:1}],powerups:[{x:W-80,y:350,type:'hp'}]},
+    // Room 5: pillars
+    {walls:[{x:100,y:150,w:40,h:40},{x:250,y:150,w:40,h:40},{x:W-140,y:150,w:40,h:40},{x:100,y:350,w:40,h:40},{x:250,y:350,w:40,h:40},{x:W-140,y:350,w:40,h:40},{x:175,y:250,w:40,h:40}],hole:{x:W/2,y:80},enemies:[{x:180,y:180,r:14,vx:1.5,vy:1.5,hp:2},{x:350,y:300,r:14,vx:-1.5,vy:1,hp:2},{x:100,y:450,r:14,vx:1,vy:-1.5,hp:2}],powerups:[]},
+    // Room 6: boss prep
+    {walls:[{x:margin,y:200,w:120,h:15},{x:W-margin-120,y:200,w:120,h:15},{x:W/2-50,y:350,w:100,h:15},{x:margin,y:500,w:W-margin*2,h:15}],hole:{x:W/2,y:80},enemies:[{x:150,y:300,r:18,vx:1,vy:1,hp:3},{x:350,y:250,r:18,vx:-1,vy:1,hp:3}],powerups:[{x:W/2,y:450,type:'hp'}]},
+    // Room 7: final boss
+    {walls:[{x:100,y:250,w:20,h:200},{x:W-120,y:250,w:20,h:200},{x:W/2-60,y:180,w:120,h:15}],hole:{x:W/2,y:80},enemies:[{x:W/2,y:350,r:24,vx:1.5,vy:1,hp:6},{x:150,y:200,r:12,vx:1,vy:1.5,hp:2},{x:W-150,y:200,r:12,vx:-1,vy:1.5,hp:2}],powerups:[{x:80,y:500,type:'hp'},{x:W-80,y:500,type:'hp'}]}
+  ];
+
+  let layout=layouts[idx%layouts.length];
+  layout.walls.forEach(w=>walls.push(w));
+  hole={x:layout.hole.x,y:layout.hole.y,r:HOLE_R};
+  enemies=layout.enemies.map(e=>({...e,origX:e.x,origY:e.y,alive:true,flash:0}));
+  powerups=layout.powerups.map(p=>({...p,collected:false}));
+  document.getElementById('roomLabel').textContent='Room '+(currentRoom+1)+'/'+totalRooms;
+}
+
+// Touch
+let touchId=null;
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  if(gameOver)return;
+  if(Math.abs(ball.vx)<0.3&&Math.abs(ball.vy)<0.3){
+    let t=e.changedTouches[0],rect=canvas.getBoundingClientRect();
+    aimStart={x:t.clientX-rect.left,y:t.clientY-rect.top};
+    aimEnd={...aimStart};aiming=true;touchId=t.identifier;
+  }
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(!aiming)return;
+  for(let t of e.changedTouches){
+    if(t.identifier===touchId){
+      let rect=canvas.getBoundingClientRect();
+      aimEnd={x:t.clientX-rect.left,y:t.clientY-rect.top};
+    }
+  }
+},{passive:false});
+canvas.addEventListener('touchend',e=>{
+  e.preventDefault();
+  if(!aiming)return;
+  for(let t of e.changedTouches){
+    if(t.identifier===touchId){
+      let rect=canvas.getBoundingClientRect();
+      aimEnd={x:t.clientX-rect.left,y:t.clientY-rect.top};
+      shoot();aiming=false;
+    }
+  }
+},{passive:false});
+
+// Mouse fallback
+canvas.addEventListener('mousedown',e=>{
+  if(gameOver||!(Math.abs(ball.vx)<0.3&&Math.abs(ball.vy)<0.3))return;
+  let rect=canvas.getBoundingClientRect();
+  aimStart={x:e.clientX-rect.left,y:e.clientY-rect.top};aimEnd={...aimStart};aiming=true;
+});
+canvas.addEventListener('mousemove',e=>{
+  if(!aiming)return;
+  let rect=canvas.getBoundingClientRect();
+  aimEnd={x:e.clientX-rect.left,y:e.clientY-rect.top};
+});
+canvas.addEventListener('mouseup',()=>{if(aiming){shoot();aiming=false}});
+
+function shoot(){
+  let dx=aimStart.x-aimEnd.x,dy=aimStart.y-aimEnd.y;
+  let power=Math.min(Math.sqrt(dx*dx+dy*dy),200);
+  if(power<10)return;
+  let angle=Math.atan2(dy,dx);
+  ball.vx=Math.cos(angle)*power*0.12;
+  ball.vy=Math.sin(angle)*power*0.12;
+  strokes++;
+  document.getElementById('strokeLabel').textContent=strokes;
+}
+
+function spawnParticles(x,y,color,count){
+  for(let i=0;i<count;i++){
+    particles.push({x,y,vx:(Math.random()-0.5)*6,vy:(Math.random()-0.5)*6,life:40,maxLife:40,color});
+  }
+}
+function addText(x,y,text,color){texts.push({x,y,text,color,life:60})}
+
+function update(){
+  if(gameOver)return;
+  // Ball physics
+  ball.x+=ball.vx;ball.y+=ball.vy;
+  ball.vx*=FRICTION;ball.vy*=FRICTION;
+  if(Math.abs(ball.vx)<0.1)ball.vx=0;
+  if(Math.abs(ball.vy)<0.1)ball.vy=0;
+
+  // Wall collisions
+  walls.forEach(w=>{
+    let closestX=Math.max(w.x,Math.min(ball.x,w.x+w.w));
+    let closestY=Math.max(w.y,Math.min(ball.y,w.y+w.h));
+    let dx=ball.x-closestX,dy=ball.y-closestY;
+    let dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist<ball.r){
+      let overlap=ball.r-dist;
+      if(dist>0){
+        let nx=dx/dist,ny=dy/dist;
+        ball.x+=nx*overlap;ball.y+=ny*overlap;
+        let dot=ball.vx*nx+ball.vy*ny;
+        ball.vx=(ball.vx-2*dot*nx)*BOUNCE;
+        ball.vy=(ball.vy-2*dot*ny)*BOUNCE;
+      }
+    }
+  });
+
+  // Enemy collision
+  enemies.forEach(en=>{
+    if(!en.alive)return;
+    en.x+=en.vx;en.y+=en.vy;
+    // Bounce enemies off walls
+    walls.forEach(w=>{
+      if(en.x+en.r>w.x&&en.x-en.r<w.x+w.w&&en.y+en.r>w.y&&en.y-en.r<w.y+w.h){
+        // Simple bounce
+        let cx=w.x+w.w/2,cy=w.y+w.h/2;
+        if(Math.abs(en.x-cx)/(w.w/2)>Math.abs(en.y-cy)/(w.h/2))en.vx*=-1;
+        else en.vy*=-1;
+        en.x+=en.vx*2;en.y+=en.vy*2;
+      }
+    });
+    // Ball hits enemy
+    let dx=ball.x-en.x,dy=ball.y-en.y,dist=Math.sqrt(dx*dx+dy*dy);
+    let speed=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
+    if(dist<ball.r+en.r&&speed>2){
+      en.hp--;en.flash=10;
+      spawnParticles(en.x,en.y,'#ef4444',8);
+      // Bounce ball
+      if(dist>0){let nx=dx/dist,ny=dy/dist;ball.vx=nx*speed*0.5;ball.vy=ny*speed*0.5}
+      if(en.hp<=0){
+        en.alive=false;
+        spawnParticles(en.x,en.y,'#fbbf24',15);
+        addText(en.x,en.y,'+KO','#fbbf24');
+      }
+    }
+    // Enemy hits ball (damage player)
+    if(dist<ball.r+en.r&&speed<2){
+      // Enemy touches stationary ball
+      if(en.flash<=0){
+        hp--;en.flash=30;
+        document.getElementById('hpLabel').textContent=hp;
+        spawnParticles(ball.x,ball.y,'#ef4444',6);
+        addText(ball.x,ball.y-20,'-1 HP','#ef4444');
+        if(hp<=0){gameOver=true;showMsg('Game Over! Strokes: '+strokes,'Restart',restart)}
+      }
+    }
+    if(en.flash>0)en.flash--;
+  });
+
+  // Powerup collision
+  powerups.forEach(p=>{
+    if(p.collected)return;
+    let dx=ball.x-p.x,dy=ball.y-p.y;
+    if(Math.sqrt(dx*dx+dy*dy)<ball.r+12){
+      p.collected=true;
+      if(p.type==='hp'){hp=Math.min(maxHp,hp+2);document.getElementById('hpLabel').textContent=hp;addText(p.x,p.y,'+2 HP','#22c55e');spawnParticles(p.x,p.y,'#22c55e',10)}
+    }
+  });
+
+  // Hole check
+  let dx=ball.x-hole.x,dy=ball.y-hole.y;
+  if(Math.sqrt(dx*dx+dy*dy)<hole.r&&Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy)<8){
+    spawnParticles(hole.x,hole.y,'#a78bfa',20);
+    if(currentRoom>=totalRooms-1){
+      gameOver=true;showMsg('Victory! Total strokes: '+strokes,'Play Again',restart);
+    }else{
+      currentRoom++;genRoom(currentRoom);
+    }
+  }
+
+  // Particles
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vx*=0.95;p.vy*=0.95;p.life--});
+  particles=particles.filter(p=>p.life>0);
+  texts.forEach(t=>{t.y-=0.5;t.life--});
+  texts=texts.filter(t=>t.life>0);
+}
+
+function draw(){
+  ctx.fillStyle='#0f0f1a';ctx.fillRect(0,0,W,H);
+  // Floor pattern
+  ctx.fillStyle='#131320';
+  for(let x=0;x<W;x+=40)for(let y=0;y<H;y+=40){
+    if((Math.floor(x/40)+Math.floor(y/40))%2===0)ctx.fillRect(x,y,40,40);
+  }
+  // Walls
+  walls.forEach(w=>{
+    ctx.fillStyle='#3b3b5c';ctx.fillRect(w.x,w.y,w.w,w.h);
+    ctx.fillStyle='#4a4a7c';ctx.fillRect(w.x,w.y,w.w,Math.min(4,w.h));
+  });
+  // Hole
+  ctx.fillStyle='#1a1a2e';ctx.beginPath();ctx.arc(hole.x,hole.y,hole.r,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#a78bfa';ctx.lineWidth=2;ctx.beginPath();ctx.arc(hole.x,hole.y,hole.r,0,Math.PI*2);ctx.stroke();
+  // Flag
+  ctx.fillStyle='#a78bfa';ctx.fillRect(hole.x,hole.y-25,2,25);
+  ctx.fillStyle='#ef4444';ctx.beginPath();ctx.moveTo(hole.x+2,hole.y-25);ctx.lineTo(hole.x+14,hole.y-20);ctx.lineTo(hole.x+2,hole.y-15);ctx.fill();
+  // Powerups
+  powerups.forEach(p=>{
+    if(p.collected)return;
+    let bob=Math.sin(Date.now()*0.004)*3;
+    ctx.fillStyle='#22c55e';ctx.beginPath();ctx.arc(p.x,p.y+bob,10,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('+',p.x,p.y+bob);
+  });
+  // Enemies
+  enemies.forEach(en=>{
+    if(!en.alive)return;
+    ctx.fillStyle=en.flash>0?'#fff':'#ef4444';
+    ctx.beginPath();ctx.arc(en.x,en.y,en.r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold '+(en.r*0.7)+'px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(en.hp,en.x,en.y);
+    // HP pips
+    ctx.fillStyle='#7f1d1d';
+    for(let i=0;i<en.hp;i++){ctx.fillRect(en.x-en.hp*3+i*6,en.y-en.r-6,5,3)}
+  });
+  // Ball
+  let gradient=ctx.createRadialGradient(ball.x-2,ball.y-2,1,ball.x,ball.y,ball.r);
+  gradient.addColorStop(0,'#fff');gradient.addColorStop(1,'#c4b5fd');
+  ctx.fillStyle=gradient;ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#a78bfa';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.stroke();
+  // Aim line
+  if(aiming){
+    let dx=aimStart.x-aimEnd.x,dy=aimStart.y-aimEnd.y;
+    let power=Math.min(Math.sqrt(dx*dx+dy*dy),200);
+    let angle=Math.atan2(dy,dx);
+    // Dotted line
+    ctx.strokeStyle='#a78bfa88';ctx.lineWidth=2;ctx.setLineDash([6,4]);
+    ctx.beginPath();ctx.moveTo(ball.x,ball.y);
+    ctx.lineTo(ball.x+Math.cos(angle)*power,ball.y+Math.sin(angle)*power);
+    ctx.stroke();ctx.setLineDash([]);
+    // Power indicator
+    ctx.fillStyle='#a78bfa';ctx.font='12px system-ui';ctx.textAlign='center';
+    ctx.fillText(Math.round(power/2)+'%',ball.x+Math.cos(angle)*power*0.5,ball.y+Math.sin(angle)*power*0.5-10);
+    // Arrow head
+    let ax=ball.x+Math.cos(angle)*power,ay=ball.y+Math.sin(angle)*power;
+    ctx.fillStyle='#a78bfa';ctx.beginPath();
+    ctx.moveTo(ax,ay);
+    ctx.lineTo(ax-Math.cos(angle-0.3)*12,ay-Math.sin(angle-0.3)*12);
+    ctx.lineTo(ax-Math.cos(angle+0.3)*12,ay-Math.sin(angle+0.3)*12);
+    ctx.fill();
+  }
+  // Particles
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life/p.maxLife;
+    ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalAlpha=1;
+  // Floating texts
+  texts.forEach(t=>{
+    ctx.globalAlpha=t.life/60;
+    ctx.fillStyle=t.color;ctx.font='bold 14px system-ui';ctx.textAlign='center';
+    ctx.fillText(t.text,t.x,t.y);
+  });
+  ctx.globalAlpha=1;
+  // HP bar
+  let barW=100,barH=8,barX=W/2-barW/2,barY=H-18;
+  ctx.fillStyle='#333';ctx.fillRect(barX,barY,barW,barH);
+  ctx.fillStyle=hp>2?'#22c55e':hp>1?'#fbbf24':'#ef4444';
+  ctx.fillRect(barX,barY,barW*(hp/maxHp),barH);
+  ctx.strokeStyle='#555';ctx.lineWidth=1;ctx.strokeRect(barX,barY,barW,barH);
+}
+
+function showMsg(text,btn,cb){
+  document.getElementById('msg').style.display='block';
+  document.getElementById('msgText').textContent=text;
+  document.getElementById('msgBtn').textContent=btn;
+  document.getElementById('msgBtn').onclick=()=>{document.getElementById('msg').style.display='none';if(cb)cb()};
+}
+function restart(){gameOver=false;strokes=0;hp=maxHp;currentRoom=0;genRoom(0);document.getElementById('strokeLabel').textContent='0';document.getElementById('hpLabel').textContent=hp}
+
+function loop(){update();draw();requestAnimationFrame(loop)}
+genRoom(0);requestAnimationFrame(loop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>Day 22 - Big Bell Race</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0f0f1a;color:#e0e0ff;min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+a.back{position:fixed;top:12px;left:12px;color:#a78bfa;text-decoration:none;font-size:0.9rem;z-index:100;background:#1e1e2e;padding:6px 12px;border-radius:8px;border:1px solid #3b3b5c}
+canvas{display:block;touch-action:none}
+#ui{position:fixed;top:12px;right:12px;text-align:right;z-index:100;font-size:0.85rem;background:#1e1e2ecc;padding:8px 12px;border-radius:8px}
+.stat{font-weight:700}
+.score{color:#a78bfa;font-size:1.2rem}
+#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e1e2ef0;color:#a78bfa;padding:24px 36px;border-radius:12px;border:2px solid #a78bfa;font-size:1.2rem;text-align:center;display:none;z-index:200;max-width:90vw}
+#msg button{margin-top:12px;background:#a78bfa;color:#0f0f1a;border:none;padding:8px 24px;border-radius:8px;font-size:1rem;cursor:pointer}
+</style>
+</head>
+<body>
+<a class="back" href="../index.html">< Back</a>
+<div id="ui">
+  <div class="score stat" id="scoreLabel">0</div>
+  <div>Speed: <span class="stat" id="speedLabel">1x</span></div>
+  <div>Best: <span class="stat" id="bestLabel">0</span></div>
+</div>
+<div id="msg"><div id="msgText"></div><button id="msgBtn">OK</button></div>
+<canvas id="c"></canvas>
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+let W,H;
+function resize(){W=Math.min(480,window.innerWidth);H=Math.min(800,window.innerHeight);canvas.width=W;canvas.height=H}
+resize();window.addEventListener('resize',resize);
+
+const LANE_W=W,PLAYER_W=30,PLAYER_H=40;
+let player,score,speed,bestScore=0,gameActive=false,gameStarted=false;
+let obstacles=[],bells=[],boostParticles=[],bgStars=[];
+let scrollY=0,boostTimer=0,boostMultiplier=1;
+let touchX=null,touchStartX=null,dragging=false;
+let particles=[];
+
+// Init background stars
+for(let i=0;i<60;i++){bgStars.push({x:Math.random()*480,y:Math.random()*800,size:Math.random()*2+0.5,speed:Math.random()*0.5+0.2})}
+
+function initGame(){
+  player={x:W/2-PLAYER_W/2,y:H*0.75,w:PLAYER_W,h:PLAYER_H};
+  score=0;speed=2;obstacles=[];bells=[];particles=[];boostTimer=0;boostMultiplier=1;
+  gameActive=true;gameStarted=true;scrollY=0;
+  document.getElementById('scoreLabel').textContent='0';
+  document.getElementById('speedLabel').textContent='1x';
+  document.getElementById('msg').style.display='none';
+  // Pre-populate some objects
+  for(let i=0;i<5;i++)spawnRow(-i*180);
+}
+
+function spawnRow(y){
+  let ry=y||-(Math.random()*100+100);
+  let type=Math.random();
+  if(type<0.4){
+    // Obstacle row with gap
+    let gapX=Math.random()*(W-120)+40;
+    let gapW=80+Math.random()*40;
+    if(gapX>0)obstacles.push({x:0,y:ry,w:gapX,h:18,type:'wall'});
+    if(gapX+gapW<W)obstacles.push({x:gapX+gapW,y:ry,w:W-(gapX+gapW),h:18,type:'wall'});
+  }else if(type<0.6){
+    // Floating blocks
+    let count=2+Math.floor(Math.random()*3);
+    for(let i=0;i<count;i++){
+      let bx=Math.random()*(W-50);
+      obstacles.push({x:bx,y:ry+Math.random()*30,w:40+Math.random()*30,h:18,type:'block'});
+    }
+  }else if(type<0.75){
+    // Moving obstacle
+    obstacles.push({x:Math.random()*(W-80),y:ry,w:60,h:18,type:'moving',vx:1.5+Math.random()*2,dir:Math.random()>0.5?1:-1});
+  }else{
+    // Bell cluster
+    let count=1+Math.floor(Math.random()*3);
+    for(let i=0;i<count;i++){
+      bells.push({x:40+Math.random()*(W-80),y:ry+i*30,collected:false,size:14});
+    }
+  }
+  // Random extra bells
+  if(Math.random()<0.3){
+    bells.push({x:40+Math.random()*(W-80),y:ry-40,collected:false,size:14});
+  }
+}
+
+// Touch controls
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  if(!gameStarted){initGame();return}
+  if(!gameActive){return}
+  let t=e.changedTouches[0],rect=canvas.getBoundingClientRect();
+  touchX=t.clientX-rect.left;touchStartX=touchX;dragging=true;
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(!dragging||!gameActive)return;
+  let t=e.changedTouches[0],rect=canvas.getBoundingClientRect();
+  touchX=t.clientX-rect.left;
+},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();dragging=false;touchX=null},{passive:false});
+
+// Mouse fallback
+canvas.addEventListener('mousedown',e=>{
+  if(!gameStarted){initGame();return}
+  if(!gameActive)return;
+  let rect=canvas.getBoundingClientRect();touchX=e.clientX-rect.left;touchStartX=touchX;dragging=true;
+});
+canvas.addEventListener('mousemove',e=>{
+  if(!dragging||!gameActive)return;
+  let rect=canvas.getBoundingClientRect();touchX=e.clientX-rect.left;
+});
+canvas.addEventListener('mouseup',()=>{dragging=false;touchX=null});
+
+function spawnBoostParticles(){
+  for(let i=0;i<5;i++){
+    particles.push({x:player.x+player.w/2+(Math.random()-0.5)*20,y:player.y+player.h,vx:(Math.random()-0.5)*3,vy:Math.random()*3+2,life:30,maxLife:30,color:boostMultiplier>1?'#fbbf24':'#a78bfa'});
+  }
+}
+
+let lastSpawnY=0;
+function update(){
+  if(!gameActive)return;
+  // Speed increases over time
+  speed=2+score*0.003;
+  let effectiveSpeed=speed*boostMultiplier;
+
+  // Player movement: follow touch X position
+  if(touchX!==null){
+    let targetX=touchX-player.w/2;
+    player.x+=(targetX-player.x)*0.15;
+  }
+  player.x=Math.max(0,Math.min(W-player.w,player.x));
+
+  // Scroll everything down
+  let scrollAmt=effectiveSpeed;
+  scrollY+=scrollAmt;
+
+  // Update obstacles
+  obstacles.forEach(o=>{
+    o.y+=scrollAmt;
+    if(o.type==='moving'){
+      o.x+=o.vx*o.dir;
+      if(o.x<0||o.x+o.w>W)o.dir*=-1;
+    }
+  });
+  obstacles=obstacles.filter(o=>o.y<H+50);
+
+  // Update bells
+  bells.forEach(b=>b.y+=scrollAmt);
+  bells=bells.filter(b=>b.y<H+50&&!b.collected);
+
+  // Spawn new content
+  if(scrollY-lastSpawnY>150){
+    spawnRow();lastSpawnY=scrollY;
+  }
+
+  // Collision with obstacles
+  obstacles.forEach(o=>{
+    if(player.x+player.w>o.x&&player.x<o.x+o.w&&player.y+player.h>o.y&&player.y<o.y+o.h){
+      // Hit obstacle - game over
+      gameActive=false;
+      for(let i=0;i<20;i++){
+        particles.push({x:player.x+player.w/2,y:player.y+player.h/2,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*8,life:50,maxLife:50,color:'#ef4444'});
+      }
+      if(score>bestScore){bestScore=score;document.getElementById('bestLabel').textContent=bestScore}
+      setTimeout(()=>{
+        document.getElementById('msg').style.display='block';
+        document.getElementById('msgText').textContent='Crashed! Score: '+score+(score>=bestScore?' (NEW BEST!)':'');
+        document.getElementById('msgBtn').textContent='Race Again';
+        document.getElementById('msgBtn').onclick=initGame;
+      },600);
+    }
+  });
+
+  // Bell collection
+  bells.forEach(b=>{
+    if(b.collected)return;
+    let dx=player.x+player.w/2-b.x,dy=player.y+player.h/2-b.y;
+    if(Math.sqrt(dx*dx+dy*dy)<player.w/2+b.size){
+      b.collected=true;
+      score+=10;
+      boostTimer=120; // 2 seconds of boost
+      boostMultiplier=2;
+      document.getElementById('scoreLabel').textContent=score;
+      // Bell particles
+      for(let i=0;i<12;i++){
+        particles.push({x:b.x,y:b.y,vx:(Math.random()-0.5)*5,vy:(Math.random()-0.5)*5,life:35,maxLife:35,color:'#fbbf24'});
+      }
+    }
+  });
+
+  // Boost timer
+  if(boostTimer>0){
+    boostTimer--;
+    spawnBoostParticles();
+    if(boostTimer<=0)boostMultiplier=1;
+    document.getElementById('speedLabel').textContent=boostMultiplier>1?'2x BOOST!':Math.round(speed*10)/10+'x';
+  }else{
+    document.getElementById('speedLabel').textContent=Math.round(speed*10)/10+'x';
+  }
+
+  // Score from distance
+  score+=Math.floor(effectiveSpeed*0.1);
+  document.getElementById('scoreLabel').textContent=score;
+
+  // Particles
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.life--});
+  particles=particles.filter(p=>p.life>0);
+
+  // BG stars
+  bgStars.forEach(s=>{s.y+=s.speed*effectiveSpeed;if(s.y>H){s.y=0;s.x=Math.random()*W}});
+}
+
+function draw(){
+  // Background
+  ctx.fillStyle='#0f0f1a';ctx.fillRect(0,0,W,H);
+  // Stars
+  bgStars.forEach(s=>{
+    ctx.fillStyle='#ffffff'+Math.floor(30+s.speed*40).toString(16);
+    ctx.fillRect(s.x,s.y,s.size,s.size);
+  });
+  // Track edges
+  ctx.fillStyle='#1a1a2e';
+  ctx.fillRect(0,0,8,H);ctx.fillRect(W-8,0,8,H);
+  // Dashed center line
+  ctx.strokeStyle='#2a2a4a';ctx.lineWidth=2;ctx.setLineDash([20,15]);
+  let offset=(scrollY*2)%35;
+  ctx.beginPath();ctx.moveTo(W/2,offset-35);ctx.lineTo(W/2,H);ctx.stroke();
+  ctx.setLineDash([]);
+
+  if(!gameStarted){
+    ctx.fillStyle='#a78bfa';ctx.font='bold 32px system-ui';ctx.textAlign='center';
+    ctx.fillText('Big Bell Race',W/2,H/3);
+    ctx.fillStyle='#9ca3af';ctx.font='18px system-ui';
+    ctx.fillText('Tap to Start',W/2,H/3+40);
+    ctx.fillText('Drag left/right to steer',W/2,H/3+70);
+    ctx.fillText('Collect bells for speed boost!',W/2,H/3+100);
+    return;
+  }
+
+  // Obstacles
+  obstacles.forEach(o=>{
+    if(o.type==='moving'){
+      ctx.fillStyle='#dc2626';
+      ctx.fillRect(o.x,o.y,o.w,o.h);
+      ctx.fillStyle='#ef4444';
+      ctx.fillRect(o.x+2,o.y+2,o.w-4,3);
+    }else{
+      ctx.fillStyle=o.type==='wall'?'#3b3b5c':'#4a3b6c';
+      ctx.fillRect(o.x,o.y,o.w,o.h);
+      ctx.fillStyle=o.type==='wall'?'#4a4a7c':'#5a4a8c';
+      ctx.fillRect(o.x,o.y,o.w,4);
+    }
+  });
+
+  // Bells
+  bells.forEach(b=>{
+    if(b.collected)return;
+    let bob=Math.sin(Date.now()*0.005+b.x)*3;
+    // Glow
+    ctx.save();ctx.globalAlpha=0.3;
+    ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(b.x,b.y+bob,b.size+6,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+    // Bell body
+    ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(b.x,b.y+bob,b.size,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#f59e0b';ctx.beginPath();ctx.arc(b.x,b.y+bob+b.size*0.3,b.size*0.35,0,Math.PI);ctx.fill();
+    // Highlight
+    ctx.fillStyle='#fde68a';ctx.beginPath();ctx.arc(b.x-3,b.y+bob-3,4,0,Math.PI*2);ctx.fill();
+  });
+
+  // Player
+  if(gameActive){
+    let px=player.x,py=player.y;
+    // Body
+    ctx.fillStyle=boostTimer>0?'#fbbf24':'#a78bfa';
+    ctx.beginPath();
+    ctx.moveTo(px+player.w/2,py); // nose
+    ctx.lineTo(px+player.w,py+player.h);
+    ctx.lineTo(px,py+player.h);
+    ctx.closePath();ctx.fill();
+    // Cockpit
+    ctx.fillStyle='#e0e0ff';
+    ctx.beginPath();ctx.arc(px+player.w/2,py+player.h*0.4,6,0,Math.PI*2);ctx.fill();
+    // Thruster
+    let flicker=Math.random()*6;
+    ctx.fillStyle=boostTimer>0?'#f97316':'#6366f1';
+    ctx.beginPath();
+    ctx.moveTo(px+5,py+player.h);
+    ctx.lineTo(px+player.w/2,py+player.h+10+flicker);
+    ctx.lineTo(px+player.w-5,py+player.h);
+    ctx.closePath();ctx.fill();
+  }
+
+  // Particles
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life/p.maxLife;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalAlpha=1;
+
+  // Boost bar
+  if(boostTimer>0){
+    let bw=W*0.5,bh=6,bx=(W-bw)/2,by=H-14;
+    ctx.fillStyle='#333';ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle='#fbbf24';ctx.fillRect(bx,by,bw*(boostTimer/120),bh);
+  }
+}
+
+function loop(){update();draw();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

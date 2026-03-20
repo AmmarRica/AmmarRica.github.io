@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 43 – Grimstone</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; }
+</style>
+</head>
+<body>
+  <h1>Grimstone</h1>
+  <p class="subtitle">Western RPG - Party Combat</p>
+  <canvas id="gc"></canvas>
+  <script>
+const C = document.getElementById('gc');
+const X = C.getContext('2d');
+let W, H;
+function resize() {
+  W = Math.min(480, window.innerWidth - 20);
+  H = Math.round(W * 1.5);
+  C.width = W; C.height = H;
+  C.style.width = W + 'px'; C.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const ST = { TITLE: 0, TOWN: 1, TRAVEL: 2, COMBAT: 3, SHOP: 4, WIN: 5, DEAD: 6, DIALOG: 7, TARGET: 8 };
+let state = ST.TITLE;
+let dialogText = '', dialogCb = null;
+
+// Party members
+function makeMember(name, role, hp, atk, def, spd, skill, skillCost, color) {
+  return { name, role, hp, maxHp: hp, atk, def, spd, skill, skillCost, skillDesc: '', color, alive: true };
+}
+
+let party = [];
+let gold = 50;
+let potions = 3;
+let travelProgress = 0;
+const TRAVEL_GOAL = 5; // encounters before boss
+
+// Combat state
+let enemies = [];
+let combatLog = [];
+let turnOrder = [];
+let currentTurnIdx = 0;
+let combatPhase = 'select_action'; // select_action, select_target, enemy_turn, animating, result
+let selectedAction = null;
+let animTimer = 0;
+let combatResult = null;
+let targetingWho = null; // which party member is acting
+
+// Touch
+let tapX = -1, tapY = -1, tapped = false;
+C.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  tapX = t.clientX - C.getBoundingClientRect().left;
+  tapY = t.clientY - C.getBoundingClientRect().top;
+  tapped = true;
+}, { passive: false });
+C.addEventListener('touchend', e => e.preventDefault(), { passive: false });
+C.addEventListener('click', e => {
+  tapX = e.clientX - C.getBoundingClientRect().left;
+  tapY = e.clientY - C.getBoundingClientRect().top;
+  tapped = true;
+});
+
+function initParty() {
+  party = [
+    makeMember('Sheriff', 'Gunslinger', 60, 14, 6, 8, 'Fan the Hammer', 0, '#f59e0b'),
+    makeMember('Doc', 'Healer', 45, 8, 4, 6, 'Patch Up', 0, '#22c55e'),
+    makeMember('Dynamite Dan', 'Demolisher', 50, 18, 3, 5, 'Dynamite', 0, '#ef4444')
+  ];
+  party[0].skillDesc = 'Hit all enemies for 60% dmg';
+  party[1].skillDesc = 'Heal ally for 25 HP';
+  party[2].skillDesc = 'Hit one enemy for 200% dmg';
+  party.forEach(p => { p.skillCD = 0; p.maxCD = 3; });
+  gold = 50; potions = 3; travelProgress = 0;
+}
+
+// Enemy types (western themed)
+const ENEMY_POOL = [
+  { name: 'Bandit', hp: 30, atk: 8, def: 3, spd: 5, gold: 8, color: '#78716c' },
+  { name: 'Rattlesnake', hp: 20, atk: 12, def: 2, spd: 9, gold: 5, color: '#65a30d' },
+  { name: 'Desperado', hp: 40, atk: 11, def: 5, spd: 6, gold: 12, color: '#b45309' },
+  { name: 'Coyote', hp: 25, atk: 10, def: 2, spd: 8, gold: 6, color: '#a8a29e' },
+  { name: 'Outlaw Rider', hp: 50, atk: 13, def: 6, spd: 7, gold: 15, color: '#7c3aed' },
+  { name: 'Vulture', hp: 22, atk: 9, def: 1, spd: 10, gold: 4, color: '#57534e' },
+];
+const BOSS_ENEMY = { name: 'BLACKJACK BARON', hp: 180, atk: 20, def: 10, spd: 7, gold: 100, color: '#fbbf24' };
+
+function spawnEnemies(isBoss) {
+  enemies = [];
+  if (isBoss) {
+    enemies.push({ ...BOSS_ENEMY, maxHp: BOSS_ENEMY.hp, alive: true, boss: true });
+    return;
+  }
+  const count = 1 + Math.floor(Math.random() * 2) + Math.floor(travelProgress / 2);
+  const cnt = Math.min(count, 3);
+  for (let i = 0; i < cnt; i++) {
+    const base = ENEMY_POOL[Math.floor(Math.random() * ENEMY_POOL.length)];
+    const scale = 1 + travelProgress * 0.12;
+    enemies.push({
+      ...base,
+      hp: Math.floor(base.hp * scale), maxHp: Math.floor(base.hp * scale),
+      atk: Math.floor(base.atk * scale), def: Math.floor(base.def * scale),
+      alive: true, boss: false
+    });
+  }
+}
+
+function startCombat(isBoss) {
+  spawnEnemies(isBoss);
+  combatLog = [`${enemies.map(e=>e.name).join(', ')} appeared!`];
+  combatResult = null;
+  buildTurnOrder();
+  currentTurnIdx = 0;
+  advanceToNextAlive();
+  state = ST.COMBAT;
+}
+
+function buildTurnOrder() {
+  turnOrder = [];
+  party.forEach((p, i) => { if (p.alive) turnOrder.push({ type: 'party', idx: i, spd: p.spd }); });
+  enemies.forEach((e, i) => { if (e.alive) turnOrder.push({ type: 'enemy', idx: i, spd: e.spd }); });
+  turnOrder.sort((a, b) => b.spd - a.spd);
+}
+
+function advanceToNextAlive() {
+  for (let tries = 0; tries < turnOrder.length * 2; tries++) {
+    if (currentTurnIdx >= turnOrder.length) {
+      // New round - reduce cooldowns
+      party.forEach(p => { if (p.skillCD > 0) p.skillCD--; });
+      buildTurnOrder();
+      currentTurnIdx = 0;
+    }
+    const t = turnOrder[currentTurnIdx];
+    if (t.type === 'party' && party[t.idx].alive) {
+      combatPhase = 'select_action';
+      targetingWho = t.idx;
+      return;
+    } else if (t.type === 'enemy' && enemies[t.idx].alive) {
+      doEnemyTurn(t.idx);
+      return;
+    }
+    currentTurnIdx++;
+  }
+}
+
+function doEnemyTurn(idx) {
+  combatPhase = 'animating';
+  animTimer = 30;
+  const e = enemies[idx];
+  // Pick random alive party member
+  const alive = party.filter(p => p.alive);
+  if (alive.length === 0) return;
+  const target = alive[Math.floor(Math.random() * alive.length)];
+  const dmg = Math.max(1, e.atk - target.def + Math.floor(Math.random() * 4 - 2));
+  target.hp -= dmg;
+  combatLog.push(`${e.name} attacks ${target.name} for ${dmg}!`);
+  if (target.hp <= 0) {
+    target.hp = 0; target.alive = false;
+    combatLog.push(`${target.name} is down!`);
+  }
+  setTimeout(() => {
+    if (!party.some(p => p.alive)) {
+      combatResult = 'lose';
+      combatPhase = 'result';
+    } else {
+      currentTurnIdx++;
+      advanceToNextAlive();
+    }
+  }, 500);
+}
+
+function doPlayerAttack(partyIdx, enemyIdx) {
+  const p = party[partyIdx];
+  const e = enemies[enemyIdx];
+  const dmg = Math.max(1, p.atk - e.def + Math.floor(Math.random() * 4 - 2));
+  e.hp -= dmg;
+  combatLog.push(`${p.name} shoots ${e.name} for ${dmg}!`);
+  if (e.hp <= 0) {
+    e.hp = 0; e.alive = false;
+    combatLog.push(`${e.name} defeated!`);
+    gold += e.gold;
+  }
+  finishPlayerTurn();
+}
+
+function doPlayerSkill(partyIdx, targetIdx) {
+  const p = party[partyIdx];
+  p.skillCD = p.maxCD;
+
+  if (p.role === 'Gunslinger') {
+    // Fan the Hammer - hit all enemies
+    combatLog.push(`${p.name} fans the hammer!`);
+    enemies.forEach(e => {
+      if (!e.alive) return;
+      const dmg = Math.max(1, Math.floor(p.atk * 0.6) - e.def + Math.floor(Math.random() * 3));
+      e.hp -= dmg;
+      combatLog.push(`  ${e.name} takes ${dmg}!`);
+      if (e.hp <= 0) { e.hp = 0; e.alive = false; combatLog.push(`  ${e.name} defeated!`); gold += e.gold; }
+    });
+  } else if (p.role === 'Healer') {
+    // Patch Up - heal ally
+    const target = party[targetIdx];
+    const heal = 25;
+    target.hp = Math.min(target.maxHp, target.hp + heal);
+    if (!target.alive && target.hp > 0) { target.alive = true; }
+    combatLog.push(`${p.name} patches up ${target.name} for ${heal} HP!`);
+  } else if (p.role === 'Demolisher') {
+    // Dynamite - big single target
+    const e = enemies[targetIdx];
+    const dmg = Math.max(1, Math.floor(p.atk * 2) - e.def + Math.floor(Math.random() * 6));
+    e.hp -= dmg;
+    combatLog.push(`${p.name} throws dynamite at ${e.name} for ${dmg}!`);
+    if (e.hp <= 0) { e.hp = 0; e.alive = false; combatLog.push(`${e.name} defeated!`); gold += e.gold; }
+  }
+  finishPlayerTurn();
+}
+
+function finishPlayerTurn() {
+  if (!enemies.some(e => e.alive)) {
+    combatResult = 'win';
+    combatPhase = 'result';
+    // Check boss
+    if (enemies.some(e => e.boss)) {
+      setTimeout(() => { state = ST.WIN; }, 1000);
+    }
+    return;
+  }
+  combatPhase = 'animating';
+  animTimer = 20;
+  setTimeout(() => {
+    currentTurnIdx++;
+    advanceToNextAlive();
+  }, 350);
+}
+
+// Button helper
+function drawBtn(x, y, w, h, text, color) {
+  X.fillStyle = color;
+  X.fillRect(x, y, w, h);
+  X.strokeStyle = '#555'; X.lineWidth = 1;
+  X.strokeRect(x, y, w, h);
+  X.fillStyle = '#e0e0ff';
+  X.font = `bold ${Math.min(h * 0.45, W * 0.03)}px system-ui`;
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(text, x + w / 2, y + h / 2);
+  X.textBaseline = 'alphabetic';
+}
+function hitBtn(x, y, w, h) { return tapped && tapX >= x && tapX <= x+w && tapY >= y && tapY <= y+h; }
+
+// Shop
+const SHOP_ITEMS = [
+  { name: 'Potion', cost: 12, type: 'potion', desc: 'Heal 30 HP' },
+  { name: 'Bandolier (+3 ATK Sheriff)', cost: 40, type: 'buff', target: 0, stat: 'atk', val: 3 },
+  { name: 'Medical Kit (+3 ATK Doc)', cost: 35, type: 'buff', target: 1, stat: 'atk', val: 3 },
+  { name: 'Bigger Dynamite (+4 ATK Dan)', cost: 45, type: 'buff', target: 2, stat: 'atk', val: 4 },
+  { name: 'Reinforced Vest (+3 DEF all)', cost: 60, type: 'defAll', val: 3 },
+  { name: 'Tonic (+15 MaxHP all)', cost: 50, type: 'hpAll', val: 15 },
+];
+
+function drawTitle() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#0f0f1a'; X.fillRect(0, 0, W, H);
+
+  // Desert scene
+  X.fillStyle = '#1a1510';
+  X.fillRect(0, H * 0.55, W, H * 0.45);
+  // Mountains
+  X.fillStyle = '#2a2018';
+  X.beginPath();
+  X.moveTo(0, H * 0.55); X.lineTo(W * 0.2, H * 0.35); X.lineTo(W * 0.4, H * 0.55);
+  X.lineTo(W * 0.6, H * 0.3); X.lineTo(W * 0.8, H * 0.5); X.lineTo(W, H * 0.45); X.lineTo(W, H * 0.55);
+  X.closePath(); X.fill();
+  // Cactus
+  X.fillStyle = '#2d5a27';
+  X.fillRect(W * 0.7, H * 0.45, 6, H * 0.1);
+  X.fillRect(W * 0.7 - 8, H * 0.48, 8, 4);
+  X.fillRect(W * 0.7 + 6, H * 0.46, 8, 4);
+
+  X.fillStyle = '#f59e0b';
+  X.font = `bold ${W * 0.1}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('GRIMSTONE', W / 2, H * 0.22);
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.035}px system-ui`;
+  X.fillText('A Western RPG', W / 2, H * 0.28);
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.03}px system-ui`;
+  X.fillText('3-member party turn-based combat', W / 2, H * 0.67);
+  X.fillText('Travel the frontier, defeat the Blackjack Baron', W / 2, H * 0.72);
+  X.fillStyle = '#f59e0b';
+  X.font = `${W * 0.04}px system-ui`;
+  X.fillText('Tap to Start', W / 2, H * 0.82);
+
+  if (tapped) { initParty(); state = ST.TOWN; }
+}
+
+function drawPartyStats(y0) {
+  const lh = H * 0.025;
+  X.font = `${W * 0.025}px system-ui`;
+  X.textAlign = 'left';
+  party.forEach((p, i) => {
+    const y = y0 + i * lh * 3.5;
+    X.fillStyle = p.alive ? p.color : '#555';
+    X.fillText(`${p.name} (${p.role})`, W * 0.05, y);
+    // HP bar
+    X.fillStyle = '#333';
+    X.fillRect(W * 0.05, y + 4, W * 0.5, lh * 0.7);
+    X.fillStyle = p.hp > p.maxHp * 0.3 ? '#22c55e' : '#ef4444';
+    X.fillRect(W * 0.05, y + 4, W * 0.5 * (p.hp / p.maxHp), lh * 0.7);
+    X.fillStyle = '#e0e0ff';
+    X.fillText(`HP: ${p.hp}/${p.maxHp}  ATK:${p.atk} DEF:${p.def}`, W * 0.05, y + 4 + lh * 0.7 + lh);
+    // Skill CD
+    const cdText = p.skillCD > 0 ? `[${p.skill}: ${p.skillCD} turns]` : `[${p.skill}: Ready]`;
+    X.fillStyle = p.skillCD > 0 ? '#666' : '#a78bfa';
+    X.fillText(cdText, W * 0.55, y);
+  });
+}
+
+function drawTown() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#1a1510'; X.fillRect(0, 0, W, H);
+
+  // Buildings
+  X.fillStyle = '#2a2018';
+  X.fillRect(W * 0.05, H * 0.06, W * 0.35, H * 0.1);
+  X.fillRect(W * 0.5, H * 0.06, W * 0.45, H * 0.1);
+  X.fillStyle = '#3a3020';
+  X.fillRect(W * 0.1, H * 0.04, W * 0.25, H * 0.02);
+  X.fillRect(W * 0.55, H * 0.04, W * 0.35, H * 0.02);
+
+  X.fillStyle = '#f59e0b';
+  X.font = `bold ${W * 0.04}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('~ Grimstone Town ~', W / 2, H * 0.2);
+
+  X.fillStyle = '#fbbf24';
+  X.font = `${W * 0.03}px system-ui`;
+  X.fillText(`Gold: ${gold}  Potions: ${potions}  Progress: ${travelProgress}/${TRAVEL_GOAL}`, W / 2, H * 0.24);
+
+  drawPartyStats(H * 0.27);
+
+  const bw = W * 0.42, bh = H * 0.05;
+  const bx = W * 0.29;
+  let by = H * 0.56;
+
+  drawBtn(bx, by, bw, bh, 'Head Out (Travel)', '#7c3aed');
+  if (hitBtn(bx, by, bw, bh)) { state = ST.TRAVEL; doTravel(); }
+  by += bh + H * 0.015;
+
+  drawBtn(bx, by, bw, bh, 'Visit General Store', '#0e7490');
+  if (hitBtn(bx, by, bw, bh)) { state = ST.SHOP; }
+  by += bh + H * 0.015;
+
+  drawBtn(bx, by, bw, bh, 'Rest at Saloon (Heal)', '#15803d');
+  if (hitBtn(bx, by, bw, bh)) {
+    party.forEach(p => { p.hp = p.maxHp; p.alive = true; p.skillCD = 0; });
+    showDialog('Rested at the saloon. Everyone is healed!', () => state = ST.TOWN);
+  }
+  by += bh + H * 0.015;
+
+  drawBtn(bx, by, bw, bh, `Use Potion (${potions})`, '#b45309');
+  if (hitBtn(bx, by, bw, bh) && potions > 0) {
+    // Heal lowest HP alive member
+    const alive = party.filter(p => p.alive).sort((a,b) => a.hp/a.maxHp - b.hp/b.maxHp);
+    if (alive.length > 0 && alive[0].hp < alive[0].maxHp) {
+      potions--;
+      alive[0].hp = Math.min(alive[0].maxHp, alive[0].hp + 30);
+      showDialog(`Used potion on ${alive[0].name}. Healed 30 HP!`, () => state = ST.TOWN);
+    }
+  }
+}
+
+function doTravel() {
+  // Random encounter or event
+  const roll = Math.random();
+  if (roll < 0.15 && travelProgress > 0) {
+    // Found gold
+    const found = 10 + Math.floor(Math.random() * 20);
+    gold += found;
+    showDialog(`Found ${found} gold on the trail!`, () => { state = ST.TOWN; });
+  } else if (roll < 0.25) {
+    // Found potion
+    potions++;
+    showDialog('Found a potion on the trail!', () => { state = ST.TOWN; });
+  } else {
+    // Combat
+    travelProgress++;
+    if (travelProgress >= TRAVEL_GOAL) {
+      showDialog('You\'ve reached the Baron\'s hideout! Prepare for the final showdown!', () => { startCombat(true); });
+    } else {
+      startCombat(false);
+    }
+  }
+}
+
+function showDialog(text, cb) { dialogText = text; dialogCb = cb; state = ST.DIALOG; }
+
+function drawDialog() {
+  // Draw previous screen faded
+  X.fillStyle = 'rgba(15,15,26,0.85)'; X.fillRect(0, 0, W, H);
+  X.fillStyle = '#1e1e2e';
+  X.fillRect(W * 0.06, H * 0.35, W * 0.88, H * 0.2);
+  X.strokeStyle = '#f59e0b'; X.lineWidth = 2;
+  X.strokeRect(W * 0.06, H * 0.35, W * 0.88, H * 0.2);
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.032}px system-ui`;
+  X.textAlign = 'center';
+  const words = dialogText.split(' ');
+  let lines = [], line = '';
+  for (const w of words) {
+    if (X.measureText(line + w).width > W * 0.78) { lines.push(line); line = w + ' '; }
+    else line += w + ' ';
+  }
+  lines.push(line);
+  lines.forEach((l, i) => X.fillText(l.trim(), W / 2, H * 0.4 + i * H * 0.035));
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.025}px system-ui`;
+  X.fillText('[Tap to continue]', W / 2, H * 0.53);
+  if (tapped && dialogCb) { const cb = dialogCb; dialogCb = null; cb(); }
+}
+
+function drawCombat() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#1a1510'; X.fillRect(0, 0, W, H);
+
+  // Desert background
+  X.fillStyle = '#2a2018';
+  X.fillRect(0, 0, W, H * 0.3);
+  X.fillStyle = '#1a1510';
+  X.beginPath();
+  X.moveTo(0, H*0.28); X.lineTo(W*0.3, H*0.22); X.lineTo(W*0.6, H*0.26); X.lineTo(W, H*0.2); X.lineTo(W, H*0.3); X.lineTo(0, H*0.3);
+  X.closePath(); X.fill();
+
+  // Enemies
+  enemies.forEach((e, i) => {
+    if (!e.alive) return;
+    const ex = W * (0.25 + i * 0.25), ey = H * 0.15;
+    // Body
+    X.fillStyle = e.color;
+    X.fillRect(ex - 15, ey - 20, 30, 35);
+    // Hat
+    X.fillStyle = '#1a1a1a';
+    X.fillRect(ex - 18, ey - 28, 36, 8);
+    X.fillRect(ex - 10, ey - 35, 20, 10);
+    // HP bar
+    X.fillStyle = '#333';
+    X.fillRect(ex - 20, ey + 20, 40, 5);
+    X.fillStyle = e.hp > e.maxHp * 0.3 ? '#ef4444' : '#991b1b';
+    X.fillRect(ex - 20, ey + 20, 40 * (e.hp / e.maxHp), 5);
+    // Name
+    X.fillStyle = e.boss ? '#fbbf24' : '#e0e0ff';
+    X.font = `${e.boss ? 'bold ' : ''}${W * 0.022}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText(e.name, ex, ey + 35);
+    X.fillText(`${e.hp}/${e.maxHp}`, ex, ey + 48);
+
+    // Target indicator during targeting
+    if (combatPhase === 'select_target' && selectedAction !== 'heal') {
+      X.strokeStyle = '#ff0';
+      X.lineWidth = 2;
+      X.strokeRect(ex - 22, ey - 30, 44, 65);
+      // Number label
+      X.fillStyle = '#ff0';
+      X.font = `bold ${W * 0.03}px system-ui`;
+      X.fillText(`[${i + 1}]`, ex, ey - 35);
+    }
+  });
+
+  // Party
+  const py0 = H * 0.38;
+  party.forEach((p, i) => {
+    const px = W * (0.15 + i * 0.3), py = py0;
+    X.fillStyle = p.alive ? p.color : '#44444488';
+    // Body
+    X.fillRect(px - 12, py, 24, 30);
+    // Hat
+    X.fillStyle = p.alive ? '#4a3520' : '#333';
+    X.fillRect(px - 15, py - 8, 30, 8);
+    X.fillRect(px - 8, py - 15, 16, 10);
+
+    // HP bar
+    X.fillStyle = '#333';
+    X.fillRect(px - 20, py + 34, 40, 5);
+    X.fillStyle = p.hp > p.maxHp * 0.3 ? '#22c55e' : '#ef4444';
+    X.fillRect(px - 20, py + 34, 40 * (p.hp / p.maxHp), 5);
+
+    X.fillStyle = p.alive ? '#e0e0ff' : '#666';
+    X.font = `${W * 0.022}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText(p.name, px, py + 48);
+    X.fillText(`${p.hp}/${p.maxHp}`, px, py + 60);
+
+    // Active indicator
+    if (targetingWho === i && combatPhase === 'select_action') {
+      X.strokeStyle = '#fbbf24';
+      X.lineWidth = 2;
+      X.strokeRect(px - 22, py - 17, 44, 65);
+    }
+
+    // Heal targeting
+    if (combatPhase === 'select_target' && selectedAction === 'heal') {
+      X.strokeStyle = '#22c55e';
+      X.lineWidth = 2;
+      X.strokeRect(px - 22, py - 17, 44, 65);
+      X.fillStyle = '#22c55e';
+      X.font = `bold ${W * 0.03}px system-ui`;
+      X.fillText(`[${i + 1}]`, px, py - 22);
+    }
+  });
+
+  // Combat log
+  X.fillStyle = 'rgba(20,18,12,0.9)';
+  X.fillRect(W * 0.03, H * 0.54, W * 0.94, H * 0.1);
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.022}px system-ui`;
+  X.textAlign = 'left';
+  const logStart = Math.max(0, combatLog.length - 3);
+  for (let i = logStart; i < combatLog.length; i++) {
+    X.fillText(combatLog[i], W * 0.05, H * 0.565 + (i - logStart) * H * 0.03);
+  }
+
+  // Action menu
+  if (combatPhase === 'select_action' && targetingWho !== null) {
+    const p = party[targetingWho];
+    const bw = W * 0.44, bh = H * 0.045;
+    let by = H * 0.66;
+
+    X.fillStyle = '#f59e0b';
+    X.font = `bold ${W * 0.03}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText(`${p.name}'s turn:`, W / 2, by - 5);
+    by += H * 0.01;
+
+    drawBtn(W * 0.03, by, bw, bh, 'Shoot', '#7c3aed');
+    drawBtn(W * 0.53, by, bw, bh, p.skillCD > 0 ? `${p.skill} (${p.skillCD}t)` : p.skill, p.skillCD > 0 ? '#333' : '#b45309');
+    by += bh + H * 0.01;
+    drawBtn(W * 0.03, by, bw, bh, `Potion (${potions})`, '#15803d');
+    drawBtn(W * 0.53, by, bw, bh, 'Defend (+DEF)', '#4b5563');
+
+    if (hitBtn(W * 0.03, H * 0.67, bw, bh)) {
+      selectedAction = 'attack';
+      combatPhase = enemies.filter(e => e.alive).length === 1 ? 'select_target' : 'select_target';
+      // Auto-target if only one enemy
+      const aliveEnemies = enemies.filter(e => e.alive);
+      if (aliveEnemies.length === 1) {
+        doPlayerAttack(targetingWho, enemies.indexOf(aliveEnemies[0]));
+      } else {
+        combatPhase = 'select_target';
+      }
+    } else if (hitBtn(W * 0.53, H * 0.67, bw, bh) && p.skillCD <= 0) {
+      selectedAction = 'skill';
+      if (p.role === 'Gunslinger') {
+        // AoE - no targeting needed
+        doPlayerSkill(targetingWho, -1);
+      } else if (p.role === 'Healer') {
+        selectedAction = 'heal';
+        combatPhase = 'select_target';
+      } else {
+        // Single target skill
+        const aliveEnemies = enemies.filter(e => e.alive);
+        if (aliveEnemies.length === 1) {
+          doPlayerSkill(targetingWho, enemies.indexOf(aliveEnemies[0]));
+        } else {
+          combatPhase = 'select_target';
+        }
+      }
+    } else if (hitBtn(W * 0.03, H * 0.67 + bh + H*0.01, bw, bh) && potions > 0) {
+      potions--;
+      const target = party[targetingWho];
+      target.hp = Math.min(target.maxHp, target.hp + 30);
+      combatLog.push(`${target.name} uses a potion! +30 HP`);
+      finishPlayerTurn();
+    } else if (hitBtn(W * 0.53, H * 0.67 + bh + H*0.01, bw, bh)) {
+      party[targetingWho].def += 3;
+      combatLog.push(`${party[targetingWho].name} defends! DEF +3 this round.`);
+      finishPlayerTurn();
+    }
+  }
+
+  // Target selection
+  if (combatPhase === 'select_target') {
+    X.fillStyle = '#fbbf24';
+    X.font = `${W * 0.03}px system-ui`;
+    X.textAlign = 'center';
+    X.fillText(selectedAction === 'heal' ? 'Tap an ally to heal' : 'Tap an enemy to target', W / 2, H * 0.67);
+
+    // Cancel button
+    drawBtn(W * 0.3, H * 0.69, W * 0.4, H * 0.04, 'Cancel', '#4b5563');
+    if (hitBtn(W * 0.3, H * 0.69, W * 0.4, H * 0.04)) { combatPhase = 'select_action'; }
+
+    if (selectedAction === 'heal') {
+      // Tap party member
+      party.forEach((p, i) => {
+        const px = W * (0.15 + i * 0.3);
+        if (hitBtn(px - 22, py0 - 17, 44, 65)) {
+          doPlayerSkill(targetingWho, i);
+        }
+      });
+    } else {
+      // Tap enemy
+      enemies.forEach((e, i) => {
+        if (!e.alive) return;
+        const ex = W * (0.25 + i * 0.25);
+        if (hitBtn(ex - 22, H * 0.15 - 30, 44, 65)) {
+          if (selectedAction === 'attack') doPlayerAttack(targetingWho, i);
+          else doPlayerSkill(targetingWho, i);
+        }
+      });
+    }
+  }
+
+  // Combat result
+  if (combatPhase === 'result') {
+    X.fillStyle = 'rgba(15,15,26,0.7)';
+    X.fillRect(0, H * 0.78, W, H * 0.15);
+    if (combatResult === 'win') {
+      const totalGold = enemies.reduce((s, e) => s + e.gold, 0);
+      X.fillStyle = '#4ade80';
+      X.font = `bold ${W * 0.04}px system-ui`;
+      X.textAlign = 'center';
+      X.fillText('Victory!', W / 2, H * 0.84);
+      X.fillStyle = '#fbbf24';
+      X.font = `${W * 0.03}px system-ui`;
+      X.fillText(`+${totalGold} Gold`, W / 2, H * 0.88);
+      X.fillStyle = '#9ca3af';
+      X.fillText('[Tap to continue]', W / 2, H * 0.92);
+      if (tapped) { state = ST.TOWN; }
+    } else {
+      X.fillStyle = '#ef4444';
+      X.font = `bold ${W * 0.04}px system-ui`;
+      X.textAlign = 'center';
+      X.fillText('Defeated...', W / 2, H * 0.85);
+      X.fillStyle = '#9ca3af';
+      X.font = `${W * 0.03}px system-ui`;
+      X.fillText('[Tap to continue]', W / 2, H * 0.9);
+      if (tapped) { state = ST.DEAD; }
+    }
+  }
+}
+
+function drawShop() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#1a1510'; X.fillRect(0, 0, W, H);
+  X.fillStyle = '#f59e0b';
+  X.font = `bold ${W * 0.045}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('~ General Store ~', W / 2, H * 0.05);
+  X.fillStyle = '#fbbf24';
+  X.font = `${W * 0.03}px system-ui`;
+  X.fillText(`Gold: ${gold}`, W / 2, H * 0.09);
+
+  const bw = W * 0.9, bh = H * 0.05;
+  SHOP_ITEMS.forEach((item, i) => {
+    const by = H * 0.12 + i * (bh + H * 0.01);
+    const canBuy = gold >= item.cost;
+    drawBtn(W * 0.05, by, bw, bh, `${item.name} - ${item.cost}g`, canBuy ? '#2a2018' : '#151510');
+    if (hitBtn(W * 0.05, by, bw, bh) && canBuy) {
+      gold -= item.cost;
+      if (item.type === 'potion') potions++;
+      else if (item.type === 'buff') party[item.target][item.stat] += item.val;
+      else if (item.type === 'defAll') party.forEach(p => p.def += item.val);
+      else if (item.type === 'hpAll') party.forEach(p => { p.maxHp += item.val; p.hp += item.val; });
+      showDialog(`Bought ${item.name}!`, () => state = ST.SHOP);
+    }
+  });
+
+  const exitY = H * 0.12 + SHOP_ITEMS.length * (bh + H * 0.01) + H * 0.02;
+  drawBtn(W * 0.3, exitY, W * 0.4, bh, 'Leave Store', '#4b5563');
+  if (hitBtn(W * 0.3, exitY, W * 0.4, bh)) state = ST.TOWN;
+}
+
+function drawWin() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#0f0f1a'; X.fillRect(0, 0, W, H);
+  X.fillStyle = '#fbbf24';
+  X.font = `bold ${W * 0.08}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('VICTORY!', W / 2, H * 0.3);
+  X.fillStyle = '#e0e0ff';
+  X.font = `${W * 0.04}px system-ui`;
+  X.fillText('The Blackjack Baron is defeated!', W / 2, H * 0.38);
+  X.fillText('Grimstone is safe once more.', W / 2, H * 0.43);
+  X.fillStyle = '#f59e0b';
+  X.font = `${W * 0.035}px system-ui`;
+  X.fillText(`Gold collected: ${gold}`, W / 2, H * 0.52);
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.03}px system-ui`;
+  X.fillText('Tap to play again', W / 2, H * 0.6);
+  if (tapped) state = ST.TITLE;
+}
+
+function drawDead() {
+  X.clearRect(0, 0, W, H);
+  X.fillStyle = '#0f0f1a'; X.fillRect(0, 0, W, H);
+  X.fillStyle = '#ef4444';
+  X.font = `bold ${W * 0.08}px system-ui`;
+  X.textAlign = 'center';
+  X.fillText('GAME OVER', W / 2, H * 0.35);
+  X.fillStyle = '#9ca3af';
+  X.font = `${W * 0.035}px system-ui`;
+  X.fillText('Your posse has fallen...', W / 2, H * 0.43);
+  X.fillText('Tap to try again', W / 2, H * 0.5);
+  if (tapped) state = ST.TITLE;
+}
+
+function loop() {
+  switch (state) {
+    case ST.TITLE: drawTitle(); break;
+    case ST.TOWN: drawTown(); break;
+    case ST.COMBAT: drawCombat(); break;
+    case ST.SHOP: drawShop(); break;
+    case ST.DIALOG: drawDialog(); break;
+    case ST.WIN: drawWin(); break;
+    case ST.DEAD: drawDead(); break;
+  }
+  tapped = false; tapX = -1; tapY = -1;
+  requestAnimationFrame(loop);
+}
+loop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

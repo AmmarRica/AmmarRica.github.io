@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marching Band Commander</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+#ui { position: fixed; top: 10px; right: 10px; text-align: right; z-index: 50; }
+#ui div { margin: 4px 0; font-size: 14px; }
+#palette { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 50; background: rgba(15,15,26,0.9); padding: 10px 20px; border-radius: 10px; border: 1px solid #333; }
+.pal-btn { padding: 8px 16px; border: 2px solid #555; border-radius: 8px; background: #1a1a2e; color: #e0e0ff; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+.pal-btn:hover { border-color: #a78bfa; }
+.pal-btn.selected { border-color: #a78bfa; background: #2a1a4e; }
+#playBtn { padding: 10px 24px; border: 2px solid #4ade80; border-radius: 8px; background: #1a2e1a; color: #4ade80; cursor: pointer; font-size: 15px; font-weight: bold; }
+#playBtn:hover { background: #2a4e2a; }
+#clearBtn { padding: 10px 18px; border: 2px solid #f87171; border-radius: 8px; background: #2e1a1a; color: #f87171; cursor: pointer; font-size: 13px; }
+#overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,15,26,0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; }
+#overlay h1 { font-size: 48px; color: #a78bfa; margin-bottom: 10px; }
+#overlay h2 { font-size: 24px; color: #7c3aed; margin-bottom: 20px; }
+#overlay p { font-size: 16px; color: #c0c0e0; max-width: 500px; text-align: center; margin: 5px 0; line-height: 1.5; }
+#overlay button { margin-top: 25px; padding: 14px 40px; font-size: 20px; border: 2px solid #a78bfa; background: #1a1a3e; color: #e0e0ff; border-radius: 10px; cursor: pointer; }
+#overlay button:hover { background: #2a2a5e; }
+.hidden { display: none !important; }
+#targetDisplay { position: fixed; top: 50px; left: 50%; transform: translateX(-50%); z-index: 50; background: rgba(15,15,26,0.85); padding: 8px 20px; border-radius: 8px; border: 1px solid #444; font-size: 14px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div>Level: <span id="lvl">1</span></div>
+  <div>Score: <span id="score">0</span></div>
+  <div>Accuracy: <span id="acc">-</span></div>
+</div>
+<div id="targetDisplay"></div>
+<div id="palette">
+  <button class="pal-btn selected" data-inst="trumpet">🎺 Trumpet</button>
+  <button class="pal-btn" data-inst="drum">🥁 Drum</button>
+  <button class="pal-btn" data-inst="flute">🎵 Flute</button>
+  <button class="pal-btn" data-inst="tuba">📯 Tuba</button>
+  <button id="clearBtn">Clear</button>
+  <button id="playBtn">▶ MARCH!</button>
+</div>
+<div id="overlay">
+  <h1>🎺 Marching Band Commander</h1>
+  <h2>Arrange. March. Score!</h2>
+  <p>Place band members on the field to match the target formation.</p>
+  <p>Different instruments march at different speeds. Click grid cells to place, then hit MARCH to watch them move!</p>
+  <p>🎺 Trumpet: Fast | 🥁 Drum: Medium | 🎵 Flute: Fast | 📯 Tuba: Slow</p>
+  <button id="startBtn">Start Commanding!</button>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const playBtn = document.getElementById('playBtn');
+const clearBtn = document.getElementById('clearBtn');
+const targetDisplay = document.getElementById('targetDisplay');
+
+let W, H, COLS=20, ROWS=14, cellW, cellH, offsetX, offsetY;
+let fieldW, fieldH;
+let state = 'title'; // title, placing, marching, scored, gameover
+let level = 1, score = 0;
+let placed = []; // {col, row, inst, x, y, targetX, targetY, arrived}
+let targets = []; // {col, row, inst (any)}
+let selectedInst = 'trumpet';
+let marchProgress = 0;
+let audioCtx = null;
+
+const INSTRUMENTS = {
+  trumpet: { color: '#fbbf24', speed: 3.5, emoji: '🎺', freq: 523 },
+  drum: { color: '#f87171', speed: 2.5, emoji: '🥁', freq: 200 },
+  flute: { color: '#60a5fa', speed: 3.8, emoji: '🎵', freq: 784 },
+  tuba: { color: '#34d399', speed: 1.8, emoji: '📯', freq: 262 }
+};
+
+const FORMATIONS = [
+  { name: 'Line', pattern: (c,r) => { let pts=[]; for(let i=5;i<15;i++) pts.push({col:i,row:7}); return pts; }},
+  { name: 'V Shape', pattern: () => { let pts=[]; for(let i=0;i<5;i++){pts.push({col:10-i,row:4+i});pts.push({col:10+i,row:4+i});} return pts; }},
+  { name: 'Diamond', pattern: () => { let pts=[]; let cx=10,cy=7; for(let i=0;i<4;i++){pts.push({col:cx,row:cy-i});pts.push({col:cx,row:cy+i});pts.push({col:cx-i,row:cy});pts.push({col:cx+i,row:cy});} return [...new Map(pts.map(p=>[p.col+','+p.row,p])).values()]; }},
+  { name: 'X Pattern', pattern: () => { let pts=[]; for(let i=0;i<7;i++){pts.push({col:7+i,row:4+i});pts.push({col:13-i,row:4+i});} return [...new Map(pts.map(p=>[p.col+','+p.row,p])).values()]; }},
+  { name: 'Star', pattern: () => { let pts=[]; let cx=10,cy=7; for(let i=0;i<5;i++){pts.push({col:cx,row:cy-i});pts.push({col:cx,row:cy+i});pts.push({col:cx-i,row:cy});pts.push({col:cx+i,row:cy});pts.push({col:cx-i,row:cy-i});pts.push({col:cx+i,row:cy+i});pts.push({col:cx+i,row:cy-i});pts.push({col:cx-i,row:cy+i});} return [...new Map(pts.map(p=>[p.col+','+p.row,p])).values()].filter(p=>p.col>=0&&p.col<COLS&&p.row>=0&&p.row<ROWS); }},
+  { name: 'T Letter', pattern: () => { let pts=[]; for(let i=5;i<15;i++) pts.push({col:i,row:3}); for(let i=3;i<11;i++) pts.push({col:10,row:i}); return [...new Map(pts.map(p=>[p.col+','+p.row,p])).values()]; }},
+  { name: 'Circle', pattern: () => { let pts=[]; let cx=10,cy=7,r=4; for(let a=0;a<16;a++){let ang=a*Math.PI*2/16; pts.push({col:Math.round(cx+r*Math.cos(ang)),row:Math.round(cy+r*0.7*Math.sin(ang))});} return [...new Map(pts.map(p=>[p.col+','+p.row,p])).values()].filter(p=>p.col>=0&&p.col<COLS&&p.row>=0&&p.row<ROWS); }},
+  { name: 'Arrow', pattern: () => { let pts=[]; for(let i=0;i<10;i++) pts.push({col:5+i,row:7}); for(let i=1;i<4;i++){pts.push({col:15-i,row:7-i});pts.push({col:15-i,row:7+i});} return pts; }},
+];
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  fieldW = Math.min(W * 0.85, 900);
+  fieldH = fieldW * 0.55;
+  if (fieldH > H * 0.7) { fieldH = H * 0.7; fieldW = fieldH / 0.55; }
+  cellW = fieldW / COLS;
+  cellH = fieldH / ROWS;
+  offsetX = (W - fieldW) / 2;
+  offsetY = (H - fieldH) / 2 - 20;
+}
+
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playNote(freq, dur=0.15) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.frequency.value = freq;
+  osc.type = 'sine';
+  gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  osc.start(); osc.stop(audioCtx.currentTime + dur);
+}
+
+function getFormation(lvl) {
+  return FORMATIONS[(lvl - 1) % FORMATIONS.length];
+}
+
+function startLevel() {
+  state = 'placing';
+  placed = [];
+  let form = getFormation(level);
+  targets = form.pattern();
+  targetDisplay.textContent = `Target: ${form.name} (${targets.length} members needed)`;
+  document.getElementById('lvl').textContent = level;
+}
+
+function cellFromMouse(mx, my) {
+  let col = Math.floor((mx - offsetX) / cellW);
+  let row = Math.floor((my - offsetY) / cellH);
+  if (col >= 0 && col < COLS && row >= 0 && row < ROWS) return {col, row};
+  return null;
+}
+
+canvas.addEventListener('click', (e) => {
+  if (state !== 'placing') return;
+  initAudio();
+  let cell = cellFromMouse(e.clientX, e.clientY);
+  if (!cell) return;
+  let existing = placed.findIndex(p => p.col === cell.col && p.row === cell.row);
+  if (existing >= 0) {
+    placed.splice(existing, 1);
+    playNote(300, 0.1);
+  } else {
+    placed.push({ col: cell.col, row: cell.row, inst: selectedInst });
+    playNote(INSTRUMENTS[selectedInst].freq, 0.12);
+  }
+});
+
+document.querySelectorAll('.pal-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pal-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedInst = btn.dataset.inst;
+  });
+});
+
+clearBtn.addEventListener('click', () => {
+  if (state === 'placing') placed = [];
+});
+
+playBtn.addEventListener('click', () => {
+  if (state !== 'placing' || placed.length === 0) return;
+  initAudio();
+  startMarch();
+});
+
+function startMarch() {
+  state = 'marching';
+  marchProgress = 0;
+  // Assign each placed member a target position (closest target)
+  let availTargets = [...targets];
+  placed.forEach(p => {
+    // Start from bottom of field
+    p.x = offsetX + p.col * cellW + cellW/2;
+    p.y = offsetY + fieldH + 30;
+    p.targetX = offsetX + p.col * cellW + cellW/2;
+    p.targetY = offsetY + p.row * cellH + cellH/2;
+    p.arrived = false;
+    p.noteTimer = 0;
+  });
+}
+
+function calculateScore() {
+  let matched = 0;
+  let targetSet = new Set(targets.map(t => t.col+','+t.row));
+  let placedSet = new Set(placed.map(p => p.col+','+p.row));
+  targetSet.forEach(t => { if (placedSet.has(t)) matched++; });
+  let accuracy = targets.length > 0 ? matched / targets.length : 0;
+  let extraPenalty = Math.max(0, placed.length - targets.length) * 5;
+  let levelScore = Math.round(accuracy * 100 * level) - extraPenalty;
+  levelScore = Math.max(0, levelScore);
+  score += levelScore;
+  document.getElementById('score').textContent = score;
+  document.getElementById('acc').textContent = Math.round(accuracy * 100) + '%';
+  return { accuracy, levelScore };
+}
+
+function drawField() {
+  // Field background
+  ctx.fillStyle = '#1a3d1a';
+  ctx.fillRect(offsetX, offsetY, fieldW, fieldH);
+  // Yard lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= COLS; i++) {
+    ctx.beginPath();
+    ctx.moveTo(offsetX + i * cellW, offsetY);
+    ctx.lineTo(offsetX + i * cellW, offsetY + fieldH);
+    ctx.stroke();
+  }
+  for (let i = 0; i <= ROWS; i++) {
+    ctx.beginPath();
+    ctx.moveTo(offsetX, offsetY + i * cellH);
+    ctx.lineTo(offsetX + fieldW, offsetY + i * cellH);
+    ctx.stroke();
+  }
+  // Thicker yard markers
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i <= 4; i++) {
+    let x = offsetX + (i * 5) * cellW;
+    ctx.beginPath(); ctx.moveTo(x, offsetY); ctx.lineTo(x, offsetY + fieldH); ctx.stroke();
+  }
+  // Border
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(offsetX, offsetY, fieldW, fieldH);
+  // End zones
+  ctx.fillStyle = 'rgba(127,29,29,0.3)';
+  ctx.fillRect(offsetX, offsetY, cellW * 2, fieldH);
+  ctx.fillStyle = 'rgba(29,29,127,0.3)';
+  ctx.fillRect(offsetX + fieldW - cellW * 2, offsetY, cellW * 2, fieldH);
+}
+
+function drawTargets() {
+  targets.forEach(t => {
+    let x = offsetX + t.col * cellW + cellW/2;
+    let y = offsetY + t.row * cellH + cellH/2;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.min(cellW, cellH) * 0.35, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(167,139,250,0.2)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(167,139,250,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+}
+
+function drawPlaced() {
+  placed.forEach(p => {
+    let inst = INSTRUMENTS[p.inst];
+    let x, y;
+    if (state === 'marching') {
+      x = p.x; y = p.y;
+    } else {
+      x = offsetX + p.col * cellW + cellW/2;
+      y = offsetY + p.row * cellH + cellH/2;
+    }
+    let r = Math.min(cellW, cellH) * 0.35;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = inst.color;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#000';
+    ctx.font = `${Math.floor(r*1.2)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(inst.emoji, x, y);
+  });
+}
+
+function drawMarchNotes() {
+  if (state !== 'marching') return;
+  placed.forEach(p => {
+    if (!p.arrived) {
+      // Draw musical note trail
+      let t = Date.now() * 0.003;
+      ctx.fillStyle = INSTRUMENTS[p.inst].color + '60';
+      ctx.font = '12px sans-serif';
+      ctx.fillText('♪', p.x + Math.sin(t + p.col) * 10, p.y - 15);
+    }
+  });
+}
+
+let lastTime = 0;
+function update(time) {
+  let dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+
+  if (state === 'marching') {
+    let allArrived = true;
+    placed.forEach(p => {
+      if (p.arrived) return;
+      let spd = INSTRUMENTS[p.inst].speed * 80 * (1 + level * 0.1);
+      let dx = p.targetX - p.x;
+      let dy = p.targetY - p.y;
+      let dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 3) {
+        p.x = p.targetX; p.y = p.targetY;
+        p.arrived = true;
+        playNote(INSTRUMENTS[p.inst].freq, 0.2);
+      } else {
+        allArrived = false;
+        p.x += (dx / dist) * spd * dt;
+        p.y += (dy / dist) * spd * dt;
+        p.noteTimer -= dt;
+        if (p.noteTimer <= 0) {
+          playNote(INSTRUMENTS[p.inst].freq * (0.9 + Math.random()*0.2), 0.08);
+          p.noteTimer = 0.3 + Math.random() * 0.3;
+        }
+      }
+    });
+    if (allArrived) {
+      let result = calculateScore();
+      state = 'scored';
+      setTimeout(() => {
+        if (result.accuracy >= 0.5) {
+          level++;
+          startLevel();
+        } else {
+          state = 'placing';
+          placed = [];
+        }
+      }, 2000);
+    }
+  }
+}
+
+function draw(time) {
+  requestAnimationFrame(draw);
+  update(time);
+  ctx.clearRect(0, 0, W, H);
+  if (state === 'title') return;
+
+  drawField();
+  drawTargets();
+  drawPlaced();
+  drawMarchNotes();
+
+  if (state === 'scored') {
+    ctx.fillStyle = 'rgba(15,15,26,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Formation Complete!', W/2, H/2 - 20);
+    ctx.font = '20px sans-serif';
+    ctx.fillStyle = '#e0e0ff';
+    ctx.fillText(`Accuracy: ${document.getElementById('acc').textContent} | Score: ${score}`, W/2, H/2 + 20);
+  }
+}
+
+startBtn.addEventListener('click', () => {
+  initAudio();
+  overlay.classList.add('hidden');
+  startLevel();
+});
+
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(draw);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ancient Gridiron</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Georgia', serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; font-family: monospace; }
+nav a { color: #a78bfa; text-decoration: none; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #a78bfa; margin-top: 5px; cursor: pointer; }
+#info { color: #a78bfa; margin-top: 8px; font-size: 13px; font-family: monospace; text-align: center; }
+</style>
+</head>
+<body>
+<canvas id="game" width="700" height="500"></canvas>
+<div id="info">Click to select gladiator, then click tile to move/act</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 700, H = 500;
+
+// Grid
+const COLS = 14, ROWS = 8;
+const TILE = 44;
+const OX = (W - COLS * TILE) / 2;
+const OY = 70;
+
+// Colors - mosaic/fresco palette
+const PAL = {
+  sand: '#d4a55a', sandDark: '#b8944a', column: '#c8b080',
+  red: '#c42020', blue: '#2040a0', gold: '#d4a017',
+  marble: '#e8dcc8', green: '#3a6b2a', purple: '#6b2fa0',
+  skin: '#d4a070', dark: '#2a1a0a'
+};
+
+// Gladiator classes
+const CLASSES = {
+  Thraex:   { name: 'Thraex',   role: 'RB',  move: 4, str: 2, icon: 'T', color: '#e04040', desc: 'Agile runner' },
+  Secutor:  { name: 'Secutor',  role: 'QB',  move: 2, str: 1, icon: 'S', color: '#4080e0', desc: 'Javelin arm (can throw)' },
+  Murmillo: { name: 'Murmillo', role: 'OL',  move: 2, str: 4, icon: 'M', color: '#80a040', desc: 'Shield tank (blocks)' },
+  Retiarius:{ name: 'Retiarius', role: 'WR', move: 3, str: 1, icon: 'R', color: '#d0a020', desc: 'Net catcher (long range)' }
+};
+
+let state = 'title'; // title, player_turn, enemy_turn, animating, emperor, scoring, gameover
+let selectedUnit = null;
+let validMoves = [];
+let validTargets = [];
+let playerTeam = [];
+let enemyTeam = [];
+let ballCarrier = null;
+let turnMessage = '';
+let turnTimer = 0;
+let playerScore = 0, enemyScore = 0;
+let quarter = 1;
+let emperorMsg = '';
+let emperorTimer = 0;
+let actionMode = 'move'; // move, throw, tackle
+let hasMoved = false;
+let hasActed = false;
+let particles = [];
+
+function makeUnit(cls, col, row, team) {
+  let c = CLASSES[cls];
+  return {
+    class: cls, role: c.role, name: c.name,
+    col, row, move: c.move, str: c.str, icon: c.icon,
+    color: team === 'player' ? '#4060cc' : '#cc4040',
+    accent: c.color, team, active: true,
+    hasBall: false, moved: false, acted: false, hp: c.str + 2
+  };
+}
+
+function initGame() {
+  playerTeam = [
+    makeUnit('Secutor', 3, 3, 'player'),
+    makeUnit('Thraex', 2, 4, 'player'),
+    makeUnit('Murmillo', 4, 2, 'player'),
+    makeUnit('Murmillo', 4, 5, 'player'),
+    makeUnit('Retiarius', 1, 1, 'player'),
+    makeUnit('Retiarius', 1, 6, 'player'),
+  ];
+  enemyTeam = [
+    makeUnit('Secutor', 10, 4, 'enemy'),
+    makeUnit('Thraex', 11, 3, 'enemy'),
+    makeUnit('Murmillo', 9, 2, 'enemy'),
+    makeUnit('Murmillo', 9, 5, 'enemy'),
+    makeUnit('Retiarius', 12, 1, 'enemy'),
+    makeUnit('Retiarius', 12, 6, 'enemy'),
+  ];
+  // Player QB has ball
+  playerTeam[0].hasBall = true;
+  ballCarrier = playerTeam[0];
+  selectedUnit = null;
+  state = 'player_turn';
+  turnMessage = 'Your turn - select a gladiator';
+  turnTimer = 120;
+  resetTurn('player');
+}
+
+function resetTurn(team) {
+  let units = team === 'player' ? playerTeam : enemyTeam;
+  for (let u of units) { u.moved = false; u.acted = false; }
+  hasMoved = false;
+  hasActed = false;
+  selectedUnit = null;
+  validMoves = [];
+  validTargets = [];
+  actionMode = 'move';
+}
+
+function getUnit(col, row) {
+  for (let u of [...playerTeam, ...enemyTeam]) {
+    if (u.col === col && u.row === row && u.active) return u;
+  }
+  return null;
+}
+
+function getValidMoves(unit) {
+  let moves = [];
+  for (let dc = -unit.move; dc <= unit.move; dc++) {
+    for (let dr = -unit.move; dr <= unit.move; dr++) {
+      if (Math.abs(dc) + Math.abs(dr) > unit.move) continue;
+      if (dc === 0 && dr === 0) continue;
+      let nc = unit.col + dc, nr = unit.row + dr;
+      if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) continue;
+      if (getUnit(nc, nr)) continue;
+      moves.push({ col: nc, row: nr });
+    }
+  }
+  return moves;
+}
+
+function getThrowTargets(unit) {
+  let targets = [];
+  if (unit.class !== 'Secutor' || !unit.hasBall) return targets;
+  let range = 6;
+  for (let u of playerTeam) {
+    if (u === unit || !u.active) continue;
+    let dist = Math.abs(u.col - unit.col) + Math.abs(u.row - unit.row);
+    if (dist <= range) targets.push(u);
+  }
+  return targets;
+}
+
+function getTackleTargets(unit) {
+  let targets = [];
+  let enemies = unit.team === 'player' ? enemyTeam : playerTeam;
+  for (let e of enemies) {
+    if (!e.active) continue;
+    let dist = Math.abs(e.col - unit.col) + Math.abs(e.row - unit.row);
+    let range = unit.class === 'Retiarius' ? 3 : 1;
+    if (dist <= range) targets.push(e);
+  }
+  return targets;
+}
+
+function emperor(msg) {
+  emperorMsg = msg;
+  emperorTimer = 150;
+}
+
+function addParticle(x, y, color) {
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+      life: 30 + Math.random() * 20, color, size: 2 + Math.random() * 3
+    });
+  }
+}
+
+function checkScoring(unit) {
+  if (!unit.hasBall) return false;
+  if (unit.team === 'player' && unit.col >= COLS - 1) {
+    playerScore += 7;
+    emperor('THUMBS UP! TOUCHDOWN for the gladiators!');
+    state = 'scoring';
+    turnMessage = 'TOUCHDOWN! +7 points!';
+    turnTimer = 180;
+    setTimeout(() => { initRound(); }, 2500);
+    return true;
+  }
+  if (unit.team === 'enemy' && unit.col <= 0) {
+    enemyScore += 7;
+    emperor('The barbarians score! THUMBS DOWN!');
+    state = 'scoring';
+    turnMessage = 'Enemy TOUCHDOWN!';
+    turnTimer = 180;
+    setTimeout(() => { initRound(); }, 2500);
+    return true;
+  }
+  return false;
+}
+
+function initRound() {
+  quarter++;
+  if (quarter > 4) {
+    state = 'gameover';
+    return;
+  }
+  initGame();
+}
+
+// AI turn
+function doEnemyTurn() {
+  state = 'enemy_turn';
+  turnMessage = 'Enemy gladiators act...';
+  turnTimer = 90;
+
+  let moved = 0;
+  let delay = 300;
+
+  for (let u of enemyTeam) {
+    if (!u.active) continue;
+    setTimeout(() => {
+      if (state !== 'enemy_turn') return;
+
+      // Try to tackle ball carrier if adjacent
+      if (ballCarrier && ballCarrier.team === 'player') {
+        let dist = Math.abs(u.col - ballCarrier.col) + Math.abs(u.row - ballCarrier.row);
+        let range = u.class === 'Retiarius' ? 3 : 1;
+        if (dist <= range) {
+          // Tackle attempt
+          let success = Math.random() < (u.str / (u.str + ballCarrier.str));
+          if (success || (u.class === 'Retiarius' && Math.random() < 0.5)) {
+            addParticle(OX + ballCarrier.col * TILE + TILE / 2, OY + ballCarrier.row * TILE + TILE / 2, '#ff4444');
+            emperor(Math.random() < 0.5 ? 'THUMBS UP! Mighty tackle!' : 'The net ensnares!');
+            // Turnover
+            ballCarrier.hasBall = false;
+            u.hasBall = true;
+            ballCarrier = u;
+            turnMessage = 'FUMBLE! Enemy has the ball!';
+            turnTimer = 120;
+          }
+          return;
+        }
+      }
+
+      // Move toward player endzone or ball carrier
+      let targetCol = 0, targetRow = u.row;
+      if (u.hasBall) {
+        targetCol = 0;
+        targetRow = Math.floor(ROWS / 2);
+      } else if (ballCarrier && ballCarrier.team === 'player') {
+        targetCol = ballCarrier.col;
+        targetRow = ballCarrier.row;
+      }
+
+      let moves = getValidMoves(u);
+      if (moves.length > 0) {
+        moves.sort((a, b) => {
+          let da = Math.abs(a.col - targetCol) + Math.abs(a.row - targetRow);
+          let db = Math.abs(b.col - targetCol) + Math.abs(b.row - targetRow);
+          return da - db;
+        });
+        u.col = moves[0].col;
+        u.row = moves[0].row;
+        checkScoring(u);
+      }
+
+      moved++;
+      if (moved >= enemyTeam.filter(e => e.active).length) {
+        setTimeout(() => {
+          if (state === 'enemy_turn') {
+            state = 'player_turn';
+            resetTurn('player');
+            turnMessage = 'Your turn - select a gladiator';
+            turnTimer = 120;
+          }
+        }, 500);
+      }
+    }, delay);
+    delay += 400;
+  }
+}
+
+// Click handler
+canvas.addEventListener('click', e => {
+  let rect = canvas.getBoundingClientRect();
+  let mx = e.clientX - rect.left;
+  let my = e.clientY - rect.top;
+
+  if (state === 'title') {
+    initGame();
+    return;
+  }
+
+  if (state === 'gameover') {
+    state = 'title';
+    return;
+  }
+
+  if (state !== 'player_turn') return;
+
+  // Check button clicks
+  if (selectedUnit) {
+    // End turn button
+    if (mx > W - 130 && mx < W - 10 && my > H - 45 && my < H - 20) {
+      doEnemyTurn();
+      return;
+    }
+    // Action mode buttons
+    if (my > H - 70 && my < H - 50) {
+      if (mx > 10 && mx < 80) { actionMode = 'move'; updateSelection(); return; }
+      if (mx > 90 && mx < 160) { actionMode = 'tackle'; updateSelection(); return; }
+      if (mx > 170 && mx < 250 && selectedUnit.class === 'Secutor' && selectedUnit.hasBall) {
+        actionMode = 'throw'; updateSelection(); return;
+      }
+    }
+  }
+
+  // Grid click
+  let gc = Math.floor((mx - OX) / TILE);
+  let gr = Math.floor((my - OY) / TILE);
+  if (gc < 0 || gc >= COLS || gr < 0 || gr >= ROWS) return;
+
+  let clicked = getUnit(gc, gr);
+
+  if (actionMode === 'throw' && selectedUnit) {
+    // Check if clicked a valid throw target
+    for (let t of validTargets) {
+      if (t.col === gc && t.row === gr) {
+        selectedUnit.hasBall = false;
+        t.hasBall = true;
+        ballCarrier = t;
+        selectedUnit.acted = true;
+        hasActed = true;
+        addParticle(OX + t.col * TILE + TILE / 2, OY + t.row * TILE + TILE / 2, '#ffdd44');
+        emperor('The javelin flies true!');
+        turnMessage = t.name + ' catches!';
+        turnTimer = 90;
+        if (checkScoring(t)) return;
+        actionMode = 'move';
+        updateSelection();
+        return;
+      }
+    }
+  }
+
+  if (actionMode === 'tackle' && selectedUnit) {
+    for (let t of validTargets) {
+      if (t.col === gc && t.row === gr) {
+        let atkStr = selectedUnit.str + Math.random() * 2;
+        let defStr = t.str + Math.random() * 2;
+        addParticle(OX + t.col * TILE + TILE / 2, OY + t.row * TILE + TILE / 2, '#ff6644');
+        if (atkStr >= defStr) {
+          t.hp -= 2;
+          if (t.hp <= 0) {
+            t.active = false;
+            emperor('THUMBS DOWN! The gladiator falls!');
+          } else {
+            emperor(Math.random() < 0.5 ? 'THUMBS UP! A mighty blow!' : 'The crowd roars!');
+          }
+          if (t.hasBall) {
+            t.hasBall = false;
+            selectedUnit.hasBall = true;
+            ballCarrier = selectedUnit;
+            turnMessage = 'FUMBLE RECOVERY!';
+          } else {
+            turnMessage = 'Hit! ' + t.name + ' weakened!';
+          }
+        } else {
+          turnMessage = 'Blocked by shield!';
+          emperor('The shield holds!');
+        }
+        selectedUnit.acted = true;
+        hasActed = true;
+        turnTimer = 90;
+        actionMode = 'move';
+        updateSelection();
+        return;
+      }
+    }
+  }
+
+  // Select own unit
+  if (clicked && clicked.team === 'player') {
+    selectedUnit = clicked;
+    actionMode = 'move';
+    updateSelection();
+    return;
+  }
+
+  // Move to tile
+  if (selectedUnit && !selectedUnit.moved && actionMode === 'move') {
+    for (let m of validMoves) {
+      if (m.col === gc && m.row === gr) {
+        selectedUnit.col = gc;
+        selectedUnit.row = gr;
+        selectedUnit.moved = true;
+        hasMoved = true;
+        turnMessage = selectedUnit.name + ' moves!';
+        turnTimer = 60;
+        if (checkScoring(selectedUnit)) return;
+        updateSelection();
+        return;
+      }
+    }
+  }
+});
+
+function updateSelection() {
+  validMoves = [];
+  validTargets = [];
+  if (!selectedUnit) return;
+  if (actionMode === 'move' && !selectedUnit.moved) {
+    validMoves = getValidMoves(selectedUnit);
+  }
+  if (actionMode === 'throw') {
+    validTargets = getThrowTargets(selectedUnit);
+  }
+  if (actionMode === 'tackle' && !selectedUnit.acted) {
+    validTargets = getTackleTargets(selectedUnit);
+  }
+}
+
+// Drawing
+function drawTile(col, row, color) {
+  let x = OX + col * TILE, y = OY + row * TILE;
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+}
+
+function drawMosaicBorder(x, y, w, h) {
+  ctx.strokeStyle = PAL.gold;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, w, h);
+  // Corner ornaments
+  let s = 8;
+  ctx.fillStyle = PAL.gold;
+  for (let cx of [x, x + w - s]) {
+    for (let cy of [y, y + h - s]) {
+      ctx.fillRect(cx, cy, s, s);
+    }
+  }
+}
+
+function drawUnit(u) {
+  let x = OX + u.col * TILE + TILE / 2;
+  let y = OY + u.row * TILE + TILE / 2;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + 16, 14, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = u.color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, 14, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Class accent stripe
+  ctx.fillStyle = u.accent;
+  ctx.fillRect(x - 14, y - 3, 28, 6);
+
+  // Helmet/head
+  ctx.fillStyle = u.team === 'player' ? '#3050a0' : '#a03030';
+  ctx.beginPath();
+  ctx.arc(x, y - 12, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shield for Murmillo
+  if (u.class === 'Murmillo') {
+    ctx.fillStyle = '#a08040';
+    ctx.fillRect(x + 12, y - 8, 6, 16);
+  }
+  // Net for Retiarius
+  if (u.class === 'Retiarius') {
+    ctx.strokeStyle = '#c0a040';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x - 10, y - 5, 8, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Icon
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 12px Georgia';
+  ctx.textAlign = 'center';
+  ctx.fillText(u.icon, x, y + 4);
+
+  // Ball indicator
+  if (u.hasBall) {
+    ctx.fillStyle = PAL.gold;
+    ctx.beginPath();
+    ctx.ellipse(x + 10, y - 14, 4, 3, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // HP bar
+  let maxHp = CLASSES[u.class].str + 2;
+  let hpW = 24;
+  ctx.fillStyle = '#333';
+  ctx.fillRect(x - hpW / 2, y + 17, hpW, 3);
+  ctx.fillStyle = u.hp > maxHp * 0.5 ? '#4ade80' : '#ef4444';
+  ctx.fillRect(x - hpW / 2, y + 17, (u.hp / maxHp) * hpW, 3);
+
+  // Selection ring
+  if (u === selectedUnit) {
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 18, 20, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.textAlign = 'left';
+}
+
+function render() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    // Title screen with mosaic aesthetic
+    ctx.fillStyle = PAL.gold;
+    ctx.font = 'bold 36px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText('ANCIENT GRIDIRON', W / 2, 80);
+
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '16px Georgia';
+    ctx.fillText('Gladiatorial Football in the Colosseum', W / 2, 110);
+
+    ctx.font = '13px Georgia';
+    ctx.fillStyle = '#a78bfa';
+    let y = 160;
+    const lines = [
+      'Gladiator Classes:',
+      'Secutor (QB) - Javelin arm, throws the ball',
+      'Thraex (RB) - Agile, covers 4 tiles per move',
+      'Murmillo (OL) - Shield tank, strongest tackle',
+      'Retiarius (WR) - Net catcher, long range tackle',
+      '',
+      'Click gladiator to select, click tile to move',
+      'Use Move / Tackle / Throw buttons',
+      'Carry the ball to the far endzone to score!',
+      'The Emperor judges your performance!'
+    ];
+    for (let line of lines) {
+      ctx.fillText(line, W / 2, y);
+      y += 22;
+    }
+
+    ctx.fillStyle = PAL.gold;
+    ctx.font = 'bold 18px Georgia';
+    ctx.fillText('CLICK TO BEGIN', W / 2, H - 40);
+    ctx.textAlign = 'left';
+
+    drawMosaicBorder(20, 20, W - 40, H - 40);
+    return;
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = PAL.gold;
+    ctx.font = 'bold 36px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText('THE GAMES HAVE ENDED', W / 2, 100);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '20px Georgia';
+    ctx.fillText('Your Gladiators: ' + playerScore, W / 2, 170);
+    ctx.fillText('The Barbarians: ' + enemyScore, W / 2, 200);
+    ctx.fillStyle = playerScore > enemyScore ? '#4ade80' : '#ef4444';
+    ctx.font = 'bold 24px Georgia';
+    ctx.fillText(playerScore > enemyScore ? 'VICTORIA! The Emperor is pleased!' : 'DEFEAT! To the lions!', W / 2, 260);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '14px Georgia';
+    ctx.fillText('Click to play again', W / 2, 340);
+    ctx.textAlign = 'left';
+    drawMosaicBorder(20, 20, W - 40, H - 40);
+    return;
+  }
+
+  // Draw field (Colosseum floor)
+  // Background sand
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < ROWS; r++) {
+      let shade = ((c + r) % 2 === 0) ? PAL.sand : PAL.sandDark;
+      // Endzones
+      if (c === 0) shade = '#6b3020';
+      if (c === COLS - 1) shade = '#204080';
+      drawTile(c, r, shade);
+    }
+  }
+
+  // Highlight valid moves
+  for (let m of validMoves) {
+    drawTile(m.col, m.row, 'rgba(100, 200, 100, 0.3)');
+  }
+  // Highlight targets
+  for (let t of validTargets) {
+    drawTile(t.col, t.row, 'rgba(255, 100, 100, 0.4)');
+  }
+
+  // Grid lines
+  ctx.strokeStyle = '#5a4530';
+  ctx.lineWidth = 1;
+  for (let c = 0; c <= COLS; c++) {
+    ctx.beginPath();
+    ctx.moveTo(OX + c * TILE, OY);
+    ctx.lineTo(OX + c * TILE, OY + ROWS * TILE);
+    ctx.stroke();
+  }
+  for (let r = 0; r <= ROWS; r++) {
+    ctx.beginPath();
+    ctx.moveTo(OX, OY + r * TILE);
+    ctx.lineTo(OX + COLS * TILE, OY + r * TILE);
+    ctx.stroke();
+  }
+
+  // Endzone labels
+  ctx.fillStyle = PAL.gold;
+  ctx.font = '11px Georgia';
+  ctx.textAlign = 'center';
+  ctx.fillText("Emperor's", OX + TILE / 2, OY - 8);
+  ctx.fillText('Platform', OX + TILE / 2, OY - 0);
+  ctx.fillText('Your', OX + (COLS - 0.5) * TILE, OY - 8);
+  ctx.fillText('Endzone', OX + (COLS - 0.5) * TILE, OY - 0);
+  ctx.textAlign = 'left';
+
+  drawMosaicBorder(OX - 4, OY - 4, COLS * TILE + 8, ROWS * TILE + 8);
+
+  // Units
+  for (let u of [...enemyTeam, ...playerTeam]) {
+    if (u.active) drawUnit(u);
+  }
+
+  // Particles
+  for (let p of particles) {
+    ctx.globalAlpha = p.life / 50;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+    p.x += p.vx; p.y += p.vy; p.life--;
+    p.vx *= 0.95; p.vy *= 0.95;
+  }
+  ctx.globalAlpha = 1;
+  particles = particles.filter(p => p.life > 0);
+
+  // HUD
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, 65);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px Georgia';
+  ctx.fillText('Gladiators: ' + playerScore, 15, 20);
+  ctx.fillText('Barbarians: ' + enemyScore, 15, 40);
+  ctx.fillText('Quarter: ' + quarter + '/4', 180, 20);
+
+  if (state === 'player_turn' || state === 'scoring') {
+    ctx.fillStyle = turnTimer > 0 ? '#fbbf24' : '#a78bfa';
+    ctx.font = '13px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText(turnMessage, W / 2, 55);
+    ctx.textAlign = 'left';
+    if (turnTimer > 0) turnTimer--;
+  }
+
+  if (state === 'enemy_turn') {
+    ctx.fillStyle = '#ef4444';
+    ctx.font = '13px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText(turnMessage, W / 2, 55);
+    ctx.textAlign = 'left';
+  }
+
+  // Selected unit info
+  if (selectedUnit && state === 'player_turn') {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '12px Georgia';
+    ctx.fillText(selectedUnit.name + ' (' + selectedUnit.role + ') - ' + CLASSES[selectedUnit.class].desc, 300, 20);
+    ctx.fillText('STR: ' + selectedUnit.str + ' | Move: ' + selectedUnit.move + ' | HP: ' + selectedUnit.hp, 300, 38);
+
+    // Action buttons at bottom
+    let by = H - 40;
+    // Move button
+    ctx.fillStyle = actionMode === 'move' ? '#3a6b2a' : '#2a2a3e';
+    ctx.fillRect(10, H - 48, 70, 25);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '12px Georgia';
+    ctx.fillText('Move', 28, by);
+
+    // Tackle button
+    ctx.fillStyle = actionMode === 'tackle' ? '#8b2020' : '#2a2a3e';
+    ctx.fillRect(90, H - 48, 70, 25);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.fillText('Tackle', 102, by);
+
+    // Throw button (QB only)
+    if (selectedUnit.class === 'Secutor' && selectedUnit.hasBall) {
+      ctx.fillStyle = actionMode === 'throw' ? '#20508b' : '#2a2a3e';
+      ctx.fillRect(170, H - 48, 80, 25);
+      ctx.fillStyle = '#e0e0ff';
+      ctx.fillText('Throw', 188, by);
+    }
+
+    // End turn
+    ctx.fillStyle = '#4a2a6b';
+    ctx.fillRect(W - 130, H - 48, 120, 25);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.fillText('End Turn', W - 108, by);
+  }
+
+  // Emperor message
+  if (emperorTimer > 0) {
+    emperorTimer--;
+    ctx.fillStyle = 'rgba(80, 40, 0, 0.9)';
+    ctx.fillRect(W / 2 - 200, H / 2 - 40, 400, 60);
+    drawMosaicBorder(W / 2 - 200, H / 2 - 40, 400, 60);
+    ctx.fillStyle = PAL.gold;
+    ctx.font = 'bold 16px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText(emperorMsg, W / 2, H / 2);
+    ctx.textAlign = 'left';
+  }
+
+  // Class legend at bottom right
+  if (!selectedUnit) {
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(W - 200, H - 90, 190, 85);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '10px Georgia';
+    let ly = H - 76;
+    for (let cls of ['Thraex', 'Secutor', 'Murmillo', 'Retiarius']) {
+      let c = CLASSES[cls];
+      ctx.fillStyle = c.color;
+      ctx.fillText(c.icon, W - 190, ly);
+      ctx.fillStyle = '#a78bfa';
+      ctx.fillText(c.name + ' (' + c.role + ') - ' + c.desc, W - 175, ly);
+      ly += 16;
+    }
+  }
+}
+
+function gameLoop() {
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

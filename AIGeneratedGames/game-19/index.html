@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cyborg League 2099</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+resize();
+
+let state = 'title'; // title, playbook, playing, throwing, result, drive_over
+let keys = {};
+let mouseX = W/2, mouseY = H/2;
+
+document.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+canvas.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+canvas.addEventListener('click', handleClick);
+
+// Game data
+let qb = { x: 0, y: 0, speed: 3, scrambling: false };
+let receivers = [];
+let defenders = [];
+let ball = null;
+let down = 1, yardsToGo = 10, lineOfScrimmage = 20, firstDownLine = 30;
+let totalYards = 0;
+let driveScore = 0;
+let slowMo = false, slowMoEnergy = 100;
+let scannerActive = false, scannerEnergy = 100;
+let rocketArm = true;
+let boosterActive = false, boosterEnergy = 100;
+let selectedPlay = -1;
+let throwPower = 0;
+let throwTarget = null;
+let passResult = '';
+let resultTimer = 0;
+let fieldScrollY = 0;
+let playStarted = false;
+let sackTimer = 0;
+let particles = [];
+let glitchTimer = 0;
+
+const PLAYS = [
+  { name: 'SLANT-X', routes: [{dx:80,dy:-120},{dx:-60,dy:-150},{dx:120,dy:-80}], desc: 'Quick slants' },
+  { name: 'DEEP-9', routes: [{dx:40,dy:-280},{dx:-30,dy:-300},{dx:100,dy:-200}], desc: 'Go deep' },
+  { name: 'SCREEN-L', routes: [{dx:-150,dy:30},{dx:-80,dy:-60},{dx:60,dy:-140}], desc: 'Screen left' },
+  { name: 'CROSS-Z', routes: [{dx:160,dy:-100},{dx:-120,dy:-120},{dx:0,dy:-200}], desc: 'Crossing routes' },
+  { name: 'HB-DIVE', routes: [{dx:20,dy:-80},{dx:-40,dy:-160},{dx:100,dy:-120}], desc: 'Run up middle' },
+];
+
+function handleClick() {
+  if (state === 'title') { state = 'playbook'; return; }
+  if (state === 'drive_over') { resetDrive(); state = 'playbook'; return; }
+  if (state === 'playbook') {
+    // Check play selection
+    PLAYS.forEach((p, i) => {
+      let bx = W/2 - 120, by = H*0.3 + i*60;
+      if (mouseX > bx && mouseX < bx+240 && mouseY > by && mouseY < by+45) {
+        selectedPlay = i;
+        startPlay(i);
+      }
+    });
+    return;
+  }
+  if (state === 'playing') {
+    // Click on receiver to throw
+    receivers.forEach((r, i) => {
+      let dx = mouseX - r.x, dy = mouseY - r.y;
+      if (Math.sqrt(dx*dx+dy*dy) < 30) {
+        throwBall(r);
+      }
+    });
+    return;
+  }
+  if (state === 'result') {
+    resultTimer = 0;
+    return;
+  }
+}
+
+function resetDrive() {
+  down = 1; yardsToGo = 10; lineOfScrimmage = 20; firstDownLine = 30;
+  totalYards = 0; driveScore = 0;
+  slowMoEnergy = 100; scannerEnergy = 100; boosterEnergy = 100;
+}
+
+function startPlay(playIdx) {
+  state = 'playing';
+  let play = PLAYS[playIdx];
+  let scrY = H * 0.7;
+  qb = { x: W/2, y: scrY, speed: 3, scrambling: false };
+
+  receivers = play.routes.map((r, i) => ({
+    x: W/2 + (i-1)*40, y: scrY - 20,
+    targetX: W/2 + r.dx, targetY: scrY + r.dy,
+    progress: 0, speed: 0.008 + Math.random()*0.004,
+    startX: W/2 + (i-1)*40, startY: scrY - 20,
+    open: false, caught: false, color: ['#00ffff','#ff00ff','#ffff00'][i]
+  }));
+
+  defenders = [];
+  let numDef = 4 + Math.floor(down * 0.5);
+  for (let i = 0; i < numDef; i++) {
+    defenders.push({
+      x: W/2 + (Math.random()-0.5)*300,
+      y: scrY - 100 - Math.random()*200,
+      speed: 1.5 + Math.random() * 1.5 + down*0.2,
+      covering: Math.floor(Math.random()*receivers.length),
+      rushingQB: Math.random() < 0.3
+    });
+  }
+
+  ball = null; throwTarget = null;
+  playStarted = true; sackTimer = 0;
+  slowMo = false; scannerActive = false; boosterActive = false;
+}
+
+function throwBall(receiver) {
+  if (ball) return;
+  let power = rocketArm ? 12 : 8;
+  ball = {
+    x: qb.x, y: qb.y,
+    targetX: receiver.targetX, targetY: receiver.targetY,
+    speed: power, receiver: receiver
+  };
+  state = 'throwing';
+  addParticles(qb.x, qb.y, '#00ffff', 15);
+}
+
+function addParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    let a = Math.random()*Math.PI*2;
+    particles.push({ x, y, vx: Math.cos(a)*(2+Math.random()*4), vy: Math.sin(a)*(2+Math.random()*4), life: 1, color, size: 2+Math.random()*3 });
+  }
+}
+
+function fieldYToYard(y) {
+  return lineOfScrimmage + (H*0.7 - y) / 5;
+}
+
+function update() {
+  let dt = slowMo ? 0.4 : 1;
+  if (slowMo) { slowMoEnergy -= 0.5; if (slowMoEnergy <= 0) { slowMo = false; slowMoEnergy = 0; } }
+  if (scannerActive) { scannerEnergy -= 0.3; if (scannerEnergy <= 0) { scannerActive = false; scannerEnergy = 0; } }
+  if (boosterActive) { boosterEnergy -= 0.4; if (boosterEnergy <= 0) { boosterActive = false; boosterEnergy = 0; } }
+
+  // Augmentation controls
+  if (keys['q'] && slowMoEnergy > 0) slowMo = true; else if (!keys['q']) slowMo = false;
+  if (keys['e'] && scannerEnergy > 0) scannerActive = true; else if (!keys['e']) scannerActive = false;
+  if (keys['shift'] && boosterEnergy > 0) boosterActive = true; else if (!keys['shift']) boosterActive = false;
+
+  // Recharge
+  if (!slowMo) slowMoEnergy = Math.min(100, slowMoEnergy + 0.05);
+  if (!scannerActive) scannerEnergy = Math.min(100, scannerEnergy + 0.05);
+  if (!boosterActive) boosterEnergy = Math.min(100, boosterEnergy + 0.05);
+
+  if (state === 'playing') {
+    // QB movement
+    let spd = (boosterActive ? qb.speed * 2.5 : qb.speed) * dt;
+    if (keys['w'] || keys['arrowup']) qb.y -= spd;
+    if (keys['s'] || keys['arrowdown']) qb.y += spd;
+    if (keys['a'] || keys['arrowleft']) qb.x -= spd;
+    if (keys['d'] || keys['arrowright']) qb.x += spd;
+    qb.x = Math.max(50, Math.min(W-50, qb.x));
+    qb.y = Math.max(100, Math.min(H-50, qb.y));
+
+    // Receivers run routes
+    receivers.forEach(r => {
+      r.progress = Math.min(1, r.progress + r.speed * dt);
+      r.x = r.startX + (r.targetX - r.startX) * r.progress;
+      r.y = r.startY + (r.targetY - r.startY) * r.progress;
+    });
+
+    // Defenders
+    defenders.forEach(d => {
+      let target;
+      if (d.rushingQB) {
+        target = qb;
+      } else {
+        target = receivers[d.covering];
+      }
+      let dx = target.x - d.x, dy = target.y - d.y;
+      let dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist > 5) {
+        d.x += (dx/dist) * d.speed * dt;
+        d.y += (dy/dist) * d.speed * dt;
+      }
+    });
+
+    // Check openness
+    receivers.forEach(r => {
+      let minDist = Infinity;
+      defenders.forEach(d => {
+        let dd = Math.sqrt((d.x-r.x)**2 + (d.y-r.y)**2);
+        if (dd < minDist) minDist = dd;
+      });
+      r.open = minDist > 60;
+    });
+
+    // Sack check
+    sackTimer += dt;
+    defenders.forEach(d => {
+      if (d.rushingQB) {
+        let dd = Math.sqrt((d.x-qb.x)**2 + (d.y-qb.y)**2);
+        if (dd < 20) {
+          // Sacked!
+          passResult = 'SACKED! -5 yards';
+          let loss = 5;
+          lineOfScrimmage -= loss; totalYards -= loss;
+          down++;
+          yardsToGo += loss;
+          endPlay();
+        }
+      }
+    });
+    if (sackTimer > 300) {
+      passResult = 'DELAY! Intentional grounding.';
+      down++;
+      endPlay();
+    }
+  }
+
+  if (state === 'throwing' && ball) {
+    let dx = ball.targetX - ball.x, dy = ball.targetY - ball.y;
+    let dist = Math.sqrt(dx*dx+dy*dy);
+    if (dist < ball.speed * dt) {
+      // Ball arrived
+      ball.x = ball.targetX; ball.y = ball.targetY;
+      // Check if receiver is there and open enough
+      let r = ball.receiver;
+      let rd = Math.sqrt((r.x-ball.x)**2 + (r.y-ball.y)**2);
+      let defended = false;
+      defenders.forEach(d => {
+        let dd = Math.sqrt((d.x-ball.x)**2 + (d.y-ball.y)**2);
+        if (dd < 30) defended = true;
+      });
+      let catchChance = rd < 40 ? (defended ? 0.3 : 0.85) : 0.1;
+      if (Math.random() < catchChance) {
+        // Catch!
+        let yardsGained = Math.max(0, Math.floor((H*0.7 - ball.y) / 5));
+        passResult = `CAUGHT! +${yardsGained} yards`;
+        lineOfScrimmage += yardsGained;
+        totalYards += yardsGained;
+        yardsToGo -= yardsGained;
+        addParticles(ball.x, ball.y, '#00ff88', 20);
+        if (yardsToGo <= 0) { down = 1; yardsToGo = 10; firstDownLine = lineOfScrimmage + 10; passResult += ' - FIRST DOWN!'; }
+        else down++;
+        if (lineOfScrimmage >= 100) { passResult = 'TOUCHDOWN!!!'; driveScore += 7; }
+      } else {
+        passResult = defended ? 'DEFENDED! Incomplete.' : 'DROPPED! Incomplete.';
+        down++;
+        addParticles(ball.x, ball.y, '#ff4444', 15);
+      }
+      endPlay();
+    } else {
+      ball.x += (dx/dist) * ball.speed * dt;
+      ball.y += (dy/dist) * ball.speed * dt;
+      addParticles(ball.x, ball.y, '#00ffff66', 2);
+    }
+  }
+
+  if (state === 'result') {
+    resultTimer--;
+    if (resultTimer <= 0) {
+      if (down > 4 || lineOfScrimmage >= 100) {
+        state = 'drive_over';
+      } else {
+        state = 'playbook';
+      }
+    }
+  }
+
+  particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life -= 0.03; p.vx *= 0.96; p.vy *= 0.96; });
+  particles = particles.filter(p => p.life > 0);
+}
+
+function endPlay() {
+  state = 'result';
+  resultTimer = 120;
+  ball = null;
+  glitchTimer = 10;
+}
+
+// --- DRAWING ---
+function drawCyberField() {
+  // Wire-frame field
+  ctx.strokeStyle = '#0ff3';
+  ctx.lineWidth = 1;
+  // Perspective grid
+  let cx = W/2, top = H*0.1, bot = H*0.95;
+  let topW = W*0.3, botW = W*0.9;
+  for (let i = 0; i <= 20; i++) {
+    let t = i/20;
+    let y = top + (bot-top)*t;
+    let w = topW + (botW-topW)*t;
+    ctx.strokeStyle = `rgba(0,255,255,${0.05+t*0.1})`;
+    ctx.beginPath(); ctx.moveTo(cx-w/2, y); ctx.lineTo(cx+w/2, y); ctx.stroke();
+  }
+  for (let i = -5; i <= 5; i++) {
+    ctx.strokeStyle = '#0ff2';
+    ctx.beginPath(); ctx.moveTo(cx+i*topW/5, top); ctx.lineTo(cx+i*botW/5, bot); ctx.stroke();
+  }
+  // Glowing lines
+  ctx.strokeStyle = '#a78bfa44';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(W*0.05, H*0.1, W*0.9, H*0.85);
+  // Line of scrimmage
+  let losY = H*0.7;
+  ctx.strokeStyle = '#00ffff88';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(W*0.05, losY); ctx.lineTo(W*0.95, losY); ctx.stroke();
+  ctx.fillStyle = '#0ff8';
+  ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('LOS', W*0.06, losY-5);
+  // First down line
+  let fdY = losY - yardsToGo*5;
+  ctx.strokeStyle = '#ffff0066';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6,6]);
+  ctx.beginPath(); ctx.moveTo(W*0.05, fdY); ctx.lineTo(W*0.95, fdY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ff08';
+  ctx.fillText('1ST', W*0.06, fdY-5);
+}
+
+function drawNeonCity() {
+  // Background buildings
+  for (let i = 0; i < 15; i++) {
+    let x = i * W/15;
+    let h = 40 + Math.sin(i*1.3)*30 + Math.random()*2;
+    ctx.fillStyle = `rgba(${20+i*5},${10+i*3},${40+i*4},0.8)`;
+    ctx.fillRect(x, -2, W/15-2, h);
+    // Windows
+    ctx.fillStyle = Math.random() > 0.5 ? '#ff00ff22' : '#00ffff22';
+    for (let wy = 5; wy < h-5; wy += 8) {
+      for (let wx = 3; wx < W/15-5; wx += 6) {
+        if (Math.random() > 0.4) ctx.fillRect(x+wx, wy, 3, 4);
+      }
+    }
+  }
+}
+
+function drawQB() {
+  // Chrome body
+  let grad = ctx.createRadialGradient(qb.x, qb.y, 0, qb.x, qb.y, 18);
+  grad.addColorStop(0, '#88ccff');
+  grad.addColorStop(0.5, '#4488cc');
+  grad.addColorStop(1, '#224466');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(qb.x, qb.y, 16, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Visor
+  ctx.fillStyle = '#ff000088';
+  ctx.fillRect(qb.x-8, qb.y-4, 16, 4);
+  // Glow
+  if (boosterActive) {
+    ctx.shadowColor = '#00ffff';
+    ctx.shadowBlur = 20;
+    ctx.strokeStyle = '#00ffff88';
+    ctx.beginPath(); ctx.arc(qb.x, qb.y, 22, 0, Math.PI*2); ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  // Label
+  ctx.fillStyle = '#fff';
+  ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('QB', qb.x, qb.y+4);
+}
+
+function drawReceivers() {
+  receivers.forEach((r, i) => {
+    // Route trail
+    if (scannerActive) {
+      ctx.strokeStyle = r.color + '44';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(r.startX, r.startY); ctx.lineTo(r.targetX, r.targetY); ctx.stroke();
+      ctx.setLineDash([]);
+      // Open indicator
+      if (r.open) {
+        ctx.fillStyle = '#00ff0088';
+        ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('OPEN', r.x, r.y - 22);
+      }
+    }
+    // Body
+    ctx.fillStyle = r.color;
+    ctx.beginPath(); ctx.arc(r.x, r.y, 10, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#000';
+    ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('WR', r.x, r.y+3);
+  });
+}
+
+function drawDefenders_() {
+  defenders.forEach(d => {
+    ctx.fillStyle = '#ff004488';
+    ctx.beginPath(); ctx.arc(d.x, d.y, 12, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#ff0044';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Scan overlay
+    if (scannerActive) {
+      ctx.strokeStyle = '#ff000044';
+      ctx.beginPath(); ctx.arc(d.x, d.y, 30, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle = '#ff8888';
+      ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(d.rushingQB ? 'RUSH' : 'COV', d.x, d.y+3);
+    }
+  });
+}
+
+function drawBall() {
+  if (!ball) return;
+  ctx.fillStyle = '#fbbf24';
+  ctx.shadowColor = '#fbbf24';
+  ctx.shadowBlur = 15;
+  ctx.beginPath(); ctx.ellipse(ball.x, ball.y, 8, 5, 0, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawHUD() {
+  // Holographic HUD frame
+  ctx.strokeStyle = '#a78bfa44';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 40, 200, 110);
+  ctx.fillStyle = '#0f0f1a88';
+  ctx.fillRect(10, 40, 200, 110);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`DOWN: ${down}  |  TO GO: ${yardsToGo}`, 20, 62);
+  ctx.fillText(`YARD LINE: ${Math.min(100, lineOfScrimmage)}`, 20, 80);
+  ctx.fillText(`DRIVE YARDS: ${totalYards}`, 20, 98);
+  if (driveScore > 0) { ctx.fillStyle = '#4ade80'; ctx.fillText(`SCORE: ${driveScore}`, 20, 116); }
+
+  // Augmentation bars
+  let barX = W - 220, barY = 50;
+  ctx.fillStyle = '#0f0f1a88';
+  ctx.fillRect(barX-10, barY-10, 220, 100);
+  ctx.strokeStyle = '#a78bfa44';
+  ctx.strokeRect(barX-10, barY-10, 220, 100);
+
+  const augs = [
+    { name: '[Q] TIME DILATION', energy: slowMoEnergy, color: '#00ffff', active: slowMo },
+    { name: '[E] SCANNER EYES', energy: scannerEnergy, color: '#ff00ff', active: scannerActive },
+    { name: '[SHIFT] LEG BOOST', energy: boosterEnergy, color: '#ffff00', active: boosterActive },
+  ];
+  augs.forEach((a, i) => {
+    ctx.fillStyle = a.active ? a.color : '#888';
+    ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(a.name, barX, barY + i*28);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(barX, barY + i*28 + 5, 150, 8);
+    ctx.fillStyle = a.color;
+    ctx.fillRect(barX, barY + i*28 + 5, 150*(a.energy/100), 8);
+  });
+
+  // Controls
+  ctx.fillStyle = '#666';
+  ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('WASD = Move | Click Receiver = Throw | Q/E/Shift = Augments', W/2, H-15);
+}
+
+function drawGlitch() {
+  if (glitchTimer <= 0) return;
+  glitchTimer--;
+  for (let i = 0; i < 5; i++) {
+    let y = Math.random()*H;
+    let h = 2+Math.random()*4;
+    ctx.drawImage(canvas, 0, y, W, h, Math.random()*20-10, y+Math.random()*6-3, W, h);
+  }
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x-p.size/2, p.y-p.size/2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawNeonCity();
+  drawCyberField();
+
+  ctx.fillStyle = '#0f0f1a88';
+  ctx.fillRect(0, 0, W, H);
+
+  let t = Date.now() * 0.002;
+  ctx.fillStyle = '#00ffff';
+  ctx.font = `bold ${Math.min(64, W*0.08)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#00ffff';
+  ctx.shadowBlur = 20;
+  ctx.fillText('CYBORG LEAGUE', W/2, H*0.28);
+  ctx.fillStyle = '#ff00ff';
+  ctx.fillText('2099', W/2, H*0.38);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px sans-serif';
+  ctx.fillText('Cyberpunk Football. Augmented Quarterback.', W/2, H*0.48);
+  ctx.font = '14px sans-serif';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('WASD = Move QB | Click receivers to throw', W/2, H*0.56);
+  ctx.fillText('[Q] Time Dilation | [E] Scanner Eyes | [Shift] Leg Boosters', W/2, H*0.61);
+  ctx.fillText('Complete the drive. 4 downs to get first downs. Reach the end zone!', W/2, H*0.66);
+
+  ctx.fillStyle = '#00ffff';
+  ctx.font = 'bold 24px sans-serif';
+  if (Math.sin(t) > 0) ctx.fillText('CLICK TO JACK IN', W/2, H*0.78);
+}
+
+function drawPlaybook() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawCyberField();
+  ctx.fillStyle = 'rgba(15,15,26,0.8)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#00ffff';
+  ctx.font = 'bold 28px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('SELECT PLAY', W/2, H*0.2);
+  ctx.fillStyle = '#aaa';
+  ctx.font = '14px sans-serif';
+  ctx.fillText(`Down ${down} | ${yardsToGo} to go | Ball on ${lineOfScrimmage}`, W/2, H*0.25);
+
+  PLAYS.forEach((p, i) => {
+    let bx = W/2 - 120, by = H*0.3 + i*60;
+    let hover = mouseX > bx && mouseX < bx+240 && mouseY > by && mouseY < by+45;
+    ctx.fillStyle = hover ? '#1a1a4e' : '#1a1a2e';
+    ctx.fillRect(bx, by, 240, 45);
+    ctx.strokeStyle = hover ? '#00ffff' : '#444';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, 240, 45);
+    ctx.fillStyle = hover ? '#00ffff' : '#e0e0ff';
+    ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(p.name, W/2, by+20);
+    ctx.font = '11px sans-serif'; ctx.fillStyle = '#888';
+    ctx.fillText(p.desc, W/2, by+36);
+  });
+}
+
+function drawResult() {
+  ctx.fillStyle = 'rgba(15,15,26,0.7)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.font = 'bold 32px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = passResult.includes('CAUGHT') || passResult.includes('TOUCHDOWN') ? '#4ade80' : '#ff4444';
+  ctx.shadowColor = ctx.fillStyle;
+  ctx.shadowBlur = 15;
+  ctx.fillText(passResult, W/2, H/2);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#888';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('Click to continue', W/2, H/2+40);
+}
+
+function drawDriveOver() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  let isTD = lineOfScrimmage >= 100;
+  ctx.fillStyle = isTD ? '#4ade80' : '#ff4444';
+  ctx.font = `bold ${Math.min(48, W*0.06)}px sans-serif`; ctx.textAlign = 'center';
+  ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 20;
+  ctx.fillText(isTD ? 'TOUCHDOWN!!!' : 'TURNOVER ON DOWNS', W/2, H*0.35);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '22px sans-serif';
+  ctx.fillText(`Total Yards: ${totalYards}`, W/2, H*0.5);
+  if (isTD) ctx.fillText('Score: 7', W/2, H*0.57);
+  ctx.fillStyle = '#00ffff';
+  ctx.font = '18px sans-serif';
+  if (Math.sin(Date.now()*0.004) > 0) ctx.fillText('Click for new drive', W/2, H*0.72);
+}
+
+function gameLoop() {
+  requestAnimationFrame(gameLoop);
+  if (state === 'title') { drawTitle(); return; }
+  if (state === 'playbook') { drawPlaybook(); return; }
+  if (state === 'drive_over') { drawDriveOver(); return; }
+
+  update();
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawNeonCity();
+  drawCyberField();
+  drawDefenders_();
+  drawReceivers();
+  drawQB();
+  drawBall();
+  drawParticles();
+  drawHUD();
+  if (slowMo) {
+    ctx.fillStyle = '#00ffff08';
+    ctx.fillRect(0, 0, W, H);
+  }
+  drawGlitch();
+  if (state === 'result') drawResult();
+}
+
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

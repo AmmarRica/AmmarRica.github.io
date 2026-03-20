@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Waterboy</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 1000; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #333; }
+#info { position: fixed; bottom: 10px; text-align: center; font-size: 12px; color: #666; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">Arrow Keys / WASD: Move | SPACE: Deliver Water | Keep all players hydrated!</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 850, H = 550;
+canvas.width = W; canvas.height = H;
+
+let audioCtx;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function playTone(f, d, t='square', v=0.05) {
+  if (!audioCtx) return;
+  let o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = t; o.frequency.value = f;
+  g.gain.setValueAtTime(v, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + d);
+  o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + d);
+}
+
+const SIDELINE_TOP = 50;
+const SIDELINE_BOT = H - 80;
+const FIELD_LEFT = 0;
+const FIELD_RIGHT = W;
+
+let state = 'title';
+let waterboy, players, obstacles, crowd;
+let quarter, quarterTimer, quarterLength;
+let teamScore, oppScore, hydrationBonus;
+let cramped, totalDeliveries;
+let gameMessages = [];
+let keys = {};
+let particles = [];
+
+// Funny commentary
+const QUOTES = [
+  '"Water sucks! Gatorade is better!" - No it\'s not!',
+  '"You can do it!" - Motivational fan',
+  '"That\'s some high quality H2O!"',
+  '"Mama says water is the devil!"',
+  '"Needledick! Needledick!" ...focus on the job.',
+  '"I like Vicki, and she showed me her boobies."',
+  '"Now THAT\'S what I call hydration!"',
+  '"Coach says water is for winners!"'
+];
+
+document.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  keys[e.key] = true;
+  initAudio();
+  if (state === 'title') startGame();
+  if (state === 'gameover' && (e.key === ' ' || e.key === 'Enter')) startGame();
+  e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.key] = false; });
+
+function startGame() {
+  state = 'play';
+  quarter = 1;
+  quarterTimer = 0;
+  quarterLength = 45 * 60; // 45 seconds at 60fps
+  teamScore = 0; oppScore = 0;
+  hydrationBonus = 0; cramped = 0; totalDeliveries = 0;
+  gameMessages = [];
+  particles = [];
+
+  waterboy = {
+    x: W / 2, y: SIDELINE_BOT - 40, w: 20, h: 24,
+    speed: 3.5, carrying: 3, maxCarry: 3,
+    tripped: false, tripTimer: 0, animFrame: 0, walking: false,
+    refillCooldown: 0
+  };
+
+  // Create players along sideline
+  players = [];
+  let positions = ['QB', 'RB', 'WR', 'WR', 'TE', 'OL', 'OL', 'OL', 'DL', 'DL', 'LB', 'LB', 'CB', 'CB', 'S'];
+  positions.forEach((pos, i) => {
+    players.push({
+      x: 60 + (i % 8) * 95, y: SIDELINE_TOP + 30 + Math.floor(i / 8) * 80,
+      pos, hydration: 70 + Math.random() * 30,
+      drainRate: 0.02 + Math.random() * 0.03,
+      cramped: false, served: false,
+      flashTimer: 0, animFrame: Math.random() * 10
+    });
+  });
+
+  // Sideline obstacles
+  obstacles = [];
+  spawnObstacles();
+
+  // Sideline crowd (coaches, cameramen, etc)
+  crowd = [];
+  for (let i = 0; i < 12; i++) {
+    crowd.push({
+      x: 30 + Math.random() * (W - 60),
+      y: SIDELINE_TOP + 20 + Math.random() * (SIDELINE_BOT - SIDELINE_TOP - 80),
+      type: ['coach', 'camera', 'staff', 'reporter'][Math.floor(Math.random() * 4)],
+      vx: (Math.random() - 0.5) * 0.8,
+      vy: (Math.random() - 0.5) * 0.3,
+      w: 16, h: 20
+    });
+  }
+
+  addMessage("Q1 starts! Keep those players hydrated!");
+}
+
+function spawnObstacles() {
+  obstacles = [];
+  // Cables
+  for (let i = 0; i < 5; i++) {
+    obstacles.push({
+      x: 50 + Math.random() * (W - 100),
+      y: SIDELINE_TOP + 60 + Math.random() * (SIDELINE_BOT - SIDELINE_TOP - 120),
+      type: 'cable', w: 30 + Math.random() * 40, h: 4
+    });
+  }
+  // Equipment
+  for (let i = 0; i < 4; i++) {
+    obstacles.push({
+      x: 50 + Math.random() * (W - 100),
+      y: SIDELINE_TOP + 60 + Math.random() * (SIDELINE_BOT - SIDELINE_TOP - 120),
+      type: 'equipment', w: 20, h: 16
+    });
+  }
+}
+
+function addMessage(text) {
+  gameMessages.unshift({ text, timer: 180 });
+  if (gameMessages.length > 4) gameMessages.pop();
+}
+
+function addParticle(x, y, col, n = 5) {
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x, y, dx: (Math.random() - 0.5) * 3, dy: (Math.random() - 0.5) * 3 - 1,
+      life: 15 + Math.random() * 10, col, r: 2 + Math.random() * 2
+    });
+  }
+}
+
+function update() {
+  if (state !== 'play') return;
+
+  quarterTimer++;
+
+  // Quarter transition
+  if (quarterTimer >= quarterLength) {
+    quarterTimer = 0;
+    quarter++;
+
+    // Calculate auto-game score based on hydration
+    let avgHydration = players.reduce((s, p) => s + (p.cramped ? 0 : p.hydration), 0) / players.length;
+    let activePlayers = players.filter(p => !p.cramped).length;
+    let scoreChance = (avgHydration / 100) * (activePlayers / players.length);
+
+    if (Math.random() < scoreChance * 0.6) {
+      let pts = Math.random() < 0.3 ? 3 : 7;
+      teamScore += pts;
+      addMessage(`Your team scores ${pts === 7 ? 'a TOUCHDOWN!' : 'a field goal!'} (Hydration bonus!)`);
+      playTone(523, 0.15); setTimeout(() => playTone(659, 0.15), 100); setTimeout(() => playTone(784, 0.2), 200);
+    }
+    if (Math.random() < 0.4) {
+      let pts = Math.random() < 0.3 ? 3 : 7;
+      oppScore += pts;
+      addMessage(`Opponent scores ${pts === 7 ? 'a touchdown' : 'a field goal'}.`);
+    }
+
+    if (quarter > 4) {
+      state = 'gameover';
+      return;
+    }
+
+    addMessage(`Quarter ${quarter} begins!`);
+    if (quarter === 3) addMessage('"Halftime is over! Back to work, waterboy!"');
+
+    // Randomize player positions a bit
+    players.forEach(p => {
+      if (!p.cramped) {
+        p.x = 60 + Math.random() * (W - 120);
+        p.y = SIDELINE_TOP + 30 + Math.random() * (SIDELINE_BOT - SIDELINE_TOP - 80);
+      }
+    });
+    spawnObstacles();
+  }
+
+  // Waterboy movement
+  waterboy.walking = false;
+  if (!waterboy.tripped) {
+    let dx = 0, dy = 0;
+    if (keys['arrowleft'] || keys['a']) dx -= 1;
+    if (keys['arrowright'] || keys['d']) dx += 1;
+    if (keys['arrowup'] || keys['w']) dy -= 1;
+    if (keys['arrowdown'] || keys['s']) dy += 1;
+
+    if (dx || dy) {
+      let len = Math.sqrt(dx * dx + dy * dy);
+      waterboy.x += (dx / len) * waterboy.speed;
+      waterboy.y += (dy / len) * waterboy.speed;
+      waterboy.walking = true;
+      waterboy.animFrame += 0.2;
+    }
+
+    waterboy.x = Math.max(10, Math.min(W - 10, waterboy.x));
+    waterboy.y = Math.max(SIDELINE_TOP + 10, Math.min(SIDELINE_BOT - 10, waterboy.y));
+
+    // Trip on obstacles
+    obstacles.forEach(ob => {
+      if (waterboy.x > ob.x - 5 && waterboy.x < ob.x + ob.w + 5 &&
+          waterboy.y > ob.y - 5 && waterboy.y < ob.y + ob.h + 5) {
+        if (ob.type === 'cable' && Math.random() < 0.03) {
+          waterboy.tripped = true;
+          waterboy.tripTimer = 60;
+          addMessage('"WATCH OUT! Tripped on a cable!"');
+          playTone(100, 0.2, 'sawtooth');
+          addParticle(waterboy.x, waterboy.y, '#66f', 8);
+        }
+      }
+    });
+
+    // Deliver water
+    if (keys[' '] && waterboy.carrying > 0) {
+      let delivered = false;
+      players.forEach(p => {
+        if (p.cramped) return;
+        if (Math.abs(waterboy.x - p.x) < 30 && Math.abs(waterboy.y - p.y) < 30 && p.hydration < 80) {
+          p.hydration = Math.min(100, p.hydration + 35);
+          waterboy.carrying--;
+          delivered = true;
+          totalDeliveries++;
+          addParticle(p.x, p.y, '#4af', 8);
+          playTone(660, 0.08); setTimeout(() => playTone(880, 0.08), 50);
+          p.flashTimer = 20;
+          if (Math.random() < 0.15) addMessage(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+        }
+      });
+      if (!delivered && waterboy.carrying > 0) {
+        // Check if near any player
+        let nearPlayer = players.find(p => !p.cramped && Math.abs(waterboy.x - p.x) < 30 && Math.abs(waterboy.y - p.y) < 30);
+        if (nearPlayer) {
+          // They're not thirsty enough
+        }
+      }
+    }
+
+    // Refill at water cooler (bottom right)
+    if (waterboy.x > W - 60 && waterboy.y > SIDELINE_BOT - 50) {
+      if (waterboy.carrying < waterboy.maxCarry && waterboy.refillCooldown <= 0) {
+        waterboy.carrying = waterboy.maxCarry;
+        waterboy.refillCooldown = 30;
+        playTone(440, 0.1); playTone(550, 0.1);
+        addParticle(W - 40, SIDELINE_BOT - 30, '#4af', 5);
+      }
+    }
+    if (waterboy.refillCooldown > 0) waterboy.refillCooldown--;
+  } else {
+    waterboy.tripTimer--;
+    if (waterboy.tripTimer <= 0) waterboy.tripped = false;
+  }
+
+  // Update players
+  players.forEach(p => {
+    if (p.cramped) return;
+    p.hydration -= p.drainRate * (quarter >= 3 ? 1.5 : 1); // Faster drain in 2nd half
+    p.animFrame += 0.05;
+
+    if (p.hydration <= 0) {
+      p.hydration = 0;
+      p.cramped = true;
+      cramped++;
+      addMessage(`${p.pos} is DOWN with cramps! Lost a player!`);
+      playTone(150, 0.3, 'sawtooth');
+      addParticle(p.x, p.y, '#f44', 10);
+    }
+
+    if (p.flashTimer > 0) p.flashTimer--;
+  });
+
+  // Move crowd
+  crowd.forEach(c => {
+    c.x += c.vx;
+    c.y += c.vy;
+    if (c.x < 20 || c.x > W - 20) c.vx *= -1;
+    if (c.y < SIDELINE_TOP + 10 || c.y > SIDELINE_BOT - 30) c.vy *= -1;
+    // Random direction change
+    if (Math.random() < 0.01) { c.vx = (Math.random() - 0.5) * 0.8; c.vy = (Math.random() - 0.5) * 0.3; }
+  });
+
+  // Bump into crowd
+  crowd.forEach(c => {
+    if (Math.abs(waterboy.x - c.x) < 15 && Math.abs(waterboy.y - c.y) < 15) {
+      waterboy.x += (waterboy.x - c.x) * 0.3;
+      waterboy.y += (waterboy.y - c.y) * 0.3;
+    }
+  });
+
+  // Messages
+  gameMessages.forEach(m => m.timer--);
+  gameMessages = gameMessages.filter(m => m.timer > 0);
+
+  // Particles
+  particles.forEach(p => { p.x += p.dx; p.y += p.dy; p.life--; });
+  particles = particles.filter(p => p.life > 0);
+
+  // Random events
+  if (Math.random() < 0.001) {
+    addMessage('"Hey waterboy! You\'re doing great!" - Random fan');
+  }
+  if (Math.random() < 0.0005) {
+    let randomPlayer = players.filter(p => !p.cramped)[Math.floor(Math.random() * players.filter(p => !p.cramped).length)];
+    if (randomPlayer) {
+      randomPlayer.drainRate *= 1.5;
+      addMessage(`${randomPlayer.pos} is working extra hard! Needs more water!`);
+    }
+  }
+}
+
+function drawPerson(x, y, headCol, bodyCol, legsCol, anim, w = 14, h = 20) {
+  // Head
+  ctx.fillStyle = headCol;
+  ctx.fillRect(x - 4, y - h, 8, 7);
+  // Body
+  ctx.fillStyle = bodyCol;
+  ctx.fillRect(x - w/2, y - h + 7, w, h - 12);
+  // Legs
+  let legOff = Math.sin(anim * 3) * 2;
+  ctx.fillStyle = legsCol;
+  ctx.fillRect(x - 4, y - 5 + legOff, 4, 5);
+  ctx.fillRect(x, y - 5 - legOff, 4, 5);
+}
+
+function draw() {
+  // Background - football field visible above
+  ctx.fillStyle = '#1a4a0a';
+  ctx.fillRect(0, 0, W, SIDELINE_TOP);
+  // Field markings
+  ctx.fillStyle = '#ffffff22';
+  for (let x = 50; x < W; x += 80) {
+    ctx.fillRect(x, 0, 2, SIDELINE_TOP);
+  }
+
+  // Sideline area
+  let sideGrad = ctx.createLinearGradient(0, SIDELINE_TOP, 0, SIDELINE_BOT);
+  sideGrad.addColorStop(0, '#2a2a2a');
+  sideGrad.addColorStop(1, '#1a1a1a');
+  ctx.fillStyle = sideGrad;
+  ctx.fillRect(0, SIDELINE_TOP, W, SIDELINE_BOT - SIDELINE_TOP);
+
+  // Sideline white line
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, SIDELINE_TOP, W, 3);
+
+  // Bottom area (stands hint)
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, SIDELINE_BOT, W, H - SIDELINE_BOT);
+  // Crowd in stands
+  for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = ['#a44','#44a','#4a4','#aa4','#a4a','#4aa'][i % 6];
+    let cx = (i * 14.3) % W;
+    let cy = SIDELINE_BOT + 10 + (i % 3) * 20;
+    ctx.fillRect(cx, cy, 6, 8);
+    ctx.fillStyle = '#fca';
+    ctx.fillRect(cx + 1, cy - 4, 4, 4);
+  }
+
+  if (state === 'title') {
+    ctx.fillStyle = '#000000dd';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#4af';
+    ctx.font = 'bold 48px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('THE WATERBOY', W / 2, 100);
+    ctx.fillStyle = '#ff8';
+    ctx.font = '18px Courier New';
+    ctx.fillText('"That\'s some high quality H2O!"', W / 2, 140);
+    ctx.fillStyle = '#ccc';
+    ctx.font = '14px Courier New';
+    let lines = [
+      'You are the team waterboy. Keep players hydrated!',
+      '',
+      'Arrows/WASD: Move around the sideline',
+      'SPACE: Deliver water to nearby thirsty players',
+      '',
+      'Players flash RED when thirsty (below 30%)',
+      'If hydration hits 0, they cramp and cant play!',
+      'Refill at the water cooler (bottom right)',
+      '',
+      'Watch out for cables and equipment on the ground!',
+      'Navigate through coaches, cameramen and staff!',
+      'Better hydration = better team performance!',
+      '',
+      'Survive 4 quarters. Press any key to start!'
+    ];
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, 185 + i * 22));
+    return;
+  }
+
+  // Obstacles
+  obstacles.forEach(ob => {
+    if (ob.type === 'cable') {
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(ob.x, ob.y);
+      ctx.bezierCurveTo(ob.x + ob.w * 0.3, ob.y + 8, ob.x + ob.w * 0.7, ob.y - 5, ob.x + ob.w, ob.y);
+      ctx.stroke();
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // Warning pattern
+      ctx.fillStyle = '#ff000033';
+      ctx.fillRect(ob.x, ob.y - 2, ob.w, ob.h + 4);
+    } else {
+      ctx.fillStyle = '#444';
+      ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+      ctx.fillStyle = '#555';
+      ctx.fillRect(ob.x + 2, ob.y + 2, ob.w - 4, ob.h - 4);
+      ctx.fillStyle = '#666';
+      ctx.font = '7px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('EQ', ob.x + ob.w / 2, ob.y + ob.h / 2 + 3);
+    }
+  });
+
+  // Players
+  players.forEach(p => {
+    if (p.cramped) {
+      // Lying down
+      ctx.fillStyle = '#888';
+      ctx.fillRect(p.x - 10, p.y - 3, 20, 6);
+      ctx.fillStyle = '#f44';
+      ctx.font = '8px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('CRAMPED', p.x, p.y - 8);
+      return;
+    }
+
+    // Flash red when thirsty
+    let isThirsty = p.hydration < 30;
+    let flashRed = isThirsty && Math.sin(Date.now() * 0.01) > 0;
+
+    let bodyCol = flashRed ? '#cc2222' : '#2255aa';
+    drawPerson(p.x, p.y, '#dba', bodyCol, '#333', p.animFrame);
+
+    // Helmet
+    ctx.fillStyle = flashRed ? '#aa0000' : '#224488';
+    ctx.fillRect(p.x - 5, p.y - 22, 10, 4);
+
+    // Position label
+    ctx.fillStyle = '#fff';
+    ctx.font = '8px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.pos, p.x, p.y + 10);
+
+    // Hydration bar
+    let barW = 24;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(p.x - barW / 2, p.y - 28, barW, 4);
+    let hydCol = p.hydration > 60 ? '#4a4' : p.hydration > 30 ? '#aa4' : '#a44';
+    ctx.fillStyle = hydCol;
+    ctx.fillRect(p.x - barW / 2, p.y - 28, barW * (p.hydration / 100), 4);
+
+    // Delivery flash
+    if (p.flashTimer > 0) {
+      ctx.fillStyle = `rgba(68,170,255,${p.flashTimer / 20 * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - 10, 15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Thirst indicator
+    if (isThirsty) {
+      ctx.fillStyle = '#f44';
+      ctx.font = '10px Courier New';
+      ctx.fillText('!!', p.x, p.y - 32);
+    }
+  });
+
+  // Crowd NPCs
+  crowd.forEach(c => {
+    let cols = {
+      coach: { head: '#dba', body: '#444', legs: '#333' },
+      camera: { head: '#dba', body: '#222', legs: '#222' },
+      staff: { head: '#dba', body: '#a44', legs: '#333' },
+      reporter: { head: '#dba', body: '#aa8', legs: '#444' }
+    }[c.type];
+    drawPerson(c.x, c.y, cols.head, cols.body, cols.legs, c.x * 0.1);
+
+    if (c.type === 'camera') {
+      ctx.fillStyle = '#666';
+      ctx.fillRect(c.x + 5, c.y - 15, 8, 6);
+      ctx.fillStyle = '#88f';
+      ctx.fillRect(c.x + 6, c.y - 14, 3, 3);
+    }
+    if (c.type === 'coach') {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(c.x - 5, c.y - 22, 10, 3);
+    }
+  });
+
+  // Water cooler
+  ctx.fillStyle = '#4488cc';
+  ctx.fillRect(W - 55, SIDELINE_BOT - 45, 30, 25);
+  ctx.fillStyle = '#66aaee';
+  ctx.fillRect(W - 52, SIDELINE_BOT - 42, 24, 19);
+  ctx.fillStyle = '#fff';
+  ctx.font = '7px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('WATER', W - 40, SIDELINE_BOT - 30);
+  ctx.fillStyle = '#aaddff';
+  ctx.fillRect(W - 48, SIDELINE_BOT - 38, 16, 10);
+  // Arrow indicator
+  if (waterboy.carrying < waterboy.maxCarry) {
+    ctx.fillStyle = Math.sin(Date.now() * 0.005) > 0 ? '#4af' : '#fff';
+    ctx.font = '10px Courier New';
+    ctx.fillText('REFILL', W - 40, SIDELINE_BOT - 52);
+    ctx.fillText('v', W - 40, SIDELINE_BOT - 48);
+  }
+
+  // Waterboy
+  if (waterboy.tripped) {
+    // Fallen over
+    ctx.fillStyle = '#dba';
+    ctx.fillRect(waterboy.x - 10, waterboy.y - 5, 20, 8);
+    ctx.fillStyle = '#4af';
+    ctx.fillRect(waterboy.x - 8, waterboy.y - 3, 16, 5);
+    ctx.fillStyle = '#ff0';
+    ctx.font = '10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('TRIP!', waterboy.x, waterboy.y - 12);
+    // Splash particles
+    if (waterboy.tripTimer > 50) addParticle(waterboy.x, waterboy.y, '#4af', 2);
+  } else {
+    // Standing waterboy
+    drawPerson(waterboy.x, waterboy.y, '#dba', '#4488cc', '#335', waterboy.walking ? waterboy.animFrame : 0);
+    // Water carrier on back
+    ctx.fillStyle = '#336';
+    ctx.fillRect(waterboy.x - 8, waterboy.y - 18, 6, 10);
+    // Water bottles indicator
+    for (let i = 0; i < waterboy.carrying; i++) {
+      ctx.fillStyle = '#4af';
+      ctx.fillRect(waterboy.x + 5, waterboy.y - 18 + i * 5, 4, 4);
+    }
+    // Highlight when near thirsty player
+    let nearThirsty = players.find(p => !p.cramped && p.hydration < 80 && Math.abs(waterboy.x - p.x) < 30 && Math.abs(waterboy.y - p.y) < 30);
+    if (nearThirsty && waterboy.carrying > 0) {
+      ctx.strokeStyle = '#4af';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(waterboy.x, waterboy.y - 10, 18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#4af';
+      ctx.font = '8px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('SPACE', waterboy.x, waterboy.y - 30);
+    }
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 25;
+    ctx.fillStyle = p.col;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = '#000000dd';
+  ctx.fillRect(0, 0, W, 48);
+
+  ctx.font = 'bold 18px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#4af';
+  ctx.fillText(`Q${quarter}`, 15, 20);
+
+  // Quarter timer
+  let secsLeft = Math.max(0, Math.ceil((quarterLength - quarterTimer) / 60));
+  ctx.fillStyle = secsLeft < 10 ? '#f44' : '#fff';
+  ctx.fillText(`${Math.floor(secsLeft / 60)}:${(secsLeft % 60).toString().padStart(2, '0')}`, 55, 20);
+
+  // Score
+  ctx.fillStyle = '#ff8';
+  ctx.textAlign = 'center';
+  ctx.fillText(`YOUR TEAM ${teamScore} - ${oppScore} OPPONENT`, W / 2, 20);
+
+  // Water count
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#4af';
+  ctx.font = '14px Courier New';
+  ctx.fillText(`Water: ${'|||'.slice(0, waterboy.carrying)}${'...'.slice(0, waterboy.maxCarry - waterboy.carrying)}`, W - 15, 18);
+
+  // Stats bar
+  ctx.fillStyle = '#888';
+  ctx.font = '11px Courier New';
+  ctx.textAlign = 'left';
+  let activePlayers = players.filter(p => !p.cramped).length;
+  let avgHydration = Math.round(players.filter(p => !p.cramped).reduce((s, p) => s + p.hydration, 0) / Math.max(1, activePlayers));
+  ctx.fillText(`Active: ${activePlayers}/${players.length}`, 15, 38);
+  ctx.fillText(`Avg Hydration: ${avgHydration}%`, 150, 38);
+  ctx.fillText(`Deliveries: ${totalDeliveries}`, 330, 38);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = cramped > 0 ? '#f44' : '#4a4';
+  ctx.fillText(`Cramped: ${cramped}`, W - 15, 38);
+
+  // Avg hydration bar
+  ctx.fillStyle = '#333';
+  ctx.fillRect(270, 30, 50, 8);
+  let barCol = avgHydration > 60 ? '#4a4' : avgHydration > 30 ? '#aa4' : '#a44';
+  ctx.fillStyle = barCol;
+  ctx.fillRect(270, 30, 50 * avgHydration / 100, 8);
+
+  // Messages
+  gameMessages.forEach((m, i) => {
+    ctx.globalAlpha = Math.min(1, m.timer / 30);
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(10, SIDELINE_BOT + 5 + i * 18, ctx.measureText(m.text).width + 20, 16);
+    ctx.fillStyle = '#ff8';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText(m.text, 20, SIDELINE_BOT + 16 + i * 18);
+  });
+  ctx.globalAlpha = 1;
+
+  // Game Over
+  if (state === 'gameover') {
+    ctx.fillStyle = '#000000dd';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#4af';
+    ctx.font = 'bold 36px Courier New';
+    ctx.fillText('GAME OVER!', W / 2, 80);
+
+    // Performance rating
+    let avgH = players.filter(p => !p.cramped).reduce((s, p) => s + p.hydration, 0) / Math.max(1, players.filter(p => !p.cramped).length);
+    let rating = Math.round((totalDeliveries * 3) + (avgH * 0.5) + ((players.length - cramped) * 5) - cramped * 10);
+    rating = Math.max(0, rating);
+
+    let grade, gradeCol;
+    if (rating > 120) { grade = 'S - LEGENDARY WATERBOY'; gradeCol = '#ff8'; }
+    else if (rating > 90) { grade = 'A - MVP of Hydration'; gradeCol = '#4a4'; }
+    else if (rating > 60) { grade = 'B - Solid Performance'; gradeCol = '#4af'; }
+    else if (rating > 30) { grade = 'C - Needs Improvement'; gradeCol = '#aa4'; }
+    else { grade = 'D - Mama was right...'; gradeCol = '#a44'; }
+
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px Courier New';
+    ctx.fillText(`Final Score: YOUR TEAM ${teamScore} - ${oppScore} OPPONENT`, W / 2, 130);
+
+    ctx.fillStyle = teamScore > oppScore ? '#4a4' : teamScore < oppScore ? '#a44' : '#aa4';
+    ctx.font = '24px Courier New';
+    ctx.fillText(teamScore > oppScore ? 'YOUR TEAM WINS!' : teamScore < oppScore ? 'YOUR TEAM LOSES!' : 'TIE GAME!', W / 2, 170);
+
+    ctx.fillStyle = '#ccc';
+    ctx.font = '14px Courier New';
+    ctx.fillText(`Deliveries: ${totalDeliveries} | Players Cramped: ${cramped} | Avg Hydration: ${Math.round(avgH)}%`, W / 2, 210);
+
+    ctx.fillStyle = gradeCol;
+    ctx.font = 'bold 28px Courier New';
+    ctx.fillText(grade, W / 2, 260);
+
+    ctx.fillStyle = '#ff8';
+    ctx.font = '16px Courier New';
+    ctx.fillText(`Waterboy Rating: ${rating}`, W / 2, 300);
+
+    // Fun stats
+    ctx.fillStyle = '#888';
+    ctx.font = '13px Courier New';
+    let funStats = [
+      `Gallons of water delivered: ~${(totalDeliveries * 0.5).toFixed(1)}`,
+      `Players kept in the game: ${players.length - cramped}/${players.length}`,
+      `Trips taken: ${waterboy.tripped ? 'At least one too many' : 'None! Smooth operator!'}`
+    ];
+    funStats.forEach((s, i) => ctx.fillText(s, W / 2, 340 + i * 20));
+
+    ctx.fillStyle = '#666';
+    ctx.font = '14px Courier New';
+    ctx.fillText('Press SPACE to play again', W / 2, 420);
+    ctx.fillStyle = '#ff8';
+    ctx.font = '12px Courier New';
+    ctx.fillText('"You can do it!"', W / 2, 450);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

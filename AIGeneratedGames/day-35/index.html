@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 35 – Mortol II</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; }
+    #ui { color: #e0e0ff; font-size: 0.85rem; max-width: 480px; width: 100%; display: flex; justify-content: space-between; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+  <h1>Mortol II</h1>
+  <p class="subtitle">Sacrifice platformer: deaths drop items. Tap sides=move, top=jump, bottom=use item</p>
+  <canvas id="gc"></canvas>
+  <div id="ui"><span id="livesInfo">Lives: 5</span><span id="itemInfo">Item: None</span></div>
+<script>
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = 480, H = 640;
+
+function resize() {
+  const s = Math.min(window.innerWidth - 20, W) / W;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+resize(); window.addEventListener('resize', resize);
+
+// Items: bridge, spring, shield, bomb, key
+const ITEM_TYPES = [
+  { name: 'Bridge', color: '#8B4513', desc: 'Creates a platform' },
+  { name: 'Spring', color: '#4ade80', desc: 'Bounces you up' },
+  { name: 'Shield', color: '#60a5fa', desc: 'Blocks one hazard' },
+  { name: 'Bomb', color: '#ef4444', desc: 'Destroys walls' },
+  { name: 'Key', color: '#fbbf24', desc: 'Opens locked doors' }
+];
+
+const TILE = 32;
+const COLS = Math.floor(W / TILE);
+const ROWS = Math.floor(H / TILE);
+
+// Level data: 0=empty, 1=ground, 2=spike, 3=gap, 4=locked door, 5=exit, 6=wall(breakable)
+let levels = [];
+let currentLevel = 0;
+let droppedItems = []; // items left by dead players
+let cameraY = 0;
+
+function generateLevels() {
+  levels = [];
+  for (let l = 0; l < 5; l++) {
+    let map = [];
+    for (let r = 0; r < ROWS; r++) {
+      let row = [];
+      for (let c = 0; c < COLS; c++) {
+        if (r === ROWS - 1) row.push(1); // floor
+        else if (c === 0 || c === COLS - 1) row.push(1); // walls
+        else row.push(0);
+      }
+      map.push(row);
+    }
+
+    // Add platforms
+    for (let i = 0; i < 5 + l * 2; i++) {
+      const py = 3 + Math.floor(Math.random() * (ROWS - 6));
+      const px = 2 + Math.floor(Math.random() * (COLS - 6));
+      const pw = 2 + Math.floor(Math.random() * 4);
+      for (let c = px; c < Math.min(px + pw, COLS - 1); c++) {
+        map[py][c] = 1;
+      }
+    }
+
+    // Add gaps in floor
+    const gapStart = 3 + Math.floor(Math.random() * 5);
+    const gapLen = 2 + l;
+    for (let c = gapStart; c < Math.min(gapStart + gapLen, COLS - 1); c++) {
+      map[ROWS - 1][c] = 3;
+    }
+
+    // Add spikes
+    for (let i = 0; i < 2 + l; i++) {
+      const sx = 2 + Math.floor(Math.random() * (COLS - 4));
+      const sy = ROWS - 2;
+      // Find ground and put spike on top
+      for (let r = 2; r < ROWS - 1; r++) {
+        if (map[r][sx] === 1 && map[r - 1][sx] === 0) {
+          map[r - 1][sx] = 2;
+          break;
+        }
+      }
+    }
+
+    // Add breakable wall and locked door in later levels
+    if (l >= 1) {
+      const wx = 3 + Math.floor(Math.random() * (COLS - 6));
+      for (let r = ROWS - 4; r < ROWS - 1; r++) {
+        map[r][wx] = 6;
+      }
+    }
+    if (l >= 2) {
+      const dx = COLS - 3;
+      map[ROWS - 2][dx] = 4;
+    }
+
+    // Exit
+    map[1][COLS - 3] = 5;
+
+    levels.push(map);
+  }
+}
+
+let player = { x: 64, y: 0, vx: 0, vy: 0, w: 20, h: 28, grounded: false, item: null, shielded: false, dead: false };
+let lives = 7;
+let gameState = 'play'; // play, dead, win, gameover
+let deathTimer = 0;
+let particles = [];
+let moveLeft = false, moveRight = false, jumping = false, useItem = false;
+
+function spawnPlayer() {
+  player.x = 64;
+  player.y = 40;
+  player.vx = 0;
+  player.vy = 0;
+  player.grounded = false;
+  player.dead = false;
+  player.shielded = false;
+  // Give random item
+  player.item = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
+}
+
+function getTile(x, y) {
+  const c = Math.floor(x / TILE);
+  const r = Math.floor(y / TILE);
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return 1;
+  return levels[currentLevel][r][c];
+}
+
+function setTile(x, y, val) {
+  const c = Math.floor(x / TILE);
+  const r = Math.floor(y / TILE);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+    levels[currentLevel][r][c] = val;
+  }
+}
+
+// Touch controls
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+
+  for (let t of e.changedTouches) {
+    const tx = (t.clientX - rect.left) * scaleX;
+    const ty = (t.clientY - rect.top) * scaleY;
+
+    if (gameState === 'win' || gameState === 'gameover') {
+      restartGame(); return;
+    }
+
+    if (ty < H * 0.3) {
+      jumping = true;
+    } else if (ty > H * 0.7) {
+      useItem = true;
+    } else if (tx < W * 0.4) {
+      moveLeft = true;
+    } else if (tx > W * 0.6) {
+      moveRight = true;
+    } else {
+      useItem = true;
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  moveLeft = false; moveRight = false; jumping = false; useItem = false;
+}, { passive: false });
+
+// Mouse fallback
+canvas.addEventListener('mousedown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const tx = (e.clientX - rect.left) * (W / rect.width);
+  const ty = (e.clientY - rect.top) * (H / rect.height);
+  if (gameState === 'win' || gameState === 'gameover') { restartGame(); return; }
+  if (ty < H * 0.3) jumping = true;
+  else if (ty > H * 0.7) useItem = true;
+  else if (tx < W * 0.4) moveLeft = true;
+  else if (tx > W * 0.6) moveRight = true;
+  else useItem = true;
+});
+canvas.addEventListener('mouseup', () => { moveLeft = false; moveRight = false; jumping = false; useItem = false; });
+
+// Keyboard fallback
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft = true;
+  if (e.key === 'ArrowRight' || e.key === 'd') moveRight = true;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') jumping = true;
+  if (e.key === 'e' || e.key === 'Enter') useItem = true;
+});
+document.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft = false;
+  if (e.key === 'ArrowRight' || e.key === 'd') moveRight = false;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') jumping = false;
+  if (e.key === 'e' || e.key === 'Enter') useItem = false;
+});
+
+function doUseItem() {
+  if (!player.item || player.dead) return;
+  const item = player.item;
+  const cx = Math.floor(player.x / TILE);
+  const cy = Math.floor((player.y + player.h) / TILE);
+
+  if (item.name === 'Shield') {
+    player.shielded = true;
+    player.item = null;
+  } else if (item.name === 'Bomb') {
+    // Destroy nearby breakable walls
+    for (let r = cy - 2; r <= cy + 2; r++) {
+      for (let c = cx - 2; c <= cx + 2; c++) {
+        if (r >= 0 && r < ROWS && c >= 0 && c < COLS && levels[currentLevel][r][c] === 6) {
+          levels[currentLevel][r][c] = 0;
+          for (let i = 0; i < 5; i++) {
+            particles.push({ x: c * TILE + 16, y: r * TILE + 16, vx: (Math.random() - 0.5) * 6, vy: -Math.random() * 4, life: 30, color: '#ef4444' });
+          }
+        }
+      }
+    }
+    player.item = null;
+  } else if (item.name === 'Key') {
+    // Unlock nearby doors
+    for (let r = cy - 2; r <= cy + 2; r++) {
+      for (let c = cx - 2; c <= cx + 2; c++) {
+        if (r >= 0 && r < ROWS && c >= 0 && c < COLS && levels[currentLevel][r][c] === 4) {
+          levels[currentLevel][r][c] = 0;
+          particles.push({ x: c * TILE + 16, y: r * TILE + 16, vx: 0, vy: -2, life: 40, color: '#fbbf24' });
+        }
+      }
+    }
+    player.item = null;
+  } else if (item.name === 'Spring') {
+    player.vy = -12;
+    player.item = null;
+  } else if (item.name === 'Bridge') {
+    // Place bridge tiles below
+    const by = cy;
+    for (let c = cx - 1; c <= cx + 1; c++) {
+      if (c > 0 && c < COLS - 1 && by < ROWS && (levels[currentLevel][by][c] === 0 || levels[currentLevel][by][c] === 3)) {
+        levels[currentLevel][by][c] = 1;
+      }
+    }
+    player.item = null;
+  }
+}
+
+let itemUsed = false;
+function killPlayer() {
+  if (player.dead) return;
+  player.dead = true;
+  deathTimer = 60;
+  lives--;
+
+  // Drop item as a placed object
+  if (player.item) {
+    droppedItems.push({
+      x: player.x, y: player.y + player.h - 10,
+      item: player.item, level: currentLevel
+    });
+  }
+
+  // Death particles
+  for (let i = 0; i < 15; i++) {
+    particles.push({
+      x: player.x + player.w / 2,
+      y: player.y + player.h / 2,
+      vx: (Math.random() - 0.5) * 8,
+      vy: -Math.random() * 6,
+      life: 30 + Math.random() * 20,
+      color: '#ef4444'
+    });
+  }
+}
+
+function update() {
+  if (gameState !== 'play') return;
+
+  // Handle item use
+  if (useItem && !itemUsed) {
+    doUseItem();
+    itemUsed = true;
+  }
+  if (!useItem) itemUsed = false;
+
+  if (player.dead) {
+    deathTimer--;
+    if (deathTimer <= 0) {
+      if (lives <= 0) {
+        gameState = 'gameover';
+      } else {
+        spawnPlayer();
+      }
+    }
+    updateParticles();
+    return;
+  }
+
+  // Movement
+  const speed = 3;
+  if (moveLeft) player.vx = -speed;
+  else if (moveRight) player.vx = speed;
+  else player.vx *= 0.7;
+
+  if (jumping && player.grounded) {
+    player.vy = -7.5;
+    player.grounded = false;
+  }
+
+  // Gravity
+  player.vy += 0.4;
+  if (player.vy > 10) player.vy = 10;
+
+  // Horizontal movement
+  player.x += player.vx;
+  // Collide with solid tiles
+  player.grounded = false;
+
+  // Left/right collision
+  const pLeft = player.x, pRight = player.x + player.w;
+  const pTop = player.y, pBottom = player.y + player.h;
+
+  for (let r = Math.floor(pTop / TILE); r <= Math.floor(pBottom / TILE); r++) {
+    for (let c = Math.floor(pLeft / TILE); c <= Math.floor(pRight / TILE); c++) {
+      const tile = getTile(c * TILE, r * TILE);
+      if (tile === 1 || tile === 6 || tile === 4) {
+        const tl = c * TILE, tr = (c + 1) * TILE;
+        if (player.vx > 0 && player.x + player.w > tl && player.x < tl) {
+          player.x = tl - player.w;
+        } else if (player.vx < 0 && player.x < tr && player.x + player.w > tr) {
+          player.x = tr;
+        }
+      }
+    }
+  }
+
+  // Vertical movement
+  player.y += player.vy;
+
+  for (let r = Math.floor(player.y / TILE); r <= Math.floor((player.y + player.h) / TILE); r++) {
+    for (let c = Math.floor(player.x / TILE); c <= Math.floor((player.x + player.w) / TILE); c++) {
+      const tile = getTile(c * TILE, r * TILE);
+      if (tile === 1 || tile === 6 || tile === 4) {
+        const tt = r * TILE, tb = (r + 1) * TILE;
+        if (player.vy > 0 && player.y + player.h > tt && player.y + player.h < tb + 8) {
+          player.y = tt - player.h;
+          player.vy = 0;
+          player.grounded = true;
+        } else if (player.vy < 0 && player.y < tb && player.y > tt - 8) {
+          player.y = tb;
+          player.vy = 0;
+        }
+      }
+
+      // Spikes
+      if (tile === 2) {
+        const sx = c * TILE, sy = r * TILE;
+        if (player.x + player.w > sx + 4 && player.x < sx + TILE - 4 &&
+            player.y + player.h > sy + 8 && player.y < sy + TILE) {
+          if (player.shielded) {
+            player.shielded = false;
+            player.vy = -6;
+          } else {
+            killPlayer();
+          }
+        }
+      }
+
+      // Exit
+      if (tile === 5) {
+        const ex = c * TILE, ey = r * TILE;
+        if (player.x + player.w > ex + 4 && player.x < ex + TILE - 4 &&
+            player.y + player.h > ey && player.y < ey + TILE) {
+          currentLevel++;
+          if (currentLevel >= levels.length) {
+            gameState = 'win';
+          } else {
+            droppedItems = droppedItems.filter(d => d.level === currentLevel);
+            spawnPlayer();
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  // Fall death
+  if (player.y > H + 50) {
+    killPlayer();
+  }
+
+  // Pick up dropped items
+  for (let i = droppedItems.length - 1; i >= 0; i--) {
+    const d = droppedItems[i];
+    if (d.level !== currentLevel) continue;
+    if (Math.abs(player.x - d.x) < 24 && Math.abs(player.y - d.y) < 24 && !player.item) {
+      player.item = d.item;
+      droppedItems.splice(i, 1);
+    }
+  }
+
+  // Dropped item effects (springs bounce, bridges already placed)
+  for (let d of droppedItems) {
+    if (d.level !== currentLevel) continue;
+    if (d.item.name === 'Spring' && Math.abs(player.x - d.x) < 20 && Math.abs(player.y + player.h - d.y) < 12 && player.vy >= 0) {
+      player.vy = -11;
+    }
+  }
+
+  updateParticles();
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.15;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  const map = levels[currentLevel];
+
+  // Draw tiles
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const tile = map[r][c];
+      const x = c * TILE, y = r * TILE;
+
+      if (tile === 1) {
+        ctx.fillStyle = '#2a2a4a';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = '#3b3b5c';
+        ctx.strokeRect(x, y, TILE, TILE);
+      } else if (tile === 2) {
+        // Spikes
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.moveTo(x + 4, y + TILE);
+        ctx.lineTo(x + TILE / 2, y + 6);
+        ctx.lineTo(x + TILE - 4, y + TILE);
+        ctx.fill();
+      } else if (tile === 4) {
+        // Locked door
+        ctx.fillStyle = '#92400e';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(x + 12, y + 14, 8, 6);
+      } else if (tile === 5) {
+        // Exit
+        ctx.fillStyle = '#4ade80';
+        ctx.fillRect(x + 4, y + 4, TILE - 8, TILE - 8);
+        ctx.fillStyle = '#22c55e';
+        ctx.font = '16px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('EXIT', x + TILE / 2, y + TILE / 2 + 5);
+      } else if (tile === 6) {
+        // Breakable wall
+        ctx.fillStyle = '#4a3728';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = '#6b4c32';
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(x + 2, y + 2, TILE - 4, TILE - 4);
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Dropped items
+  for (let d of droppedItems) {
+    if (d.level !== currentLevel) continue;
+    ctx.fillStyle = d.item.color;
+    ctx.beginPath();
+    ctx.arc(d.x + 10, d.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = '8px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.item.name[0], d.x + 10, d.y + 3);
+  }
+
+  // Player
+  if (!player.dead) {
+    // Body
+    ctx.fillStyle = player.shielded ? '#60a5fa' : '#a78bfa';
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(player.x + 4, player.y + 6, 5, 5);
+    ctx.fillRect(player.x + 12, player.y + 6, 5, 5);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(player.x + 6, player.y + 8, 2, 2);
+    ctx.fillRect(player.x + 14, player.y + 8, 2, 2);
+
+    // Shield glow
+    if (player.shielded) {
+      ctx.strokeStyle = 'rgba(96, 165, 250, 0.5)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(player.x + player.w / 2, player.y + player.h / 2, 20, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Item indicator
+    if (player.item) {
+      ctx.fillStyle = player.item.color;
+      ctx.beginPath();
+      ctx.arc(player.x + player.w / 2, player.y - 10, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Particles
+  for (let p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 50;
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+
+  // Touch zones hint
+  ctx.fillStyle = 'rgba(167, 139, 250, 0.05)';
+  ctx.fillRect(0, 0, W, H * 0.3);
+  ctx.fillRect(0, H * 0.7, W, H * 0.3);
+
+  // Level indicator
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '14px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Level ${currentLevel + 1}/${levels.length}`, 10, 20);
+
+  // Overlay states
+  if (gameState === 'gameover') {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 32px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('All Lives Lost', W / 2, H / 2 - 20);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '18px system-ui';
+    ctx.fillText(`Reached Level ${currentLevel + 1}`, W / 2, H / 2 + 15);
+    ctx.fillText('Tap to restart', W / 2, H / 2 + 45);
+  }
+
+  if (gameState === 'win') {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 32px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Victory!', W / 2, H / 2 - 30);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '20px system-ui';
+    ctx.fillText(`${lives} lives remaining`, W / 2, H / 2 + 10);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '16px system-ui';
+    ctx.fillText('Tap to play again', W / 2, H / 2 + 45);
+  }
+
+  // Update UI
+  document.getElementById('livesInfo').textContent = `Lives: ${lives} | Level: ${currentLevel + 1}`;
+  document.getElementById('itemInfo').textContent = `Item: ${player.item ? player.item.name : 'None'}`;
+}
+
+function restartGame() {
+  currentLevel = 0;
+  lives = 7;
+  droppedItems = [];
+  particles = [];
+  gameState = 'play';
+  generateLevels();
+  spawnPlayer();
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+generateLevels();
+spawnPlayer();
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

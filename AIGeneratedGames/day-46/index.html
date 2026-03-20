@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 46 – Elfazar's Hat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    #ui { color: #e0e0ff; font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; gap: 1rem; }
+    canvas {
+      border: 2px solid #3b3b5c;
+      border-radius: 8px;
+      background: #1e1e2e;
+      max-width: 480px;
+      width: 100%;
+    }
+    #msg {
+      margin-top: 0.5rem;
+      color: #a78bfa;
+      font-size: 0.9rem;
+      min-height: 1.5em;
+      text-align: center;
+    }
+    button {
+      margin-top: 0.5rem;
+      padding: 0.5rem 1.5rem;
+      background: #a78bfa;
+      color: #0f0f1a;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: none;
+    }
+</style>
+</head>
+<body>
+  <h1>Elfazar's Hat</h1>
+  <p class="subtitle">Tap to flip gravity. Collect stars. Reach the hat!</p>
+  <div id="ui">
+    <span id="levelInfo">Level 1</span>
+    <span id="starInfo">Stars: 0/0</span>
+    <span id="deathInfo">Deaths: 0</span>
+  </div>
+  <canvas id="c"></canvas>
+  <div id="msg">Tap anywhere to flip gravity</div>
+  <button id="restartBtn" onclick="initGame()">Play Again</button>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const msgEl = document.getElementById('msg');
+const restartBtn = document.getElementById('restartBtn');
+const levelInfoEl = document.getElementById('levelInfo');
+const starInfoEl = document.getElementById('starInfo');
+const deathInfoEl = document.getElementById('deathInfo');
+
+const W = 480, H = 480;
+canvas.width = W; canvas.height = H;
+
+const TILE = 32;
+const COLS = W / TILE; // 15
+const ROWS = H / TILE; // 15
+const GRAVITY = 0.4;
+const SPEED = 2;
+const JUMP_TOLERANCE = 4;
+
+// Level data: # = wall, ^ = spike_up, v = spike_down, * = star, H = hat, P = player start
+const LEVELS = [
+  // Level 1 - Simple intro
+  [
+    '###############',
+    '#.............#',
+    '#.............#',
+    '#.............#',
+    '#.....*.......#',
+    '#...####......#',
+    '#.............#',
+    '#.......*..H..#',
+    '#......####.###',
+    '#.............#',
+    '#...*..^......#',
+    '#..####.......#',
+    '#.............#',
+    '#P............#',
+    '###############',
+  ],
+  // Level 2 - More spikes
+  [
+    '###############',
+    '#.............#',
+    '#..vvv........#',
+    '#.............#',
+    '#....*..####..#',
+    '#...####......#',
+    '#.............#',
+    '#.......*.....#',
+    '#.....####..H.#',
+    '#...........###',
+    '#..^^^........#',
+    '#.............#',
+    '#...*..####...#',
+    '#P............#',
+    '###############',
+  ],
+  // Level 3 - Tight corridors
+  [
+    '###############',
+    '#.....#.......#',
+    '#..*..#...vv..#',
+    '#.....#.......#',
+    '#.....#...*...#',
+    '####..####..###',
+    '#.............#',
+    '#....^^.......#',
+    '#.............#',
+    '###..####..####',
+    '#...*...#.....#',
+    '#.......#..H..#',
+    '#..vv...#..####',
+    '#P............#',
+    '###############',
+  ],
+  // Level 4 - Zigzag
+  [
+    '###############',
+    '#.............#',
+    '#..^^^..*.....#',
+    '#.........####.#',
+    '#.####........#',
+    '#..........*..#',
+    '#...vvv.......#',
+    '#.............#',
+    '#.......^^^...#',
+    '#..####.......#',
+    '#........*....#',
+    '#...vvv..####.#',
+    '#..........H..#',
+    '#P..........###',
+    '###############',
+  ],
+  // Level 5 - Final challenge
+  [
+    '###############',
+    '#.............#',
+    '#.^^..vv..^^..#',
+    '#.............#',
+    '#..*.####..*..#',
+    '####......####',
+    '#......*.....#',
+    '#..^^...vv...#',
+    '#............#',
+    '####......####',
+    '#..*.####..*..#',
+    '#.............#',
+    '#.vv..^^..vv..#',
+    '#P.........H..#',
+    '###############',
+  ]
+];
+
+let level, player, gravityDir, stars, starsTotal, starsCollected;
+let deaths, tiles, gameState, hatPos;
+let levelTransition, transitionTimer;
+
+function parseLevel(idx) {
+  const data = LEVELS[idx];
+  tiles = [];
+  stars = [];
+  hatPos = null;
+  let startPos = null;
+
+  for (let r = 0; r < ROWS; r++) {
+    tiles[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      const ch = data[r] ? data[r][c] || '.' : '.';
+      tiles[r][c] = ch;
+      if (ch === 'P') { startPos = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 }; tiles[r][c] = '.'; }
+      if (ch === '*') { stars.push({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2, collected: false }); tiles[r][c] = '.'; }
+      if (ch === 'H') { hatPos = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 }; tiles[r][c] = '.'; }
+    }
+  }
+
+  starsTotal = stars.length;
+  starsCollected = 0;
+  return startPos;
+}
+
+function initLevel(idx) {
+  level = idx;
+  gravityDir = 1; // 1 = down, -1 = up
+  const start = parseLevel(idx);
+  player = { x: start.x, y: start.y, vx: SPEED, vy: 0, w: 20, h: 24 };
+  gameState = 'playing';
+  levelTransition = false;
+  levelInfoEl.textContent = `Level ${level + 1}/${LEVELS.length}`;
+  updateStarInfo();
+  msgEl.textContent = 'Tap to flip gravity';
+}
+
+function initGame() {
+  restartBtn.style.display = 'none';
+  deaths = 0;
+  deathInfoEl.textContent = 'Deaths: 0';
+  initLevel(0);
+  requestAnimationFrame(gameLoop);
+}
+
+function updateStarInfo() {
+  starInfoEl.textContent = `Stars: ${starsCollected}/${starsTotal}`;
+}
+
+function tileAt(col, row) {
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return '#';
+  return tiles[row][col];
+}
+
+function isSolid(col, row) {
+  return tileAt(col, row) === '#';
+}
+
+function isSpike(col, row) {
+  const t = tileAt(col, row);
+  return t === '^' || t === 'v';
+}
+
+function collides(x, y, w, h) {
+  const left = Math.floor((x - w / 2) / TILE);
+  const right = Math.floor((x + w / 2 - 1) / TILE);
+  const top = Math.floor((y - h / 2) / TILE);
+  const bottom = Math.floor((y + h / 2 - 1) / TILE);
+  for (let r = top; r <= bottom; r++) {
+    for (let c = left; c <= right; c++) {
+      if (isSolid(c, r)) return true;
+    }
+  }
+  return false;
+}
+
+function hitsSpike(x, y, w, h) {
+  const left = Math.floor((x - w / 2) / TILE);
+  const right = Math.floor((x + w / 2 - 1) / TILE);
+  const top = Math.floor((y - h / 2) / TILE);
+  const bottom = Math.floor((y + h / 2 - 1) / TILE);
+  for (let r = top; r <= bottom; r++) {
+    for (let c = left; c <= right; c++) {
+      if (isSpike(c, r)) return true;
+    }
+  }
+  return false;
+}
+
+function update() {
+  if (gameState !== 'playing') return;
+
+  // Gravity
+  player.vy += GRAVITY * gravityDir;
+  if (player.vy > 10) player.vy = 10;
+  if (player.vy < -10) player.vy = -10;
+
+  // Auto-walk
+  player.vx = SPEED;
+
+  // Move X
+  const newX = player.x + player.vx;
+  if (!collides(newX, player.y, player.w, player.h)) {
+    player.x = newX;
+  } else {
+    // Hit wall, reverse direction
+    player.vx = -player.vx;
+    SPEED_DIR = -SPEED_DIR;
+    player.x += player.vx;
+    if (collides(player.x, player.y, player.w, player.h)) {
+      // stuck, just nudge
+      player.x -= player.vx;
+    }
+  }
+
+  // Move Y
+  const newY = player.y + player.vy;
+  if (!collides(player.x, newY, player.w, player.h)) {
+    player.y = newY;
+  } else {
+    // Land
+    if (player.vy > 0) {
+      player.y = Math.floor((player.y + player.h / 2) / TILE) * TILE - player.h / 2;
+    } else {
+      player.y = Math.ceil((player.y - player.h / 2) / TILE) * TILE + player.h / 2;
+    }
+    player.vy = 0;
+  }
+
+  // Spikes
+  if (hitsSpike(player.x, player.y, player.w, player.h)) {
+    die();
+    return;
+  }
+
+  // Stars
+  for (const s of stars) {
+    if (s.collected) continue;
+    const dx = player.x - s.x, dy = player.y - s.y;
+    if (Math.abs(dx) < 20 && Math.abs(dy) < 20) {
+      s.collected = true;
+      starsCollected++;
+      updateStarInfo();
+    }
+  }
+
+  // Hat (goal)
+  if (hatPos) {
+    const dx = player.x - hatPos.x, dy = player.y - hatPos.y;
+    if (Math.abs(dx) < 20 && Math.abs(dy) < 20) {
+      winLevel();
+    }
+  }
+}
+
+let SPEED_DIR = 1;
+
+function die() {
+  deaths++;
+  deathInfoEl.textContent = `Deaths: ${deaths}`;
+  // Reset level
+  initLevel(level);
+}
+
+function winLevel() {
+  if (level < LEVELS.length - 1) {
+    msgEl.textContent = `Level ${level + 1} complete!`;
+    SPEED_DIR = 1;
+    setTimeout(() => initLevel(level + 1), 800);
+    gameState = 'transition';
+  } else {
+    gameState = 'won';
+    msgEl.textContent = `You collected Elfazar's Hat! Deaths: ${deaths}`;
+    restartBtn.style.display = 'inline-block';
+  }
+}
+
+function flipGravity() {
+  if (gameState !== 'playing') return;
+  gravityDir *= -1;
+}
+
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); flipGravity(); }, { passive: false });
+canvas.addEventListener('mousedown', () => flipGravity());
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw tiles
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const t = tiles[r][c];
+      const x = c * TILE, y = r * TILE;
+      if (t === '#') {
+        ctx.fillStyle = '#2a2a3e';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = '#3b3b5c';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x, y, TILE, TILE);
+      } else if (t === '^') {
+        // Spike pointing up
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath();
+        ctx.moveTo(x + TILE / 2, y + 4);
+        ctx.lineTo(x + 4, y + TILE - 2);
+        ctx.lineTo(x + TILE - 4, y + TILE - 2);
+        ctx.closePath();
+        ctx.fill();
+      } else if (t === 'v') {
+        // Spike pointing down
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath();
+        ctx.moveTo(x + TILE / 2, y + TILE - 4);
+        ctx.lineTo(x + 4, y + 2);
+        ctx.lineTo(x + TILE - 4, y + 2);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  // Stars
+  for (const s of stars) {
+    if (s.collected) continue;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.fillStyle = '#fbbf24';
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur = 10;
+    drawStar(0, 0, 5, 10, 5);
+    ctx.restore();
+  }
+
+  // Hat (goal)
+  if (hatPos) {
+    ctx.save();
+    ctx.translate(hatPos.x, hatPos.y);
+    ctx.shadowColor = '#a78bfa';
+    ctx.shadowBlur = 15;
+    // Wizard hat shape
+    ctx.fillStyle = '#7c3aed';
+    ctx.beginPath();
+    ctx.moveTo(0, -16);
+    ctx.lineTo(-14, 8);
+    ctx.lineTo(14, 8);
+    ctx.closePath();
+    ctx.fill();
+    // Brim
+    ctx.fillStyle = '#6d28d9';
+    ctx.fillRect(-18, 6, 36, 6);
+    // Star on hat
+    ctx.fillStyle = '#fbbf24';
+    drawStar(0, -4, 5, 5, 2.5);
+    ctx.restore();
+  }
+
+  // Player
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  if (gravityDir === -1) ctx.scale(1, -1);
+  // Body
+  ctx.fillStyle = '#818cf8';
+  ctx.fillRect(-player.w / 2, -player.h / 2, player.w, player.h);
+  // Eyes
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-6, -player.h / 2 + 4, 5, 6);
+  ctx.fillRect(2, -player.h / 2 + 4, 5, 6);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(SPEED_DIR > 0 ? -4 : -6, -player.h / 2 + 6, 3, 3);
+  ctx.fillRect(SPEED_DIR > 0 ? 4 : 2, -player.h / 2 + 6, 3, 3);
+  // Feet
+  ctx.fillStyle = '#6366f1';
+  ctx.fillRect(-player.w / 2, player.h / 2 - 4, 8, 4);
+  ctx.fillRect(player.w / 2 - 8, player.h / 2 - 4, 8, 4);
+  ctx.restore();
+
+  // Gravity indicator
+  ctx.fillStyle = 'rgba(167,139,250,0.3)';
+  ctx.font = '20px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(gravityDir === 1 ? '↓' : '↑', W - 10, 25);
+
+  // Win overlay
+  if (gameState === 'won') {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 32px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('YOU WIN!', W / 2, H / 2 - 20);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '16px system-ui';
+    ctx.fillText(`Deaths: ${deaths}`, W / 2, H / 2 + 15);
+  }
+
+  if (gameState === 'transition') {
+    ctx.fillStyle = 'rgba(167,139,250,0.2)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Level Complete!', W / 2, H / 2);
+  }
+}
+
+function drawStar(cx, cy, spikes, outerR, innerR) {
+  let rot = -Math.PI / 2;
+  ctx.beginPath();
+  for (let i = 0; i < spikes; i++) {
+    ctx.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+    rot += Math.PI / spikes;
+    ctx.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+    rot += Math.PI / spikes;
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+let lastTime = 0;
+function gameLoop(time) {
+  if (time - lastTime > 16) {
+    update();
+    draw();
+    lastTime = time;
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+initGame();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

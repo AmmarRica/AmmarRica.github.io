@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 30 – Divers</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    .sub { color: #9ca3af; font-size: 0.85rem; margin-bottom: 0.5rem; }
+    canvas {
+      border: 1px solid #3b3b5c;
+      border-radius: 8px;
+      max-width: 480px;
+      width: 100%;
+      touch-action: none;
+    }
+    #ui { color: #9ca3af; font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Divers</h1>
+  <p class="sub">Dive deep, collect pearls, avoid jellyfish!</p>
+  <canvas id="game" width="480" height="640"></canvas>
+  <div id="ui"></div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+
+const W = 480, H = 640;
+function resize() {
+  const s = Math.min(window.innerWidth / W, (window.innerHeight - 120) / H, 1);
+  canvas.style.width = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const STATE = { MENU: 0, PLAY: 1, OVER: 2, WIN: 3 };
+let state = STATE.MENU;
+
+// World is taller than screen - camera scrolls
+const WORLD_H = 3000;
+const SURFACE_Y = 100;
+
+let diver = { x: W / 2, y: SURFACE_Y + 20, vx: 0, vy: 0, air: 100, maxAir: 100, pearls: 0, targetPearls: 15, depth: 0 };
+let camera = { y: 0 };
+let pearls = [];
+let jellyfish = [];
+let bubbles = [];
+let particles = [];
+let touchDown = false;
+let touchX = 0, touchY = 0;
+let holdTime = 0;
+let score = 0;
+let level = 1;
+let highScore = 0;
+let time = 0;
+let hitCooldown = 0;
+let depthZones = [];
+
+function initLevel() {
+  diver.x = W / 2;
+  diver.y = SURFACE_Y + 20;
+  diver.vx = 0;
+  diver.vy = 0;
+  diver.air = diver.maxAir;
+  diver.pearls = 0;
+  diver.targetPearls = 10 + level * 5;
+  camera.y = 0;
+  pearls = [];
+  jellyfish = [];
+  bubbles = [];
+  particles = [];
+  hitCooldown = 0;
+
+  // Generate pearls at various depths
+  const maxDepth = 800 + level * 400;
+  for (let i = 0; i < diver.targetPearls + 10; i++) {
+    pearls.push({
+      x: 40 + Math.random() * (W - 80),
+      y: SURFACE_Y + 100 + Math.random() * maxDepth,
+      collected: false,
+      size: 6 + Math.random() * 4,
+      shimmer: Math.random() * Math.PI * 2,
+      value: 1 + Math.floor(Math.random() * 3)
+    });
+  }
+
+  // Sort by depth, bigger pearls deeper
+  pearls.sort((a, b) => a.y - b.y);
+  pearls.forEach((p, i) => {
+    p.value = 1 + Math.floor(i / (pearls.length / 3));
+  });
+
+  // Generate jellyfish
+  const numJelly = 5 + level * 3;
+  for (let i = 0; i < numJelly; i++) {
+    jellyfish.push({
+      x: 40 + Math.random() * (W - 80),
+      y: SURFACE_Y + 150 + Math.random() * maxDepth,
+      vx: (Math.random() - 0.5) * 30,
+      phase: Math.random() * Math.PI * 2,
+      size: 15 + Math.random() * 10
+    });
+  }
+
+  // Depth zones for color
+  depthZones = [
+    { start: 0, end: 400, color1: '#1a3a5c', color2: '#0d2840' },
+    { start: 400, end: 900, color1: '#0d2840', color2: '#091a30' },
+    { start: 900, end: 1500, color1: '#091a30', color2: '#050e1a' },
+    { start: 1500, end: 3000, color1: '#050e1a', color2: '#020508' }
+  ];
+}
+
+function initGame() {
+  score = 0;
+  level = 1;
+  initLevel();
+}
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = W / rect.width, sy = H / rect.height;
+  const t = e.touches ? e.touches[0] : e;
+  return { x: (t.clientX - rect.left) * sx, y: (t.clientY - rect.top) * sy };
+}
+
+canvas.addEventListener('touchstart', onDown, { passive: false });
+canvas.addEventListener('touchmove', onMove, { passive: false });
+canvas.addEventListener('touchend', onUp, { passive: false });
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup', onUp);
+
+function onDown(e) {
+  e.preventDefault();
+  if (state === STATE.MENU) { state = STATE.PLAY; initGame(); return; }
+  if (state === STATE.OVER || state === STATE.WIN) { state = STATE.MENU; return; }
+  const pos = getCanvasPos(e);
+  touchDown = true;
+  touchX = pos.x;
+  touchY = pos.y;
+  holdTime = 0;
+}
+
+function onMove(e) {
+  e.preventDefault();
+  if (!touchDown) return;
+  const pos = getCanvasPos(e);
+  touchX = pos.x;
+  touchY = pos.y;
+}
+
+function onUp(e) {
+  e.preventDefault();
+  touchDown = false;
+}
+
+function spawnBubble(x, y) {
+  bubbles.push({ x: x + (Math.random() - 0.5) * 10, y, vy: -20 - Math.random() * 30, life: 1 + Math.random(), size: 2 + Math.random() * 3 });
+}
+
+function update(dt) {
+  if (state !== STATE.PLAY) return;
+  time += dt;
+
+  // Diver physics
+  const swimForce = 200;
+  const gravity = 15; // slight sinking
+  const drag = 0.96;
+
+  if (touchDown) {
+    holdTime += dt;
+    // Swim toward touch point (in world coords)
+    const worldTouchY = touchY + camera.y;
+    const dx = touchX - diver.x;
+    const dy = worldTouchY - diver.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 5) {
+      diver.vx += (dx / dist) * swimForce * dt;
+      diver.vy += (dy / dist) * swimForce * dt;
+    }
+    // Holding = dive bonus
+    if (holdTime > 0.3) {
+      diver.vy += 40 * dt;
+    }
+    // Bubbles when moving
+    if (Math.random() < 0.3) spawnBubble(diver.x, diver.y);
+  }
+
+  diver.vy += gravity * dt;
+  diver.vx *= drag;
+  diver.vy *= drag;
+
+  // Speed limit
+  const speed = Math.sqrt(diver.vx ** 2 + diver.vy ** 2);
+  const maxSpeed = 180;
+  if (speed > maxSpeed) {
+    diver.vx *= maxSpeed / speed;
+    diver.vy *= maxSpeed / speed;
+  }
+
+  diver.x += diver.vx * dt;
+  diver.y += diver.vy * dt;
+
+  // Boundaries
+  diver.x = Math.max(15, Math.min(W - 15, diver.x));
+  if (diver.y < SURFACE_Y) {
+    diver.y = SURFACE_Y;
+    diver.vy = Math.abs(diver.vy) * 0.3;
+    // At surface: refill air
+    diver.air = Math.min(diver.maxAir, diver.air + 60 * dt);
+  }
+  if (diver.y > WORLD_H - 20) {
+    diver.y = WORLD_H - 20;
+    diver.vy = 0;
+  }
+
+  // Air depletes underwater
+  diver.depth = Math.max(0, diver.y - SURFACE_Y);
+  if (diver.depth > 20) {
+    const depthFactor = 1 + diver.depth / 1500;
+    diver.air -= (8 + level * 1.5) * depthFactor * dt;
+  }
+
+  if (diver.air <= 0) {
+    diver.air = 0;
+    state = STATE.OVER;
+    highScore = Math.max(highScore, score);
+    return;
+  }
+
+  // Collect pearls
+  pearls.forEach(p => {
+    if (p.collected) return;
+    const d = Math.sqrt((diver.x - p.x) ** 2 + (diver.y - p.y) ** 2);
+    if (d < 20 + p.size) {
+      p.collected = true;
+      diver.pearls++;
+      score += p.value * 10;
+      for (let i = 0; i < 6; i++) {
+        particles.push({
+          x: p.x, y: p.y,
+          vx: (Math.random() - 0.5) * 60,
+          vy: (Math.random() - 0.5) * 60,
+          life: 0.5, color: '#ffd700', size: 3
+        });
+      }
+    }
+  });
+
+  // Check level complete
+  if (diver.pearls >= diver.targetPearls && diver.y <= SURFACE_Y + 30) {
+    level++;
+    if (level > 5) {
+      state = STATE.WIN;
+      highScore = Math.max(highScore, score);
+    } else {
+      score += Math.floor(diver.air) * 5;
+      initLevel();
+    }
+    return;
+  }
+
+  // Jellyfish movement and collision
+  hitCooldown = Math.max(0, hitCooldown - dt);
+  jellyfish.forEach(j => {
+    j.x += j.vx * dt;
+    j.phase += dt * 2;
+    j.y += Math.sin(j.phase) * 0.5;
+    if (j.x < 20 || j.x > W - 20) j.vx *= -1;
+
+    if (hitCooldown <= 0) {
+      const d = Math.sqrt((diver.x - j.x) ** 2 + (diver.y - j.y) ** 2);
+      if (d < 20 + j.size * 0.7) {
+        diver.air -= 20;
+        hitCooldown = 1.0;
+        diver.vx += (diver.x - j.x) * 3;
+        diver.vy += (diver.y - j.y) * 3;
+        for (let i = 0; i < 10; i++) {
+          particles.push({
+            x: diver.x, y: diver.y,
+            vx: (Math.random() - 0.5) * 80,
+            vy: (Math.random() - 0.5) * 80,
+            life: 0.4, color: '#ff6090', size: 3
+          });
+        }
+      }
+    }
+  });
+
+  // Update bubbles
+  bubbles.forEach(b => {
+    b.y += b.vy * dt;
+    b.x += Math.sin(time * 3 + b.x) * 0.3;
+    b.life -= dt;
+  });
+  bubbles = bubbles.filter(b => b.life > 0 && b.y > SURFACE_Y - 20);
+
+  // Update particles
+  particles.forEach(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  // Camera follows diver
+  const targetCam = diver.y - H * 0.35;
+  camera.y += (targetCam - camera.y) * 3 * dt;
+  camera.y = Math.max(0, camera.y);
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === STATE.MENU) { drawMenu(); return; }
+  if (state === STATE.OVER) { drawOver(); return; }
+  if (state === STATE.WIN) { drawWin(); return; }
+
+  const cy = camera.y;
+
+  // Draw water background gradient
+  const surfScreen = SURFACE_Y - cy;
+  // Sky
+  if (surfScreen > 0) {
+    ctx.fillStyle = '#1a1a3e';
+    ctx.fillRect(0, 0, W, surfScreen);
+  }
+
+  // Water zones
+  depthZones.forEach(z => {
+    const y1 = SURFACE_Y + z.start - cy;
+    const y2 = SURFACE_Y + z.end - cy;
+    if (y2 < 0 || y1 > H) return;
+    const grad = ctx.createLinearGradient(0, y1, 0, y2);
+    grad.addColorStop(0, z.color1);
+    grad.addColorStop(1, z.color2);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, Math.max(0, y1), W, y2 - Math.max(0, y1));
+  });
+
+  // Surface wave
+  ctx.strokeStyle = 'rgba(100,180,255,0.5)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let x = 0; x < W; x += 5) {
+    const wy = surfScreen + Math.sin(x * 0.02 + time * 2) * 3;
+    x === 0 ? ctx.moveTo(x, wy) : ctx.lineTo(x, wy);
+  }
+  ctx.stroke();
+
+  // Light rays
+  ctx.save();
+  ctx.globalAlpha = 0.05;
+  for (let i = 0; i < 5; i++) {
+    const rx = 80 + i * 90 + Math.sin(time * 0.5 + i) * 20;
+    ctx.fillStyle = '#88ccff';
+    ctx.beginPath();
+    ctx.moveTo(rx - 10, surfScreen);
+    ctx.lineTo(rx + 30, surfScreen);
+    ctx.lineTo(rx + 60, surfScreen + 500);
+    ctx.lineTo(rx - 40, surfScreen + 500);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Draw pearls
+  pearls.forEach(p => {
+    if (p.collected) return;
+    const sy = p.y - cy;
+    if (sy < -20 || sy > H + 20) return;
+    p.shimmer += 0.03;
+    const glow = 0.5 + Math.sin(p.shimmer) * 0.3;
+    ctx.globalAlpha = glow + 0.3;
+    ctx.fillStyle = p.value >= 3 ? '#ff88cc' : p.value >= 2 ? '#ffd700' : '#e0e0ff';
+    ctx.beginPath();
+    ctx.arc(p.x, sy, p.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(p.x - p.size * 0.25, sy - p.size * 0.25, p.size * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+
+  // Draw jellyfish
+  jellyfish.forEach(j => {
+    const sy = j.y - cy;
+    if (sy < -40 || sy > H + 40) return;
+    const bob = Math.sin(j.phase) * 3;
+
+    // Body (dome)
+    ctx.fillStyle = 'rgba(255,100,180,0.6)';
+    ctx.beginPath();
+    ctx.ellipse(j.x, sy + bob, j.size, j.size * 0.7, 0, Math.PI, 0);
+    ctx.fill();
+
+    // Tentacles
+    ctx.strokeStyle = 'rgba(255,100,180,0.4)';
+    ctx.lineWidth = 1.5;
+    for (let t = 0; t < 5; t++) {
+      const tx = j.x - j.size * 0.6 + t * (j.size * 0.3);
+      ctx.beginPath();
+      ctx.moveTo(tx, sy + bob);
+      for (let s = 0; s < 4; s++) {
+        const soff = Math.sin(time * 3 + t + s * 0.5) * 4;
+        ctx.lineTo(tx + soff, sy + bob + 5 + s * 6);
+      }
+      ctx.stroke();
+    }
+
+    // Glow
+    ctx.fillStyle = 'rgba(255,150,200,0.3)';
+    ctx.beginPath();
+    ctx.arc(j.x, sy + bob - 3, j.size * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Draw bubbles
+  bubbles.forEach(b => {
+    const sy = b.y - cy;
+    if (sy < -10 || sy > H + 10) return;
+    ctx.globalAlpha = b.life * 0.5;
+    ctx.strokeStyle = 'rgba(150,200,255,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(b.x, sy, b.size, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  // Draw particles
+  particles.forEach(p => {
+    const sy = p.y - cy;
+    ctx.globalAlpha = p.life * 2;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, sy - p.size / 2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+
+  // Draw diver
+  const dx = diver.x, dy = diver.y - cy;
+  const flash = hitCooldown > 0 && Math.sin(hitCooldown * 20) > 0;
+  if (!flash) {
+    // Body
+    ctx.fillStyle = '#a78bfa';
+    ctx.beginPath();
+    ctx.ellipse(dx, dy, 10, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Mask
+    ctx.fillStyle = '#4a3a8a';
+    ctx.beginPath();
+    ctx.ellipse(dx, dy - 4, 8, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Visor
+    ctx.fillStyle = '#88ccff';
+    ctx.beginPath();
+    ctx.ellipse(dx, dy - 4, 5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Flippers
+    ctx.fillStyle = '#7c3aed';
+    const fkick = Math.sin(time * 8) * 5;
+    ctx.beginPath();
+    ctx.ellipse(dx - 4, dy + 16 + fkick, 4, 8, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(dx + 4, dy + 16 - fkick, 4, 8, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Direction indicator when touching
+  if (touchDown) {
+    ctx.globalAlpha = 0.3;
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(dx, dy);
+    ctx.lineTo(touchX, touchY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
+  // HUD
+  // Air bar
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(10, 10, 160, 20);
+  const airFrac = diver.air / diver.maxAir;
+  const airColor = airFrac > 0.5 ? '#4488ff' : airFrac > 0.25 ? '#ffaa00' : '#ff4444';
+  ctx.fillStyle = airColor;
+  ctx.fillRect(12, 12, 156 * airFrac, 16);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`AIR: ${Math.floor(diver.air)}%`, 16, 25);
+
+  // Score & pearls
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 16px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Score: ${score}`, W - 10, 25);
+
+  ctx.fillStyle = '#ffd700';
+  ctx.font = '14px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Pearls: ${diver.pearls}/${diver.targetPearls}`, W / 2, 25);
+
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '12px system-ui';
+  ctx.fillText(`Depth: ${Math.floor(diver.depth / 10)}m  |  Level ${level}/5`, W / 2, 45);
+
+  // Return to surface indicator
+  if (diver.pearls >= diver.targetPearls) {
+    ctx.fillStyle = '#44ff88';
+    ctx.font = 'bold 16px system-ui';
+    ctx.textAlign = 'center';
+    const blink = Math.sin(time * 4) > 0;
+    if (blink) ctx.fillText('Return to surface!', W / 2, 70);
+  }
+
+  ui.textContent = 'Tap to swim. Hold to dive deeper. Return to surface to breathe!';
+}
+
+function drawMenu() {
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('DIVERS', W / 2, H / 2 - 80);
+
+  // Animated water
+  ctx.fillStyle = '#1a3a5c';
+  ctx.fillRect(0, H / 2 + 50, W, H / 2 - 50);
+  ctx.strokeStyle = 'rgba(100,180,255,0.4)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const t = Date.now() / 1000;
+  for (let x = 0; x < W; x += 4) {
+    const wy = H / 2 + 50 + Math.sin(x * 0.02 + t * 2) * 4;
+    x === 0 ? ctx.moveTo(x, wy) : ctx.lineTo(x, wy);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Dive deep to collect pearls.', W / 2, H / 2 - 30);
+  ctx.fillText('Avoid jellyfish!', W / 2, H / 2 - 5);
+  ctx.fillText('Return to surface to breathe.', W / 2, H / 2 + 20);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 20px system-ui';
+  ctx.fillText('Tap to Dive', W / 2, H / 2 + 80);
+
+  if (highScore > 0) {
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText(`High Score: ${highScore}`, W / 2, H / 2 + 120);
+  }
+}
+
+function drawOver() {
+  ctx.fillStyle = '#ff4040';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('OUT OF AIR!', W / 2, H / 2 - 40);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px system-ui';
+  ctx.fillText(`Score: ${score}`, W / 2, H / 2 + 10);
+  ctx.fillText(`Pearls: ${diver.pearls}`, W / 2, H / 2 + 40);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap to try again', W / 2, H / 2 + 90);
+}
+
+function drawWin() {
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 36px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('MASTER DIVER!', W / 2, H / 2 - 40);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px system-ui';
+  ctx.fillText(`Final Score: ${score}`, W / 2, H / 2 + 10);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Tap to play again', W / 2, H / 2 + 60);
+}
+
+let lastT = performance.now();
+function gameLoop(ts) {
+  const dt = Math.min((ts - lastT) / 1000, 0.05);
+  lastT = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 49 – Combatants</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 1rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.8rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 1rem; font-size: 0.9rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; max-width: 480px; width: 100%; }
+    #ui { max-width: 480px; width: 100%; margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
+    button {
+      background: #a78bfa; color: #0f0f1a; border: none; border-radius: 6px;
+      padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: 0.4; }
+    #info { color: #9ca3af; font-size: 0.85rem; text-align: center; margin-top: 0.5rem; max-width: 480px; }
+</style>
+</head>
+<body>
+  <h1>Combatants</h1>
+  <p class="subtitle">Day 49 – Auto-Battler</p>
+  <canvas id="gc"></canvas>
+  <div id="ui">
+    <button id="btnBuy">Buy Unit (5g)</button>
+    <button id="btnUpgrade">Upgrade (8g)</button>
+    <button id="btnFight">FIGHT!</button>
+  </div>
+  <div id="info">Drag units to position them. Buy and upgrade units, then fight!</div>
+
+<script>
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = 480, H = 480;
+canvas.width = W; canvas.height = H;
+
+const COLS = 6, ROWS = 6;
+const CELL = W / COLS;
+const PLAYER_ROWS = [3,4,5]; // bottom 3 rows for player
+const ENEMY_ROWS = [0,1,2];
+
+const UNIT_TYPES = [
+  { name: 'Warrior', hp: 30, atk: 8, spd: 1.0, range: 1, color: '#60a5fa', shape: 'square' },
+  { name: 'Archer', hp: 18, atk: 12, spd: 0.8, range: 3, color: '#34d399', shape: 'triangle' },
+  { name: 'Tank', hp: 55, atk: 5, spd: 0.5, range: 1, color: '#f59e0b', shape: 'diamond' },
+  { name: 'Mage', hp: 15, atk: 18, spd: 0.6, range: 4, color: '#c084fc', shape: 'circle' },
+  { name: 'Healer', hp: 20, atk: 3, spd: 0.7, range: 2, color: '#fb7185', shape: 'cross' },
+];
+
+let gold = 15;
+let round = 1;
+let phase = 'prep'; // prep, fight, result
+let playerUnits = [];
+let enemyUnits = [];
+let projectiles = [];
+let particles = [];
+let dragUnit = null;
+let dragOffX = 0, dragOffY = 0;
+let selectedUnit = null;
+let fightTimer = 0;
+let resultMsg = '';
+let resultTimer = 0;
+
+function makeUnit(type, col, row, team) {
+  const t = UNIT_TYPES[type];
+  return {
+    type, team, col, row,
+    x: col * CELL + CELL/2, y: row * CELL + CELL/2,
+    tx: col * CELL + CELL/2, ty: row * CELL + CELL/2,
+    hp: t.hp, maxHp: t.hp, atk: t.atk, spd: t.spd, range: t.range,
+    color: t.color, shape: t.shape, name: t.name,
+    cooldown: 0, maxCooldown: Math.floor(60 / t.spd),
+    level: 1, alive: true
+  };
+}
+
+function generateEnemies() {
+  enemyUnits = [];
+  const count = Math.min(2 + round, 9);
+  for (let i = 0; i < count; i++) {
+    const type = Math.floor(Math.random() * UNIT_TYPES.length);
+    const col = Math.floor(Math.random() * COLS);
+    const row = ENEMY_ROWS[Math.floor(Math.random() * ENEMY_ROWS.length)];
+    // avoid stacking
+    if (!enemyUnits.find(u => u.col === col && u.row === row)) {
+      const u = makeUnit(type, col, row, 'enemy');
+      // scale with round
+      u.hp = Math.floor(u.hp * (1 + round * 0.15));
+      u.maxHp = u.hp;
+      u.atk = Math.floor(u.atk * (1 + round * 0.1));
+      enemyUnits.push(u);
+    }
+  }
+}
+
+function dist(a, b) {
+  return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+}
+
+function startFight() {
+  if (playerUnits.length === 0) return;
+  phase = 'fight';
+  fightTimer = 0;
+  projectiles = [];
+  // reset positions
+  [...playerUnits, ...enemyUnits].forEach(u => {
+    u.alive = true;
+    u.cooldown = Math.floor(Math.random() * u.maxCooldown);
+  });
+  generateEnemies();
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4,
+      life: 30 + Math.random() * 20,
+      color, r: 2 + Math.random() * 3
+    });
+  }
+}
+
+function updateFight() {
+  fightTimer++;
+  const allUnits = [...playerUnits.filter(u=>u.alive), ...enemyUnits.filter(u=>u.alive)];
+
+  allUnits.forEach(u => {
+    u.cooldown--;
+    if (u.cooldown <= 0) {
+      const enemies = (u.team === 'player' ? enemyUnits : playerUnits).filter(e => e.alive);
+      if (enemies.length === 0) return;
+      // find nearest enemy
+      let nearest = null, nearDist = Infinity;
+      enemies.forEach(e => {
+        const d = dist(u, e);
+        if (d < nearDist) { nearDist = d; nearest = e; }
+      });
+      if (nearest && nearDist <= u.range) {
+        // attack
+        u.cooldown = u.maxCooldown;
+        if (u.range > 1) {
+          projectiles.push({
+            x: u.x, y: u.y, tx: nearest.x, ty: nearest.y,
+            color: u.color, dmg: u.atk, target: nearest, life: 20
+          });
+        } else {
+          nearest.hp -= u.atk;
+          spawnParticles(nearest.x, nearest.y, '#ff4444', 5);
+          if (nearest.hp <= 0) {
+            nearest.alive = false;
+            spawnParticles(nearest.x, nearest.y, nearest.color, 15);
+          }
+        }
+        // healer special: heal nearby ally
+        if (u.name === 'Healer') {
+          const allies = (u.team === 'player' ? playerUnits : enemyUnits).filter(a => a.alive && a !== u);
+          const hurt = allies.filter(a => a.hp < a.maxHp).sort((a,b) => (a.hp/a.maxHp) - (b.hp/b.maxHp));
+          if (hurt.length > 0) {
+            hurt[0].hp = Math.min(hurt[0].maxHp, hurt[0].hp + u.atk * 2);
+            spawnParticles(hurt[0].x, hurt[0].y, '#fb7185', 4);
+          }
+        }
+      } else if (nearest && nearDist > u.range) {
+        // move toward enemy
+        const dx = nearest.col - u.col;
+        const dy = nearest.row - u.row;
+        let nc = u.col, nr = u.row;
+        if (Math.abs(dx) >= Math.abs(dy)) nc += Math.sign(dx);
+        else nr += Math.sign(dy);
+        // check collision
+        if (!allUnits.find(o => o !== u && o.alive && o.col === nc && o.row === nr)) {
+          u.col = nc; u.row = nr;
+          u.tx = nc * CELL + CELL/2; u.ty = nr * CELL + CELL/2;
+        }
+        u.cooldown = Math.floor(u.maxCooldown * 0.5);
+      }
+    }
+    // smooth movement
+    u.x += (u.tx - u.x) * 0.15;
+    u.y += (u.ty - u.y) * 0.15;
+  });
+
+  // update projectiles
+  projectiles.forEach(p => {
+    p.x += (p.tx - p.x) * 0.25;
+    p.y += (p.ty - p.y) * 0.25;
+    p.life--;
+    if (p.life <= 0 || (Math.abs(p.x - p.tx) < 5 && Math.abs(p.y - p.ty) < 5)) {
+      p.life = 0;
+      if (p.target && p.target.alive) {
+        p.target.hp -= p.dmg;
+        spawnParticles(p.target.x, p.target.y, '#ff4444', 5);
+        if (p.target.hp <= 0) {
+          p.target.alive = false;
+          spawnParticles(p.target.x, p.target.y, p.target.color, 15);
+        }
+      }
+    }
+  });
+  projectiles = projectiles.filter(p => p.life > 0);
+
+  // update particles
+  particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; p.vy += 0.1; });
+  particles = particles.filter(p => p.life > 0);
+
+  // check win/lose
+  const pAlive = playerUnits.filter(u => u.alive).length;
+  const eAlive = enemyUnits.filter(u => u.alive).length;
+  if (eAlive === 0 && pAlive > 0) {
+    phase = 'result'; resultMsg = 'VICTORY!';
+    const reward = 5 + round * 3;
+    gold += reward;
+    resultMsg += ` +${reward}g`;
+    round++;
+    resultTimer = 120;
+    // heal surviving units
+    playerUnits.forEach(u => { if (u.alive) u.hp = u.maxHp; });
+  } else if (pAlive === 0) {
+    phase = 'result'; resultMsg = 'DEFEAT...';
+    resultTimer = 120;
+  }
+}
+
+function drawUnit(u) {
+  if (!u.alive) return;
+  const s = CELL * 0.35;
+  ctx.fillStyle = u.color;
+  ctx.globalAlpha = u.team === 'enemy' ? 0.85 : 1;
+  ctx.beginPath();
+  switch(u.shape) {
+    case 'square':
+      ctx.fillRect(u.x - s, u.y - s, s*2, s*2);
+      break;
+    case 'triangle':
+      ctx.moveTo(u.x, u.y - s); ctx.lineTo(u.x - s, u.y + s); ctx.lineTo(u.x + s, u.y + s);
+      ctx.fill(); break;
+    case 'diamond':
+      ctx.moveTo(u.x, u.y - s); ctx.lineTo(u.x + s, u.y); ctx.lineTo(u.x, u.y + s); ctx.lineTo(u.x - s, u.y);
+      ctx.fill(); break;
+    case 'circle':
+      ctx.arc(u.x, u.y, s, 0, Math.PI * 2); ctx.fill(); break;
+    case 'cross':
+      ctx.fillRect(u.x - s*0.3, u.y - s, s*0.6, s*2);
+      ctx.fillRect(u.x - s, u.y - s*0.3, s*2, s*0.6);
+      break;
+  }
+  ctx.globalAlpha = 1;
+
+  // HP bar
+  const bw = CELL * 0.6;
+  const bh = 4;
+  const bx = u.x - bw/2;
+  const by = u.y - CELL * 0.4 - 4;
+  ctx.fillStyle = '#333';
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = u.hp > u.maxHp * 0.3 ? '#4ade80' : '#ef4444';
+  ctx.fillRect(bx, by, bw * (u.hp / u.maxHp), bh);
+
+  // level stars
+  if (u.level > 1) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('★'.repeat(u.level - 1), u.x, u.y + s + 14);
+  }
+
+  // enemy marker
+  if (u.team === 'enemy') {
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(u.x - s - 2, u.y - s - 2, s*2+4, s*2+4);
+  }
+
+  // selected highlight
+  if (u === selectedUnit && phase === 'prep') {
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(u.x - s - 4, u.y - s - 4, s*2+8, s*2+8);
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // grid
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = c * CELL, y = r * CELL;
+      const isPlayer = PLAYER_ROWS.includes(r);
+      ctx.fillStyle = isPlayer ? '#1a2235' : '#251a1a';
+      if ((r + c) % 2 === 0) ctx.fillStyle = isPlayer ? '#1e2740' : '#2a1e1e';
+      ctx.fillRect(x, y, CELL, CELL);
+      ctx.strokeStyle = '#2a2a4a';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x, y, CELL, CELL);
+    }
+  }
+
+  // divider line
+  ctx.strokeStyle = '#a78bfa44';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, 3 * CELL);
+  ctx.lineTo(W, 3 * CELL);
+  ctx.stroke();
+
+  // units
+  enemyUnits.forEach(drawUnit);
+  playerUnits.forEach(drawUnit);
+
+  // projectiles
+  projectiles.forEach(p => {
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 50;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = '#0f0f1aCC';
+  ctx.fillRect(0, 0, W, 28);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 14px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Round ${round}`, 8, 19);
+  ctx.textAlign = 'center';
+  ctx.fillText(`Gold: ${gold}`, W/2, 19);
+  ctx.textAlign = 'right';
+  ctx.fillText(`Units: ${playerUnits.filter(u=>u.alive).length}`, W - 8, 19);
+
+  // result overlay
+  if (phase === 'result') {
+    ctx.fillStyle = '#0f0f1aCC';
+    ctx.fillRect(0, H/2 - 40, W, 80);
+    ctx.fillStyle = resultMsg.includes('VICTORY') ? '#4ade80' : '#ef4444';
+    ctx.font = 'bold 32px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(resultMsg, W/2, H/2 + 10);
+  }
+
+  // prep phase info
+  if (phase === 'prep') {
+    ctx.fillStyle = '#a78bfa88';
+    ctx.font = '12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Place units in blue zone, then hit FIGHT!', W/2, H - 8);
+  }
+}
+
+function update() {
+  if (phase === 'fight') updateFight();
+  if (phase === 'result') {
+    resultTimer--;
+    if (resultTimer <= 0) {
+      phase = 'prep';
+      if (resultMsg.includes('DEFEAT')) {
+        // reset
+        gold = 15; round = 1;
+        playerUnits = [];
+        document.getElementById('info').textContent = 'Defeated! Starting over. Buy units and try again.';
+      } else {
+        // restore positions for surviving units
+        playerUnits = playerUnits.filter(u => u.alive);
+        playerUnits.forEach((u, i) => {
+          u.col = i % COLS;
+          u.row = PLAYER_ROWS[Math.floor(i / COLS)] || 5;
+          u.tx = u.col * CELL + CELL/2; u.ty = u.row * CELL + CELL/2;
+          u.x = u.tx; u.y = u.ty;
+        });
+      }
+      enemyUnits = [];
+      generateEnemyPreview();
+      updateButtons();
+    }
+  }
+  draw();
+  requestAnimationFrame(update);
+}
+
+function generateEnemyPreview() {
+  generateEnemies();
+  // show them faded in prep
+}
+
+function updateButtons() {
+  document.getElementById('btnBuy').disabled = gold < 5 || phase !== 'prep' || playerUnits.length >= 9;
+  document.getElementById('btnUpgrade').disabled = gold < 8 || phase !== 'prep' || !selectedUnit;
+  document.getElementById('btnFight').disabled = phase !== 'prep' || playerUnits.length === 0;
+}
+
+document.getElementById('btnBuy').addEventListener('click', () => {
+  if (gold < 5 || phase !== 'prep' || playerUnits.length >= 9) return;
+  gold -= 5;
+  const type = Math.floor(Math.random() * UNIT_TYPES.length);
+  // find empty cell
+  for (let r of PLAYER_ROWS) {
+    for (let c = 0; c < COLS; c++) {
+      if (!playerUnits.find(u => u.col === c && u.row === r)) {
+        playerUnits.push(makeUnit(type, c, r, 'player'));
+        updateButtons();
+        return;
+      }
+    }
+  }
+  updateButtons();
+});
+
+document.getElementById('btnUpgrade').addEventListener('click', () => {
+  if (gold < 8 || !selectedUnit || phase !== 'prep') return;
+  gold -= 8;
+  selectedUnit.level++;
+  selectedUnit.maxHp = Math.floor(selectedUnit.maxHp * 1.4);
+  selectedUnit.hp = selectedUnit.maxHp;
+  selectedUnit.atk = Math.floor(selectedUnit.atk * 1.35);
+  updateButtons();
+  document.getElementById('info').textContent =
+    `${selectedUnit.name} upgraded to Lv${selectedUnit.level}! HP:${selectedUnit.maxHp} ATK:${selectedUnit.atk}`;
+});
+
+document.getElementById('btnFight').addEventListener('click', () => {
+  if (phase !== 'prep' || playerUnits.length === 0) return;
+  startFight();
+  updateButtons();
+});
+
+// Touch / Mouse input
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const t = e.touches ? e.touches[0] : e;
+  return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+}
+
+function findUnitAt(x, y) {
+  return playerUnits.find(u => {
+    const s = CELL * 0.4;
+    return u.alive && Math.abs(u.x - x) < s && Math.abs(u.y - y) < s;
+  });
+}
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (phase !== 'prep') return;
+  const pos = getPos(e);
+  const unit = findUnitAt(pos.x, pos.y);
+  if (unit) {
+    dragUnit = unit;
+    selectedUnit = unit;
+    dragOffX = unit.x - pos.x;
+    dragOffY = unit.y - pos.y;
+    document.getElementById('info').textContent =
+      `${unit.name} Lv${unit.level} | HP:${unit.maxHp} ATK:${unit.atk} RNG:${unit.range} SPD:${unit.spd.toFixed(1)}`;
+    updateButtons();
+  }
+});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!dragUnit) return;
+  const pos = getPos(e);
+  dragUnit.x = pos.x + dragOffX;
+  dragUnit.y = pos.y + dragOffY;
+});
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (!dragUnit) return;
+  // snap to grid
+  let col = Math.floor(dragUnit.x / CELL);
+  let row = Math.floor(dragUnit.y / CELL);
+  col = Math.max(0, Math.min(COLS-1, col));
+  row = Math.max(0, Math.min(ROWS-1, row));
+  // must be player row
+  if (!PLAYER_ROWS.includes(row)) row = PLAYER_ROWS[0];
+  // check occupied
+  const occupant = playerUnits.find(u => u !== dragUnit && u.col === col && u.row === row);
+  if (occupant) {
+    // swap
+    occupant.col = dragUnit.col; occupant.row = dragUnit.row;
+    occupant.tx = occupant.col * CELL + CELL/2; occupant.ty = occupant.row * CELL + CELL/2;
+    occupant.x = occupant.tx; occupant.y = occupant.ty;
+  }
+  dragUnit.col = col; dragUnit.row = row;
+  dragUnit.tx = col * CELL + CELL/2; dragUnit.ty = row * CELL + CELL/2;
+  dragUnit.x = dragUnit.tx; dragUnit.y = dragUnit.ty;
+  dragUnit = null;
+});
+
+// Mouse fallback
+canvas.addEventListener('mousedown', e => {
+  if (phase !== 'prep') return;
+  const pos = getPos(e);
+  const unit = findUnitAt(pos.x, pos.y);
+  if (unit) {
+    dragUnit = unit;
+    selectedUnit = unit;
+    dragOffX = unit.x - pos.x;
+    dragOffY = unit.y - pos.y;
+    document.getElementById('info').textContent =
+      `${unit.name} Lv${unit.level} | HP:${unit.maxHp} ATK:${unit.atk} RNG:${unit.range} SPD:${unit.spd.toFixed(1)}`;
+    updateButtons();
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!dragUnit) return;
+  const pos = getPos(e);
+  dragUnit.x = pos.x + dragOffX;
+  dragUnit.y = pos.y + dragOffY;
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (!dragUnit) return;
+  let col = Math.floor(dragUnit.x / CELL);
+  let row = Math.floor(dragUnit.y / CELL);
+  col = Math.max(0, Math.min(COLS-1, col));
+  row = Math.max(0, Math.min(ROWS-1, row));
+  if (!PLAYER_ROWS.includes(row)) row = PLAYER_ROWS[0];
+  const occupant = playerUnits.find(u => u !== dragUnit && u.col === col && u.row === row);
+  if (occupant) {
+    occupant.col = dragUnit.col; occupant.row = dragUnit.row;
+    occupant.tx = occupant.col * CELL + CELL/2; occupant.ty = occupant.row * CELL + CELL/2;
+    occupant.x = occupant.tx; occupant.y = occupant.ty;
+  }
+  dragUnit.col = col; dragUnit.row = row;
+  dragUnit.tx = col * CELL + CELL/2; dragUnit.ty = row * CELL + CELL/2;
+  dragUnit.x = dragUnit.tx; dragUnit.y = dragUnit.ty;
+  dragUnit = null;
+});
+
+generateEnemyPreview();
+updateButtons();
+update();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

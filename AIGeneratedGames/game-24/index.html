@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fumble Frenzy</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+#overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(15,15,26,0.93); display: flex; align-items: center; justify-content: center;
+  z-index: 200; flex-direction: column; gap: 16px;
+}
+#overlay h1 { font-size: 48px; color: #fbbf24; text-shadow: 0 0 20px #fbbf2488; }
+#overlay h2 { font-size: 24px; color: #a78bfa; }
+#overlay p { font-size: 14px; max-width: 520px; text-align: center; line-height: 1.6; color: #c0c0e0; }
+#overlay button {
+  background: #a78bfa; color: #0f0f1a; border: none; padding: 12px 32px;
+  font-size: 18px; font-weight: bold; border-radius: 10px; cursor: pointer;
+}
+#overlay button:hover { background: #c4b5fd; }
+.hidden { display: none !important; }
+#mash-bar {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  width: 400px; height: 30px; background: #1a1a2e; border: 2px solid #a78bfa;
+  border-radius: 15px; overflow: hidden; z-index: 100;
+}
+#mash-fill {
+  height: 100%; width: 0%; background: linear-gradient(90deg, #a78bfa, #fbbf24);
+  border-radius: 13px; transition: width 0.05s;
+}
+#mash-label {
+  position: fixed; bottom: 55px; left: 50%; transform: translateX(-50%);
+  font-size: 18px; font-weight: bold; color: #fbbf24; z-index: 100;
+  text-shadow: 0 0 10px #fbbf2444;
+}
+</style>
+</head>
+<body>
+<div id="mash-bar" class="hidden"><div id="mash-fill"></div></div>
+<div id="mash-label" class="hidden">MASH SPACEBAR!</div>
+<div id="overlay">
+  <h1>🏈 Fumble Frenzy</h1>
+  <h2>Grab the Loose Ball!</h2>
+  <p>A fumble sends the ball bouncing wildly! Race against AI players to grab it.
+  <br><br><b>Arrow keys / WASD</b> - Move your player (the blue one)<br>
+  <b>Spacebar</b> - Mash to win pile-ups!<br><br>
+  The ball bounces with physics. Push through pile-ups.<br>
+  Weather changes each round: Rain (slippery ball), Snow (low visibility), Mud (slow movement).<br>
+  First to 5 recoveries wins!</p>
+  <button onclick="startGame()">Start Scramble!</button>
+</div>
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width = 800;
+const H = canvas.height = 600;
+
+let state = 'title';
+let roundNum = 0;
+let playerWins = 0, aiWins = 0;
+const WINS_NEEDED = 5;
+
+let ball = null;
+let player = null;
+let aiPlayers = [];
+let particles = [];
+let weather = 'clear';
+let pileup = false;
+let mashPower = 0;
+let aiMashPower = 0;
+let mashTarget = 100;
+let ballRecovered = false;
+let countdownTimer = 0;
+let msgText = '';
+let msgTimer = 0;
+let snowflakes = [];
+let raindrops = [];
+
+const FIELD_PAD = 40;
+const keys = {};
+
+document.addEventListener('keydown', (e) => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === ' ' && pileup) {
+    e.preventDefault();
+    mashPower = Math.min(mashPower + 3.5, mashTarget);
+  }
+});
+document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+function startGame() {
+  document.getElementById('overlay').classList.add('hidden');
+  state = 'playing';
+  playerWins = 0; aiWins = 0; roundNum = 0;
+  startRound();
+  requestAnimationFrame(gameLoop);
+}
+
+function startRound() {
+  roundNum++;
+  ballRecovered = false;
+  pileup = false;
+  mashPower = 0;
+  aiMashPower = 0;
+  document.getElementById('mash-bar').classList.add('hidden');
+  document.getElementById('mash-label').classList.add('hidden');
+
+  // Weather
+  let weathers = ['clear', 'rain', 'snow', 'mud'];
+  weather = weathers[roundNum % weathers.length];
+  if (roundNum <= 1) weather = 'clear';
+
+  showMsg('Round ' + roundNum + (weather !== 'clear' ? ' - ' + weather.toUpperCase() + '!' : ''));
+
+  // Ball starts at center with random velocity
+  let angle = Math.random() * Math.PI * 2;
+  let speed = 4 + Math.random() * 4;
+  ball = {
+    x: W / 2 + (Math.random() - 0.5) * 200,
+    y: H / 2 + (Math.random() - 0.5) * 100,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    bounceCount: 0,
+    maxBounces: 8 + Math.floor(Math.random() * 8),
+    settled: false,
+    rotation: 0
+  };
+
+  // Player starts at random edge
+  let side = Math.floor(Math.random() * 4);
+  let px, py;
+  if (side === 0) { px = FIELD_PAD + 20; py = H / 2; }
+  else if (side === 1) { px = W - FIELD_PAD - 20; py = H / 2; }
+  else if (side === 2) { px = W / 2; py = FIELD_PAD + 20; }
+  else { px = W / 2; py = H - FIELD_PAD - 20; }
+
+  player = {
+    x: px, y: py, vx: 0, vy: 0,
+    size: 18, color: '#3b82f6', name: 'YOU',
+    speed: weather === 'mud' ? 2.5 : 4,
+    hasBall: false
+  };
+
+  // AI players
+  aiPlayers = [];
+  let aiCount = 4 + Math.min(roundNum, 4);
+  let colors = ['#ef4444', '#22c55e', '#fbbf24', '#ff6b6b', '#cc44ff', '#44ffcc', '#ff8844', '#aaaaaa'];
+  let names = ['RED', 'GRN', 'YLW', 'PNK', 'PRP', 'CYN', 'ORG', 'GRY'];
+  for (let i = 0; i < aiCount; i++) {
+    let a = Math.random() * Math.PI * 2;
+    let r = 150 + Math.random() * 150;
+    aiPlayers.push({
+      x: W / 2 + Math.cos(a) * r,
+      y: H / 2 + Math.sin(a) * r,
+      vx: 0, vy: 0,
+      size: 16 + Math.random() * 6,
+      color: colors[i % colors.length],
+      name: names[i % names.length],
+      speed: (weather === 'mud' ? 1.8 : 3) + Math.random() * 1.5,
+      hasBall: false,
+      reaction: 10 + Math.floor(Math.random() * 30),
+      reactionTimer: 0
+    });
+  }
+
+  // Weather particles
+  snowflakes = [];
+  raindrops = [];
+  if (weather === 'snow') {
+    for (let i = 0; i < 100; i++) {
+      snowflakes.push({ x: Math.random() * W, y: Math.random() * H, s: 1 + Math.random() * 3, speed: 0.5 + Math.random() });
+    }
+  }
+  if (weather === 'rain') {
+    for (let i = 0; i < 80; i++) {
+      raindrops.push({ x: Math.random() * W, y: Math.random() * H, speed: 6 + Math.random() * 4, len: 8 + Math.random() * 10 });
+    }
+  }
+
+  countdownTimer = 90;
+}
+
+function showMsg(text) {
+  msgText = text;
+  msgTimer = 90;
+}
+
+function endRound(playerWon) {
+  if (playerWon) playerWins++;
+  else aiWins++;
+
+  if (playerWins >= WINS_NEEDED) {
+    state = 'gameover';
+    let ov = document.getElementById('overlay');
+    ov.classList.remove('hidden');
+    ov.innerHTML = `
+      <h1>🏆 You Win!</h1>
+      <h2>Recovered ${playerWins} fumbles!</h2>
+      <p>You out-scrambled everyone in ${roundNum} rounds!</p>
+      <button onclick="startGame()">Play Again</button>
+    `;
+    return;
+  }
+  if (aiWins >= WINS_NEEDED) {
+    state = 'gameover';
+    let ov = document.getElementById('overlay');
+    ov.classList.remove('hidden');
+    ov.innerHTML = `
+      <h1>💀 Game Over</h1>
+      <h2>AI recovered ${aiWins} fumbles first</h2>
+      <p>You recovered ${playerWins}. Try again!</p>
+      <button onclick="startGame()">Play Again</button>
+    `;
+    return;
+  }
+
+  setTimeout(() => startRound(), 1500);
+}
+
+function update() {
+  if (countdownTimer > 0) { countdownTimer--; return; }
+  if (ballRecovered) return;
+
+  // Ball physics
+  if (!ball.settled) {
+    let friction = weather === 'rain' ? 0.995 : weather === 'mud' ? 0.96 : 0.985;
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    ball.vx *= friction;
+    ball.vy *= friction;
+    ball.rotation += (Math.abs(ball.vx) + Math.abs(ball.vy)) * 0.05;
+
+    // Random bounces (fumbled ball is unpredictable)
+    if (ball.bounceCount < ball.maxBounces && Math.random() < 0.03) {
+      ball.vx += (Math.random() - 0.5) * (weather === 'rain' ? 6 : 3);
+      ball.vy += (Math.random() - 0.5) * (weather === 'rain' ? 6 : 3);
+      ball.bounceCount++;
+      spawnParticles(ball.x, ball.y, '#8B6914', 3);
+    }
+
+    // Wall bounces
+    if (ball.x < FIELD_PAD) { ball.x = FIELD_PAD; ball.vx = Math.abs(ball.vx) * 0.8; ball.bounceCount++; }
+    if (ball.x > W - FIELD_PAD) { ball.x = W - FIELD_PAD; ball.vx = -Math.abs(ball.vx) * 0.8; ball.bounceCount++; }
+    if (ball.y < FIELD_PAD) { ball.y = FIELD_PAD; ball.vy = Math.abs(ball.vy) * 0.8; ball.bounceCount++; }
+    if (ball.y > H - FIELD_PAD) { ball.y = H - FIELD_PAD; ball.vy = -Math.abs(ball.vy) * 0.8; ball.bounceCount++; }
+
+    if (Math.abs(ball.vx) + Math.abs(ball.vy) < 0.5) ball.settled = true;
+  }
+
+  // Player movement
+  let dx = 0, dy = 0;
+  if (keys['arrowleft'] || keys['a']) dx = -1;
+  if (keys['arrowright'] || keys['d']) dx = 1;
+  if (keys['arrowup'] || keys['w']) dy = -1;
+  if (keys['arrowdown'] || keys['s']) dy = 1;
+  if (dx || dy) {
+    let len = Math.sqrt(dx * dx + dy * dy);
+    player.vx = (dx / len) * player.speed;
+    player.vy = (dy / len) * player.speed;
+  } else {
+    player.vx *= 0.85;
+    player.vy *= 0.85;
+  }
+  player.x += player.vx;
+  player.y += player.vy;
+  player.x = Math.max(FIELD_PAD, Math.min(W - FIELD_PAD, player.x));
+  player.y = Math.max(FIELD_PAD, Math.min(H - FIELD_PAD, player.y));
+
+  // AI movement
+  for (let ai of aiPlayers) {
+    ai.reactionTimer++;
+    if (ai.reactionTimer < ai.reaction) continue;
+
+    let tx = ball.x + ball.vx * 10;
+    let ty = ball.y + ball.vy * 10;
+    let adx = tx - ai.x, ady = ty - ai.y;
+    let adist = Math.sqrt(adx * adx + ady * ady);
+    if (adist > 1) {
+      ai.vx = (adx / adist) * ai.speed;
+      ai.vy = (ady / adist) * ai.speed;
+    }
+    ai.x += ai.vx;
+    ai.y += ai.vy;
+    ai.x = Math.max(FIELD_PAD, Math.min(W - FIELD_PAD, ai.x));
+    ai.y = Math.max(FIELD_PAD, Math.min(H - FIELD_PAD, ai.y));
+  }
+
+  // Player-player collisions (push)
+  let allPlayers = [player, ...aiPlayers];
+  for (let i = 0; i < allPlayers.length; i++) {
+    for (let j = i + 1; j < allPlayers.length; j++) {
+      let a = allPlayers[i], b = allPlayers[j];
+      let cdx = b.x - a.x, cdy = b.y - a.y;
+      let cd = Math.sqrt(cdx * cdx + cdy * cdy);
+      let minDist = (a.size + b.size) * 0.8;
+      if (cd < minDist && cd > 0) {
+        let push = (minDist - cd) / 2;
+        a.x -= (cdx / cd) * push;
+        a.y -= (cdy / cd) * push;
+        b.x += (cdx / cd) * push;
+        b.y += (cdy / cd) * push;
+      }
+    }
+  }
+
+  // Check ball pickup
+  if (!pileup) {
+    let nearBall = [];
+    for (let p of allPlayers) {
+      let bdx = p.x - ball.x, bdy = p.y - ball.y;
+      if (Math.sqrt(bdx * bdx + bdy * bdy) < p.size + 10) {
+        nearBall.push(p);
+      }
+    }
+
+    if (nearBall.length === 1) {
+      // Clean recovery
+      let winner = nearBall[0];
+      ballRecovered = true;
+      winner.hasBall = true;
+      showMsg((winner === player ? 'YOU' : winner.name) + ' recovers!');
+      spawnParticles(ball.x, ball.y, '#fbbf24', 15);
+      setTimeout(() => endRound(winner === player), 1500);
+    } else if (nearBall.length > 1) {
+      // Pile-up!
+      pileup = true;
+      mashPower = 0;
+      aiMashPower = 0;
+      mashTarget = 100;
+      let playerInPile = nearBall.includes(player);
+      if (playerInPile) {
+        document.getElementById('mash-bar').classList.remove('hidden');
+        document.getElementById('mash-label').classList.remove('hidden');
+      }
+      showMsg('PILE UP! ' + (playerInPile ? 'MASH SPACEBAR!' : 'AI pile-up...'));
+    }
+  }
+
+  // Pile-up resolution
+  if (pileup) {
+    aiMashPower += 1.5 + Math.random() * 2;
+    mashPower *= 0.995; // Decay
+    aiMashPower *= 0.995;
+
+    document.getElementById('mash-fill').style.width = (mashPower / mashTarget * 100) + '%';
+
+    if (mashPower >= mashTarget) {
+      pileup = false;
+      ballRecovered = true;
+      player.hasBall = true;
+      document.getElementById('mash-bar').classList.add('hidden');
+      document.getElementById('mash-label').classList.add('hidden');
+      showMsg('YOU recover from the pile!');
+      spawnParticles(ball.x, ball.y, '#3b82f6', 15);
+      setTimeout(() => endRound(true), 1500);
+    } else if (aiMashPower >= mashTarget) {
+      pileup = false;
+      ballRecovered = true;
+      let winner = aiPlayers[Math.floor(Math.random() * aiPlayers.length)];
+      winner.hasBall = true;
+      document.getElementById('mash-bar').classList.add('hidden');
+      document.getElementById('mash-label').classList.add('hidden');
+      showMsg(winner.name + ' recovers from the pile!');
+      spawnParticles(ball.x, ball.y, winner.color, 15);
+      setTimeout(() => endRound(false), 1500);
+    }
+  }
+
+  // Weather particles
+  for (let s of snowflakes) {
+    s.y += s.speed;
+    s.x += Math.sin(Date.now() / 1000 + s.x) * 0.5;
+    if (s.y > H) { s.y = 0; s.x = Math.random() * W; }
+  }
+  for (let r of raindrops) {
+    r.y += r.speed;
+    r.x -= 1;
+    if (r.y > H) { r.y = 0; r.x = Math.random() * W; }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.95; p.vy *= 0.95;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6,
+      life: 30 + Math.random() * 30, maxLife: 60, color, size: 3 + Math.random() * 4
+    });
+  }
+}
+
+function drawField() {
+  // Grass
+  let grassColor = weather === 'mud' ? '#2a3a1a' : weather === 'snow' ? '#445544' : '#1a4a1a';
+  ctx.fillStyle = grassColor;
+  ctx.fillRect(FIELD_PAD, FIELD_PAD, W - FIELD_PAD * 2, H - FIELD_PAD * 2);
+
+  // Mud patches
+  if (weather === 'mud') {
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = '#3a2a1a88';
+      ctx.beginPath();
+      ctx.ellipse(100 + i * 90, 150 + (i % 3) * 150, 40 + Math.random() * 30, 20 + Math.random() * 15, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Yard lines
+  ctx.strokeStyle = '#ffffff22';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    let x = FIELD_PAD + (i / 10) * (W - FIELD_PAD * 2);
+    ctx.beginPath();
+    ctx.moveTo(x, FIELD_PAD);
+    ctx.lineTo(x, H - FIELD_PAD);
+    ctx.stroke();
+  }
+
+  // Border
+  ctx.strokeStyle = '#ffffff44';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(FIELD_PAD, FIELD_PAD, W - FIELD_PAD * 2, H - FIELD_PAD * 2);
+
+  // Snow overlay
+  if (weather === 'snow') {
+    // Fog / visibility reduction
+    let gradient = ctx.createRadialGradient(player.x, player.y, 80, player.x, player.y, 250);
+    gradient.addColorStop(0, 'rgba(15,15,26,0)');
+    gradient.addColorStop(1, 'rgba(15,15,26,0.85)');
+    // Applied after everything is drawn
+  }
+}
+
+function drawBall() {
+  if (ballRecovered) return;
+  ctx.save();
+  ctx.translate(ball.x, ball.y);
+  ctx.rotate(ball.rotation);
+  // Football shape
+  ctx.fillStyle = '#8B6914';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 12, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-6, 0);
+  ctx.lineTo(6, 0);
+  ctx.stroke();
+  // Laces
+  for (let i = -4; i <= 4; i += 2) {
+    ctx.beginPath();
+    ctx.moveTo(i, -2);
+    ctx.lineTo(i, 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Shadow
+  ctx.fillStyle = '#00000033';
+  ctx.beginPath();
+  ctx.ellipse(ball.x + 3, ball.y + 3, 10, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawPlayer(p, isPlayer) {
+  // Shadow
+  ctx.fillStyle = '#00000044';
+  ctx.beginPath();
+  ctx.ellipse(p.x + 2, p.y + p.size * 0.6, p.size * 0.7, p.size * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body (chunky sprite style)
+  ctx.fillStyle = p.color;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Outline
+  ctx.strokeStyle = isPlayer ? '#ffffff' : '#00000066';
+  ctx.lineWidth = isPlayer ? 3 : 2;
+  ctx.stroke();
+
+  // Helmet stripe
+  ctx.fillStyle = '#ffffff44';
+  ctx.fillRect(p.x - 2, p.y - p.size, 4, p.size * 0.6);
+
+  // Face
+  ctx.fillStyle = '#fff';
+  let facing = Math.atan2(p.vy || 0, p.vx || 0);
+  ctx.fillRect(p.x + Math.cos(facing) * 5 - 2, p.y + Math.sin(facing) * 3 - 4, 3, 2);
+  ctx.fillRect(p.x + Math.cos(facing) * 5 + 2, p.y + Math.sin(facing) * 3 - 4, 3, 2);
+
+  // Name
+  ctx.fillStyle = isPlayer ? '#ffffff' : '#ffffff88';
+  ctx.font = `bold ${isPlayer ? 12 : 10}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.fillText(p.name, p.x, p.y - p.size - 6);
+
+  // Ball indicator
+  if (p.hasBall) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '16px Arial';
+    ctx.fillText('🏈', p.x + p.size, p.y - p.size);
+  }
+}
+
+function drawWeather() {
+  if (weather === 'snow') {
+    ctx.fillStyle = '#ffffff';
+    for (let s of snowflakes) {
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Visibility fog
+    let gradient = ctx.createRadialGradient(player.x, player.y, 100, player.x, player.y, 300);
+    gradient.addColorStop(0, 'rgba(15,15,26,0)');
+    gradient.addColorStop(1, 'rgba(15,15,26,0.7)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (weather === 'rain') {
+    ctx.strokeStyle = '#6688cc44';
+    ctx.lineWidth = 1;
+    for (let r of raindrops) {
+      ctx.beginPath();
+      ctx.moveTo(r.x, r.y);
+      ctx.lineTo(r.x - 2, r.y + r.len);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawParticles() {
+  for (let p of particles) {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#0f0f1aDD';
+  ctx.fillRect(0, 0, W, 36);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 16px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Round ${roundNum}`, 60, 24);
+  ctx.fillStyle = '#3b82f6';
+  ctx.fillText(`YOU: ${playerWins}`, 200, 24);
+  ctx.fillStyle = '#ef4444';
+  ctx.fillText(`AI: ${aiWins}`, 330, 24);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText(`First to ${WINS_NEEDED}`, 440, 24);
+
+  if (weather !== 'clear') {
+    let icon = weather === 'rain' ? '🌧️' : weather === 'snow' ? '❄️' : '🟤';
+    ctx.fillText(`${icon} ${weather.toUpperCase()}`, 620, 24);
+  }
+
+  // Message
+  if (msgTimer > 0) {
+    msgTimer--;
+    ctx.globalAlpha = Math.min(1, msgTimer / 20);
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 32px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(msgText, W / 2, H / 2 - 80);
+    ctx.globalAlpha = 1;
+  }
+
+  // Countdown
+  if (countdownTimer > 0) {
+    let num = Math.ceil(countdownTimer / 30);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 60px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(num > 0 ? num.toString() : 'GO!', W / 2, H / 2);
+  }
+
+  // Pile-up indicator
+  if (pileup) {
+    ctx.fillStyle = '#ef444488';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('PILE UP!', W / 2, H / 2 - 40);
+  }
+}
+
+function gameLoop() {
+  if (state !== 'playing') return;
+
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  drawField();
+  drawBall();
+
+  // Draw AI players
+  for (let ai of aiPlayers) drawPlayer(ai, false);
+  // Draw player on top
+  drawPlayer(player, true);
+
+  drawWeather();
+  drawParticles();
+  drawHUD();
+
+  update();
+  requestAnimationFrame(gameLoop);
+}
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

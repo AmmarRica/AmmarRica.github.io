@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 07 – Paint Chase – Game a Day</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas {
+      border: 2px solid #3b3b5c;
+      border-radius: 8px;
+      background: #1e1e2e;
+      max-width: 480px;
+      width: 100%;
+      touch-action: none;
+    }
+    #ui { color: #9ca3af; margin-top: 0.5rem; font-size: 0.8rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Paint Chase</h1>
+  <p class="subtitle">Swipe to move. Paint more tiles than the AI!</p>
+  <canvas id="game"></canvas>
+  <div id="ui">Round 1 | You: 0 | AI: 0 | Time: 30</div>
+  <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+
+let W, H, scale;
+function resize() {
+  const maxW = 480, maxH = 520;
+  const ratio = maxW / maxH;
+  let w = Math.min(window.innerWidth - 20, maxW);
+  let h = w / ratio;
+  if (h > window.innerHeight - 140) { h = window.innerHeight - 140; w = h * ratio; }
+  canvas.width = maxW; canvas.height = maxH;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  W = maxW; H = maxH;
+  scale = w / maxW;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const COLS = 15, ROWS = 15;
+const TILE = 30;
+const OFFSET_X = (W - COLS * TILE) / 2;
+const OFFSET_Y = (H - ROWS * TILE) / 2 + 10;
+
+const COLORS = {
+  empty: '#2a2a3e',
+  player: '#60a5fa',
+  playerTrail: '#3b82f6',
+  ai: '#f59e0b',
+  aiTrail: '#d97706',
+  wall: '#3b3b5c',
+  powerup: '#a78bfa',
+  speed: '#22c55e',
+};
+
+let grid, playerPos, aiPos, playerDir, aiDir, playerScore, aiScore;
+let round, timer, maxTime, gameState, moveTimer, aiMoveTimer;
+let playerSpeed, aiSpeed, playerSpeedBoost, aiSpeedBoost;
+let powerups, swipeStart, animTimer, roundResults;
+let playerMoveQueue, totalRounds;
+
+function init() {
+  round = 1; totalRounds = 5;
+  roundResults = [];
+  gameState = 'play';
+  startRound();
+}
+
+function startRound() {
+  grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = 0; // 0=empty, 1=player, 2=ai, 3=wall
+    }
+  }
+
+  // Place walls (more walls each round)
+  const wallCount = 8 + round * 3;
+  for (let i = 0; i < wallCount; i++) {
+    const r = Math.floor(Math.random() * ROWS);
+    const c = Math.floor(Math.random() * COLS);
+    if ((r < 2 && c < 2) || (r > ROWS - 3 && c > COLS - 3)) continue;
+    grid[r][c] = 3;
+  }
+
+  playerPos = { r: 1, c: 1 };
+  aiPos = { r: ROWS - 2, c: COLS - 2 };
+  grid[playerPos.r][playerPos.c] = 1;
+  grid[aiPos.r][aiPos.c] = 2;
+
+  playerDir = { r: 0, c: 0 };
+  aiDir = { r: 0, c: 0 };
+  playerScore = 1; aiScore = 1;
+  maxTime = 25 + round * 3;
+  timer = maxTime;
+  moveTimer = 0; aiMoveTimer = 0;
+  playerSpeed = 8; aiSpeed = 10 + Math.min(round * 2, 10);
+  playerSpeedBoost = 0; aiSpeedBoost = 0;
+  playerMoveQueue = [];
+  animTimer = 0;
+
+  // Powerups
+  powerups = [];
+  const pwCount = 2 + round;
+  for (let i = 0; i < pwCount; i++) {
+    let r, c, tries = 0;
+    do {
+      r = Math.floor(Math.random() * ROWS);
+      c = Math.floor(Math.random() * COLS);
+      tries++;
+    } while (grid[r][c] !== 0 && tries < 100);
+    if (tries < 100) {
+      powerups.push({ r, c, type: Math.random() < 0.5 ? 'speed' : 'paint' });
+    }
+  }
+
+  gameState = 'play';
+}
+
+function countTiles() {
+  let p = 0, a = 0;
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === 1) p++;
+      else if (grid[r][c] === 2) a++;
+    }
+  return { p, a };
+}
+
+function moveEntity(pos, dir, id) {
+  const nr = pos.r + dir.r;
+  const nc = pos.c + dir.c;
+  if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return false;
+  if (grid[nr][nc] === 3) return false;
+  pos.r = nr; pos.c = nc;
+  grid[nr][nc] = id;
+  return true;
+}
+
+function aiThink() {
+  // AI strategy: try to paint the most tiles, chase player, avoid walls
+  const p = aiPos;
+  const dirs = [{r:-1,c:0},{r:1,c:0},{r:0,c:-1},{r:0,c:1}];
+  let bestDir = dirs[0], bestScore = -999;
+
+  for (const d of dirs) {
+    const nr = p.r + d.r, nc = p.c + d.c;
+    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+    if (grid[nr][nc] === 3) continue;
+
+    let score = 0;
+    // Prefer empty tiles
+    if (grid[nr][nc] === 0) score += 10;
+    // Prefer stealing player tiles
+    if (grid[nr][nc] === 1) score += 15;
+    // Avoid own tiles
+    if (grid[nr][nc] === 2) score -= 5;
+
+    // Look ahead 3 tiles
+    let lr = nr, lc = nc;
+    for (let i = 0; i < 3; i++) {
+      lr += d.r; lc += d.c;
+      if (lr < 0 || lr >= ROWS || lc < 0 || lc >= COLS) break;
+      if (grid[lr][lc] === 3) break;
+      if (grid[lr][lc] === 0) score += 3;
+      if (grid[lr][lc] === 1) score += 5;
+    }
+
+    // Slight chase towards player in later rounds
+    if (round >= 3) {
+      const distBefore = Math.abs(p.r - playerPos.r) + Math.abs(p.c - playerPos.c);
+      const distAfter = Math.abs(nr - playerPos.r) + Math.abs(nc - playerPos.c);
+      if (distAfter < distBefore) score += 3;
+    }
+
+    // Check for powerups
+    for (const pw of powerups) {
+      if (pw.r === nr && pw.c === nc) score += 20;
+    }
+
+    // Randomness
+    score += Math.random() * 3;
+
+    if (score > bestScore) { bestScore = score; bestDir = d; }
+  }
+
+  return bestDir;
+}
+
+function update() {
+  if (gameState !== 'play') return;
+
+  timer -= 1/60;
+  animTimer += 0.05;
+
+  if (timer <= 0) {
+    endRound();
+    return;
+  }
+
+  // Player movement
+  const pSpeed = playerSpeedBoost > 0 ? playerSpeed / 2 : playerSpeed;
+  moveTimer++;
+  if (moveTimer >= pSpeed && (playerDir.r !== 0 || playerDir.c !== 0)) {
+    moveTimer = 0;
+    moveEntity(playerPos, playerDir, 1);
+
+    // Check powerups
+    for (let i = powerups.length - 1; i >= 0; i--) {
+      if (powerups[i].r === playerPos.r && powerups[i].c === playerPos.c) {
+        if (powerups[i].type === 'speed') playerSpeedBoost = 180;
+        else {
+          // Paint bomb: paint surrounding tiles
+          for (let dr = -1; dr <= 1; dr++)
+            for (let dc = -1; dc <= 1; dc++) {
+              const pr = playerPos.r + dr, pc = playerPos.c + dc;
+              if (pr >= 0 && pr < ROWS && pc >= 0 && pc < COLS && grid[pr][pc] !== 3)
+                grid[pr][pc] = 1;
+            }
+        }
+        powerups.splice(i, 1);
+      }
+    }
+  }
+
+  if (playerSpeedBoost > 0) playerSpeedBoost--;
+
+  // AI movement
+  const aSpeed = aiSpeedBoost > 0 ? aiSpeed / 2 : aiSpeed;
+  aiMoveTimer++;
+  if (aiMoveTimer >= aSpeed) {
+    aiMoveTimer = 0;
+    const aiD = aiThink();
+    moveEntity(aiPos, aiD, 2);
+
+    for (let i = powerups.length - 1; i >= 0; i--) {
+      if (powerups[i].r === aiPos.r && powerups[i].c === aiPos.c) {
+        if (powerups[i].type === 'speed') aiSpeedBoost = 180;
+        else {
+          for (let dr = -1; dr <= 1; dr++)
+            for (let dc = -1; dc <= 1; dc++) {
+              const pr = aiPos.r + dr, pc = aiPos.c + dc;
+              if (pr >= 0 && pr < ROWS && pc >= 0 && pc < COLS && grid[pr][pc] !== 3)
+                grid[pr][pc] = 2;
+            }
+        }
+        powerups.splice(i, 1);
+      }
+    }
+  }
+  if (aiSpeedBoost > 0) aiSpeedBoost--;
+
+  // From queue
+  if (playerMoveQueue.length > 0 && playerDir.r === 0 && playerDir.c === 0) {
+    playerDir = playerMoveQueue.shift();
+  }
+
+  const counts = countTiles();
+  playerScore = counts.p; aiScore = counts.a;
+  ui.textContent = `Round ${round}/${totalRounds} | You: ${playerScore} | AI: ${aiScore} | Time: ${Math.ceil(timer)}`;
+}
+
+function endRound() {
+  const counts = countTiles();
+  roundResults.push({ player: counts.p, ai: counts.a });
+  if (round >= totalRounds) {
+    const totalP = roundResults.reduce((s, r) => s + r.player, 0);
+    const totalA = roundResults.reduce((s, r) => s + r.ai, 0);
+    gameState = totalP > totalA ? 'win' : 'gameover';
+  } else {
+    round++;
+    startRound();
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = OFFSET_X + c * TILE;
+      const y = OFFSET_Y + r * TILE;
+      const t = grid[r][c];
+
+      if (t === 0) {
+        ctx.fillStyle = COLORS.empty;
+        ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      } else if (t === 1) {
+        ctx.fillStyle = COLORS.playerTrail;
+        ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      } else if (t === 2) {
+        ctx.fillStyle = COLORS.aiTrail;
+        ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      } else if (t === 3) {
+        ctx.fillStyle = COLORS.wall;
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.fillStyle = '#4a4a6a';
+        ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
+      }
+    }
+  }
+
+  // Powerups
+  powerups.forEach(pw => {
+    const x = OFFSET_X + pw.c * TILE + TILE / 2;
+    const y = OFFSET_Y + pw.r * TILE + TILE / 2;
+    const pulse = Math.sin(animTimer * 3) * 2;
+    ctx.fillStyle = pw.type === 'speed' ? COLORS.speed : COLORS.powerup;
+    ctx.globalAlpha = 0.6 + Math.sin(animTimer * 4) * 0.2;
+    ctx.beginPath();
+    ctx.arc(x, y, 8 + pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(pw.type === 'speed' ? 'S' : 'P', x, y);
+  });
+
+  // Player
+  {
+    const x = OFFSET_X + playerPos.c * TILE;
+    const y = OFFSET_Y + playerPos.r * TILE;
+    ctx.fillStyle = COLORS.player;
+    ctx.fillRect(x + 3, y + 3, TILE - 6, TILE - 6);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x + 10, y + 9, 4, 4);
+    ctx.fillRect(x + 17, y + 9, 4, 4);
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillRect(x + 8, y + 17, 14, 3);
+    if (playerSpeedBoost > 0) {
+      ctx.strokeStyle = COLORS.speed;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 1, y + 1, TILE - 2, TILE - 2);
+    }
+  }
+
+  // AI
+  {
+    const x = OFFSET_X + aiPos.c * TILE;
+    const y = OFFSET_Y + aiPos.r * TILE;
+    ctx.fillStyle = COLORS.ai;
+    ctx.fillRect(x + 3, y + 3, TILE - 6, TILE - 6);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x + 10, y + 9, 4, 4);
+    ctx.fillRect(x + 17, y + 9, 4, 4);
+    ctx.fillStyle = '#92400e';
+    ctx.fillRect(x + 8, y + 17, 14, 3);
+    if (aiSpeedBoost > 0) {
+      ctx.strokeStyle = COLORS.speed;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 1, y + 1, TILE - 2, TILE - 2);
+    }
+  }
+
+  // Score bar at top
+  const barW = W - 40;
+  const barY = 8;
+  const total = playerScore + aiScore || 1;
+  ctx.fillStyle = '#333';
+  ctx.fillRect(20, barY, barW, 12);
+  ctx.fillStyle = COLORS.playerTrail;
+  ctx.fillRect(20, barY, barW * (playerScore / total), 12);
+  ctx.fillStyle = COLORS.aiTrail;
+  ctx.fillRect(20 + barW * (playerScore / total), barY, barW * (aiScore / total), 12);
+
+  // Timer warning
+  if (timer < 5 && gameState === 'play') {
+    ctx.fillStyle = '#ef4444';
+    ctx.globalAlpha = 0.4 + Math.sin(Date.now() / 150) * 0.3;
+    ctx.font = 'bold 48px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.ceil(timer).toString(), W / 2, OFFSET_Y - 5);
+    ctx.globalAlpha = 1;
+  }
+
+  // Direction indicator
+  if (gameState === 'play' && (playerDir.r !== 0 || playerDir.c !== 0)) {
+    const px = OFFSET_X + playerPos.c * TILE + TILE/2;
+    const py = OFFSET_Y + playerPos.r * TILE + TILE/2;
+    ctx.strokeStyle = '#60a5fa';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px + playerDir.c * 20, py + playerDir.r * 20);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Overlays
+  if (gameState === 'gameover') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 40px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('AI WINS!', W/2, H/2 - 40);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '18px system-ui';
+    const tp = roundResults.reduce((s, r) => s + r.player, 0);
+    const ta = roundResults.reduce((s, r) => s + r.ai, 0);
+    ctx.fillText(`Final: You ${tp} - AI ${ta}`, W/2, H/2);
+    roundResults.forEach((r, i) => {
+      ctx.fillText(`Round ${i+1}: You ${r.player} - AI ${r.ai}`, W/2, H/2 + 25 + i * 22);
+    });
+    ctx.fillText('Tap to retry', W/2, H/2 + 30 + roundResults.length * 22);
+  } else if (gameState === 'win') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 40px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('YOU WIN!', W/2, H/2 - 40);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '18px system-ui';
+    const tp = roundResults.reduce((s, r) => s + r.player, 0);
+    const ta = roundResults.reduce((s, r) => s + r.ai, 0);
+    ctx.fillText(`Final: You ${tp} - AI ${ta}`, W/2, H/2);
+    roundResults.forEach((r, i) => {
+      ctx.fillText(`Round ${i+1}: You ${r.player} - AI ${r.ai}`, W/2, H/2 + 25 + i * 22);
+    });
+    ctx.fillText('Tap to play again', W/2, H/2 + 30 + roundResults.length * 22);
+  }
+}
+
+// Touch: swipe to move
+let swStartX, swStartY;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (gameState === 'gameover' || gameState === 'win') { init(); return; }
+  const rect = canvas.getBoundingClientRect();
+  swStartX = e.touches[0].clientX;
+  swStartY = e.touches[0].clientY;
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (gameState !== 'play') return;
+  const dx = e.changedTouches[0].clientX - swStartX;
+  const dy = e.changedTouches[0].clientY - swStartY;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+
+  if (adx < 10 && ady < 10) {
+    // Tap: stop moving
+    playerDir = { r: 0, c: 0 };
+    return;
+  }
+
+  if (adx > ady) {
+    playerDir = { r: 0, c: dx > 0 ? 1 : -1 };
+  } else {
+    playerDir = { r: dy > 0 ? 1 : -1, c: 0 };
+  }
+  moveTimer = playerSpeed; // trigger immediate move
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+// Keyboard
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === 'ArrowUp' || e.key === 'w') playerDir = { r: -1, c: 0 };
+  if (e.key === 'ArrowDown' || e.key === 's') playerDir = { r: 1, c: 0 };
+  if (e.key === 'ArrowLeft' || e.key === 'a') playerDir = { r: 0, c: -1 };
+  if (e.key === 'ArrowRight' || e.key === 'd') playerDir = { r: 0, c: 1 };
+  if (gameState === 'gameover' || gameState === 'win') init();
+});
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+init();
+loop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

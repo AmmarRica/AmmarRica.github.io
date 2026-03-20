@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gridiron Match-3</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-x: hidden; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 1.1em; }
+nav a:hover { color: #c4b5fd; }
+h1 { font-size: 2em; margin: 5px 0; text-align: center; color: #ffcc00; text-shadow: 0 0 10px #ff880055; }
+#gameArea { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; align-items: flex-start; margin-top: 10px; }
+#fieldContainer { text-align: center; }
+#field { background: #1a3a1a; border: 2px solid #2a5a2a; border-radius: 8px; padding: 10px; margin: 5px auto; width: 320px; height: 60px; position: relative; }
+#fieldProgress { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; background: #ffcc00; border-radius: 50%; transition: left 0.5s; }
+.yardMarker { position: absolute; top: 0; bottom: 0; width: 1px; background: #ffffff33; }
+.yardLabel { position: absolute; top: 2px; color: #ffffff66; font-size: 8px; transform: translateX(-50%); }
+#boardContainer { position: relative; }
+canvas { display: block; border-radius: 8px; cursor: pointer; }
+#info { display: flex; gap: 30px; justify-content: center; margin: 5px 0; font-size: 0.95em; }
+#info span { background: #1a1a2e; padding: 4px 12px; border-radius: 6px; }
+#message { text-align: center; font-size: 1.1em; min-height: 28px; color: #ffcc00; margin: 3px 0; }
+#overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f0f1acc; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+#overlay h2 { font-size: 2.5em; color: #ffcc00; margin-bottom: 10px; }
+#overlay p { color: #e0e0ff; margin: 5px 0; font-size: 1.1em; max-width: 500px; text-align: center; line-height: 1.5; }
+#overlay button { margin-top: 20px; padding: 12px 30px; font-size: 1.2em; background: #a78bfa; color: #0f0f1a; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+#overlay button:hover { background: #c4b5fd; }
+#scores { display: flex; gap: 20px; justify-content: center; font-size: 1.3em; font-weight: bold; margin: 5px 0; }
+.you { color: #4ade80; }
+.opp { color: #f87171; }
+</style>
+</head>
+<body>
+<h1>🏈 Gridiron Match-3</h1>
+<div id="scores"><span class="you">YOU: <span id="yourScore">0</span></span> <span>-</span> <span class="opp">OPP: <span id="oppScore">0</span></span></div>
+<div id="info">
+<span>Down: <span id="down">1</span></span>
+<span>Yards: <span id="yards">0</span>/100</span>
+<span>Combo: <span id="combo">x1</span></span>
+</div>
+<div id="fieldContainer">
+<div id="field"><div id="fieldProgress"></div></div>
+</div>
+<div id="message">Match football items to advance your drive!</div>
+<div id="gameArea">
+<div id="boardContainer">
+<canvas id="board" width="400" height="400"></canvas>
+</div>
+</div>
+
+<div id="overlay">
+<h2>Gridiron Match-3</h2>
+<p>Match 3+ football items to advance down the field!<br>
+🏈 Football = Pass Play (5 yds)<br>
+⛑️ Helmet = Run Play (3 yds)<br>
+📯 Whistle = Penalty on Defense (10 yds)<br>
+👟 Cleats = Speed Boost (next match 2x)<br>
+🥅 Goalpost = Field Goal Attempt!<br>
+Chain combos for big plays. First to score wins!</p>
+<button id="startBtn">KICK OFF!</button>
+</div>
+
+<script>
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const COLS = 8, ROWS = 8, SIZE = 50;
+canvas.width = COLS * SIZE;
+canvas.height = ROWS * SIZE;
+
+const ITEMS = [
+  { name: 'football', emoji: '🏈', color: '#8B4513', yards: 5 },
+  { name: 'helmet', emoji: '⛑️', color: '#cc3333', yards: 3 },
+  { name: 'whistle', emoji: '📯', color: '#FFD700', yards: 10 },
+  { name: 'cleats', emoji: '👟', color: '#4488ff', yards: 0 },
+  { name: 'goalpost', emoji: '🥅', color: '#44ff44', yards: 0 },
+  { name: 'trophy', emoji: '🏆', color: '#ff8800', yards: 2 }
+];
+
+let grid = [], selected = null, animating = false, gameState = 'title';
+let yardsGained = 0, down = 1, comboMultiplier = 1, speedBoost = false;
+let yourScore = 0, oppScore = 0, driveOwner = 'you';
+let sparkles = [], popups = [];
+let oppYards = 0, oppTimer = 0;
+
+function initField() {
+  const field = document.getElementById('field');
+  field.querySelectorAll('.yardMarker, .yardLabel').forEach(e => e.remove());
+  for (let y = 0; y <= 100; y += 10) {
+    const m = document.createElement('div');
+    m.className = 'yardMarker';
+    m.style.left = (10 + y * 2.9) + 'px';
+    field.appendChild(m);
+    if (y % 20 === 0) {
+      const l = document.createElement('div');
+      l.className = 'yardLabel';
+      l.textContent = y > 50 ? (100 - y) : y;
+      l.style.left = (10 + y * 2.9) + 'px';
+      field.appendChild(l);
+    }
+  }
+}
+
+function updateField() {
+  const fp = document.getElementById('fieldProgress');
+  const pct = Math.min(yardsGained, 100);
+  fp.style.left = (10 + pct * 2.9) + 'px';
+  document.getElementById('yards').textContent = Math.floor(pct);
+  document.getElementById('down').textContent = down;
+  document.getElementById('yourScore').textContent = yourScore;
+  document.getElementById('oppScore').textContent = oppScore;
+}
+
+function createGrid() {
+  grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      grid[r][c] = { type: Math.floor(Math.random() * ITEMS.length), alpha: 1, scale: 1, offsetY: 0 };
+    }
+  }
+  while (findMatches().length > 0) {
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        grid[r][c].type = Math.floor(Math.random() * ITEMS.length);
+  }
+}
+
+function findMatches() {
+  let matches = new Set();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS - 2; c++) {
+      if (grid[r][c] && grid[r][c+1] && grid[r][c+2] &&
+          grid[r][c].type === grid[r][c+1].type && grid[r][c+1].type === grid[r][c+2].type) {
+        matches.add(`${r},${c}`); matches.add(`${r},${c+1}`); matches.add(`${r},${c+2}`);
+      }
+    }
+  }
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < ROWS - 2; r++) {
+      if (grid[r][c] && grid[r+1][c] && grid[r+2][c] &&
+          grid[r][c].type === grid[r+1][c].type && grid[r+1][c].type === grid[r+2][c].type) {
+        matches.add(`${r},${c}`); matches.add(`${r+1},${c}`); matches.add(`${r+2},${c}`);
+      }
+    }
+  }
+  return [...matches].map(s => s.split(',').map(Number));
+}
+
+function swap(r1, c1, r2, c2) {
+  let t = grid[r1][c1];
+  grid[r1][c1] = grid[r2][c2];
+  grid[r2][c2] = t;
+}
+
+function isAdjacent(r1, c1, r2, c2) {
+  return (Math.abs(r1 - r2) + Math.abs(c1 - c2)) === 1;
+}
+
+let swapAnim = null;
+function animateSwap(r1, c1, r2, c2, callback) {
+  animating = true;
+  let t = 0;
+  swapAnim = { r1, c1, r2, c2, t: 0, callback, duration: 12 };
+}
+
+function processMatches(comboLevel) {
+  const matches = findMatches();
+  if (matches.length === 0) {
+    comboMultiplier = speedBoost ? 2 : 1;
+    speedBoost = false;
+    animating = false;
+    document.getElementById('combo').textContent = 'x1';
+    return;
+  }
+
+  comboLevel = comboLevel || 1;
+  if (comboLevel > 1) {
+    document.getElementById('combo').textContent = 'x' + comboLevel;
+  }
+
+  let matchTypes = {};
+  matches.forEach(([r, c]) => {
+    const t = grid[r][c].type;
+    matchTypes[t] = (matchTypes[t] || 0) + 1;
+    for (let i = 0; i < 3; i++) {
+      sparkles.push({
+        x: c * SIZE + SIZE/2 + (Math.random()-0.5)*20,
+        y: r * SIZE + SIZE/2 + (Math.random()-0.5)*20,
+        vx: (Math.random()-0.5)*4, vy: -Math.random()*3-1,
+        life: 30 + Math.random()*20,
+        color: ITEMS[t].color, size: 3 + Math.random()*3
+      });
+    }
+  });
+
+  Object.entries(matchTypes).forEach(([typeIdx, count]) => {
+    const item = ITEMS[typeIdx];
+    let yds = item.yards * comboLevel;
+    if (item.name === 'cleats') { speedBoost = true; showMessage('⚡ Speed Boost! Next match 2x!'); }
+    else if (item.name === 'goalpost') {
+      if (yardsGained >= 60) {
+        yourScore += 3;
+        showMessage('🥅 FIELD GOAL IS GOOD! +3 points!');
+        popups.push({ text: 'FG!', x: 200, y: 200, life: 60, color: '#44ff44' });
+        resetDrive();
+      } else {
+        showMessage('🥅 Too far for field goal! Need 60+ yards.');
+      }
+    } else {
+      if (speedBoost) { yds *= 2; speedBoost = false; }
+      yardsGained += yds;
+      if (yds > 0) {
+        showMessage(`${item.emoji} ${item.name === 'football' ? 'Pass' : item.name === 'helmet' ? 'Run' : item.name === 'whistle' ? 'Penalty' : 'Play'} for ${yds} yards!`);
+        popups.push({ text: '+' + yds, x: 200, y: 100, life: 40, color: '#ffcc00' });
+      }
+    }
+  });
+
+  if (yardsGained >= 100) {
+    yourScore += 7;
+    showMessage('🎉 TOUCHDOWN! +7 points!');
+    popups.push({ text: 'TD!', x: 200, y: 200, life: 80, color: '#ffcc00' });
+    setTimeout(() => resetDrive(), 1500);
+  }
+
+  updateField();
+
+  // Remove matched and drop
+  setTimeout(() => {
+    matches.forEach(([r, c]) => { grid[r][c] = null; });
+    dropTiles();
+    setTimeout(() => processMatches(comboLevel + 1), 300);
+  }, 300);
+}
+
+function dropTiles() {
+  for (let c = 0; c < COLS; c++) {
+    let empty = 0;
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (!grid[r][c]) {
+        empty++;
+      } else if (empty > 0) {
+        grid[r + empty][c] = grid[r][c];
+        grid[r + empty][c].offsetY = -empty * SIZE;
+        grid[r][c] = null;
+      }
+    }
+    for (let i = 0; i < empty; i++) {
+      grid[i][c] = { type: Math.floor(Math.random() * ITEMS.length), alpha: 1, scale: 1, offsetY: -(empty) * SIZE };
+    }
+  }
+}
+
+function resetDrive() {
+  yardsGained = 0;
+  down = 1;
+  oppYards = 0;
+  updateField();
+  if (yourScore >= 21 || oppScore >= 21) {
+    gameState = 'gameover';
+    showOverlay(yourScore >= 21 ? 'YOU WIN!' : 'YOU LOSE!', `Final Score: ${yourScore} - ${oppScore}`);
+  }
+}
+
+function showMessage(msg) {
+  document.getElementById('message').textContent = msg;
+}
+
+function showOverlay(title, desc) {
+  const ov = document.getElementById('overlay');
+  ov.style.display = 'flex';
+  ov.querySelector('h2').textContent = title;
+  ov.querySelector('p').textContent = desc;
+  ov.querySelector('button').textContent = 'PLAY AGAIN';
+}
+
+canvas.addEventListener('click', (e) => {
+  if (animating || gameState !== 'playing') return;
+  const rect = canvas.getBoundingClientRect();
+  const c = Math.floor((e.clientX - rect.left) / SIZE);
+  const r = Math.floor((e.clientY - rect.top) / SIZE);
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+
+  if (!selected) {
+    selected = { r, c };
+  } else {
+    if (isAdjacent(selected.r, selected.c, r, c)) {
+      const sr = selected.r, sc = selected.c;
+      animating = true;
+      swap(sr, sc, r, c);
+      if (findMatches().length > 0) {
+        processMatches(1);
+      } else {
+        swap(sr, sc, r, c);
+        animating = false;
+      }
+    }
+    selected = null;
+  }
+});
+
+function opponentTurn(dt) {
+  oppTimer += dt;
+  if (oppTimer > 120) {
+    oppTimer = 0;
+    const roll = Math.random();
+    if (roll < 0.3) {
+      oppYards += 5;
+      if (oppYards >= 100) {
+        oppScore += 7;
+        showMessage('😱 Opponent scores a TOUCHDOWN!');
+        resetDrive();
+      }
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw board background
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#1a1a2e' : '#16162a';
+      ctx.fillRect(c * SIZE, r * SIZE, SIZE, SIZE);
+    }
+  }
+
+  // Animate dropping tiles
+  let stillDropping = false;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = grid[r][c];
+      if (!cell) continue;
+      if (cell.offsetY < 0) {
+        cell.offsetY = Math.min(cell.offsetY + 8, 0);
+        if (cell.offsetY < 0) stillDropping = true;
+      }
+      const x = c * SIZE + SIZE / 2;
+      const y = r * SIZE + SIZE / 2 + cell.offsetY;
+      ctx.font = `${28 * cell.scale}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.globalAlpha = cell.alpha;
+      ctx.fillText(ITEMS[cell.type].emoji, x, y);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Selected highlight
+  if (selected) {
+    ctx.strokeStyle = '#ffcc00';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(selected.c * SIZE + 2, selected.r * SIZE + 2, SIZE - 4, SIZE - 4);
+  }
+
+  // Sparkles
+  sparkles = sparkles.filter(s => {
+    s.x += s.vx; s.y += s.vy; s.life--;
+    ctx.fillStyle = s.color;
+    ctx.globalAlpha = s.life / 50;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    return s.life > 0;
+  });
+
+  // Popups
+  popups = popups.filter(p => {
+    p.y -= 1; p.life--;
+    ctx.font = 'bold 32px sans-serif';
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 40;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.globalAlpha = 1;
+    return p.life > 0;
+  });
+
+  if (gameState === 'playing') opponentTurn(1);
+
+  requestAnimationFrame(draw);
+}
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  document.getElementById('overlay').style.display = 'none';
+  gameState = 'playing';
+  yourScore = 0; oppScore = 0; yardsGained = 0; down = 1;
+  createGrid();
+  initField();
+  updateField();
+});
+
+draw();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

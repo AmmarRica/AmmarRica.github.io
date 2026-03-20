@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quarterback Cooking Show</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 1.1em; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; border-radius: 8px; cursor: pointer; }
+#overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f0f1acc; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+#overlay h2 { font-size: 2.2em; color: #ff8844; margin-bottom: 10px; }
+#overlay p { color: #e0e0ff; margin: 5px 0; font-size: 1em; max-width: 550px; text-align: center; line-height: 1.6; }
+#overlay button { margin-top: 20px; padding: 12px 30px; font-size: 1.2em; background: #ff8844; color: #0f0f1a; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+#overlay button:hover { background: #ffaa66; }
+.sub { color: #aaa; font-style: italic; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="overlay">
+<h2>QB COOKING SHOW</h2>
+<p class="sub">"From the Pocket to the Kitchen"</p>
+<p>You're a retired QB turned celebrity chef!<br>
+Complete cooking mini-games with football twists:<br><br>
+🍖 Spiral Cut - Click rapidly in a spiral pattern<br>
+🥗 Blitz the Salsa - Click ingredients fast before time runs out<br>
+🦃 Punt the Turkey - Timing power bar game<br>
+📋 Draft Pick Ingredients - Choose the right combo<br><br>
+Serve customers (former players) for tips!<br>
+Complete orders before the clock runs out!</p>
+<button id="startBtn">OPEN KITCHEN!</button>
+</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = 700;
+canvas.height = 550;
+
+let gameState = 'title';
+let score = 0, round = 1, totalRounds = 8;
+let roundTimer = 0, maxRoundTime = 600; // 10 seconds
+let currentMiniGame = null;
+let frameCount = 0;
+let particles = [];
+
+const CUSTOMERS = [
+  { name: 'Coach Johnson', pref: 'Likes it spicy!', emoji: '👨‍🦳', color: '#cc6644' },
+  { name: 'Big Mike (OL)', pref: 'Extra portions!', emoji: '😤', color: '#8844cc' },
+  { name: 'Speedy (WR)', pref: 'Quick & light!', emoji: '😎', color: '#44aacc' },
+  { name: 'Tank (DL)', pref: 'Hearty meals!', emoji: '💪', color: '#cc4444' },
+  { name: 'Rookie', pref: 'Anything goes!', emoji: '🤓', color: '#44cc44' },
+  { name: 'The Kicker', pref: 'Precise flavors!', emoji: '🦵', color: '#ccaa44' },
+  { name: 'QB Legend', pref: 'Championship taste!', emoji: '🏆', color: '#ff8800' },
+  { name: 'Waterboy', pref: 'Extra hydration!', emoji: '💧', color: '#4488ff' }
+];
+
+let currentCustomer = null;
+let miniGameResult = '';
+let miniGameDone = false;
+let showResultTimer = 0;
+
+// Mini-game states
+let spiralTargets = [], spiralHit = 0;
+let blitzIngredients = [], blitzScore = 0;
+let puntPower = 0, puntDir = 1, puntLaunched = false, puntResult = 0;
+let draftOptions = [], draftSelected = [], draftCorrect = [];
+
+const MINI_GAMES = ['spiral', 'blitz', 'punt', 'draft'];
+
+function startRound() {
+  currentCustomer = CUSTOMERS[(round - 1) % CUSTOMERS.length];
+  const mgType = MINI_GAMES[(round - 1) % MINI_GAMES.length];
+  miniGameDone = false;
+  miniGameResult = '';
+  roundTimer = maxRoundTime;
+
+  if (mgType === 'spiral') initSpiral();
+  else if (mgType === 'blitz') initBlitz();
+  else if (mgType === 'punt') initPunt();
+  else if (mgType === 'draft') initDraft();
+
+  currentMiniGame = mgType;
+}
+
+// SPIRAL CUT
+function initSpiral() {
+  spiralTargets = [];
+  spiralHit = 0;
+  const cx = 350, cy = 300;
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 4;
+    const r = 30 + i * 12;
+    spiralTargets.push({
+      x: cx + Math.cos(angle) * r,
+      y: cy + Math.sin(angle) * r,
+      hit: false, radius: 18
+    });
+  }
+}
+
+function updateSpiral() {
+  if (spiralHit >= spiralTargets.length) {
+    completeMiniGame(true, 'Perfect spiral cut!');
+  }
+}
+
+function clickSpiral(mx, my) {
+  const next = spiralTargets[spiralHit];
+  if (!next) return;
+  if (Math.hypot(mx - next.x, my - next.y) < next.radius + 5) {
+    next.hit = true;
+    spiralHit++;
+    addParticles(next.x, next.y, '#ff8844');
+  }
+}
+
+function drawSpiral() {
+  // Cutting board
+  ctx.fillStyle = '#8B6914';
+  ctx.fillRect(200, 150, 300, 300);
+  ctx.strokeStyle = '#6B4914';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(200, 150, 300, 300);
+
+  // Ham
+  ctx.fillStyle = '#dd8866';
+  ctx.beginPath();
+  ctx.arc(350, 300, 120, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#aa6644';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Spiral line guide
+  ctx.strokeStyle = '#ffffff33';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  spiralTargets.forEach((t, i) => {
+    if (i === 0) ctx.moveTo(t.x, t.y);
+    else ctx.lineTo(t.x, t.y);
+  });
+  ctx.stroke();
+
+  // Targets
+  spiralTargets.forEach((t, i) => {
+    if (t.hit) {
+      ctx.fillStyle = '#44ff44';
+      ctx.beginPath(); ctx.arc(t.x, t.y, 6, 0, Math.PI*2); ctx.fill();
+    } else if (i === spiralHit) {
+      ctx.strokeStyle = '#ffcc00';
+      ctx.lineWidth = 3;
+      const pulse = Math.sin(frameCount * 0.15) * 4;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.radius + pulse, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle = '#ffcc0044';
+      ctx.fill();
+    } else {
+      ctx.fillStyle = '#ffffff33';
+      ctx.beginPath(); ctx.arc(t.x, t.y, 5, 0, Math.PI*2); ctx.fill();
+    }
+  });
+
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`SPIRAL CUT THE HAM! (${spiralHit}/${spiralTargets.length})`, 350, 140);
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#ccc';
+  ctx.fillText('Click each target in order along the spiral', 350, 480);
+}
+
+// BLITZ THE SALSA
+function initBlitz() {
+  blitzIngredients = [];
+  blitzScore = 0;
+  const items = ['🍅', '🧅', '🌶️', '🫑', '🧄', '🫒', '🌽', '🍋'];
+  for (let i = 0; i < 20; i++) {
+    blitzIngredients.push({
+      x: 120 + Math.random() * 460,
+      y: 160 + Math.random() * 300,
+      emoji: items[Math.floor(Math.random() * items.length)],
+      active: true, size: 30
+    });
+  }
+}
+
+function updateBlitz() {
+  if (blitzScore >= 15) {
+    completeMiniGame(true, 'Salsa BLITZED!');
+  }
+}
+
+function clickBlitz(mx, my) {
+  blitzIngredients.forEach(ing => {
+    if (ing.active && Math.hypot(mx - ing.x, my - ing.y) < ing.size) {
+      ing.active = false;
+      blitzScore++;
+      addParticles(ing.x, ing.y, '#ff4444');
+      // Spawn replacement
+      blitzIngredients.push({
+        x: 120 + Math.random() * 460,
+        y: 160 + Math.random() * 300,
+        emoji: ['🍅','🧅','🌶️','🫑'][Math.floor(Math.random()*4)],
+        active: true, size: 30
+      });
+    }
+  });
+}
+
+function drawBlitz() {
+  // Bowl
+  ctx.fillStyle = '#555';
+  ctx.beginPath();
+  ctx.ellipse(350, 350, 200, 80, 0, 0, Math.PI);
+  ctx.fill();
+  ctx.fillStyle = '#8B0000';
+  ctx.beginPath();
+  ctx.ellipse(350, 340, 180, 60, 0, 0, Math.PI);
+  ctx.fill();
+
+  // Ingredients
+  ctx.font = '28px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  blitzIngredients.forEach(ing => {
+    if (!ing.active) return;
+    const bob = Math.sin(frameCount * 0.1 + ing.x) * 3;
+    ctx.fillText(ing.emoji, ing.x, ing.y + bob);
+  });
+
+  ctx.fillStyle = '#ff4444';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`BLITZ THE SALSA! Click ingredients! (${blitzScore}/15)`, 350, 140);
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#ccc';
+  ctx.fillText('Rapidly click all the ingredients to chop them!', 350, 480);
+}
+
+// PUNT THE TURKEY
+function initPunt() {
+  puntPower = 0;
+  puntDir = 1;
+  puntLaunched = false;
+  puntResult = 0;
+}
+
+function updatePunt() {
+  if (!puntLaunched) {
+    puntPower += 2 * puntDir;
+    if (puntPower >= 100) puntDir = -1;
+    if (puntPower <= 0) puntDir = 1;
+  } else {
+    puntResult += 0.5;
+    if (puntResult >= 60) {
+      const accuracy = 100 - Math.abs(puntPower - 75) * 2;
+      completeMiniGame(accuracy > 40, accuracy > 40 ? `Turkey punted! Power: ${Math.floor(accuracy)}%` : 'Turkey missed the plate!');
+    }
+  }
+}
+
+function clickPunt() {
+  if (!puntLaunched) {
+    puntLaunched = true;
+  }
+}
+
+function drawPunt() {
+  // Table
+  ctx.fillStyle = '#654321';
+  ctx.fillRect(100, 380, 500, 20);
+
+  // Turkey target plate
+  const plateX = 500;
+  ctx.fillStyle = '#ddd';
+  ctx.beginPath();
+  ctx.ellipse(plateX, 370, 40, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Sweet spot indicator
+  const sweetX = 150 + (75 / 100) * 400;
+  ctx.fillStyle = '#44ff4444';
+  ctx.fillRect(sweetX - 20, 420, 40, 30);
+  ctx.fillStyle = '#44ff44';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('SWEET SPOT', sweetX, 465);
+
+  // Power bar
+  ctx.fillStyle = '#333';
+  ctx.fillRect(150, 420, 400, 30);
+  const barColor = Math.abs(puntPower - 75) < 15 ? '#44ff44' : Math.abs(puntPower - 75) < 30 ? '#ffcc00' : '#ff4444';
+  ctx.fillStyle = barColor;
+  ctx.fillRect(150, 420, puntPower * 4, 30);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(150, 420, 400, 30);
+
+  // Turkey
+  let turkeyX = 200, turkeyY = 350;
+  if (puntLaunched) {
+    const t = puntResult / 60;
+    turkeyX = 200 + t * 300;
+    turkeyY = 350 - Math.sin(t * Math.PI) * 200;
+  }
+  ctx.font = '40px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🦃', turkeyX, turkeyY);
+
+  // Kicking leg
+  if (!puntLaunched) {
+    ctx.font = '30px serif';
+    ctx.fillText('🦵', 180, 370);
+  }
+
+  ctx.fillStyle = '#ffaa44';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('PUNT THE TURKEY! Click to kick!', 350, 140);
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#ccc';
+  ctx.fillText('Hit the sweet spot on the power bar for a perfect punt!', 350, 490);
+}
+
+// DRAFT PICK INGREDIENTS
+function initDraft() {
+  draftSelected = [];
+  const allIngredients = [
+    { name: 'Steak', emoji: '🥩', good: true },
+    { name: 'Cheese', emoji: '🧀', good: true },
+    { name: 'Lettuce', emoji: '🥬', good: true },
+    { name: 'Tomato', emoji: '🍅', good: true },
+    { name: 'Football', emoji: '🏈', good: false },
+    { name: 'Helmet', emoji: '⛑️', good: false },
+    { name: 'Cleat', emoji: '👟', good: false },
+    { name: 'Whistle', emoji: '📯', good: false },
+    { name: 'Egg', emoji: '🥚', good: true },
+    { name: 'Pepper', emoji: '🌶️', good: true },
+    { name: 'Cone', emoji: '🔺', good: false },
+    { name: 'Bread', emoji: '🍞', good: true }
+  ];
+  draftOptions = allIngredients.sort(() => Math.random() - 0.5).slice(0, 8);
+  draftCorrect = draftOptions.filter(o => o.good).map(o => o.name);
+}
+
+function clickDraft(mx, my) {
+  const startX = 100, startY = 200, w = 130, h = 70, gap = 15;
+  draftOptions.forEach((opt, i) => {
+    const col = i % 4;
+    const row = Math.floor(i / 4);
+    const x = startX + col * (w + gap);
+    const y = startY + row * (h + gap + 20);
+    if (mx >= x && mx <= x + w && my >= y && my <= y + h) {
+      const idx = draftSelected.indexOf(opt.name);
+      if (idx >= 0) draftSelected.splice(idx, 1);
+      else draftSelected.push(opt.name);
+    }
+  });
+
+  // Check if done (selected 4+)
+  if (draftSelected.length >= 4) {
+    const correct = draftSelected.filter(s => draftCorrect.includes(s)).length;
+    const wrong = draftSelected.filter(s => !draftCorrect.includes(s)).length;
+    if (correct >= 3 && wrong === 0) {
+      completeMiniGame(true, 'Perfect draft picks!');
+    } else if (wrong > 0) {
+      completeMiniGame(false, `You drafted a non-food item! ${wrong} bad picks.`);
+    }
+  }
+}
+
+function drawDraft() {
+  const startX = 100, startY = 200, w = 130, h = 70, gap = 15;
+
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('DRAFT PICK YOUR INGREDIENTS! Select 4 real foods.', 350, 140);
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#ccc';
+  ctx.fillText('Click to select/deselect. Pick only real food ingredients!', 350, 170);
+
+  draftOptions.forEach((opt, i) => {
+    const col = i % 4;
+    const row = Math.floor(i / 4);
+    const x = startX + col * (w + gap);
+    const y = startY + row * (h + gap + 20);
+    const selected = draftSelected.includes(opt.name);
+
+    ctx.fillStyle = selected ? '#446622' : '#222244';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = selected ? '#88ff44' : '#555';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.font = '24px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(opt.emoji, x + w/2, y + 25);
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#e0e0ff';
+    ctx.fillText(opt.name, x + w/2, y + 55);
+  });
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Selected: ${draftSelected.length}/4`, 350, 430);
+}
+
+function completeMiniGame(success, msg) {
+  miniGameDone = true;
+  miniGameResult = msg;
+  const points = success ? (50 + Math.floor(roundTimer / maxRoundTime * 50)) : 10;
+  score += points;
+  showResultTimer = 120;
+  miniGameResult += ` (+${points} pts)`;
+  if (success) addParticles(350, 300, '#ffcc00');
+  else addParticles(350, 300, '#ff4444');
+}
+
+function update() {
+  if (gameState !== 'playing') return;
+  frameCount++;
+
+  if (miniGameDone) {
+    showResultTimer--;
+    if (showResultTimer <= 0) {
+      round++;
+      if (round > totalRounds) {
+        gameState = 'gameover';
+        showOverlay();
+        return;
+      }
+      startRound();
+    }
+    return;
+  }
+
+  roundTimer--;
+  if (roundTimer <= 0) {
+    completeMiniGame(false, 'TIME\'S UP! Order burned!');
+    return;
+  }
+
+  if (currentMiniGame === 'spiral') updateSpiral();
+  if (currentMiniGame === 'blitz') updateBlitz();
+  if (currentMiniGame === 'punt') updatePunt();
+
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy; p.life--;
+    return p.life > 0;
+  });
+}
+
+function addParticles(x, y, color) {
+  for (let i = 0; i < 12; i++) {
+    particles.push({
+      x, y, vx: (Math.random()-0.5)*6, vy: (Math.random()-0.5)*6 - 2,
+      life: 25 + Math.random()*15, color, size: 3 + Math.random()*3
+    });
+  }
+}
+
+canvas.addEventListener('click', (e) => {
+  if (gameState !== 'playing' || miniGameDone) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+  if (currentMiniGame === 'spiral') clickSpiral(mx, my);
+  if (currentMiniGame === 'blitz') clickBlitz(mx, my);
+  if (currentMiniGame === 'punt') clickPunt(mx, my);
+  if (currentMiniGame === 'draft') clickDraft(mx, my);
+});
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Kitchen background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (gameState === 'title') {
+    // Pixel art kitchen preview
+    ctx.fillStyle = '#2a1a0a';
+    ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
+    ctx.fillStyle = '#654321';
+    ctx.fillRect(50, canvas.height - 150, 120, 50);
+    ctx.fillRect(250, canvas.height - 170, 200, 70);
+    ctx.font = '40px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🍳', 110, canvas.height - 120);
+    ctx.fillText('🥘', 350, canvas.height - 130);
+    requestAnimationFrame(draw);
+    return;
+  }
+
+  // Top bar - customer & timer
+  ctx.fillStyle = '#000000cc';
+  ctx.fillRect(0, 0, canvas.width, 120);
+
+  if (currentCustomer) {
+    ctx.font = '36px serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(currentCustomer.emoji, 20, 55);
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillStyle = currentCustomer.color;
+    ctx.fillText(currentCustomer.name, 70, 40);
+    ctx.font = '13px sans-serif';
+    ctx.fillStyle = '#aaa';
+    ctx.fillText(currentCustomer.pref, 70, 60);
+  }
+
+  // Timer bar
+  const timerPct = roundTimer / maxRoundTime;
+  ctx.fillStyle = '#333';
+  ctx.fillRect(70, 80, 400, 16);
+  ctx.fillStyle = timerPct > 0.3 ? '#44cc44' : '#ff4444';
+  ctx.fillRect(70, 80, 400 * timerPct, 16);
+  ctx.strokeStyle = '#555';
+  ctx.strokeRect(70, 80, 400, 16);
+
+  // Score & round
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Score: ${score}`, canvas.width - 20, 40);
+  ctx.fillStyle = '#aaa';
+  ctx.font = '13px sans-serif';
+  ctx.fillText(`Round ${round}/${totalRounds}`, canvas.width - 20, 60);
+  ctx.fillText(`${Math.ceil(roundTimer / 60)}s`, canvas.width - 20, 94);
+
+  // Mini-game area
+  if (!miniGameDone) {
+    if (currentMiniGame === 'spiral') drawSpiral();
+    if (currentMiniGame === 'blitz') drawBlitz();
+    if (currentMiniGame === 'punt') drawPunt();
+    if (currentMiniGame === 'draft') drawDraft();
+  }
+
+  // Result overlay
+  if (miniGameDone) {
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(0, 200, canvas.width, 120);
+    ctx.fillStyle = miniGameResult.includes('perfect') || miniGameResult.includes('BLITZ') || miniGameResult.includes('punted') || miniGameResult.includes('Perfect') ? '#44ff44' : '#ff8844';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(miniGameResult, canvas.width / 2, 265);
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 40;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // Decorative kitchen elements at bottom
+  ctx.fillStyle = '#2a1a1a';
+  ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+  ctx.fillStyle = '#444';
+  ctx.fillRect(0, canvas.height - 42, canvas.width, 3);
+
+  // Pixel tiles
+  for (let x = 0; x < canvas.width; x += 40) {
+    ctx.fillStyle = x % 80 === 0 ? '#333' : '#2a2a2a';
+    ctx.fillRect(x, canvas.height - 38, 38, 38);
+  }
+
+  update();
+  requestAnimationFrame(draw);
+}
+
+function showOverlay() {
+  const ov = document.getElementById('overlay');
+  ov.style.display = 'flex';
+  ov.querySelector('h2').textContent = score >= 400 ? 'FIVE STAR CHEF!' : score >= 250 ? 'KITCHEN MVP!' : 'KEEP PRACTICING!';
+  ov.querySelector('p:last-of-type').textContent = `Final Score: ${score} points. ${score >= 400 ? 'The critics love you!' : score >= 250 ? 'Solid cooking, Coach would be proud.' : 'Maybe stick to football...'}`;
+  ov.querySelector('button').textContent = 'COOK AGAIN';
+}
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  document.getElementById('overlay').style.display = 'none';
+  gameState = 'playing';
+  score = 0; round = 1;
+  startRound();
+});
+
+draw();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

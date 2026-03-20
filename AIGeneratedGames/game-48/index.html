@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Pong</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 1000; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { border: 2px solid #333; }
+#info { position: fixed; bottom: 15px; text-align: center; font-size: 13px; color: #666; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">P1: W/S | P2: Up/Down | First to 7 TDs wins!</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 800, H = 500;
+canvas.width = W; canvas.height = H;
+
+let audioCtx;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function playTone(f, d, t='square', v=0.06) {
+  if (!audioCtx) return;
+  let o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = t; o.frequency.value = f;
+  g.gain.setValueAtTime(v, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + d);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + d);
+}
+
+const FIELD_GREEN = '#2d5a1e';
+const LINE_WHITE = '#ffffff44';
+const ENDZONE_L = '#1a3a8a';
+const ENDZONE_R = '#8a1a1a';
+const GOAL_YELLOW = '#f8d818';
+
+let state = 'title';
+let p1 = { y: H/2, h: 70, speed: 5, score: 0, powerup: null, powerTimer: 0 };
+let p2 = { y: H/2, h: 70, speed: 5, score: 0, powerup: null, powerTimer: 0 };
+let ball = { x: W/2, y: H/2, dx: 4, dy: 2, speed: 4, type: 'normal' };
+let extras = []; // extra balls from bomb
+let powerups = [];
+let particles = [];
+let walls = []; // temporary second paddles
+let serveType = 'normal';
+let serveTimer = 0;
+let scoreFlash = 0;
+let scoreFlashSide = '';
+let winMessage = '';
+let keys = {};
+
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  initAudio();
+  if (state === 'title') { state = 'serve'; resetBall(1); }
+  if (state === 'gameover' && e.key === ' ') { resetGame(); state = 'serve'; resetBall(1); }
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+function resetGame() {
+  p1.score = 0; p2.score = 0;
+  p1.h = 70; p2.h = 70;
+  p1.powerup = null; p2.powerup = null;
+  p1.speed = 5; p2.speed = 5;
+  walls = [];
+  extras = [];
+  powerups = [];
+}
+
+function resetBall(dir) {
+  ball.x = W / 2; ball.y = H / 2;
+  ball.speed = 4 + Math.max(p1.score, p2.score) * 0.4;
+  // Pick random serve type
+  let r = Math.random();
+  if (r > 0.7) serveType = 'spiral';
+  else if (r > 0.5) serveType = 'knuckle';
+  else if (r > 0.35) serveType = 'bomb';
+  else serveType = 'normal';
+  ball.type = serveType;
+  ball.dx = ball.speed * dir;
+  ball.dy = (Math.random() - 0.5) * 4;
+  serveTimer = 60;
+  extras = [];
+}
+
+function spawnPowerup() {
+  let kinds = ['bigger', 'faster', 'wall'];
+  let kind = kinds[Math.floor(Math.random() * kinds.length)];
+  powerups.push({
+    x: W / 4 + Math.random() * W / 2,
+    y: 40 + Math.random() * (H - 80),
+    kind, life: 300, r: 12
+  });
+}
+
+function addParticles(x, y, col, n = 8) {
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x, y, dx: (Math.random() - 0.5) * 6, dy: (Math.random() - 0.5) * 6,
+      life: 25, col, r: 2 + Math.random() * 3
+    });
+  }
+}
+
+function update() {
+  if (state !== 'play' && state !== 'serve') return;
+
+  // Paddle movement
+  if (keys['w'] || keys['W']) p1.y -= p1.speed;
+  if (keys['s'] || keys['S']) p1.y += p1.speed;
+  if (keys['ArrowUp']) p2.y -= p2.speed;
+  if (keys['ArrowDown']) p2.y += p2.speed;
+
+  p1.y = Math.max(p1.h / 2, Math.min(H - p1.h / 2, p1.y));
+  p2.y = Math.max(p2.h / 2, Math.min(H - p2.h / 2, p2.y));
+
+  // Power-up timers
+  [p1, p2].forEach(p => {
+    if (p.powerTimer > 0) {
+      p.powerTimer--;
+      if (p.powerTimer <= 0) {
+        if (p.powerup === 'bigger') p.h = 70;
+        if (p.powerup === 'faster') p.speed = 5;
+        p.powerup = null;
+      }
+    }
+  });
+
+  // Wall timers
+  walls = walls.filter(w => { w.life--; return w.life > 0; });
+
+  if (state === 'serve') {
+    serveTimer--;
+    if (serveTimer <= 0) state = 'play';
+    return;
+  }
+
+  // Ball movement
+  let allBalls = [ball, ...extras];
+  allBalls.forEach((b, bi) => {
+    // Knuckleball random movement
+    if (b.type === 'knuckle') {
+      b.dy += (Math.random() - 0.5) * 1.5;
+      b.dy = Math.max(-6, Math.min(6, b.dy));
+    }
+    // Spiral curves
+    if (b.type === 'spiral') {
+      b.dy += Math.sin(b.x * 0.05) * 0.3;
+    }
+
+    b.x += b.dx;
+    b.y += b.dy;
+
+    // Top/bottom bounce
+    if (b.y < 10 || b.y > H - 10) {
+      b.dy *= -1;
+      b.y = b.y < 10 ? 10 : H - 10;
+      playTone(300, 0.05);
+    }
+
+    // Paddle collision - P1 (left)
+    let pw = 15;
+    if (b.x - 8 < 30 + pw && b.x > 20 && b.dx < 0) {
+      if (Math.abs(b.y - p1.y) < p1.h / 2 + 5) {
+        b.dx = Math.abs(b.dx) * 1.05;
+        b.dy = (b.y - p1.y) * 0.08;
+        b.x = 30 + pw + 8;
+        addParticles(b.x, b.y, '#60a5fa');
+        playTone(500, 0.1);
+        // Bomb: split
+        if (b.type === 'bomb' && bi === 0 && extras.length === 0) {
+          for (let i = 0; i < 2; i++) {
+            extras.push({ x: b.x, y: b.y, dx: b.dx, dy: b.dy + (i === 0 ? -3 : 3), speed: b.speed, type: 'normal' });
+          }
+        }
+      }
+    }
+
+    // Paddle collision - P2 (right)
+    if (b.x + 8 > W - 30 - pw && b.x < W - 20 && b.dx > 0) {
+      if (Math.abs(b.y - p2.y) < p2.h / 2 + 5) {
+        b.dx = -Math.abs(b.dx) * 1.05;
+        b.dy = (b.y - p2.y) * 0.08;
+        b.x = W - 30 - pw - 8;
+        addParticles(b.x, b.y, '#f87171');
+        playTone(500, 0.1);
+        if (b.type === 'bomb' && bi === 0 && extras.length === 0) {
+          for (let i = 0; i < 2; i++) {
+            extras.push({ x: b.x, y: b.y, dx: b.dx, dy: b.dy + (i === 0 ? -3 : 3), speed: b.speed, type: 'normal' });
+          }
+        }
+      }
+    }
+
+    // Wall collision
+    walls.forEach(w => {
+      if (w.side === 'left' && b.dx < 0 && b.x < w.x + 10 && b.x > w.x - 5) {
+        if (Math.abs(b.y - w.y) < w.h / 2) {
+          b.dx *= -1; b.x = w.x + 10;
+          playTone(400, 0.05);
+        }
+      }
+      if (w.side === 'right' && b.dx > 0 && b.x > w.x - 10 && b.x < w.x + 5) {
+        if (Math.abs(b.y - w.y) < w.h / 2) {
+          b.dx *= -1; b.x = w.x - 10;
+          playTone(400, 0.05);
+        }
+      }
+    });
+
+    // Score
+    if (b.x < 0) {
+      if (bi === 0) {
+        p2.score++;
+        scoreFlash = 60; scoreFlashSide = 'right';
+        playTone(200, 0.3, 'sawtooth');
+        setTimeout(() => playTone(150, 0.3, 'sawtooth'), 150);
+        addParticles(30, b.y, '#f87171', 20);
+        checkWin();
+        if (state !== 'gameover') { state = 'serve'; resetBall(-1); }
+      } else {
+        extras.splice(bi - 1, 1); // remove extra
+      }
+      return;
+    }
+    if (b.x > W) {
+      if (bi === 0) {
+        p1.score++;
+        scoreFlash = 60; scoreFlashSide = 'left';
+        playTone(200, 0.3, 'sawtooth');
+        setTimeout(() => playTone(150, 0.3, 'sawtooth'), 150);
+        addParticles(W - 30, b.y, '#60a5fa', 20);
+        checkWin();
+        if (state !== 'gameover') { state = 'serve'; resetBall(1); }
+      } else {
+        extras.splice(bi - 1, 1);
+      }
+    }
+  });
+
+  // Powerup collision
+  let allB = [ball, ...extras];
+  powerups = powerups.filter(pu => {
+    pu.life--;
+    if (pu.life <= 0) return false;
+    for (let b of allB) {
+      if (Math.abs(b.x - pu.x) < pu.r + 8 && Math.abs(b.y - pu.y) < pu.r + 8) {
+        let target = b.dx > 0 ? p2 : p1; // last hitter gets it... approximate
+        // Actually give to whoever the ball is heading away from
+        target = b.dx > 0 ? p1 : p2;
+        if (pu.kind === 'bigger') { target.h = 110; target.powerup = 'bigger'; target.powerTimer = 300; }
+        else if (pu.kind === 'faster') { target.speed = 8; target.powerup = 'faster'; target.powerTimer = 300; }
+        else if (pu.kind === 'wall') {
+          let side = target === p1 ? 'left' : 'right';
+          let wx = side === 'left' ? 80 : W - 80;
+          walls.push({ x: wx, y: target.y, h: 60, side, life: 180 });
+        }
+        addParticles(pu.x, pu.y, GOAL_YELLOW, 10);
+        playTone(880, 0.1); setTimeout(() => playTone(1100, 0.1), 50);
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // Spawn powerups occasionally
+  if (Math.random() < 0.003 && powerups.length < 2) spawnPowerup();
+
+  // Particles
+  particles.forEach(p => { p.x += p.dx; p.y += p.dy; p.life--; p.dx *= 0.95; p.dy *= 0.95; });
+  particles = particles.filter(p => p.life > 0);
+
+  if (scoreFlash > 0) scoreFlash--;
+}
+
+function checkWin() {
+  if (p1.score >= 7) { state = 'gameover'; winMessage = 'HOME TEAM WINS!'; }
+  if (p2.score >= 7) { state = 'gameover'; winMessage = 'AWAY TEAM WINS!'; }
+}
+
+function drawFootball(x, y, angle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  // Football shape
+  ctx.fillStyle = '#8B4513';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 10, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#654321';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // Laces
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-4, -2); ctx.lineTo(4, -2);
+  ctx.stroke();
+  for (let i = -3; i <= 3; i += 2) {
+    ctx.beginPath();
+    ctx.moveTo(i, -4); ctx.lineTo(i, -1);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function draw() {
+  // Field
+  ctx.fillStyle = FIELD_GREEN;
+  ctx.fillRect(0, 0, W, H);
+
+  // Endzones
+  ctx.fillStyle = ENDZONE_L;
+  ctx.fillRect(0, 0, 30, H);
+  ctx.fillStyle = ENDZONE_R;
+  ctx.fillRect(W - 30, 0, 30, H);
+
+  // Yard lines
+  for (let i = 1; i < 10; i++) {
+    let x = 30 + (W - 60) * i / 10;
+    ctx.strokeStyle = LINE_WHITE;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(x, 0); ctx.lineTo(x, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Hash marks
+  for (let i = 0; i < 20; i++) {
+    let x = 30 + (W - 60) * i / 20;
+    ctx.fillStyle = LINE_WHITE;
+    ctx.fillRect(x, H * 0.33 - 3, 1, 6);
+    ctx.fillRect(x, H * 0.67 - 3, 1, 6);
+  }
+
+  // 50 yard line
+  ctx.strokeStyle = '#ffffff66';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H);
+  ctx.stroke();
+
+  // Goalposts
+  ctx.strokeStyle = GOAL_YELLOW;
+  ctx.lineWidth = 3;
+  // Left
+  ctx.beginPath();
+  ctx.moveTo(25, H * 0.3); ctx.lineTo(25, H * 0.2); ctx.moveTo(25, H * 0.7); ctx.lineTo(25, H * 0.8);
+  ctx.moveTo(25, H * 0.2); ctx.lineTo(15, H * 0.2); ctx.moveTo(25, H * 0.8); ctx.lineTo(15, H * 0.8);
+  ctx.stroke();
+  // Right
+  ctx.beginPath();
+  ctx.moveTo(W - 25, H * 0.3); ctx.lineTo(W - 25, H * 0.2); ctx.moveTo(W - 25, H * 0.7); ctx.lineTo(W - 25, H * 0.8);
+  ctx.moveTo(W - 25, H * 0.2); ctx.lineTo(W - 5, H * 0.2); ctx.moveTo(W - 25, H * 0.8); ctx.lineTo(W - 5, H * 0.8);
+  ctx.stroke();
+
+  if (state === 'title') {
+    ctx.fillStyle = '#000000cc';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 48px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('FOOTBALL PONG', W / 2, 150);
+    ctx.font = '20px Courier New';
+    ctx.fillStyle = GOAL_YELLOW;
+    ctx.fillText('First to 7 Touchdowns Wins!', W / 2, 200);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '16px Courier New';
+    ctx.fillText('Player 1: W/S    Player 2: Up/Down', W / 2, 260);
+    ctx.fillText('Special serves: Spiral, Knuckleball, Bomb', W / 2, 290);
+    ctx.fillText('Collect power-ups: Bigger Paddle, Speed, Wall', W / 2, 320);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Press any key to start', W / 2, 380);
+    drawFootball(W / 2, 420, 0);
+    return;
+  }
+
+  // Paddles (defensive lines)
+  // P1 - left
+  ctx.fillStyle = '#3366cc';
+  let p1x = 30;
+  ctx.fillRect(p1x, p1.y - p1.h / 2, 15, p1.h);
+  // Helmet details
+  for (let i = 0; i < Math.floor(p1.h / 20); i++) {
+    ctx.fillStyle = '#4488ee';
+    ctx.fillRect(p1x + 2, p1.y - p1.h / 2 + 3 + i * 20, 11, 14);
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(p1x + 12, p1.y - p1.h / 2 + 6 + i * 20, 3, 3);
+  }
+
+  // P2 - right
+  let p2x = W - 45;
+  ctx.fillStyle = '#cc3333';
+  ctx.fillRect(p2x, p2.y - p2.h / 2, 15, p2.h);
+  for (let i = 0; i < Math.floor(p2.h / 20); i++) {
+    ctx.fillStyle = '#ee4444';
+    ctx.fillRect(p2x + 2, p2.y - p2.h / 2 + 3 + i * 20, 11, 14);
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(p2x, p2.y - p2.h / 2 + 6 + i * 20, 3, 3);
+  }
+
+  // Walls
+  walls.forEach(w => {
+    ctx.fillStyle = '#ffffff44';
+    ctx.fillRect(w.x - 5, w.y - w.h / 2, 10, w.h);
+    ctx.strokeStyle = '#ffffff88';
+    ctx.strokeRect(w.x - 5, w.y - w.h / 2, 10, w.h);
+  });
+
+  // Powerups
+  powerups.forEach(pu => {
+    ctx.save();
+    ctx.globalAlpha = pu.life < 60 ? 0.3 + Math.sin(pu.life * 0.3) * 0.3 : 0.8;
+    ctx.fillStyle = pu.kind === 'bigger' ? '#4ade80' : pu.kind === 'faster' ? '#f87171' : '#60a5fa';
+    ctx.beginPath();
+    ctx.arc(pu.x, pu.y, pu.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(pu.kind === 'bigger' ? 'BIG' : pu.kind === 'faster' ? 'SPD' : 'WALL', pu.x, pu.y + 4);
+    ctx.restore();
+  });
+
+  // Football(s)
+  let angle = Math.atan2(ball.dy, ball.dx);
+  drawFootball(ball.x, ball.y, angle);
+  extras.forEach(e => {
+    let a = Math.atan2(e.dy, e.dx);
+    drawFootball(e.x, e.y, a);
+  });
+
+  // Trail
+  if (state === 'play') {
+    ctx.fillStyle = '#8B451333';
+    ctx.beginPath();
+    ctx.arc(ball.x - ball.dx * 2, ball.y - ball.dy * 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.fillStyle = p.col;
+    ctx.globalAlpha = p.life / 25;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // Score
+  ctx.fillStyle = '#000000aa';
+  ctx.fillRect(W / 2 - 120, 0, 240, 50);
+  ctx.font = 'bold 36px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = scoreFlash > 0 && scoreFlashSide === 'left' ? GOAL_YELLOW : '#3366cc';
+  ctx.fillText(p1.score, W / 2 - 50, 40);
+  ctx.fillStyle = '#666';
+  ctx.fillText('-', W / 2, 40);
+  ctx.fillStyle = scoreFlash > 0 && scoreFlashSide === 'right' ? GOAL_YELLOW : '#cc3333';
+  ctx.fillText(p2.score, W / 2 + 50, 40);
+
+  // Serve type indicator
+  if (state === 'serve' && serveTimer > 0) {
+    ctx.fillStyle = '#000000cc';
+    ctx.fillRect(W / 2 - 100, H / 2 - 30, 200, 60);
+    ctx.fillStyle = GOAL_YELLOW;
+    ctx.font = '14px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('SERVE:', W / 2, H / 2 - 8);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillText(serveType.toUpperCase(), W / 2, H / 2 + 18);
+  }
+
+  // Power-up indicators
+  ctx.font = '11px Courier New';
+  ctx.textAlign = 'left';
+  if (p1.powerup) {
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText(p1.powerup.toUpperCase() + ' ' + Math.ceil(p1.powerTimer / 60) + 's', 50, 20);
+  }
+  ctx.textAlign = 'right';
+  if (p2.powerup) {
+    ctx.fillStyle = '#f87171';
+    ctx.fillText(p2.powerup.toUpperCase() + ' ' + Math.ceil(p2.powerTimer / 60) + 's', W - 50, 20);
+  }
+
+  // Score flash
+  if (scoreFlash > 0) {
+    ctx.fillStyle = scoreFlashSide === 'left' ? '#3366cc22' : '#cc333322';
+    ctx.fillRect(scoreFlashSide === 'left' ? 0 : W - 30, 0, 30, H);
+    ctx.fillStyle = GOAL_YELLOW;
+    ctx.font = 'bold 24px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('TOUCHDOWN!', W / 2, H / 2 + 60);
+  }
+
+  // Game over
+  if (state === 'gameover') {
+    ctx.fillStyle = '#000000cc';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = GOAL_YELLOW;
+    ctx.font = 'bold 36px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(winMessage, W / 2, H / 2 - 20);
+    ctx.fillStyle = '#fff';
+    ctx.font = '18px Courier New';
+    ctx.fillText(`Final: ${p1.score} - ${p2.score}`, W / 2, H / 2 + 20);
+    ctx.fillStyle = '#888';
+    ctx.font = '14px Courier New';
+    ctx.fillText('Press SPACE to play again', W / 2, H / 2 + 60);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

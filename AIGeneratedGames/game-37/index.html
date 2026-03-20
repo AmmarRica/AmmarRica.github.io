@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Commentator Chaos</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden; user-select: none; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 1.1em; }
+nav a:hover { color: #c4b5fd; }
+#game { position: relative; width: 900px; height: 600px; background: #111; border: 3px solid #333; border-radius: 8px; overflow: hidden; }
+#field { width: 100%; height: 340px; background: #1a5c1a; position: relative; border-bottom: 4px solid #fff; }
+#fieldCanvas { width: 100%; height: 100%; }
+#broadcast-bar { display: flex; justify-content: space-between; align-items: center; padding: 5px 15px; background: linear-gradient(to right, #1a1a3a, #2a1a3a); border-bottom: 2px solid #a78bfa; height: 36px; }
+#broadcast-bar .network { font-weight: bold; color: #a78bfa; font-size: 1.1em; }
+#broadcast-bar .score-display { font-size: 1.2em; font-weight: bold; }
+#broadcast-bar .viewers { color: #ffcc00; font-size: 0.95em; }
+#commentary-box { height: 80px; padding: 10px 15px; background: #0a0a1a; border-bottom: 1px solid #222; overflow: hidden; font-size: 0.95em; line-height: 1.4; }
+#commentary-box .line { margin-bottom: 3px; opacity: 0.7; }
+#commentary-box .line.latest { opacity: 1; color: #ffcc00; font-weight: bold; }
+#buttons-area { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 15px; justify-content: center; height: 140px; align-items: center; align-content: center; }
+.call-btn { padding: 10px 16px; font-size: 0.9em; font-weight: bold; border: 2px solid #444; border-radius: 8px; background: #1a1a2e; color: #e0e0ff; cursor: pointer; transition: all 0.15s; min-width: 130px; text-align: center; }
+.call-btn:hover { background: #2a2a4e; border-color: #666; }
+.call-btn:active { transform: scale(0.95); }
+.call-btn.correct { background: #1a5c1a; border-color: #4ade80; color: #4ade80; animation: pulse 0.3s; }
+.call-btn.wrong { background: #5c1a1a; border-color: #ef4444; color: #ef4444; animation: shake 0.3s; }
+.call-btn.glowing { animation: glow 0.5s infinite alternate; border-color: #ffcc00; }
+@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+@keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+@keyframes glow { from { box-shadow: 0 0 5px #ffcc00; } to { box-shadow: 0 0 20px #ffcc00; } }
+#feedback { position: absolute; top: 180px; left: 50%; transform: translateX(-50%); font-size: 2em; font-weight: bold; pointer-events: none; z-index: 10; text-shadow: 0 0 10px rgba(0,0,0,0.8); opacity: 0; transition: opacity 0.3s; }
+#overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15,15,26,0.94); z-index: 20; }
+#overlay h1 { font-size: 2.5em; color: #a78bfa; margin-bottom: 10px; }
+#overlay h2 { font-size: 1.3em; color: #e0e0ff; margin-bottom: 10px; }
+#overlay .sub { color: #8888cc; margin-bottom: 5px; font-size: 0.95em; max-width: 600px; text-align: center; }
+#overlay button { padding: 14px 36px; font-size: 1.2em; background: #7c3aed; color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-top: 15px; }
+#overlay button:hover { background: #6d28d9; }
+.hidden { display: none !important; }
+#viewer-bar { position: absolute; top: 345px; right: 15px; z-index: 5; }
+#viewer-count { font-size: 1.5em; font-weight: bold; color: #ffcc00; text-shadow: 0 0 8px rgba(255,204,0,0.5); }
+#viewer-label { font-size: 0.7em; color: #aaa; }
+#event-indicator { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(200,0,0,0.9); color: #fff; padding: 8px 20px; border-radius: 20px; font-weight: bold; font-size: 1.1em; z-index: 5; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="fieldCanvas" width="900" height="340"></canvas>
+  <div id="broadcast-bar">
+    <span class="network">CCN SPORTS</span>
+    <span class="score-display" id="gameScore">HOME 0 - 0 AWAY</span>
+    <span class="viewers" id="viewerSmall">Viewers: 10,000</span>
+  </div>
+  <div id="commentary-box" id="comBox"></div>
+  <div id="buttons-area" id="btnArea"></div>
+  <div id="feedback"></div>
+  <div id="event-indicator"></div>
+  <div id="overlay">
+    <h1>Commentator Chaos</h1>
+    <h2>You're the Football Commentator!</h2>
+    <div class="sub">The game plays out automatically. Click the right commentary button when events happen!</div>
+    <div class="sub">Right calls = more viewers. Wrong calls = lost viewers.</div>
+    <div class="sub">React fast and click rapidly for enthusiasm bonus!</div>
+    <div class="sub">Reach 1,000,000 viewers to become a legendary commentator!</div>
+    <button id="startBtn">GO LIVE!</button>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('fieldCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const comBox = document.querySelector('#commentary-box');
+const btnArea = document.querySelector('#buttons-area');
+const feedbackEl = document.getElementById('feedback');
+const eventIndicator = document.getElementById('event-indicator');
+const gameScoreEl = document.getElementById('gameScore');
+const viewerSmallEl = document.getElementById('viewerSmall');
+
+let gameState = 'title';
+let viewers = 10000;
+let homeScore = 0, awayScore = 0;
+let quarter = 1;
+let gameTime = 0;
+let maxTime = 120; // 2 min per game
+let currentEvent = null;
+let eventTimer = 0;
+let eventWindow = 0;
+let nextEventTime = 0;
+let commentaryLines = [];
+let enthusiasm = 0;
+let feedbackTimer = 0;
+let ballX = 450, ballY = 170;
+let players = [];
+let eventQueue = [];
+
+const EVENTS = [
+  { type: 'touchdown', label: 'TOUCHDOWN!', btn: '🏈 TOUCHDOWN!', color: '#4ade80', viewers: 15000, commentary: [
+    "AND HE'S IN! TOUCHDOWN!", "WHAT A PLAY! SIX POINTS!", "INTO THE ENDZONE! UNBELIEVABLE!",
+    "HE BREAKS FREE AND SCORES!", "NOTHING BUT ENDZONE! TOUCHDOWN!"
+  ]},
+  { type: 'big_catch', label: 'BIG CATCH!', btn: '🙌 WHAT A CATCH!', color: '#60a5fa', viewers: 8000, commentary: [
+    "WHAT A CATCH! DID YOU SEE THAT?!", "INCREDIBLE HANDS! ONE-HANDED GRAB!",
+    "HE HAULED THAT IN! SPECTACULAR!", "CIRCUS CATCH ON THE SIDELINE!"
+  ]},
+  { type: 'penalty', label: 'FLAG!', btn: '🚩 FLAG ON THE PLAY', color: '#fbbf24', viewers: 5000, commentary: [
+    "FLAG ON THE PLAY! HOLDING!", "YELLOW FLAG DOWN! PASS INTERFERENCE!",
+    "THERE'S A FLAG! ILLEGAL FORMATION!", "PENALTY FLAG! OFFSIDES!"
+  ]},
+  { type: 'sack', label: 'SACK!', btn: '💥 HE\'S DOWN!', color: '#f97316', viewers: 7000, commentary: [
+    "SACKED! THE QUARTERBACK GOES DOWN!", "WHAT A HIT! HE NEVER SAW IT COMING!",
+    "CRUSHED IN THE POCKET! HUGE SACK!"
+  ]},
+  { type: 'interception', label: 'PICK!', btn: '🔄 INTERCEPTION!', color: '#e879f9', viewers: 12000, commentary: [
+    "INTERCEPTED! WHAT A READ!", "PICKED OFF! TURNOVER!",
+    "HE JUMPED THAT ROUTE! INTERCEPTION!"
+  ]},
+  { type: 'fumble', label: 'FUMBLE!', btn: '⚡ FUMBLE!', color: '#fb923c', viewers: 9000, commentary: [
+    "FUMBLE! THE BALL IS LOOSE!", "HE LOST THE HANDLE! SCRAMBLE FOR THE BALL!",
+    "STRIPPED! FUMBLE ON THE PLAY!"
+  ]},
+  { type: 'field_goal', label: 'FG ATTEMPT', btn: '🥅 IT\'S GOOD!', color: '#34d399', viewers: 6000, commentary: [
+    "THE KICK IS UP... AND IT'S GOOD!", "RIGHT THROUGH THE UPRIGHTS! THREE POINTS!",
+    "SPLITS THE UPRIGHTS! FIELD GOAL!"
+  ]},
+  { type: 'big_run', label: 'BIG RUN!', btn: '🏃 LOOK AT HIM GO!', color: '#38bdf8', viewers: 7000, commentary: [
+    "LOOK AT HIM GO! BREAKING TACKLES!", "HE'S STILL ON HIS FEET! WHAT A RUN!",
+    "BOUNCING OFF DEFENDERS! MASSIVE GAIN!"
+  ]}
+];
+
+const WRONG_COMMENTARY = [
+  "Uh... that didn't happen.", "The producer is giving me a look...",
+  "Sorry folks, got ahead of myself!", "My bad, wrong call!",
+  "I need new glasses!", "That was embarrassing..."
+];
+
+const IDLE_COMMENTARY = [
+  "Teams are lining up at the line of scrimmage.",
+  "The quarterback surveys the defense.",
+  "Audible at the line! He's changing the play.",
+  "The crowd is getting loud here!",
+  "Both teams showing great intensity today.",
+  "The coaching staff seems pleased with that series.",
+  "Let's see what they dial up next.",
+  "The defense is showing a blitz look.",
+  "What a competitive game we have here, folks."
+];
+
+function initPlayers() {
+  players = [];
+  for (let i = 0; i < 22; i++) {
+    players.push({
+      x: 200 + Math.random() * 500,
+      y: 60 + Math.random() * 220,
+      vx: (Math.random() - 0.5) * 60,
+      vy: (Math.random() - 0.5) * 40,
+      team: i < 11 ? 0 : 1,
+      size: 6
+    });
+  }
+}
+
+function initGame() {
+  viewers = 10000;
+  homeScore = 0; awayScore = 0;
+  quarter = 1; gameTime = 0;
+  currentEvent = null;
+  eventTimer = 0;
+  eventWindow = 0;
+  nextEventTime = 2 + Math.random() * 3;
+  commentaryLines = [];
+  enthusiasm = 0;
+  eventQueue = [];
+  initPlayers();
+  createButtons();
+  addCommentary("Welcome to CCN Sports! I'm your commentator for today's big game!");
+  addCommentary("Let's get this started, folks!");
+}
+
+function createButtons() {
+  btnArea.innerHTML = '';
+  EVENTS.forEach((ev, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'call-btn';
+    btn.textContent = ev.btn;
+    btn.onclick = () => handleCall(i);
+    btn.id = `btn-${i}`;
+    btnArea.appendChild(btn);
+  });
+}
+
+function addCommentary(text) {
+  commentaryLines.push(text);
+  if (commentaryLines.length > 4) commentaryLines.shift();
+  renderCommentary();
+}
+
+function renderCommentary() {
+  comBox.innerHTML = commentaryLines.map((line, i) =>
+    `<div class="line ${i === commentaryLines.length - 1 ? 'latest' : ''}">${line}</div>`
+  ).join('');
+}
+
+function showFeedback(text, color) {
+  feedbackEl.textContent = text;
+  feedbackEl.style.color = color;
+  feedbackEl.style.opacity = 1;
+  feedbackTimer = 1.5;
+}
+
+function showEventIndicator(text) {
+  eventIndicator.textContent = text;
+  eventIndicator.style.opacity = 1;
+  setTimeout(() => { eventIndicator.style.opacity = 0; }, 3000);
+}
+
+function handleCall(eventIndex) {
+  if (gameState !== 'playing') return;
+
+  const ev = EVENTS[eventIndex];
+  const btn = document.getElementById(`btn-${eventIndex}`);
+
+  if (currentEvent && currentEvent.type === ev.type) {
+    // Correct call!
+    enthusiasm++;
+    const bonus = Math.min(enthusiasm * 2000, 20000);
+    const gain = ev.viewers + bonus;
+    viewers += gain;
+    btn.className = 'call-btn correct';
+    setTimeout(() => { btn.className = 'call-btn'; }, 500);
+
+    const com = ev.commentary[Math.floor(Math.random() * ev.commentary.length)];
+    addCommentary(com);
+    showFeedback(`+${gain.toLocaleString()} viewers! ${enthusiasm > 2 ? 'ENTHUSIASM BONUS!' : ''}`, ev.color);
+
+    // Score events
+    if (ev.type === 'touchdown') {
+      if (Math.random() > 0.5) homeScore += 7; else awayScore += 7;
+    } else if (ev.type === 'field_goal') {
+      if (Math.random() > 0.5) homeScore += 3; else awayScore += 3;
+    }
+
+    currentEvent = null;
+    eventWindow = 0;
+    // Clear glow from all buttons
+    document.querySelectorAll('.call-btn').forEach(b => b.classList.remove('glowing'));
+  } else {
+    // Wrong call!
+    const loss = Math.floor(viewers * 0.08);
+    viewers = Math.max(100, viewers - loss);
+    enthusiasm = 0;
+    btn.className = 'call-btn wrong';
+    setTimeout(() => { btn.className = 'call-btn'; }, 500);
+    addCommentary(WRONG_COMMENTARY[Math.floor(Math.random() * WRONG_COMMENTARY.length)]);
+    showFeedback(`-${loss.toLocaleString()} viewers! Wrong call!`, '#ef4444');
+  }
+}
+
+function triggerEvent() {
+  const ev = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+  currentEvent = ev;
+  eventWindow = 4; // seconds to react
+  enthusiasm = 0;
+  showEventIndicator(`⚡ ${ev.label}`);
+
+  // Make the correct button glow
+  const idx = EVENTS.indexOf(ev);
+  const btn = document.getElementById(`btn-${idx}`);
+  if (btn) btn.classList.add('glowing');
+}
+
+function updatePlayers(dt) {
+  players.forEach(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.x < 50 || p.x > 850) p.vx *= -1;
+    if (p.y < 30 || p.y > 310) p.vy *= -1;
+    if (Math.random() < 0.02) { p.vx = (Math.random()-0.5)*80; p.vy = (Math.random()-0.5)*50; }
+  });
+  // Ball follows a random player from team 0
+  const carrier = players[Math.floor(Math.random()*11)];
+  ballX += (carrier.x - ballX) * 0.02;
+  ballY += (carrier.y - ballY) * 0.02;
+}
+
+function drawField() {
+  ctx.fillStyle = '#1a5c1a';
+  ctx.fillRect(0, 0, 900, 340);
+
+  // Yard lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 20; i++) {
+    const x = 45 + i * 40.5;
+    ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, 330); ctx.stroke();
+  }
+
+  // Endzones
+  ctx.fillStyle = 'rgba(200,0,0,0.3)';
+  ctx.fillRect(0, 0, 45, 340);
+  ctx.fillStyle = 'rgba(0,0,200,0.3)';
+  ctx.fillRect(855, 0, 45, 340);
+
+  // Hash marks
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  for (let i = 0; i <= 20; i++) {
+    const x = 45 + i * 40.5;
+    ctx.beginPath(); ctx.moveTo(x, 110); ctx.lineTo(x+5, 110); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, 230); ctx.lineTo(x+5, 230); ctx.stroke();
+  }
+
+  // Players
+  players.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    ctx.fillStyle = p.team === 0 ? '#3b82f6' : '#ef4444';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  // Ball
+  ctx.beginPath();
+  ctx.arc(ballX, ballY, 4, 0, Math.PI*2);
+  ctx.fillStyle = '#8B4513';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // TV overlay effects
+  ctx.fillStyle = 'rgba(0,0,0,0.02)';
+  for (let y = 0; y < 340; y += 3) {
+    ctx.fillRect(0, y, 900, 1);
+  }
+}
+
+function update(dt) {
+  if (gameState !== 'playing') return;
+
+  gameTime += dt;
+  if (gameTime >= maxTime) {
+    gameState = 'gameover';
+    showGameOver();
+    return;
+  }
+
+  // Quarter tracking
+  quarter = Math.min(4, Math.floor(gameTime / (maxTime/4)) + 1);
+
+  updatePlayers(dt);
+
+  // Event timing
+  if (!currentEvent) {
+    nextEventTime -= dt;
+    if (nextEventTime <= 0) {
+      triggerEvent();
+      nextEventTime = 3 + Math.random() * 5;
+    }
+    // Idle commentary
+    if (Math.random() < 0.005) {
+      addCommentary(IDLE_COMMENTARY[Math.floor(Math.random()*IDLE_COMMENTARY.length)]);
+    }
+  } else {
+    eventWindow -= dt;
+    if (eventWindow <= 0) {
+      // Missed the event
+      const loss = Math.floor(viewers * 0.12);
+      viewers = Math.max(100, viewers - loss);
+      addCommentary(`I... I missed that! That was a ${currentEvent.label}! Sorry folks!`);
+      showFeedback(`MISSED! -${loss.toLocaleString()} viewers!`, '#ef4444');
+      document.querySelectorAll('.call-btn').forEach(b => b.classList.remove('glowing'));
+      currentEvent = null;
+      enthusiasm = 0;
+    }
+  }
+
+  if (feedbackTimer > 0) {
+    feedbackTimer -= dt;
+    if (feedbackTimer <= 0) feedbackEl.style.opacity = 0;
+  }
+
+  // Random score changes for drama
+  if (Math.random() < 0.001) { if (Math.random()>0.5) homeScore += 7; else awayScore += 7; }
+
+  gameScoreEl.textContent = `HOME ${homeScore} - ${awayScore} AWAY  Q${quarter}`;
+  viewerSmallEl.textContent = `Viewers: ${viewers.toLocaleString()}`;
+}
+
+function draw() {
+  drawField();
+}
+
+function showGameOver() {
+  let rating = 'Amateur';
+  if (viewers > 50000) rating = 'Local Announcer';
+  if (viewers > 100000) rating = 'Regional Star';
+  if (viewers > 250000) rating = 'National Talent';
+  if (viewers > 500000) rating = 'Prime Time Voice';
+  if (viewers > 1000000) rating = 'LEGENDARY COMMENTATOR';
+
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `
+    <h1>BROADCAST OVER!</h1>
+    <h2>Final Score: HOME ${homeScore} - ${awayScore} AWAY</h2>
+    <div class="sub" style="font-size:1.3em;color:#ffcc00;">Final Viewers: ${viewers.toLocaleString()}</div>
+    <div class="sub" style="font-size:1.1em;color:#a78bfa;">Rating: ${rating}</div>
+    <button id="restartBtn">BROADCAST AGAIN</button>
+  `;
+  document.getElementById('restartBtn').onclick = startGame;
+}
+
+function startGame() {
+  initGame();
+  gameState = 'playing';
+  overlay.classList.add('hidden');
+}
+
+let lastTime = 0;
+function gameLoop(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+startBtn.onclick = startGame;
+lastTime = performance.now();
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

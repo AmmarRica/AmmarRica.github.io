@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pigskin Spire</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; user-select: none; }
+nav { width: 100%; padding: 12px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+h1 { font-size: 24px; color: #f8d830; margin: 4px 0; }
+.game-area { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; padding: 8px; max-width: 960px; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.panel { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 8px; padding: 10px; }
+.enemy-area { min-height: 140px; display: flex; flex-direction: column; align-items: center; }
+.enemy { text-align: center; }
+.enemy .name { font-size: 16px; color: #e04040; font-weight: bold; }
+.enemy .intent { font-size: 13px; color: #f8d830; margin: 4px 0; }
+.hp-bar { width: 200px; height: 14px; background: #333; border-radius: 7px; overflow: hidden; margin: 4px auto; }
+.hp-fill { height: 100%; background: #e04040; transition: width 0.3s; }
+.hp-fill.player { background: #4080ff; }
+.yard-bar { width: 200px; height: 10px; background: #1a5c1a; border-radius: 5px; overflow: hidden; margin: 4px auto; }
+.yard-fill { height: 100%; background: #40e040; transition: width 0.3s; }
+.stats { font-size: 12px; color: #a0a0c0; text-align: center; margin: 4px 0; }
+.hand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; min-height: 160px; padding: 8px; }
+.card { width: 110px; min-height: 145px; background: #2a2a4a; border: 2px solid #4a4a6a; border-radius: 8px; padding: 8px; cursor: pointer; transition: transform 0.15s, border-color 0.15s; display: flex; flex-direction: column; align-items: center; font-size: 11px; }
+.card:hover { transform: translateY(-6px); border-color: #a78bfa; }
+.card.disabled { opacity: 0.4; cursor: default; transform: none; }
+.card .cost { background: #4040e0; color: #fff; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; margin-bottom: 4px; }
+.card .card-icon { font-size: 26px; margin: 4px 0; }
+.card .card-name { font-size: 12px; font-weight: bold; color: #e0e0ff; margin: 2px 0; }
+.card .card-desc { font-size: 9px; color: #a0a0c0; text-align: center; }
+.card .card-value { font-size: 14px; color: #f8d830; font-weight: bold; margin-top: 2px; }
+.energy-display { font-size: 16px; text-align: center; margin: 6px 0; }
+.energy-pip { display: inline-block; width: 18px; height: 18px; background: #4040e0; border-radius: 50%; margin: 0 2px; }
+.energy-pip.spent { background: #2a2a4a; }
+.btn { background: #a78bfa; color: #0f0f1a; border: none; padding: 8px 20px; font-family: monospace; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 6px; margin: 4px; }
+.btn:hover { background: #c4b5fd; }
+.btn:disabled { background: #4a4a6a; cursor: default; }
+.msg { text-align: center; font-size: 13px; color: #a0a0c0; min-height: 20px; margin: 4px 0; }
+.reward-panel { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; flex-direction: column; align-items: center; justify-content: center; }
+.reward-panel.active { display: flex; }
+.reward-cards { display: flex; gap: 16px; }
+.reward-cards .card { width: 140px; min-height: 180px; font-size: 13px; }
+.reward-cards .card:hover { border-color: #f8d830; transform: scale(1.05); }
+#titleScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f0f1a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; }
+</style>
+</head>
+<body>
+<h1>PIGSKIN SPIRE</h1>
+<div class="game-area" id="gameArea">
+  <div class="col">
+    <div class="panel enemy-area" id="enemyArea"></div>
+    <div class="panel">
+      <div class="stats">
+        <span id="driveLabel">Drive 1</span> |
+        <span id="yardsLabel">Yards: 0/100</span> |
+        <span id="deckLabel">Deck: 0</span> |
+        <span id="discardLabel">Discard: 0</span>
+      </div>
+      <div class="yard-bar"><div class="yard-fill" id="yardFill" style="width:0%"></div></div>
+      <div class="hp-bar"><div class="hp-fill player" id="playerHpFill" style="width:100%"></div></div>
+      <div class="stats" id="playerHpLabel">QB HP: 30/30</div>
+      <div class="energy-display" id="energyDisplay"></div>
+      <div class="msg" id="msg">Play cards to advance down the field!</div>
+      <button class="btn" id="endTurnBtn">END TURN</button>
+    </div>
+    <div class="panel">
+      <div class="hand" id="hand"></div>
+    </div>
+  </div>
+</div>
+<div class="reward-panel" id="rewardPanel">
+  <h2 style="color:#f8d830;margin-bottom:20px;">CHOOSE A NEW CARD</h2>
+  <div class="reward-cards" id="rewardCards"></div>
+  <button class="btn" style="margin-top:20px;" onclick="skipReward()">SKIP</button>
+</div>
+<div id="titleScreen">
+  <h1 style="font-size:36px;color:#f8d830;">PIGSKIN SPIRE</h1>
+  <p style="color:#a0a0c0;margin:20px;text-align:center;max-width:500px;font-size:13px;">
+    Lead your team down the field in this card-battling football game!<br><br>
+    Play cards to gain yards, break through coverage, and reach the endzone.<br>
+    Defenders will sack and intercept you if you're not careful.<br><br>
+    <strong style="color:#f8d830;">Card Types:</strong><br>
+    Pass - Deal damage to defenders<br>
+    Run - Gain yards directly<br>
+    Block - Reduce incoming damage<br>
+    Audible - Draw extra cards<br>
+    Hail Mary - High risk, high reward!<br><br>
+    <strong style="color:#4080ff;">Energy: 3 per turn</strong>
+  </p>
+  <button class="btn" style="font-size:20px;padding:14px 40px;" onclick="document.getElementById('titleScreen').style.display='none';initGame();">PLAY</button>
+</div>
+<script>
+// Card definitions
+const CARD_TEMPLATES = {
+  shortPass: { name: 'Short Pass', icon: '🏈', type: 'pass', cost: 1, damage: 4, desc: 'A quick slant for 4 damage' },
+  deepPass: { name: 'Deep Pass', icon: '🎯', type: 'pass', cost: 2, damage: 8, desc: 'Throw deep for 8 damage' },
+  screenPass: { name: 'Screen Pass', icon: '📺', type: 'pass', cost: 1, damage: 3, yards: 5, desc: '3 damage + 5 yards' },
+  run: { name: 'Run Play', icon: '🏃', type: 'run', cost: 1, yards: 8, desc: 'Rush for 8 yards' },
+  sweep: { name: 'Sweep', icon: '💨', type: 'run', cost: 2, yards: 15, desc: 'Outside run for 15 yards' },
+  draw: { name: 'Draw Play', icon: '🃏', type: 'run', cost: 1, yards: 6, block: 2, desc: '6 yards + 2 block' },
+  block: { name: 'Pass Block', icon: '🛡️', type: 'block', cost: 1, block: 5, desc: 'Block 5 damage this turn' },
+  maxProtect: { name: 'Max Protect', icon: '🏰', type: 'block', cost: 2, block: 12, desc: 'Block 12 damage this turn' },
+  audible: { name: 'Audible', icon: '📣', type: 'audible', cost: 1, draw: 2, desc: 'Draw 2 cards' },
+  noHuddle: { name: 'No Huddle', icon: '⚡', type: 'audible', cost: 0, draw: 1, energy: 1, desc: 'Draw 1, gain 1 energy' },
+  hailMary: { name: 'Hail Mary', icon: '🙏', type: 'hailmary', cost: 3, desc: '50% chance: 25 yards + 12 dmg, or interception (-15 yards)' },
+  spike: { name: 'Spike Ball', icon: '⏱️', type: 'audible', cost: 0, draw: 0, block: 3, desc: 'Gain 3 block' },
+  playAction: { name: 'Play Action', icon: '🎭', type: 'pass', cost: 2, damage: 6, yards: 8, desc: '6 damage + 8 yards' },
+  qbSneak: { name: 'QB Sneak', icon: '🐍', type: 'run', cost: 1, yards: 4, damage: 2, desc: '4 yards + 2 damage' },
+  hardCount: { name: 'Hard Count', icon: '🗣️', type: 'audible', cost: 1, draw: 1, damage: 3, desc: 'Draw 1 + 3 dmg (offsides!)' }
+};
+
+const STARTER_DECK = ['shortPass','shortPass','shortPass','run','run','block','block','audible','deepPass','draw'];
+
+const ENEMIES = [
+  { name: 'Zone Cover 2', hp: 20, attack: 4, intent: 'Sack', icon: '🛡️' },
+  { name: 'Man Coverage', hp: 15, attack: 6, intent: 'Blitz', icon: '👤' },
+  { name: 'Cover 3 Shell', hp: 25, attack: 3, intent: 'Coverage', icon: '🔺' },
+  { name: 'Press Coverage', hp: 18, attack: 7, intent: 'Jam', icon: '✋' },
+  { name: 'All-Out Blitz', hp: 12, attack: 10, intent: 'Blitz!', icon: '💥' },
+];
+
+const BOSSES = [
+  { name: 'CHAMPIONSHIP D', hp: 50, attack: 8, intent: 'Elite Rush', icon: '👑', boss: true },
+];
+
+let game = {};
+
+function initGame() {
+  game = {
+    deck: [...STARTER_DECK],
+    discard: [],
+    hand: [],
+    energy: 3,
+    maxEnergy: 3,
+    playerHp: 30,
+    maxPlayerHp: 30,
+    yards: 0,
+    maxYards: 100,
+    block: 0,
+    drive: 1,
+    maxDrives: 4,
+    enemy: null,
+    turn: 'player',
+    gameOver: false
+  };
+  shuffleDeck();
+  startDrive();
+}
+
+function shuffleDeck() {
+  for (let i = game.deck.length - 1; i > 0; i--) {
+    let j = Math.floor(Math.random() * (i + 1));
+    [game.deck[i], game.deck[j]] = [game.deck[j], game.deck[i]];
+  }
+}
+
+function startDrive() {
+  let enemyTemplate;
+  if (game.drive >= game.maxDrives) {
+    enemyTemplate = { ...BOSSES[0] };
+  } else {
+    let pool = ENEMIES.filter((_, i) => i <= game.drive);
+    enemyTemplate = { ...pool[Math.floor(Math.random() * pool.length)] };
+    enemyTemplate.hp += game.drive * 5;
+    enemyTemplate.attack += Math.floor(game.drive * 0.5);
+  }
+  game.enemy = { ...enemyTemplate, maxHp: enemyTemplate.hp };
+  game.yards = 0;
+  game.block = 0;
+  game.energy = game.maxEnergy;
+  game.hand = [];
+  game.discard = [];
+  // Reshuffle all into deck
+  game.deck = [...STARTER_DECK];
+  // Add any acquired cards
+  if (game.extraCards) game.deck.push(...game.extraCards);
+  shuffleDeck();
+  drawCards(5);
+  updateUI();
+}
+
+function drawCards(n) {
+  for (let i = 0; i < n; i++) {
+    if (game.deck.length === 0) {
+      game.deck = [...game.discard];
+      game.discard = [];
+      shuffleDeck();
+    }
+    if (game.deck.length > 0 && game.hand.length < 10) {
+      game.hand.push(game.deck.pop());
+    }
+  }
+}
+
+function playCard(index) {
+  if (game.turn !== 'player' || game.gameOver) return;
+  let cardId = game.hand[index];
+  let card = CARD_TEMPLATES[cardId];
+  if (!card || game.energy < card.cost) return;
+
+  game.energy -= card.cost;
+  game.hand.splice(index, 1);
+
+  let msg = `Played ${card.name}! `;
+
+  if (card.damage && game.enemy) {
+    game.enemy.hp -= card.damage;
+    msg += `${card.damage} damage. `;
+  }
+  if (card.yards) {
+    game.yards = Math.min(game.maxYards, game.yards + card.yards);
+    msg += `+${card.yards} yards. `;
+  }
+  if (card.block) {
+    game.block += card.block;
+    msg += `+${card.block} block. `;
+  }
+  if (card.draw) {
+    drawCards(card.draw);
+    msg += `Draw ${card.draw}. `;
+  }
+  if (card.energy) {
+    game.energy += card.energy;
+    msg += `+${card.energy} energy. `;
+  }
+  if (card.type === 'hailmary') {
+    if (Math.random() < 0.5) {
+      game.yards = Math.min(game.maxYards, game.yards + 25);
+      if (game.enemy) game.enemy.hp -= 12;
+      msg += 'SUCCESS! +25 yards, 12 damage! ';
+    } else {
+      game.yards = Math.max(0, game.yards - 15);
+      msg += 'INTERCEPTED! -15 yards! ';
+    }
+  }
+
+  game.discard.push(cardId);
+  setMsg(msg);
+
+  // Check if enemy dead
+  if (game.enemy && game.enemy.hp <= 0) {
+    driveComplete(true);
+    return;
+  }
+  // Check if reached endzone
+  if (game.yards >= game.maxYards) {
+    driveComplete(true);
+    return;
+  }
+
+  updateUI();
+}
+
+function endTurn() {
+  if (game.turn !== 'player' || game.gameOver) return;
+  game.turn = 'enemy';
+  // Enemy attacks
+  let dmg = game.enemy.attack;
+  let blocked = Math.min(dmg, game.block);
+  let actual = dmg - blocked;
+  game.playerHp -= actual;
+  game.block = 0;
+
+  let intent = game.enemy.intent || 'Attack';
+  setMsg(`${game.enemy.name} uses ${intent}! ${dmg} damage (${blocked} blocked). You take ${actual}.`);
+
+  if (game.playerHp <= 0) {
+    game.gameOver = true;
+    setMsg('GAME OVER! Your team has been eliminated.');
+    updateUI();
+    setTimeout(() => {
+      if (confirm('Game Over! Play again?')) {
+        game.extraCards = [];
+        initGame();
+      }
+    }, 1000);
+    return;
+  }
+
+  // Randomize enemy intent for next turn
+  let intents = ['Sack', 'Blitz', 'Coverage', 'Jam'];
+  game.enemy.intent = intents[Math.floor(Math.random() * intents.length)];
+  if (game.enemy.intent === 'Blitz') game.enemy.attack = Math.floor(game.enemy.maxHp * 0.35);
+  else if (game.enemy.intent === 'Coverage') { game.enemy.attack = Math.floor(game.enemy.maxHp * 0.15); game.yards = Math.max(0, game.yards - 3); }
+  else game.enemy.attack = Math.floor(game.enemy.maxHp * 0.2) + game.drive;
+
+  // Player new turn
+  game.turn = 'player';
+  game.energy = game.maxEnergy;
+  game.block = 0;
+  drawCards(5 - game.hand.length < 3 ? 3 : 5 - game.hand.length);
+  if (game.hand.length < 3) drawCards(3 - game.hand.length);
+
+  updateUI();
+}
+
+function driveComplete(won) {
+  if (won) {
+    setMsg('DRIVE COMPLETE! Touchdown!');
+    game.playerHp = Math.min(game.maxPlayerHp, game.playerHp + 5);
+    if (game.drive >= game.maxDrives) {
+      setMsg('YOU WON THE CHAMPIONSHIP!!! Final drive completed!');
+      game.gameOver = true;
+      updateUI();
+      setTimeout(() => {
+        if (confirm('You won! Play again?')) {
+          game.extraCards = [];
+          initGame();
+        }
+      }, 1500);
+      return;
+    }
+    // Show reward
+    updateUI();
+    setTimeout(() => showReward(), 800);
+  }
+}
+
+function showReward() {
+  let panel = document.getElementById('rewardPanel');
+  let container = document.getElementById('rewardCards');
+  container.innerHTML = '';
+  let keys = Object.keys(CARD_TEMPLATES);
+  let choices = [];
+  while (choices.length < 3) {
+    let k = keys[Math.floor(Math.random() * keys.length)];
+    if (!choices.includes(k)) choices.push(k);
+  }
+  choices.forEach(k => {
+    let card = CARD_TEMPLATES[k];
+    let el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `
+      <div class="cost">${card.cost}</div>
+      <div class="card-icon">${card.icon}</div>
+      <div class="card-name">${card.name}</div>
+      <div class="card-desc">${card.desc}</div>
+    `;
+    el.addEventListener('click', () => {
+      if (!game.extraCards) game.extraCards = [];
+      game.extraCards.push(k);
+      panel.classList.remove('active');
+      game.drive++;
+      startDrive();
+    });
+    container.appendChild(el);
+  });
+  panel.classList.add('active');
+}
+
+function skipReward() {
+  document.getElementById('rewardPanel').classList.remove('active');
+  game.drive++;
+  startDrive();
+}
+
+function setMsg(text) {
+  document.getElementById('msg').textContent = text;
+}
+
+function updateUI() {
+  // Enemy
+  let ea = document.getElementById('enemyArea');
+  if (game.enemy) {
+    let hpPct = Math.max(0, game.enemy.hp / game.enemy.maxHp * 100);
+    ea.innerHTML = `
+      <div class="enemy">
+        <div class="name">${game.enemy.boss ? '👑 ' : ''}${game.enemy.icon} ${game.enemy.name}</div>
+        <div class="hp-bar"><div class="hp-fill" style="width:${hpPct}%"></div></div>
+        <div class="stats">HP: ${Math.max(0, game.enemy.hp)}/${game.enemy.maxHp}</div>
+        <div class="intent">Intent: ${game.enemy.intent} (${game.enemy.attack} dmg)</div>
+      </div>
+    `;
+  }
+
+  // Player stats
+  let hpPct = Math.max(0, game.playerHp / game.maxPlayerHp * 100);
+  document.getElementById('playerHpFill').style.width = hpPct + '%';
+  document.getElementById('playerHpLabel').textContent = `QB HP: ${game.playerHp}/${game.maxPlayerHp} | Block: ${game.block}`;
+  document.getElementById('yardFill').style.width = (game.yards / game.maxYards * 100) + '%';
+  document.getElementById('driveLabel').textContent = `Drive ${game.drive}/${game.maxDrives}`;
+  document.getElementById('yardsLabel').textContent = `Yards: ${game.yards}/${game.maxYards}`;
+  document.getElementById('deckLabel').textContent = `Deck: ${game.deck.length}`;
+  document.getElementById('discardLabel').textContent = `Discard: ${game.discard.length}`;
+
+  // Energy
+  let eDisp = document.getElementById('energyDisplay');
+  eDisp.innerHTML = '';
+  for (let i = 0; i < game.maxEnergy; i++) {
+    let pip = document.createElement('span');
+    pip.className = 'energy-pip' + (i >= game.energy ? ' spent' : '');
+    eDisp.appendChild(pip);
+  }
+
+  // Hand
+  let handEl = document.getElementById('hand');
+  handEl.innerHTML = '';
+  game.hand.forEach((cardId, i) => {
+    let card = CARD_TEMPLATES[cardId];
+    if (!card) return;
+    let el = document.createElement('div');
+    el.className = 'card' + (game.energy < card.cost || game.turn !== 'player' || game.gameOver ? ' disabled' : '');
+    el.innerHTML = `
+      <div class="cost">${card.cost}</div>
+      <div class="card-icon">${card.icon}</div>
+      <div class="card-name">${card.name}</div>
+      <div class="card-desc">${card.desc}</div>
+    `;
+    if (game.energy >= card.cost && game.turn === 'player' && !game.gameOver) {
+      el.addEventListener('click', () => playCard(i));
+    }
+    handEl.appendChild(el);
+  });
+
+  document.getElementById('endTurnBtn').disabled = game.turn !== 'player' || game.gameOver;
+}
+
+document.getElementById('endTurnBtn').addEventListener('click', endTurn);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

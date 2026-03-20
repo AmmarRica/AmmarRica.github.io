@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 27 – Caramel Caramel</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 1rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 1rem; font-size: 0.9rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; display: block; }
+</style>
+</head>
+<body>
+  <h1>Caramel Caramel</h1>
+  <p class="subtitle">Tap to select, tap adjacent to swap. Match 3+ to score!</p>
+  <canvas id="game"></canvas>
+  <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = Math.min(480, window.innerWidth - 20);
+  H = Math.floor(W * 1.4);
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const COLS = 7;
+const ROWS = 9;
+const CANDY_TYPES = [
+  { name: 'caramel', color: '#d4a050', highlight: '#e8c070', shape: 'circle' },
+  { name: 'toffee', color: '#8B4513', highlight: '#a0522d', shape: 'square' },
+  { name: 'butterscotch', color: '#daa520', highlight: '#f0c030', shape: 'diamond' },
+  { name: 'fudge', color: '#6b3a2a', highlight: '#8b5a3a', shape: 'circle' },
+  { name: 'honey', color: '#ffb347', highlight: '#ffc877', shape: 'hexagon' },
+  { name: 'praline', color: '#a78bfa', highlight: '#c0a0ff', shape: 'star' }
+];
+
+let state = 'title';
+let grid = [];
+let selected = null;
+let score = 0;
+let level = 1;
+let targetScore = 300;
+let movesLeft = 25;
+let combo = 0;
+let animating = false;
+let animations = [];
+let particles = [];
+let fallingPieces = [];
+let boardOffsetX, boardOffsetY, cellSize;
+
+function calcBoard() {
+  cellSize = Math.floor((W - 40) / COLS);
+  boardOffsetX = (W - cellSize * COLS) / 2;
+  boardOffsetY = 120;
+}
+calcBoard();
+
+function initGrid() {
+  grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      let type;
+      do {
+        type = Math.floor(Math.random() * Math.min(5 + Math.floor(level / 2), CANDY_TYPES.length));
+      } while (
+        (c >= 2 && grid[r][c - 1] === type && grid[r][c - 2] === type) ||
+        (r >= 2 && grid[r - 1][c] === type && grid[r - 2][c] === type)
+      );
+      grid[r][c] = type;
+    }
+  }
+  selected = null;
+  combo = 0;
+  animating = false;
+  animations = [];
+  particles = [];
+  fallingPieces = [];
+}
+
+function startLevel(lvl) {
+  level = lvl;
+  targetScore = 200 + lvl * 150;
+  movesLeft = Math.max(15, 30 - lvl);
+  score = 0;
+  initGrid();
+  state = 'playing';
+}
+
+function getCell(tx, ty) {
+  const c = Math.floor((tx - boardOffsetX) / cellSize);
+  const r = Math.floor((ty - boardOffsetY) / cellSize);
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) return { r, c };
+  return null;
+}
+
+function isAdjacent(a, b) {
+  return (Math.abs(a.r - b.r) + Math.abs(a.c - b.c)) === 1;
+}
+
+function swap(a, b) {
+  const tmp = grid[a.r][a.c];
+  grid[a.r][a.c] = grid[b.r][b.c];
+  grid[b.r][b.c] = tmp;
+}
+
+function findMatches() {
+  const matched = new Set();
+
+  // Horizontal
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS - 2; c++) {
+      if (grid[r][c] !== -1 && grid[r][c] === grid[r][c + 1] && grid[r][c] === grid[r][c + 2]) {
+        let end = c + 2;
+        while (end + 1 < COLS && grid[r][end + 1] === grid[r][c]) end++;
+        for (let i = c; i <= end; i++) matched.add(r * COLS + i);
+      }
+    }
+  }
+
+  // Vertical
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < ROWS - 2; r++) {
+      if (grid[r][c] !== -1 && grid[r][c] === grid[r + 1][c] && grid[r][c] === grid[r + 2][c]) {
+        let end = r + 2;
+        while (end + 1 < ROWS && grid[end + 1][c] === grid[r][c]) end++;
+        for (let i = r; i <= end; i++) matched.add(i * COLS + c);
+      }
+    }
+  }
+
+  return matched;
+}
+
+function removeMatches(matched) {
+  const points = matched.size * 10 * (1 + combo * 0.5);
+  score += Math.floor(points);
+  combo++;
+
+  for (const idx of matched) {
+    const r = Math.floor(idx / COLS);
+    const c = idx % COLS;
+    const type = grid[r][c];
+    // Particles
+    const px = boardOffsetX + c * cellSize + cellSize / 2;
+    const py = boardOffsetY + r * cellSize + cellSize / 2;
+    for (let i = 0; i < 6; i++) {
+      particles.push({
+        x: px, y: py,
+        vx: (Math.random() - 0.5) * 6,
+        vy: (Math.random() - 0.5) * 6,
+        life: 25,
+        color: CANDY_TYPES[type].color
+      });
+    }
+    grid[r][c] = -1;
+  }
+}
+
+function applyGravity() {
+  let moved = false;
+  for (let c = 0; c < COLS; c++) {
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (grid[r][c] === -1) {
+        // Find piece above
+        for (let above = r - 1; above >= 0; above--) {
+          if (grid[above][c] !== -1) {
+            grid[r][c] = grid[above][c];
+            grid[above][c] = -1;
+            fallingPieces.push({ r, c, fromR: above, progress: 0 });
+            moved = true;
+            break;
+          }
+        }
+      }
+    }
+    // Fill empty top spots
+    for (let r = 0; r < ROWS; r++) {
+      if (grid[r][c] === -1) {
+        grid[r][c] = Math.floor(Math.random() * Math.min(5 + Math.floor(level / 2), CANDY_TYPES.length));
+        fallingPieces.push({ r, c, fromR: -2 - r, progress: 0 });
+        moved = true;
+      }
+    }
+  }
+  return moved;
+}
+
+let processingChain = false;
+let chainDelay = 0;
+
+function processChains() {
+  if (chainDelay > 0) { chainDelay--; return; }
+  const matched = findMatches();
+  if (matched.size > 0) {
+    removeMatches(matched);
+    applyGravity();
+    chainDelay = 12;
+    processingChain = true;
+  } else {
+    processingChain = false;
+    combo = 0;
+    animating = false;
+
+    // Check win/lose
+    if (score >= targetScore) {
+      state = 'levelcomplete';
+    } else if (movesLeft <= 0) {
+      state = 'gameover';
+    }
+  }
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (state === 'title') { startLevel(1); return; }
+  if (state === 'levelcomplete') { startLevel(level + 1); return; }
+  if (state === 'gameover' || state === 'win') { state = 'title'; return; }
+  if (animating || processingChain) return;
+
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  const tx = t.clientX - rect.left;
+  const ty = t.clientY - rect.top;
+  const cell = getCell(tx, ty);
+  if (!cell) return;
+
+  if (selected === null) {
+    selected = cell;
+  } else if (selected.r === cell.r && selected.c === cell.c) {
+    selected = null;
+  } else if (isAdjacent(selected, cell)) {
+    // Try swap
+    swap(selected, cell);
+    const matched = findMatches();
+    if (matched.size > 0) {
+      movesLeft--;
+      removeMatches(matched);
+      applyGravity();
+      animating = true;
+      processingChain = true;
+      chainDelay = 12;
+    } else {
+      swap(selected, cell); // swap back
+    }
+    selected = null;
+  } else {
+    selected = cell;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+// Keyboard/mouse fallback
+canvas.addEventListener('click', (e) => {
+  if (state === 'title') { startLevel(1); return; }
+  if (state === 'levelcomplete') { startLevel(level + 1); return; }
+  if (state === 'gameover' || state === 'win') { state = 'title'; return; }
+  if (animating || processingChain) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const tx = e.clientX - rect.left;
+  const ty = e.clientY - rect.top;
+  const cell = getCell(tx, ty);
+  if (!cell) return;
+
+  if (selected === null) {
+    selected = cell;
+  } else if (selected.r === cell.r && selected.c === cell.c) {
+    selected = null;
+  } else if (isAdjacent(selected, cell)) {
+    swap(selected, cell);
+    const matched = findMatches();
+    if (matched.size > 0) {
+      movesLeft--;
+      removeMatches(matched);
+      applyGravity();
+      animating = true;
+      processingChain = true;
+      chainDelay = 12;
+    } else {
+      swap(selected, cell);
+    }
+    selected = null;
+  } else {
+    selected = cell;
+  }
+});
+
+function drawCandy(x, y, size, typeIdx, highlight) {
+  if (typeIdx < 0 || typeIdx >= CANDY_TYPES.length) return;
+  const candy = CANDY_TYPES[typeIdx];
+  const r = size * 0.38;
+
+  if (highlight) {
+    ctx.fillStyle = '#ffffff22';
+    ctx.fillRect(x - size / 2 - 2, y - size / 2 - 2, size + 4, size + 4);
+  }
+
+  ctx.fillStyle = candy.color;
+
+  if (candy.shape === 'circle') {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = candy.highlight;
+    ctx.beginPath();
+    ctx.arc(x - r * 0.25, y - r * 0.25, r * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (candy.shape === 'square') {
+    const s = r * 0.8;
+    ctx.fillRect(x - s, y - s, s * 2, s * 2);
+    ctx.fillStyle = candy.highlight;
+    ctx.fillRect(x - s + 3, y - s + 3, s - 3, s - 3);
+  } else if (candy.shape === 'diamond') {
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r, y);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = candy.highlight;
+    ctx.beginPath();
+    ctx.moveTo(x, y - r * 0.6);
+    ctx.lineTo(x + r * 0.3, y);
+    ctx.lineTo(x, y + r * 0.2);
+    ctx.lineTo(x - r * 0.3, y);
+    ctx.closePath();
+    ctx.fill();
+  } else if (candy.shape === 'hexagon') {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.PI / 3 * i - Math.PI / 6;
+      ctx.lineTo(x + r * Math.cos(angle), y + r * Math.sin(angle));
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = candy.highlight;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.PI / 3 * i - Math.PI / 6;
+      ctx.lineTo(x + r * 0.5 * Math.cos(angle), y + r * 0.5 * Math.sin(angle) - 2);
+    }
+    ctx.closePath();
+    ctx.fill();
+  } else if (candy.shape === 'star') {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.PI / 5 * i - Math.PI / 2;
+      const rad = i % 2 === 0 ? r : r * 0.45;
+      ctx.lineTo(x + rad * Math.cos(angle), y + rad * Math.sin(angle));
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = candy.highlight;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function update() {
+  if (state !== 'playing') return;
+
+  // Process chain matches
+  if (processingChain) processChains();
+
+  // Update falling pieces
+  for (let i = fallingPieces.length - 1; i >= 0; i--) {
+    fallingPieces[i].progress += 0.15;
+    if (fallingPieces[i].progress >= 1) fallingPieces.splice(i, 1);
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Check if level >= 20 for win
+  if (level > 20) state = 'win';
+}
+
+function draw() {
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    // Decorative candies
+    const t = Date.now() * 0.001;
+    for (let i = 0; i < 12; i++) {
+      const cx = W * 0.2 + (i % 4) * W * 0.2;
+      const cy = H * 0.55 + Math.floor(i / 4) * 50 + Math.sin(t + i) * 8;
+      drawCandy(cx, cy, cellSize, i % CANDY_TYPES.length, false);
+    }
+
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Caramel Caramel', W / 2, H * 0.2);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Match candies in sweet combos!', W / 2, H * 0.2 + 28);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '13px system-ui';
+    ctx.fillText('Tap to select, tap adjacent to swap', W / 2, H * 0.38);
+    ctx.fillText('Match 3+ of the same candy', W / 2, H * 0.38 + 22);
+    ctx.fillText('Chain combos for bonus points!', W / 2, H * 0.38 + 44);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 18px system-ui';
+    ctx.fillText('[ Tap to Play ]', W / 2, H * 0.85);
+    return;
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = '#ff6666';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Out of Moves!', W / 2, H * 0.3);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '18px system-ui';
+    ctx.fillText('Score: ' + score, W / 2, H * 0.4);
+    ctx.fillText('Needed: ' + targetScore, W / 2, H * 0.47);
+    ctx.fillText('Reached Level: ' + level, W / 2, H * 0.54);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to try again', W / 2, H * 0.7);
+    return;
+  }
+
+  if (state === 'levelcomplete') {
+    ctx.fillStyle = '#66ff88';
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Level ' + level + ' Clear!', W / 2, H * 0.3);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '20px system-ui';
+    ctx.fillText('Score: ' + score, W / 2, H * 0.4);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '16px system-ui';
+    ctx.fillText('Moves saved: ' + movesLeft + ' (+' + (movesLeft * 15) + ' bonus)', W / 2, H * 0.48);
+    score += movesLeft * 15;
+    movesLeft = 0;
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap for next level', W / 2, H * 0.65);
+    return;
+  }
+
+  if (state === 'win') {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Candy Master!', W / 2, H * 0.3);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '18px system-ui';
+    ctx.fillText('All levels complete!', W / 2, H * 0.4);
+    ctx.fillText('Final Score: ' + score, W / 2, H * 0.48);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to play again', W / 2, H * 0.65);
+    return;
+  }
+
+  // HUD
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 16px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('Level ' + level, 10, 30);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Score: ' + score + ' / ' + targetScore, W / 2, 30);
+
+  ctx.fillStyle = '#9ca3af';
+  ctx.textAlign = 'right';
+  ctx.fillText('Moves: ' + movesLeft, W - 10, 30);
+
+  // Score progress bar
+  ctx.fillStyle = '#334';
+  ctx.fillRect(10, 40, W - 20, 10);
+  const progress = Math.min(1, score / targetScore);
+  const barGrad = ctx.createLinearGradient(10, 0, 10 + (W - 20) * progress, 0);
+  barGrad.addColorStop(0, '#a78bfa');
+  barGrad.addColorStop(1, '#ffd700');
+  ctx.fillStyle = barGrad;
+  ctx.fillRect(10, 40, (W - 20) * progress, 10);
+
+  // Combo indicator
+  if (combo > 1) {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 16px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Combo x' + combo + '!', W / 2, 75);
+  }
+
+  // Board background
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(boardOffsetX - 4, boardOffsetY - 4, cellSize * COLS + 8, cellSize * ROWS + 8);
+  ctx.strokeStyle = '#3b3b5c';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boardOffsetX - 4, boardOffsetY - 4, cellSize * COLS + 8, cellSize * ROWS + 8);
+
+  // Grid cells
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = boardOffsetX + c * cellSize;
+      const y = boardOffsetY + r * cellSize;
+
+      // Cell background
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#252538' : '#2d2d42';
+      ctx.fillRect(x, y, cellSize, cellSize);
+
+      if (grid[r][c] === -1) continue;
+
+      const cx = x + cellSize / 2;
+      const cy = y + cellSize / 2;
+
+      // Check if this piece is falling
+      let drawY = cy;
+      for (const f of fallingPieces) {
+        if (f.r === r && f.c === c) {
+          const fromY = boardOffsetY + f.fromR * cellSize + cellSize / 2;
+          drawY = fromY + (cy - fromY) * Math.min(1, f.progress);
+        }
+      }
+
+      const isSelected = selected && selected.r === r && selected.c === c;
+      drawCandy(cx, drawY, cellSize, grid[r][c], isSelected);
+
+      if (isSelected) {
+        ctx.strokeStyle = '#ffffff88';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 2, y + 2, cellSize - 4, cellSize - 4);
+      }
+    }
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 25;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

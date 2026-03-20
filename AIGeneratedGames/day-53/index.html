@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 53 – Cyber Owls</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 1rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.8rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 1rem; font-size: 0.9rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #0a0a15; max-width: 480px; width: 100%; }
+    #hint { color: #9ca3af; font-size: 0.8rem; text-align: center; margin-top: 0.5rem; max-width: 480px; }
+</style>
+</head>
+<body>
+  <h1>Cyber Owls</h1>
+  <p class="subtitle">Day 53 – Neon Cyberpunk Action</p>
+  <canvas id="gc"></canvas>
+  <div id="hint">Drag to fly, tap to shoot, swipe down on terminals to hack!</div>
+
+<script>
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = 480, H = 640;
+canvas.width = W; canvas.height = H;
+
+let state = 'title'; // title, playing, victory, dead
+let owl, drones, terminals, lasers, particles, buildings, powerups;
+let scrollX = 0;
+let score = 0;
+let hackProgress = 0;
+let terminalsHacked = 0;
+const TERMINALS_NEEDED = 5;
+let shakeTimer = 0;
+let dragTarget = null; // {x, y} where owl wants to go
+let lastTapTime = 0;
+let swipeStartY = 0;
+let msgText = '', msgTimer = 0;
+let neonPulse = 0;
+let alertLevel = 0; // increases as you hack
+
+function init() {
+  owl = {
+    x: 80, y: H/2, w: 32, h: 28,
+    vx: 0, vy: 0, hp: 5, maxHp: 5,
+    invincible: 0, shootCooldown: 0,
+    wingPhase: 0, laserCharge: 0
+  };
+  drones = [];
+  terminals = [];
+  lasers = [];
+  particles = [];
+  powerups = [];
+  scrollX = 0;
+  score = 0;
+  hackProgress = 0;
+  terminalsHacked = 0;
+  alertLevel = 0;
+  shakeTimer = 0;
+  msgText = ''; msgTimer = 0;
+
+  // generate buildings (background)
+  buildings = [];
+  for (let i = 0; i < 100; i++) {
+    buildings.push({
+      x: i * 120 + Math.random() * 60,
+      w: 40 + Math.random() * 80,
+      h: 100 + Math.random() * 300,
+      color: ['#1a1a2e', '#16213e', '#0f3460', '#1a0a2e'][Math.floor(Math.random()*4)],
+      windows: Math.floor(Math.random() * 20) + 5,
+      neonColor: ['#a78bfa', '#f472b6', '#34d399', '#60a5fa', '#fbbf24'][Math.floor(Math.random()*5)]
+    });
+  }
+
+  // generate terminals
+  for (let i = 0; i < 8; i++) {
+    terminals.push({
+      x: 400 + i * 600 + Math.random() * 200,
+      y: 150 + Math.random() * (H - 300),
+      hacked: false, hackTimer: 0, hackNeeded: 120,
+      alertDrones: false
+    });
+  }
+
+  // initial drones
+  spawnDrones(3);
+}
+
+function spawnDrones(count) {
+  for (let i = 0; i < count; i++) {
+    const type = Math.random() < 0.3 ? 'heavy' : Math.random() < 0.5 ? 'fast' : 'normal';
+    drones.push({
+      x: owl.x + W + 100 + Math.random() * 300,
+      y: 50 + Math.random() * (H - 150),
+      w: type === 'heavy' ? 36 : 24, h: type === 'heavy' ? 28 : 20,
+      type,
+      hp: type === 'heavy' ? 4 : type === 'fast' ? 1 : 2,
+      maxHp: type === 'heavy' ? 4 : type === 'fast' ? 1 : 2,
+      vx: type === 'fast' ? -3 : -1.5,
+      vy: 0,
+      shootTimer: Math.random() * 60,
+      phase: Math.random() * Math.PI * 2,
+      alive: true
+    });
+  }
+}
+
+function spawnParticles(x, y, color, n, spread) {
+  spread = spread || 5;
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * spread,
+      vy: (Math.random() - 0.5) * spread,
+      life: 15 + Math.random() * 20,
+      color, r: 1 + Math.random() * 3
+    });
+  }
+}
+
+function drawOwl(x, y) {
+  if (owl.invincible > 0 && owl.invincible % 4 < 2) return;
+
+  const wingY = Math.sin(owl.wingPhase) * 8;
+
+  // glow
+  ctx.fillStyle = '#a78bfa22';
+  ctx.beginPath();
+  ctx.arc(x + 16, y + 14, 30, 0, Math.PI * 2);
+  ctx.fill();
+
+  // wings
+  ctx.fillStyle = '#8b6fdf';
+  ctx.beginPath();
+  ctx.moveTo(x + 8, y + 10);
+  ctx.lineTo(x - 10, y + 5 + wingY);
+  ctx.lineTo(x + 4, y + 20);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x + 24, y + 10);
+  ctx.lineTo(x + 42, y + 5 - wingY);
+  ctx.lineTo(x + 28, y + 20);
+  ctx.fill();
+
+  // body
+  ctx.fillStyle = '#a78bfa';
+  ctx.beginPath();
+  ctx.ellipse(x + 16, y + 14, 12, 14, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // chest
+  ctx.fillStyle = '#c4b5fd';
+  ctx.beginPath();
+  ctx.ellipse(x + 16, y + 18, 7, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // eyes (cybernetic)
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.arc(x + 10, y + 8, 5, 0, Math.PI * 2);
+  ctx.arc(x + 22, y + 8, 5, 0, Math.PI * 2);
+  ctx.fill();
+  // pupils
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.arc(x + 11, y + 8, 2.5, 0, Math.PI * 2);
+  ctx.arc(x + 23, y + 8, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  // eye glow
+  ctx.strokeStyle = '#fbbf2488';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x + 10, y + 8, 6, 0, Math.PI * 2);
+  ctx.arc(x + 22, y + 8, 6, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // beak
+  ctx.fillStyle = '#f59e0b';
+  ctx.beginPath();
+  ctx.moveTo(x + 14, y + 13);
+  ctx.lineTo(x + 16, y + 18);
+  ctx.lineTo(x + 18, y + 13);
+  ctx.fill();
+
+  // ear tufts
+  ctx.fillStyle = '#7c3aed';
+  ctx.beginPath();
+  ctx.moveTo(x + 6, y + 2);
+  ctx.lineTo(x + 3, y - 8);
+  ctx.lineTo(x + 12, y + 4);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x + 26, y + 2);
+  ctx.lineTo(x + 29, y - 8);
+  ctx.lineTo(x + 20, y + 4);
+  ctx.fill();
+
+  // cybernetic visor line
+  ctx.strokeStyle = '#60a5fa';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x + 4, y + 8);
+  ctx.lineTo(x + 28, y + 8);
+  ctx.stroke();
+}
+
+function drawDrone(d) {
+  if (!d.alive) return;
+  const x = d.x - scrollX, y = d.y;
+  if (x < -50 || x > W + 50) return;
+
+  const hover = Math.sin(Date.now() * 0.008 + d.phase) * 3;
+
+  // body
+  ctx.fillStyle = d.type === 'heavy' ? '#ef4444' : d.type === 'fast' ? '#fbbf24' : '#6b7280';
+  ctx.fillRect(x - d.w/2, y - d.h/2 + hover, d.w, d.h);
+
+  // eye/sensor
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.arc(x, y + hover, d.type === 'heavy' ? 6 : 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ff6666';
+  ctx.beginPath();
+  ctx.arc(x, y + hover, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // propellers
+  const propW = d.w * 0.4;
+  const propPhase = Date.now() * 0.05;
+  ctx.strokeStyle = '#9ca3af88';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - propW, y - d.h/2 - 3 + hover);
+  ctx.lineTo(x - propW + Math.cos(propPhase) * propW * 0.8, y - d.h/2 - 3 + hover);
+  ctx.moveTo(x + propW, y - d.h/2 - 3 + hover);
+  ctx.lineTo(x + propW + Math.cos(propPhase + Math.PI) * propW * 0.8, y - d.h/2 - 3 + hover);
+  ctx.stroke();
+
+  // HP
+  if (d.hp < d.maxHp) {
+    ctx.fillStyle = '#333';
+    ctx.fillRect(x - 15, y - d.h/2 - 10 + hover, 30, 3);
+    ctx.fillStyle = '#4ade80';
+    ctx.fillRect(x - 15, y - d.h/2 - 10 + hover, 30 * (d.hp / d.maxHp), 3);
+  }
+}
+
+function drawTerminal(t) {
+  const x = t.x - scrollX, y = t.y;
+  if (x < -60 || x > W + 60) return;
+
+  const pulse = Math.sin(Date.now() * 0.005) * 0.3 + 0.7;
+
+  // terminal body
+  ctx.fillStyle = t.hacked ? '#1a3a1a' : '#1a1a3a';
+  ctx.fillRect(x - 20, y - 30, 40, 60);
+  ctx.strokeStyle = t.hacked ? '#4ade80' : `rgba(167,139,250,${pulse})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x - 20, y - 30, 40, 60);
+
+  // screen
+  ctx.fillStyle = t.hacked ? '#4ade8044' : '#a78bfa33';
+  ctx.fillRect(x - 15, y - 25, 30, 30);
+
+  // screen content
+  if (t.hacked) {
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('OK', x, y - 5);
+  } else {
+    // scrolling data
+    ctx.fillStyle = '#a78bfa88';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    const lines = ['0xF7A2', 'SYS:ON', 'LOCK', 'NET:UP'];
+    for (let i = 0; i < 3; i++) {
+      ctx.fillText(lines[(Math.floor(Date.now()/500) + i) % lines.length], x, y - 18 + i * 10);
+    }
+  }
+
+  // hack progress bar
+  if (t.hackTimer > 0 && !t.hacked) {
+    ctx.fillStyle = '#333';
+    ctx.fillRect(x - 25, y + 35, 50, 6);
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillRect(x - 25, y + 35, 50 * (t.hackTimer / t.hackNeeded), 6);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '8px system-ui';
+    ctx.fillText('HACKING...', x, y + 50);
+  }
+
+  // antenna
+  ctx.strokeStyle = t.hacked ? '#4ade80' : '#a78bfa';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 30);
+  ctx.lineTo(x, y - 42);
+  ctx.stroke();
+  ctx.fillStyle = t.hacked ? '#4ade80' : '#ef4444';
+  ctx.beginPath();
+  ctx.arc(x, y - 42, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawBuildings() {
+  buildings.forEach(b => {
+    const x = b.x - scrollX * 0.3; // parallax
+    if (x + b.w < -50 || x > W + 50) return;
+
+    ctx.fillStyle = b.color;
+    ctx.fillRect(x, H - b.h, b.w, b.h);
+
+    // windows
+    const cols = Math.floor(b.w / 15);
+    const rows = Math.floor(b.h / 20);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const lit = Math.sin(b.x + r * 7 + c * 13) > 0;
+        ctx.fillStyle = lit ? '#fbbf2433' : '#ffffff08';
+        ctx.fillRect(x + 5 + c * 15, H - b.h + 8 + r * 20, 8, 12);
+      }
+    }
+
+    // neon sign on some buildings
+    if (b.windows > 15 && b.h > 200) {
+      ctx.strokeStyle = b.neonColor;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.003 + b.x) * 0.3;
+      ctx.strokeRect(x + 5, H - b.h + 3, b.w - 10, 15);
+      ctx.globalAlpha = 1;
+    }
+  });
+
+  // foreground neon lines
+  ctx.strokeStyle = '#a78bfa22';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 5; i++) {
+    const lx = ((i * 200 - scrollX * 0.5) % W + W) % W;
+    ctx.beginPath();
+    ctx.moveTo(lx, H);
+    ctx.lineTo(lx, H - 100 - Math.sin(Date.now() * 0.002 + i) * 30);
+    ctx.stroke();
+  }
+}
+
+function drawNeonGrid() {
+  ctx.strokeStyle = '#a78bfa11';
+  ctx.lineWidth = 0.5;
+  const gridOff = scrollX * 0.1 % 40;
+  for (let x = -gridOff; x < W; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+}
+
+function update() {
+  neonPulse = Math.sin(Date.now() * 0.003) * 0.5 + 0.5;
+
+  if (state === 'title') {
+    drawTitle();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  if (state === 'victory' || state === 'dead') {
+    draw();
+    requestAnimationFrame(update);
+    return;
+  }
+
+  // owl movement toward drag target
+  if (dragTarget) {
+    const dx = dragTarget.x - owl.x - owl.w/2;
+    const dy = dragTarget.y - owl.y - owl.h/2;
+    owl.vx += dx * 0.05;
+    owl.vy += dy * 0.05;
+  }
+  owl.vx *= 0.9;
+  owl.vy *= 0.9;
+  owl.x += owl.vx;
+  owl.y += owl.vy;
+  owl.x = Math.max(scrollX, Math.min(scrollX + W - owl.w, owl.x));
+  owl.y = Math.max(10, Math.min(H - owl.h - 10, owl.y));
+  owl.wingPhase += 0.15 + Math.abs(owl.vy) * 0.02;
+
+  // scroll forward
+  const targetScroll = owl.x - W * 0.25;
+  scrollX += (targetScroll - scrollX) * 0.05;
+  scrollX = Math.max(0, scrollX);
+
+  // shoot cooldown
+  if (owl.shootCooldown > 0) owl.shootCooldown--;
+  if (owl.invincible > 0) owl.invincible--;
+
+  // drone AI
+  drones.forEach(d => {
+    if (!d.alive) return;
+    d.phase += 0.02;
+    d.y += Math.sin(d.phase) * 1.5;
+
+    // move toward owl if nearby
+    const dx = owl.x - d.x;
+    const dy = owl.y - d.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if (d.type === 'fast') {
+      if (dist < 400) {
+        d.vx += dx * 0.003;
+        d.vy = dy * 0.02;
+      }
+      d.x += d.vx;
+    } else {
+      d.x += d.vx;
+      if (dist < 300) {
+        d.y += dy * 0.01;
+      }
+    }
+
+    // shooting
+    d.shootTimer++;
+    const shootInterval = d.type === 'heavy' ? 50 : 80;
+    if (d.shootTimer > shootInterval && dist < 400) {
+      d.shootTimer = 0;
+      const angle = Math.atan2(dy, dx);
+      lasers.push({
+        x: d.x, y: d.y,
+        vx: Math.cos(angle) * 4,
+        vy: Math.sin(angle) * 4,
+        type: 'enemy', life: 60, r: 4
+      });
+      if (d.type === 'heavy') {
+        // spread shot
+        lasers.push({ x: d.x, y: d.y, vx: Math.cos(angle+0.2)*4, vy: Math.sin(angle+0.2)*4, type: 'enemy', life: 60, r: 3 });
+        lasers.push({ x: d.x, y: d.y, vx: Math.cos(angle-0.2)*4, vy: Math.sin(angle-0.2)*4, type: 'enemy', life: 60, r: 3 });
+      }
+    }
+
+    // cleanup
+    if (d.x < scrollX - 200) d.alive = false;
+  });
+
+  // spawn drones based on alert level
+  if (Math.random() < 0.008 + alertLevel * 0.003) {
+    spawnDrones(1 + Math.floor(alertLevel / 2));
+  }
+
+  // remove dead drones
+  drones = drones.filter(d => d.alive);
+
+  // lasers
+  lasers.forEach(l => {
+    l.x += l.vx; l.y += l.vy; l.life--;
+
+    if (l.type === 'player') {
+      drones.forEach(d => {
+        if (!d.alive) return;
+        if (Math.abs(l.x - d.x) < d.w/2 + l.r && Math.abs(l.y - d.y) < d.h/2 + l.r) {
+          d.hp--;
+          l.life = 0;
+          spawnParticles(d.x - scrollX, d.y, '#fbbf24', 6);
+          if (d.hp <= 0) {
+            d.alive = false;
+            score += d.type === 'heavy' ? 300 : d.type === 'fast' ? 200 : 100;
+            spawnParticles(d.x - scrollX, d.y, '#ef4444', 15, 8);
+            // chance to drop powerup
+            if (Math.random() < 0.25) {
+              powerups.push({ x: d.x, y: d.y, type: 'heal', life: 300 });
+            }
+          }
+        }
+      });
+    }
+
+    if (l.type === 'enemy' && owl.invincible <= 0) {
+      const ox = owl.x + owl.w/2;
+      const oy = owl.y + owl.h/2;
+      if (Math.abs(l.x - ox) < 18 && Math.abs(l.y - oy) < 18) {
+        owl.hp--;
+        owl.invincible = 30;
+        l.life = 0;
+        shakeTimer = 8;
+        spawnParticles(ox - scrollX, oy, '#ef4444', 10);
+        if (owl.hp <= 0) state = 'dead';
+      }
+    }
+  });
+  lasers = lasers.filter(l => l.life > 0);
+
+  // terminals
+  terminals.forEach(t => {
+    if (t.hacked) return;
+    const dx = owl.x + owl.w/2 - t.x;
+    const dy = owl.y + owl.h/2 - t.y;
+    if (Math.abs(dx) < 40 && Math.abs(dy) < 50) {
+      // near terminal - can hack
+      if (hackProgress > 0) {
+        t.hackTimer += 1;
+        if (t.hackTimer >= t.hackNeeded) {
+          t.hacked = true;
+          terminalsHacked++;
+          score += 1000;
+          alertLevel++;
+          spawnParticles(t.x - scrollX, t.y, '#4ade80', 25, 8);
+          showMsg(`Terminal ${terminalsHacked}/${TERMINALS_NEEDED} hacked!`);
+          if (!t.alertDrones) {
+            t.alertDrones = true;
+            spawnDrones(2 + alertLevel);
+          }
+          if (terminalsHacked >= TERMINALS_NEEDED) {
+            state = 'victory';
+            score += 5000;
+          }
+        }
+      }
+    } else {
+      t.hackTimer = Math.max(0, t.hackTimer - 0.5);
+    }
+  });
+
+  // powerups
+  powerups.forEach(p => {
+    p.life--;
+    if (Math.abs(owl.x + owl.w/2 - p.x) < 25 && Math.abs(owl.y + owl.h/2 - p.y) < 25) {
+      if (p.type === 'heal') {
+        owl.hp = Math.min(owl.maxHp, owl.hp + 1);
+        spawnParticles(p.x - scrollX, p.y, '#4ade80', 10);
+      }
+      p.life = 0;
+    }
+  });
+  powerups = powerups.filter(p => p.life > 0);
+
+  // particles
+  particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; });
+  particles = particles.filter(p => p.life > 0);
+
+  if (shakeTimer > 0) shakeTimer--;
+  if (msgTimer > 0) msgTimer--;
+
+  draw();
+  requestAnimationFrame(update);
+}
+
+function showMsg(text) { msgText = text; msgTimer = 120; }
+
+function shootLaser() {
+  if (owl.shootCooldown > 0) return;
+  owl.shootCooldown = 8;
+  lasers.push({
+    x: owl.x + owl.w, y: owl.y + owl.h/2,
+    vx: 10, vy: 0,
+    type: 'player', life: 40, r: 5
+  });
+  spawnParticles(owl.x + owl.w - scrollX, owl.y + owl.h/2, '#60a5fa', 4, 3);
+}
+
+function draw() {
+  ctx.save();
+  if (shakeTimer > 0) ctx.translate((Math.random()-0.5)*shakeTimer, (Math.random()-0.5)*shakeTimer);
+
+  // background
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#0a0a20');
+  bgGrad.addColorStop(0.5, '#0f0f2a');
+  bgGrad.addColorStop(1, '#1a0a30');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  drawNeonGrid();
+  drawBuildings();
+
+  // terminals
+  terminals.forEach(drawTerminal);
+
+  // powerups
+  powerups.forEach(p => {
+    const x = p.x - scrollX, y = p.y;
+    if (x < -20 || x > W + 20) return;
+    const bob = Math.sin(Date.now() * 0.005) * 5;
+    ctx.fillStyle = '#4ade80';
+    ctx.beginPath();
+    ctx.arc(x, y + bob, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('+', x, y + bob + 4);
+  });
+
+  // drones
+  drones.forEach(drawDrone);
+
+  // lasers
+  lasers.forEach(l => {
+    const x = l.x - scrollX;
+    if (x < -10 || x > W + 10) return;
+    if (l.type === 'player') {
+      ctx.fillStyle = '#60a5fa';
+      ctx.shadowColor = '#60a5fa';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.ellipse(x, l.y, l.r * 2, l.r, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.fillStyle = '#ef4444';
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(x, l.y, l.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  });
+
+  // owl
+  drawOwl(owl.x - scrollX, owl.y);
+
+  // particles
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.life / 35);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.fillStyle = '#0a0a20DD';
+  ctx.fillRect(0, 0, W, 45);
+
+  // HP
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 12px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('HP', 10, 16);
+  for (let i = 0; i < owl.maxHp; i++) {
+    ctx.fillStyle = i < owl.hp ? '#4ade80' : '#333';
+    ctx.fillRect(30 + i * 22, 8, 18, 10);
+  }
+
+  // terminals progress
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 12px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(`TERMINALS: ${terminalsHacked}/${TERMINALS_NEEDED}`, W/2, 38);
+  // progress bar
+  ctx.fillStyle = '#333';
+  ctx.fillRect(W/2 - 60, 10, 120, 8);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W/2 - 60, 10, 120 * (terminalsHacked / TERMINALS_NEEDED), 8);
+
+  // score
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 14px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${score}`, W - 10, 18);
+
+  // alert level
+  ctx.fillStyle = '#ef4444';
+  ctx.font = '10px system-ui';
+  ctx.fillText(`ALERT: ${'!'.repeat(alertLevel)}`, W - 10, 36);
+
+  // message
+  if (msgTimer > 0) {
+    ctx.fillStyle = '#0a0a20CC';
+    ctx.fillRect(W/2 - 140, H/2 - 20, 280, 40);
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(W/2 - 140, H/2 - 20, 280, 40);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(msgText, W/2, H/2 + 5);
+  }
+
+  // victory/dead overlays
+  if (state === 'victory') {
+    ctx.fillStyle = '#0a0a20CC';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('ESCAPE SUCCESSFUL!', W/2, H/3);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '20px system-ui';
+    ctx.fillText('All terminals hacked!', W/2, H/3 + 40);
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 24px system-ui';
+    ctx.fillText(`Score: ${score}`, W/2, H/3 + 85);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to play again', W/2, H/3 + 130);
+  }
+
+  if (state === 'dead') {
+    ctx.fillStyle = '#0a0a20CC';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('SYSTEM FAILURE', W/2, H/3);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '18px system-ui';
+    ctx.fillText(`Terminals hacked: ${terminalsHacked}/${TERMINALS_NEEDED}`, W/2, H/3 + 40);
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 20px system-ui';
+    ctx.fillText(`Score: ${score}`, W/2, H/3 + 75);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to retry', W/2, H/3 + 120);
+  }
+
+  ctx.restore();
+}
+
+function drawTitle() {
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#0a0a20');
+  bgGrad.addColorStop(1, '#1a0a30');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+  drawNeonGrid();
+  drawBuildings();
+
+  ctx.fillStyle = '#0a0a20AA';
+  ctx.fillRect(0, 0, W, H);
+
+  // title
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 44px system-ui';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#a78bfa';
+  ctx.shadowBlur = 20;
+  ctx.fillText('CYBER OWLS', W/2, H/3);
+  ctx.shadowBlur = 0;
+
+  // owl silhouette
+  drawOwl(W/2 - 16, H/3 + 30);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px system-ui';
+  ctx.fillText('Hack 5 terminals. Escape the city.', W/2, H/3 + 100);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '13px system-ui';
+  ctx.fillText('Drag to fly | Tap to shoot', W/2, H/3 + 130);
+  ctx.fillText('Fly near terminals & swipe down to hack', W/2, H/3 + 155);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 20px system-ui';
+  const blink = Math.sin(Date.now() * 0.005) > 0;
+  if (blink) ctx.fillText('TAP TO START', W/2, H/3 + 210);
+
+  scrollX += 0.5; // animate background
+}
+
+// Touch controls
+let touchStartTime = 0;
+let touchStartX = 0, touchStartY = 0;
+let isSwiping = false;
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (state === 'title') { state = 'playing'; init(); return; }
+  if (state === 'victory' || state === 'dead') { state = 'playing'; init(); return; }
+
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const t = e.touches[0];
+  const tx = (t.clientX - rect.left) * scaleX;
+  const ty = (t.clientY - rect.top) * scaleY;
+
+  touchStartTime = Date.now();
+  touchStartX = tx;
+  touchStartY = ty;
+  isSwiping = false;
+
+  dragTarget = { x: tx + scrollX, y: ty };
+});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (state !== 'playing') return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const t = e.touches[0];
+  const tx = (t.clientX - rect.left) * scaleX;
+  const ty = (t.clientY - rect.top) * scaleY;
+
+  dragTarget = { x: tx + scrollX, y: ty };
+
+  // detect downward swipe for hacking
+  if (ty - touchStartY > 40 && !isSwiping) {
+    isSwiping = true;
+    hackProgress = 1;
+  }
+});
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (state !== 'playing') return;
+  const elapsed = Date.now() - touchStartTime;
+
+  if (isSwiping) {
+    // swipe down = hack (handled in touchmove)
+    hackProgress = 0;
+  } else if (elapsed < 200) {
+    // quick tap = shoot
+    shootLaser();
+  }
+
+  hackProgress = 0;
+  dragTarget = null;
+  isSwiping = false;
+});
+
+// Mouse fallback
+let mouseDown = false;
+canvas.addEventListener('mousedown', e => {
+  if (state === 'title') { state = 'playing'; init(); return; }
+  if (state === 'victory' || state === 'dead') { state = 'playing'; init(); return; }
+  mouseDown = true;
+  touchStartTime = Date.now();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  touchStartX = (e.clientX - rect.left) * scaleX;
+  touchStartY = (e.clientY - rect.top) * scaleY;
+  dragTarget = { x: touchStartX + scrollX, y: touchStartY };
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!mouseDown || state !== 'playing') return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const tx = (e.clientX - rect.left) * scaleX;
+  const ty = (e.clientY - rect.top) * scaleY;
+  dragTarget = { x: tx + scrollX, y: ty };
+
+  if (ty - touchStartY > 40) {
+    hackProgress = 1;
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (state !== 'playing') { mouseDown = false; return; }
+  const elapsed = Date.now() - touchStartTime;
+  if (elapsed < 200 && !isSwiping) shootLaser();
+  hackProgress = 0;
+  dragTarget = null;
+  mouseDown = false;
+});
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (state === 'title') { state = 'playing'; init(); return; }
+  if (state === 'victory' || state === 'dead') { state = 'playing'; init(); return; }
+  if (state !== 'playing') return;
+
+  const speed = 5;
+  if (e.key === 'ArrowLeft' || e.key === 'a') owl.vx = -speed;
+  if (e.key === 'ArrowRight' || e.key === 'd') owl.vx = speed;
+  if (e.key === 'ArrowUp' || e.key === 'w') owl.vy = -speed;
+  if (e.key === 'ArrowDown' || e.key === 's') { owl.vy = speed; hackProgress = 1; }
+  if (e.key === ' ' || e.key === 'z') shootLaser();
+});
+
+document.addEventListener('keyup', e => {
+  if (e.key === 'ArrowDown' || e.key === 's') hackProgress = 0;
+});
+
+init();
+scrollX = 0;
+update();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

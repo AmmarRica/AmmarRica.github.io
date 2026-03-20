@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ref's Revenge</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+resize();
+
+let state = 'title';
+let credibility = 100;
+let score = 0;
+let level = 1;
+let playTimer = 0;
+let playDuration = 300;
+let players = [];
+let penalties = [];
+let flags = [];
+let feedbacks = [];
+let challengeActive = false;
+let challengeTimer = 0;
+let missedCalls = 0;
+let correctCalls = 0;
+let wrongCalls = 0;
+let fieldScroll = 0;
+let ballX = 0;
+let playActive = false;
+let playBreak = 0;
+let playsCompleted = 0;
+
+const PENALTY_TYPES = [
+  { name: 'HOLDING', color: '#ff8844', desc: 'Grabbing jersey!', subtle: false },
+  { name: 'OFFSIDES', color: '#ff4444', desc: 'Crossed the line!', subtle: false },
+  { name: 'PASS INTERFERENCE', color: '#ff44aa', desc: 'Blocking the catch!', subtle: true },
+  { name: 'FACEMASK', color: '#ff0000', desc: 'Grabbed the facemask!', subtle: false },
+  { name: 'FALSE START', color: '#ffcc44', desc: 'Moved before snap!', subtle: false },
+  { name: 'ILLEGAL BLOCK', color: '#ff6644', desc: 'Illegal block!', subtle: true },
+  { name: 'DELAY OF GAME', color: '#ffaa44', desc: 'Taking too long!', subtle: true },
+];
+
+canvas.addEventListener('click', e => {
+  if (state === 'title') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state !== 'playing') return;
+  // Check if clicked on a penalty
+  let hit = false;
+  penalties.forEach(p => {
+    if (p.flagged) return;
+    let dx = e.clientX - p.x, dy = e.clientY - p.y;
+    if (Math.sqrt(dx*dx+dy*dy) < 35) {
+      p.flagged = true;
+      hit = true;
+      correctCalls++;
+      score += p.subtle ? 30 : 15;
+      score += Math.floor(p.timeLeft * 2);
+      throwFlag(p.x, p.y);
+      addFeedback(p.x, p.y-30, p.type.name + '!', '#4ade80');
+    }
+  });
+  if (!hit) {
+    // Wrong call - threw flag on clean play
+    wrongCalls++;
+    credibility -= 8;
+    throwFlag(e.clientX, e.clientY);
+    addFeedback(e.clientX, e.clientY-30, 'BAD CALL!', '#ff4444');
+    if (credibility <= 0) { credibility = 0; state = 'gameover'; }
+  }
+});
+
+function startGame() {
+  state = 'playing';
+  credibility = 100;
+  score = 0;
+  level = 1;
+  players = [];
+  penalties = [];
+  flags = [];
+  feedbacks = [];
+  missedCalls = 0;
+  correctCalls = 0;
+  wrongCalls = 0;
+  fieldScroll = 0;
+  playsCompleted = 0;
+  playActive = false;
+  playBreak = 60;
+  startPlay();
+}
+
+function startPlay() {
+  playActive = true;
+  playTimer = 0;
+  playDuration = Math.max(150, 350 - level * 15);
+  ballX = W * 0.3;
+  players = [];
+  // Create offense (blue) and defense (red)
+  for (let i = 0; i < 11; i++) {
+    // Offense
+    players.push({
+      x: W*0.3 + (i < 5 ? (i-2)*30 : (i-7)*50+Math.random()*40),
+      y: H*0.55 + (i < 5 ? 0 : (i<8 ? -40-Math.random()*30 : 40+Math.random()*20)),
+      team: 'offense', vx: 1+Math.random()*2, vy: (Math.random()-0.5)*1.5,
+      color: '#3b82f6', w: 16, h: 20
+    });
+    // Defense
+    players.push({
+      x: W*0.5 + (i < 4 ? (i-2)*35 : (i-7)*45+Math.random()*30),
+      y: H*0.55 + (i < 4 ? 10 : (i<7 ? -30-Math.random()*30 : 50+Math.random()*20)),
+      team: 'defense', vx: -0.5+Math.random()*-1.5, vy: (Math.random()-0.5)*2,
+      color: '#ef4444', w: 16, h: 20
+    });
+  }
+  // Decide penalties for this play
+  penalties = [];
+  let numPenalties = Math.min(3, Math.floor(Math.random() * (1 + level * 0.3)) + (Math.random() > 0.3 ? 1 : 0));
+  for (let i = 0; i < numPenalties; i++) {
+    let type = PENALTY_TYPES[Math.floor(Math.random() * PENALTY_TYPES.length)];
+    let delay = 30 + Math.floor(Math.random() * (playDuration - 80));
+    penalties.push({
+      type, delay, duration: 80 + Math.floor(Math.random()*40),
+      x: 0, y: 0, active: false, flagged: false, timeLeft: 0,
+      playerIdx: Math.floor(Math.random() * players.length),
+      subtle: type.subtle && Math.random() > 0.4
+    });
+  }
+}
+
+function throwFlag(x, y) {
+  flags.push({ x, y, vy: -8, vx: (Math.random()-0.5)*3, life: 1, rot: 0 });
+}
+
+function addFeedback(x, y, text, color) {
+  feedbacks.push({ x, y, text, color, life: 1 });
+}
+
+function update() {
+  if (state !== 'playing') return;
+
+  if (!playActive) {
+    playBreak--;
+    if (playBreak <= 0) startPlay();
+    return;
+  }
+
+  playTimer++;
+  fieldScroll += 1;
+
+  // Move players
+  players.forEach((p, i) => {
+    p.x += p.vx * (1 + level * 0.05);
+    p.y += p.vy;
+    if (p.y < H*0.3 || p.y > H*0.8) p.vy *= -1;
+    p.vy += (Math.random()-0.5)*0.3;
+  });
+
+  // Update penalties
+  penalties.forEach(p => {
+    if (playTimer >= p.delay && playTimer < p.delay + p.duration) {
+      p.active = true;
+      p.timeLeft = (p.delay + p.duration - playTimer) / 60;
+      let pl = players[p.playerIdx];
+      if (pl) { p.x = pl.x; p.y = pl.y; }
+    } else if (playTimer >= p.delay + p.duration) {
+      if (p.active && !p.flagged) {
+        // Missed call!
+        missedCalls++;
+        credibility -= 5 + level;
+        addFeedback(p.x, p.y - 40, 'MISSED CALL!', '#ff8844');
+        if (credibility <= 0) { credibility = 0; state = 'gameover'; }
+        // Coach challenge chance
+        if (Math.random() < 0.3 + missedCalls * 0.1) {
+          challengeActive = true;
+          challengeTimer = 120;
+          credibility -= 5;
+          addFeedback(W/2, H*0.3, 'COACH CHALLENGES!', '#ff0000');
+        }
+      }
+      p.active = false;
+    }
+  });
+
+  if (challengeActive) {
+    challengeTimer--;
+    if (challengeTimer <= 0) challengeActive = false;
+  }
+
+  // Play ends
+  if (playTimer >= playDuration) {
+    playActive = false;
+    playBreak = 90 - Math.min(level*5, 60);
+    playsCompleted++;
+    if (playsCompleted % 5 === 0) {
+      level++;
+      addFeedback(W/2, H/2, 'LEVEL ' + level + '!', '#a78bfa');
+    }
+    score += 10;
+  }
+
+  // Flags physics
+  flags.forEach(f => {
+    f.vy += 0.4;
+    f.x += f.vx;
+    f.y += f.vy;
+    f.rot += 0.1;
+    if (f.y > H*0.85) { f.vy *= -0.3; f.y = H*0.85; }
+    f.life -= 0.008;
+  });
+  flags = flags.filter(f => f.life > 0);
+
+  // Feedbacks
+  feedbacks.forEach(f => { f.y -= 1; f.life -= 0.015; });
+  feedbacks = feedbacks.filter(f => f.life > 0);
+}
+
+function drawField() {
+  // Green field
+  ctx.fillStyle = '#1a4d1a';
+  ctx.fillRect(0, H*0.25, W, H*0.6);
+  // Yard lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 12; i++) {
+    let x = ((i * W/10 + fieldScroll) % (W*1.2)) - W*0.1;
+    ctx.beginPath(); ctx.moveTo(x, H*0.25); ctx.lineTo(x, H*0.85); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText((i*10)%100, x, H*0.23);
+  }
+  // Hash marks
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  for (let y of [H*0.45, H*0.65]) {
+    for (let x = 0; x < W; x += 30) {
+      ctx.beginPath(); ctx.moveTo(x, y-5); ctx.lineTo(x, y+5); ctx.stroke();
+    }
+  }
+  // Field borders
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(0, H*0.25, W, H*0.6);
+}
+
+function drawPlayers() {
+  players.forEach((p, i) => {
+    // Body
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h);
+    // Helmet
+    ctx.fillStyle = p.team === 'offense' ? '#1d4ed8' : '#b91c1c';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - p.h/2, 7, 0, Math.PI * 2);
+    ctx.fill();
+    // Number
+    ctx.fillStyle = '#fff';
+    ctx.font = '8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(i%99+1, p.x, p.y);
+  });
+}
+
+function drawPenalties() {
+  penalties.forEach(p => {
+    if (!p.active || p.flagged) return;
+    // Warning indicator
+    let pulse = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
+    let alpha = p.subtle ? 0.4 : 0.7;
+    ctx.globalAlpha = alpha * pulse;
+    // Circle around offender
+    ctx.strokeStyle = p.type.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 25 + Math.sin(Date.now()*0.008)*5, 0, Math.PI*2);
+    ctx.stroke();
+    // Exclamation
+    if (!p.subtle) {
+      ctx.fillStyle = p.type.color;
+      ctx.font = 'bold 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('!', p.x, p.y - 30);
+    }
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawFlags() {
+  flags.forEach(f => {
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.rot);
+    ctx.globalAlpha = f.life;
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(-8, -8, 16, 16);
+    // Tail
+    ctx.fillStyle = '#fbbf24aa';
+    ctx.fillRect(-2, -20, 4, 12);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  });
+}
+
+function drawHUD() {
+  // Credibility bar
+  ctx.fillStyle = '#333';
+  ctx.fillRect(W/2-150, 15, 300, 20);
+  let credColor = credibility > 60 ? '#4ade80' : credibility > 30 ? '#fbbf24' : '#ff4444';
+  ctx.fillStyle = credColor;
+  ctx.fillRect(W/2-150, 15, 300*(credibility/100), 20);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(W/2-150, 15, 300, 20);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`CREDIBILITY: ${credibility}%`, W/2, 29);
+
+  // Score
+  ctx.textAlign = 'right';
+  ctx.font = '16px sans-serif';
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText(`Score: ${score}`, W-20, 30);
+  ctx.fillText(`Level: ${level}`, W-20, 50);
+  ctx.fillText(`Play: ${playsCompleted+1}`, W-20, 70);
+
+  // Stats
+  ctx.textAlign = 'left';
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText(`Good Calls: ${correctCalls}`, 80, 30);
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText(`Bad Calls: ${wrongCalls}`, 80, 48);
+  ctx.fillStyle = '#ff8844';
+  ctx.fillText(`Missed: ${missedCalls}`, 80, 66);
+
+  // Play timer bar
+  if (playActive) {
+    let pct = playTimer / playDuration;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(20, H*0.22, W-40, 6);
+    ctx.fillStyle = pct > 0.8 ? '#ff4444' : '#60a5fa';
+    ctx.fillRect(20, H*0.22, (W-40)*pct, 6);
+  } else {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('NEXT PLAY...', W/2, H*0.5);
+  }
+
+  // Challenge
+  if (challengeActive) {
+    ctx.fillStyle = 'rgba(200,0,0,0.3)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff0000';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('COACH CHALLENGES YOUR CALL!', W/2, H*0.18);
+    ctx.font = '18px sans-serif';
+    ctx.fillStyle = '#ff8888';
+    ctx.fillText('Credibility -5!', W/2, H*0.22);
+  }
+
+  // Instructions
+  ctx.fillStyle = '#888';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Click on penalties to throw flag! Watch for holding, offsides, facemask, and more.', W/2, H*0.93);
+}
+
+function drawFeedbacks() {
+  feedbacks.forEach(f => {
+    ctx.globalAlpha = f.life;
+    ctx.fillStyle = f.color;
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawField();
+  ctx.fillStyle = 'rgba(15,15,26,0.7)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = `bold ${Math.min(56, W*0.07)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText("REF'S REVENGE", W/2, H*0.3);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px sans-serif';
+  ctx.fillText('You ARE the referee. Spot the penalties!', W/2, H*0.42);
+
+  ctx.font = '15px sans-serif';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('Click on rule-breaking players to throw your flag', W/2, H*0.52);
+  ctx.fillText('Wrong calls lose credibility. Miss calls = coach challenges.', W/2, H*0.57);
+  ctx.fillText('Subtle penalties have fainter indicators - stay sharp!', W/2, H*0.62);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 24px sans-serif';
+  let blink = Math.sin(Date.now()*0.004) > 0;
+  if (blink) ctx.fillText('CLICK TO START', W/2, H*0.78);
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(15,15,26,0.85)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#ff4444';
+  ctx.font = `bold ${Math.min(52, W*0.07)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText("YOU'RE FIRED!", W/2, H*0.3);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '22px sans-serif';
+  ctx.fillText(`Final Score: ${score}`, W/2, H*0.45);
+  ctx.fillText(`${correctCalls} Good | ${wrongCalls} Bad | ${missedCalls} Missed`, W/2, H*0.52);
+  ctx.fillText(`${playsCompleted} Plays Officiated`, W/2, H*0.58);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '20px sans-serif';
+  let blink = Math.sin(Date.now()*0.004) > 0;
+  if (blink) ctx.fillText('Click to Retry', W/2, H*0.73);
+}
+
+function gameLoop() {
+  requestAnimationFrame(gameLoop);
+  update();
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  if (state === 'title') { drawTitle(); return; }
+  drawField();
+  if (playActive) {
+    drawPlayers();
+    drawPenalties();
+  }
+  drawFlags();
+  drawFeedbacks();
+  drawHUD();
+  if (state === 'gameover') drawGameOver();
+}
+
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

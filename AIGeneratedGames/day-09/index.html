@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 09 – Mortol – Game a Day</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      overflow: hidden;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; display: block; }
+    #ui { color: #9ca3af; font-size: 0.8rem; margin-top: 0.5rem; max-width: 480px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Mortol</h1>
+  <p class="subtitle">Sacrifice platformer — your corpses become platforms</p>
+  <canvas id="game"></canvas>
+  <div id="ui">Tap LEFT/RIGHT to move · Tap TOP to jump · Lives are stepping stones</div>
+  <script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    const w = Math.min(480, window.innerWidth - 20);
+    const h = Math.min(640, window.innerHeight - 160);
+    canvas.width = w;
+    canvas.height = h;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const GRAVITY = 0.5;
+  const JUMP_FORCE = -9;
+  const MOVE_SPEED = 3;
+  const PLAYER_W = 16;
+  const PLAYER_H = 20;
+  const MAX_LIVES = 10;
+  const TILE = 24;
+
+  let state = 'title'; // title, playing, win, gameover
+  let level = 0;
+  let livesLeft = MAX_LIVES;
+  let corpses = [];
+  let player = null;
+  let platforms = [];
+  let hazards = [];
+  let flag = null;
+  let particles = [];
+  let touchLeft = false, touchRight = false, touchJump = false;
+
+  const LEVELS = [
+    // Level 0: simple gap
+    {
+      plats: [[0,580,200,20],[280,580,200,20],[0,600,480,40],[100,480,60,16],[340,440,60,16]],
+      hazards: [[200,590,80,10]],
+      flag: [420,548],
+      spawn: [40,540]
+    },
+    // Level 1: vertical climb
+    {
+      plats: [[0,600,480,40],[0,580,120,20],[60,470,80,16],[200,400,80,16],[100,320,80,16],[280,240,80,16],[180,160,80,16],[350,80,80,16]],
+      hazards: [[120,590,40,10],[300,390,30,10],[160,150,20,10]],
+      flag: [370,48],
+      spawn: [30,540]
+    },
+    // Level 2: long crossing with spikes
+    {
+      plats: [[0,600,480,40],[0,560,60,20],[160,500,60,16],[300,460,60,16],[420,400,60,16],[300,320,60,16],[140,280,60,16],[40,200,60,16],[200,140,80,16],[380,80,60,16]],
+      hazards: [[60,570,100,10],[220,490,80,10],[360,450,60,10],[360,310,40,10],[100,270,40,10]],
+      flag: [400,48],
+      spawn: [20,520]
+    }
+  ];
+
+  function loadLevel(n) {
+    const l = LEVELS[n % LEVELS.length];
+    platforms = l.plats.map(p => ({ x: p[0], y: p[1], w: p[2], h: p[3] }));
+    hazards = l.hazards.map(h => ({ x: h[0], y: h[1], w: h[2], h: h[3] }));
+    flag = { x: l.flag[0], y: l.flag[1] };
+    corpses = [];
+    livesLeft = MAX_LIVES;
+    spawnPlayer(l.spawn[0], l.spawn[1]);
+  }
+
+  function spawnPlayer(x, y) {
+    player = { x, y, vx: 0, vy: 0, onGround: false, dead: false, w: PLAYER_W, h: PLAYER_H };
+  }
+
+  function resetTouch() {
+    touchLeft = false; touchRight = false; touchJump = false;
+  }
+
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (state === 'title') { state = 'playing'; loadLevel(0); return; }
+    if (state === 'win' || state === 'gameover') { state = 'title'; return; }
+    for (const t of e.changedTouches) {
+      const rect = canvas.getBoundingClientRect();
+      const tx = t.clientX - rect.left;
+      const ty = t.clientY - rect.top;
+      if (ty < canvas.height * 0.3) { touchJump = true; }
+      else if (tx < canvas.width * 0.5) { touchLeft = true; }
+      else { touchRight = true; }
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    // simplified: release all
+    resetTouch();
+  }, { passive: false });
+
+  // Keyboard fallback
+  const keys = {};
+  window.addEventListener('keydown', (e) => {
+    keys[e.key] = true;
+    if (state === 'title') { state = 'playing'; loadLevel(0); }
+    if (state === 'win' || state === 'gameover') { state = 'title'; }
+  });
+  window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  function addDeathParticles(x, y) {
+    for (let i = 0; i < 12; i++) {
+      particles.push({
+        x, y, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+        life: 30 + Math.random() * 20, color: Math.random() > 0.5 ? '#ff6666' : '#a78bfa'
+      });
+    }
+  }
+
+  function update() {
+    if (state !== 'playing' || !player) return;
+
+    const left = touchLeft || keys['ArrowLeft'] || keys['a'];
+    const right = touchRight || keys['ArrowRight'] || keys['d'];
+    const jump = touchJump || keys['ArrowUp'] || keys['w'] || keys[' '];
+
+    player.vx = 0;
+    if (left) player.vx = -MOVE_SPEED;
+    if (right) player.vx = MOVE_SPEED;
+    if (jump && player.onGround) {
+      player.vy = JUMP_FORCE;
+      player.onGround = false;
+    }
+
+    player.vy += GRAVITY;
+    if (player.vy > 12) player.vy = 12;
+
+    // Move X
+    player.x += player.vx;
+    const allPlats = [...platforms, ...corpses.map(c => ({ x: c.x - 6, y: c.y, w: PLAYER_W + 12, h: PLAYER_H }))];
+    for (const p of allPlats) {
+      if (rectsOverlap(player, p)) {
+        if (player.vx > 0) player.x = p.x - player.w;
+        else if (player.vx < 0) player.x = p.x + p.w;
+      }
+    }
+
+    // Move Y
+    player.y += player.vy;
+    player.onGround = false;
+    for (const p of allPlats) {
+      if (rectsOverlap(player, p)) {
+        if (player.vy > 0) {
+          player.y = p.y - player.h;
+          player.vy = 0;
+          player.onGround = true;
+        } else if (player.vy < 0) {
+          player.y = p.y + p.h;
+          player.vy = 0;
+        }
+      }
+    }
+
+    // Bounds
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.w > canvas.width) player.x = canvas.width - player.w;
+
+    // Fall off screen
+    if (player.y > canvas.height + 50) {
+      killPlayer();
+      return;
+    }
+
+    // Hazards
+    const pb = { x: player.x, y: player.y, w: player.w, h: player.h };
+    for (const h of hazards) {
+      if (rectsOverlap(pb, h)) {
+        killPlayer();
+        return;
+      }
+    }
+
+    // Flag
+    if (rectsOverlap(pb, { x: flag.x, y: flag.y, w: 20, h: 32 })) {
+      level++;
+      if (level >= LEVELS.length) {
+        state = 'win';
+      } else {
+        loadLevel(level);
+      }
+    }
+
+    // Particles
+    particles = particles.filter(p => {
+      p.x += p.vx; p.y += p.vy; p.life--;
+      return p.life > 0;
+    });
+  }
+
+  function killPlayer() {
+    addDeathParticles(player.x + player.w / 2, player.y + player.h / 2);
+    corpses.push({ x: player.x, y: player.y });
+    livesLeft--;
+    if (livesLeft <= 0) {
+      state = 'gameover';
+      return;
+    }
+    const l = LEVELS[level % LEVELS.length];
+    spawnPlayer(l.spawn[0], l.spawn[1]);
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (state === 'title') {
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = 'bold 32px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('MORTOL', canvas.width / 2, canvas.height / 2 - 40);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '16px system-ui';
+      ctx.fillText('Your death is your greatest tool', canvas.width / 2, canvas.height / 2);
+      ctx.fillText('Tap or press any key to start', canvas.width / 2, canvas.height / 2 + 40);
+      ctx.fillStyle = '#3b3b5c';
+      ctx.font = '12px system-ui';
+      ctx.fillText('Tap left/right sides to move, top to jump', canvas.width / 2, canvas.height / 2 + 80);
+      return;
+    }
+
+    if (state === 'win') {
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = 'bold 28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('YOU ESCAPED!', canvas.width / 2, canvas.height / 2 - 20);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '16px system-ui';
+      ctx.fillText(`Lives remaining: ${livesLeft}/${MAX_LIVES}`, canvas.width / 2, canvas.height / 2 + 20);
+      ctx.fillText('Tap to play again', canvas.width / 2, canvas.height / 2 + 60);
+      return;
+    }
+
+    if (state === 'gameover') {
+      ctx.fillStyle = '#ff6666';
+      ctx.font = 'bold 28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('NO MORE LIVES', canvas.width / 2, canvas.height / 2 - 20);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '16px system-ui';
+      ctx.fillText('Your sacrifice was not enough...', canvas.width / 2, canvas.height / 2 + 20);
+      ctx.fillText('Tap to retry', canvas.width / 2, canvas.height / 2 + 60);
+      return;
+    }
+
+    // Draw platforms
+    for (const p of platforms) {
+      ctx.fillStyle = '#3b3b5c';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = '#4a4a6a';
+      ctx.fillRect(p.x, p.y, p.w, 3);
+    }
+
+    // Draw hazards (spikes)
+    ctx.fillStyle = '#ff4444';
+    for (const h of hazards) {
+      const spikes = Math.floor(h.w / 10);
+      for (let i = 0; i < spikes; i++) {
+        const sx = h.x + i * 10 + 5;
+        ctx.beginPath();
+        ctx.moveTo(sx - 5, h.y + h.h);
+        ctx.lineTo(sx, h.y);
+        ctx.lineTo(sx + 5, h.y + h.h);
+        ctx.fill();
+      }
+    }
+
+    // Draw corpses
+    for (const c of corpses) {
+      ctx.fillStyle = '#665577';
+      ctx.fillRect(c.x - 2, c.y + 4, PLAYER_W + 4, PLAYER_H - 4);
+      // X eyes
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 1.5;
+      const ex = c.x + 4, ey = c.y + 8;
+      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex + 3, ey + 3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ex + 3, ey); ctx.lineTo(ex, ey + 3); ctx.stroke();
+      const ex2 = c.x + PLAYER_W - 7;
+      ctx.beginPath(); ctx.moveTo(ex2, ey); ctx.lineTo(ex2 + 3, ey + 3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ex2 + 3, ey); ctx.lineTo(ex2, ey + 3); ctx.stroke();
+    }
+
+    // Draw flag
+    ctx.fillStyle = '#888';
+    ctx.fillRect(flag.x + 8, flag.y, 3, 32);
+    ctx.fillStyle = '#44ff44';
+    ctx.beginPath();
+    ctx.moveTo(flag.x + 11, flag.y);
+    ctx.lineTo(flag.x + 28, flag.y + 8);
+    ctx.lineTo(flag.x + 11, flag.y + 16);
+    ctx.fill();
+
+    // Draw player
+    if (player) {
+      // Body
+      ctx.fillStyle = '#a78bfa';
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+      // Eyes
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(player.x + 3, player.y + 5, 4, 4);
+      ctx.fillRect(player.x + player.w - 7, player.y + 5, 4, 4);
+      ctx.fillStyle = '#111';
+      const lookDir = player.vx > 0 ? 2 : player.vx < 0 ? 0 : 1;
+      ctx.fillRect(player.x + 3 + lookDir, player.y + 6, 2, 2);
+      ctx.fillRect(player.x + player.w - 7 + lookDir, player.y + 6, 2, 2);
+    }
+
+    // Particles
+    for (const p of particles) {
+      ctx.globalAlpha = p.life / 50;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    // HUD
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Lives: ${livesLeft}/${MAX_LIVES}`, 10, 20);
+    ctx.textAlign = 'right';
+    ctx.fillText(`Level: ${level + 1}/${LEVELS.length}`, canvas.width - 10, 20);
+
+    // Touch zones hint (subtle)
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillRect(0, 0, canvas.width, canvas.height * 0.3);
+    ctx.font = '10px system-ui';
+    ctx.globalAlpha = 0.2;
+    ctx.textAlign = 'center';
+    ctx.fillText('JUMP', canvas.width / 2, canvas.height * 0.15);
+    ctx.fillText('← LEFT', canvas.width * 0.25, canvas.height * 0.65);
+    ctx.fillText('RIGHT →', canvas.width * 0.75, canvas.height * 0.65);
+    ctx.globalAlpha = 1;
+  }
+
+  function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+  }
+
+  gameLoop();
+})();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

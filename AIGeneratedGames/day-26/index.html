@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 26 – Onion Delivery</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 1rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.95rem; }
+    nav a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; color: #a78bfa; margin-bottom: 0.25rem; }
+    p.subtitle { color: #9ca3af; margin-bottom: 1rem; font-size: 0.9rem; }
+    canvas { border: 2px solid #3b3b5c; border-radius: 8px; background: #1e1e2e; display: block; }
+</style>
+</head>
+<body>
+  <h1>Onion Delivery</h1>
+  <p class="subtitle">Drag left/right to balance. Tap to jump. Deliver the onions!</p>
+  <canvas id="game"></canvas>
+  <script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = Math.min(480, window.innerWidth - 20);
+  H = Math.floor(W * 1.4);
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+const GRAVITY = 0.45;
+const GROUND_Y_RATIO = 0.82;
+
+let state = 'title';
+let level = 1;
+let score = 0;
+let lives = 3;
+let gameTimer = 0;
+
+// Player / cart
+let cart = { x: 0, y: 0, vx: 0, w: 40, h: 24, onGround: false };
+let onions = [];
+let tilt = 0; // -1 to 1
+let obstacles = [];
+let platforms = [];
+let deliveryZone = null;
+let cameraX = 0;
+let levelLength = 0;
+let droppedOnions = [];
+let particles = [];
+let windGust = 0;
+let windTimer = 0;
+
+function GROUND_Y() { return H * GROUND_Y_RATIO; }
+
+function generateLevel(lvl) {
+  const numOnions = Math.min(2 + lvl, 8);
+  onions = [];
+  for (let i = 0; i < numOnions; i++) {
+    onions.push({
+      offsetX: 0, offsetVX: 0,
+      size: 14 - Math.random() * 2,
+      color: `hsl(${40 + Math.random() * 20}, ${60 + Math.random() * 20}%, ${65 + Math.random() * 15}%)`
+    });
+  }
+
+  levelLength = 1500 + lvl * 500;
+  obstacles = [];
+  platforms = [];
+  droppedOnions = [];
+  particles = [];
+
+  // Generate obstacles
+  const numObs = 8 + lvl * 3;
+  for (let i = 0; i < numObs; i++) {
+    const ox = 200 + (i / numObs) * (levelLength - 400);
+    const type = Math.random();
+    if (type < 0.3) {
+      obstacles.push({ x: ox, y: GROUND_Y() - 20, w: 20, h: 20, type: 'rock' });
+    } else if (type < 0.5) {
+      obstacles.push({ x: ox, y: GROUND_Y() - 30, w: 15, h: 30, type: 'post' });
+    } else if (type < 0.7) {
+      obstacles.push({ x: ox, y: GROUND_Y() - 12, w: 50, h: 12, type: 'bump' });
+    } else if (type < 0.85) {
+      // Gap in ground
+      obstacles.push({ x: ox, y: GROUND_Y(), w: 60 + lvl * 5, h: 200, type: 'gap' });
+    } else {
+      // Ramp
+      obstacles.push({ x: ox, y: GROUND_Y() - 5, w: 60, h: 20, type: 'ramp' });
+    }
+  }
+
+  // Platforms over gaps
+  for (const o of obstacles) {
+    if (o.type === 'gap') {
+      platforms.push({ x: o.x + 10, y: GROUND_Y() - 8, w: o.w - 20, h: 8 });
+    }
+  }
+
+  // Delivery zone
+  deliveryZone = { x: levelLength - 80, y: GROUND_Y() - 60, w: 80, h: 60 };
+
+  cart.x = 60;
+  cart.y = GROUND_Y() - cart.h;
+  cart.vx = 0;
+  cameraX = 0;
+  tilt = 0;
+  windGust = 0;
+  gameTimer = 0;
+}
+
+// Touch controls
+let touchActive = false;
+let touchStartX = 0;
+let touchCurrentX = 0;
+let tapJump = false;
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (state === 'title') { state = 'playing'; generateLevel(1); return; }
+  if (state === 'win' || state === 'gameover' || state === 'levelcomplete') {
+    if (state === 'levelcomplete') { level++; state = 'playing'; generateLevel(level); }
+    else { state = 'title'; level = 1; score = 0; lives = 3; }
+    return;
+  }
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  const tx = t.clientX - rect.left;
+  const ty = t.clientY - rect.top;
+
+  if (ty < H * 0.4) {
+    tapJump = true;
+  } else {
+    touchActive = true;
+    touchStartX = tx;
+    touchCurrentX = tx;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!touchActive) return;
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  touchCurrentX = t.clientX - rect.left;
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  touchActive = false;
+  tapJump = false;
+}, { passive: false });
+
+// Keyboard
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.key] = true;
+  if (state === 'title') { state = 'playing'; generateLevel(1); }
+  if (state === 'levelcomplete') { level++; state = 'playing'; generateLevel(level); }
+  if (state === 'win' || state === 'gameover') { state = 'title'; level = 1; score = 0; lives = 3; }
+});
+window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+function update() {
+  if (state !== 'playing') return;
+  gameTimer++;
+
+  // Auto-scroll forward
+  cart.vx = 1.5 + level * 0.3;
+
+  // Tilt from touch drag
+  if (touchActive) {
+    const drag = (touchCurrentX - touchStartX) / (W * 0.3);
+    tilt = Math.max(-1, Math.min(1, drag));
+  } else if (keys['ArrowLeft'] || keys['a']) {
+    tilt = Math.max(-1, tilt - 0.05);
+  } else if (keys['ArrowRight'] || keys['d']) {
+    tilt = Math.min(1, tilt + 0.05);
+  } else {
+    tilt *= 0.9;
+  }
+
+  // Jump
+  const wantJump = tapJump || keys['ArrowUp'] || keys['w'] || keys[' '];
+  if (wantJump && cart.onGround) {
+    cart.y -= 2;
+    cart.vy = -9;
+    cart.onGround = false;
+    // Jumping wobbles onions
+    for (const o of onions) o.offsetVX += (Math.random() - 0.5) * 2;
+  }
+
+  // Move cart
+  cart.x += cart.vx;
+
+  // Gravity
+  if (!cart.vy) cart.vy = 0;
+  cart.vy += GRAVITY;
+  cart.y += cart.vy;
+
+  // Ground collision
+  let onSolidGround = true;
+  const groundY = GROUND_Y();
+
+  // Check if over a gap
+  for (const o of obstacles) {
+    if (o.type === 'gap') {
+      if (cart.x + cart.w / 2 > o.x && cart.x + cart.w / 2 < o.x + o.w) {
+        onSolidGround = false;
+      }
+    }
+  }
+
+  // Platform collision
+  for (const p of platforms) {
+    if (cart.x + cart.w > p.x && cart.x < p.x + p.w &&
+        cart.y + cart.h >= p.y && cart.y + cart.h <= p.y + 15 && cart.vy >= 0) {
+      cart.y = p.y - cart.h;
+      cart.vy = 0;
+      cart.onGround = true;
+    }
+  }
+
+  if (onSolidGround && cart.y + cart.h >= groundY && cart.vy >= 0) {
+    cart.y = groundY - cart.h;
+    cart.vy = 0;
+    cart.onGround = true;
+  }
+
+  // Fall death
+  if (cart.y > H + 100) {
+    lives--;
+    if (lives <= 0) { state = 'gameover'; return; }
+    generateLevel(level);
+    return;
+  }
+
+  // Obstacle collision
+  for (const o of obstacles) {
+    if (o.type === 'gap') continue;
+    if (cart.x + cart.w > o.x && cart.x < o.x + o.w &&
+        cart.y + cart.h > o.y && cart.y < o.y + o.h) {
+      if (o.type === 'ramp' && cart.vy >= 0) {
+        // Ramp launches upward
+        cart.vy = -6;
+        cart.onGround = false;
+        for (const on of onions) on.offsetVX += (Math.random() - 0.5) * 3;
+      } else if (o.type === 'bump') {
+        cart.vy = -3;
+        for (const on of onions) on.offsetVX += (Math.random() - 0.5) * 2;
+      } else {
+        // Hit obstacle - wobble onions hard
+        for (const on of onions) on.offsetVX += (cart.vx > 0 ? 1 : -1) * 3;
+        cart.x = o.x - cart.w;
+        // Jump over it
+        cart.vy = -7;
+        cart.onGround = false;
+      }
+    }
+  }
+
+  // Wind gusts at higher levels
+  if (level >= 3) {
+    windTimer++;
+    if (windTimer % 200 < 80) {
+      windGust = Math.sin(windTimer * 0.05) * (0.3 + level * 0.1);
+    } else windGust = 0;
+  }
+
+  // Physics for stacked onions
+  for (let i = 0; i < onions.length; i++) {
+    const o = onions[i];
+    // Tilt affects onions more the higher they are
+    const heightFactor = 1 + i * 0.4;
+    o.offsetVX += tilt * 0.15 * heightFactor;
+    o.offsetVX += windGust * 0.08 * heightFactor;
+
+    // Wobble from onion above
+    if (i > 0) {
+      o.offsetVX += onions[i - 1].offsetVX * 0.05;
+    }
+
+    o.offsetVX *= 0.95; // friction
+    o.offsetX += o.offsetVX;
+
+    // Clamp - if too far, onion falls off
+    const maxOffset = 18 + (onions.length - i) * 2;
+    if (Math.abs(o.offsetX) > maxOffset) {
+      // Drop this onion and all above it
+      const dropped = onions.splice(i);
+      for (const d of dropped) {
+        droppedOnions.push({
+          x: cart.x + cart.w / 2 + d.offsetX - cameraX + cameraX,
+          y: cart.y - (i + 1) * (d.size * 1.8),
+          vx: d.offsetVX * 2,
+          vy: -2,
+          size: d.size,
+          color: d.color,
+          life: 120
+        });
+      }
+      for (let k = 0; k < 8; k++) {
+        particles.push({ x: cart.x + cart.w / 2, y: cart.y - 20, vx: (Math.random() - 0.5) * 4, vy: -Math.random() * 3, life: 30, color: '#cc8844' });
+      }
+      break;
+    }
+  }
+
+  // Dropped onions physics
+  for (let i = droppedOnions.length - 1; i >= 0; i--) {
+    const d = droppedOnions[i];
+    d.vy += 0.3;
+    d.x += d.vx;
+    d.y += d.vy;
+    d.vx *= 0.98;
+    if (d.y > GROUND_Y()) { d.y = GROUND_Y(); d.vy *= -0.4; d.vx *= 0.8; }
+    d.life--;
+    if (d.life <= 0) droppedOnions.splice(i, 1);
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Camera
+  const targetCam = cart.x - W * 0.3;
+  cameraX += (targetCam - cameraX) * 0.1;
+  if (cameraX < 0) cameraX = 0;
+
+  // Delivery zone check
+  if (deliveryZone && cart.x + cart.w > deliveryZone.x) {
+    if (onions.length > 0) {
+      score += onions.length * 50 * level;
+      if (level >= 8) {
+        state = 'win';
+      } else {
+        state = 'levelcomplete';
+      }
+    } else {
+      // No onions left - fail
+      lives--;
+      if (lives <= 0) { state = 'gameover'; return; }
+      generateLevel(level);
+    }
+  }
+
+  // If all onions dropped
+  if (onions.length === 0 && droppedOnions.length === 0) {
+    lives--;
+    if (lives <= 0) { state = 'gameover'; return; }
+    generateLevel(level);
+  }
+}
+
+function drawOnion(x, y, size, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, size, size * 0.85, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Layers
+  ctx.strokeStyle = '#00000022';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 0.6, size * 0.55, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Top sprout
+  ctx.strokeStyle = '#66aa44';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y - size * 0.8);
+  ctx.lineTo(x - 3, y - size * 1.3);
+  ctx.moveTo(x, y - size * 0.8);
+  ctx.lineTo(x + 3, y - size * 1.3);
+  ctx.stroke();
+  // Highlight
+  ctx.fillStyle = '#ffffff33';
+  ctx.beginPath();
+  ctx.ellipse(x - size * 0.25, y - size * 0.2, size * 0.2, size * 0.15, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function draw() {
+  // Sky gradient
+  const skyTop = '#5588bb';
+  const skyBot = '#aaccdd';
+  const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y());
+  grad.addColorStop(0, skyTop);
+  grad.addColorStop(1, skyBot);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'title') {
+    ctx.fillStyle = '#7aaa44';
+    ctx.fillRect(0, H * 0.7, W, H * 0.3);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Onion Delivery', W / 2, H * 0.3);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Carry stacked onions to the delivery zone!', W / 2, H * 0.3 + 28);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '13px system-ui';
+    ctx.fillText('Drag left/right to tilt & balance', W / 2, H * 0.48);
+    ctx.fillText('Tap top of screen to jump', W / 2, H * 0.48 + 22);
+    ctx.fillText('Don\'t drop the onions!', W / 2, H * 0.48 + 44);
+    // Draw sample onion stack
+    for (let i = 0; i < 4; i++) {
+      drawOnion(W / 2, H * 0.7 - 20 - i * 24, 14, `hsl(${45 + i * 5}, 70%, ${65 + i * 3}%)`);
+    }
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 18px system-ui';
+    ctx.fillText('[ Tap to Start ]', W / 2, H * 0.85);
+    return;
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = '#1e1e2e';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff6666';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Delivery Failed!', W / 2, H * 0.35);
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '18px system-ui';
+    ctx.fillText('Score: ' + score, W / 2, H * 0.45);
+    ctx.fillText('Reached Level: ' + level, W / 2, H * 0.52);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to try again', W / 2, H * 0.65);
+    return;
+  }
+
+  if (state === 'win') {
+    ctx.fillStyle = '#1e1e2e';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Master Deliverer!', W / 2, H * 0.3);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '18px system-ui';
+    ctx.fillText('All deliveries complete!', W / 2, H * 0.4);
+    ctx.fillText('Final Score: ' + score, W / 2, H * 0.48);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap to play again', W / 2, H * 0.65);
+    return;
+  }
+
+  if (state === 'levelcomplete') {
+    ctx.fillStyle = '#1e1e2e';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#66ff66';
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Delivered!', W / 2, H * 0.3);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '18px system-ui';
+    ctx.fillText('Level ' + level + ' Complete', W / 2, H * 0.4);
+    ctx.fillText('Score: ' + score, W / 2, H * 0.48);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Tap for next level', W / 2, H * 0.6);
+    return;
+  }
+
+  const ox = cameraX;
+
+  // Ground
+  ctx.fillStyle = '#7aaa44';
+  ctx.fillRect(0, GROUND_Y(), W, H - GROUND_Y());
+  ctx.fillStyle = '#5a8a34';
+  ctx.fillRect(0, GROUND_Y(), W, 4);
+
+  // Draw gaps in ground
+  for (const o of obstacles) {
+    if (o.type === 'gap') {
+      const sx = o.x - ox;
+      ctx.fillStyle = '#332211';
+      ctx.fillRect(sx, o.y, o.w, H - o.y);
+      // Gap edges
+      ctx.fillStyle = '#5a4a2a';
+      ctx.fillRect(sx, o.y, 4, 40);
+      ctx.fillRect(sx + o.w - 4, o.y, 4, 40);
+    }
+  }
+
+  // Background elements
+  const bgScroll = cameraX * 0.2;
+  ctx.fillStyle = '#88bb5588';
+  for (let i = 0; i < 10; i++) {
+    const bx = i * 180 - (bgScroll % 180);
+    ctx.beginPath();
+    ctx.moveTo(bx, GROUND_Y());
+    ctx.quadraticCurveTo(bx + 20, GROUND_Y() - 40 - i % 3 * 15, bx + 40, GROUND_Y());
+    ctx.fill();
+  }
+
+  // Obstacles
+  for (const o of obstacles) {
+    if (o.type === 'gap') continue;
+    const sx = o.x - ox;
+    if (sx > W + 50 || sx + o.w < -50) continue;
+
+    if (o.type === 'rock') {
+      ctx.fillStyle = '#888888';
+      ctx.beginPath();
+      ctx.moveTo(sx, o.y + o.h);
+      ctx.lineTo(sx + o.w / 2, o.y);
+      ctx.lineTo(sx + o.w, o.y + o.h);
+      ctx.fill();
+      ctx.fillStyle = '#999999';
+      ctx.beginPath();
+      ctx.moveTo(sx + 3, o.y + o.h);
+      ctx.lineTo(sx + o.w / 2, o.y + 4);
+      ctx.lineTo(sx + o.w / 2 + 2, o.y + o.h);
+      ctx.fill();
+    } else if (o.type === 'post') {
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(sx, o.y, o.w, o.h);
+      ctx.fillStyle = '#a0522d';
+      ctx.fillRect(sx + 2, o.y, o.w - 4, 4);
+    } else if (o.type === 'bump') {
+      ctx.fillStyle = '#9a8a3a';
+      ctx.beginPath();
+      ctx.moveTo(sx, o.y + o.h);
+      ctx.quadraticCurveTo(sx + o.w / 2, o.y - 5, sx + o.w, o.y + o.h);
+      ctx.fill();
+    } else if (o.type === 'ramp') {
+      ctx.fillStyle = '#8a7a4a';
+      ctx.beginPath();
+      ctx.moveTo(sx, o.y + o.h);
+      ctx.lineTo(sx + o.w, o.y);
+      ctx.lineTo(sx + o.w, o.y + o.h);
+      ctx.fill();
+    }
+  }
+
+  // Delivery zone
+  if (deliveryZone) {
+    const dx = deliveryZone.x - ox;
+    ctx.fillStyle = '#a78bfa44';
+    ctx.fillRect(dx, deliveryZone.y, deliveryZone.w, deliveryZone.h);
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(dx, deliveryZone.y, deliveryZone.w, deliveryZone.h);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('DELIVER', dx + deliveryZone.w / 2, deliveryZone.y + deliveryZone.h / 2 + 4);
+    // Flag
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(dx + deliveryZone.w / 2 - 2, deliveryZone.y - 40, 4, 40);
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillRect(dx + deliveryZone.w / 2 + 2, deliveryZone.y - 38, 20, 14);
+  }
+
+  // Cart
+  const cx = cart.x - ox;
+  const cy = cart.y;
+  // Wheels
+  ctx.fillStyle = '#444';
+  ctx.beginPath(); ctx.arc(cx + 8, cy + cart.h + 4, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + cart.w - 8, cy + cart.h + 4, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#666';
+  ctx.beginPath(); ctx.arc(cx + 8, cy + cart.h + 4, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + cart.w - 8, cy + cart.h + 4, 3, 0, Math.PI * 2); ctx.fill();
+  // Cart body
+  ctx.fillStyle = '#8B4513';
+  ctx.fillRect(cx, cy, cart.w, cart.h);
+  ctx.fillStyle = '#a0522d';
+  ctx.fillRect(cx + 2, cy + 2, cart.w - 4, cart.h - 4);
+  // Cart sides
+  ctx.fillStyle = '#8B4513';
+  ctx.fillRect(cx - 3, cy, 4, cart.h);
+  ctx.fillRect(cx + cart.w - 1, cy, 4, cart.h);
+
+  // Stacked onions
+  for (let i = 0; i < onions.length; i++) {
+    const o = onions[i];
+    const onionX = cx + cart.w / 2 + o.offsetX;
+    const onionY = cy - (i + 1) * (o.size * 1.6) + o.size * 0.3;
+    drawOnion(onionX, onionY, o.size, o.color);
+  }
+
+  // Dropped onions
+  for (const d of droppedOnions) {
+    ctx.globalAlpha = d.life / 60;
+    drawOnion(d.x - ox, d.y, d.size, d.color);
+    ctx.globalAlpha = 1;
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 30;
+    ctx.fillRect(p.x - ox, p.y, 4, 4);
+    ctx.globalAlpha = 1;
+  }
+
+  // Wind indicator
+  if (windGust !== 0) {
+    ctx.fillStyle = '#ffffff44';
+    ctx.font = '12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(windGust > 0 ? '~ Wind >>>' : '<<< Wind ~', W / 2, H * 0.15);
+    // Wind particles
+    if (Math.random() < 0.3) {
+      particles.push({
+        x: windGust > 0 ? cameraX - 10 : cameraX + W + 10,
+        y: Math.random() * GROUND_Y(),
+        vx: windGust * 8, vy: 0, life: 40, color: '#ffffff33'
+      });
+    }
+  }
+
+  // HUD
+  ctx.fillStyle = '#0f0f1a88';
+  ctx.fillRect(0, 0, W, 40);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 14px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('Lvl ' + level, 10, 26);
+  ctx.fillStyle = '#ffd700';
+  ctx.textAlign = 'center';
+  ctx.fillText('Score: ' + score, W / 2, 26);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.textAlign = 'right';
+  ctx.fillText('Onions: ' + onions.length, W - 70, 26);
+  // Lives
+  ctx.fillStyle = '#ff6666';
+  let heartStr = '';
+  for (let i = 0; i < lives; i++) heartStr += '\u2665';
+  ctx.fillText(heartStr, W - 10, 26);
+
+  // Progress bar
+  const progress = Math.min(1, cart.x / levelLength);
+  ctx.fillStyle = '#334';
+  ctx.fillRect(10, H - 16, W - 20, 6);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(10, H - 16, (W - 20) * progress, 6);
+
+  // Tilt indicator
+  ctx.fillStyle = '#a78bfa44';
+  ctx.fillRect(W / 2 - 40, H - 30, 80, 4);
+  ctx.fillStyle = '#a78bfa';
+  ctx.beginPath();
+  ctx.arc(W / 2 + tilt * 35, H - 28, 5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+  </script>
+<script src="../header.js"></script>
+</body>
+</html>

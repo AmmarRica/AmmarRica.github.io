@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gridiron Galaxies</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Courier New', monospace; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 16px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+#ui { position: fixed; top: 10px; right: 10px; text-align: right; font-size: 14px; z-index: 100; }
+#ui div { margin: 2px 0; }
+</style>
+</head>
+<body>
+<div id="ui"></div>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+let W, H;
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+// Game states
+const TITLE = 0, PLANET_SELECT = 1, PLAYING = 2, SCORING = 3, GAMEOVER = 4, WIN = 5;
+let state = TITLE;
+let mouseX = 0, mouseY = 0, clicked = false;
+
+canvas.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+canvas.addEventListener('click', e => { mouseX = e.clientX; mouseY = e.clientY; clicked = true; });
+
+// Stars
+const stars = [];
+for (let i = 0; i < 200; i++) stars.push({ x: Math.random(), y: Math.random(), s: Math.random() * 2 + 0.5, b: Math.random() });
+
+// Planets config
+const planets = [
+  { name: 'MARS', gravity: 0.3, color: '#c0392b', groundColor: '#8b2500', desc: 'Low Gravity - Ball floats!', throwMult: 1.8, bgPlanetColor: '#e74c3c', spectatorColor: '#2ecc71' },
+  { name: 'MOON', gravity: 0.5, color: '#bdc3c7', groundColor: '#7f8c8d', desc: 'Bounce Physics - Ball bounces!', throwMult: 1.4, bgPlanetColor: '#ecf0f1', spectatorColor: '#9b59b6', bounce: true },
+  { name: 'JUPITER', gravity: 1.5, color: '#e67e22', groundColor: '#d35400', desc: 'High Gravity - Hard to throw!', throwMult: 0.6, bgPlanetColor: '#f39c12', spectatorColor: '#e74c3c' }
+];
+
+let currentPlanet = 0;
+let score = 0, opponentScore = 0, quarter = 1, matchNum = 1;
+let gameTime = 0, maxGameTime = 45 * 60; // 45 seconds per match
+let message = '', messageTimer = 0;
+
+// Field
+const FIELD_LEFT = 80, FIELD_TOP = 100, FIELD_W = 700, FIELD_H = 400;
+let fieldX, fieldY;
+
+// Players
+let myTeam = [], oppTeam = [], ball = null;
+let possession = 'player'; // 'player' or 'opponent'
+let scrimmageY = 0;
+let down = 1, yardsToGo = 10, driveStartY = 0;
+let playActive = false, playTimer = 0;
+let selectedReceiver = -1;
+let throwInProgress = false;
+let ballCarrier = null;
+let turnoverTimer = 0;
+
+function createPlayer(x, y, team, role) {
+  return { x, y, vx: 0, vy: 0, team, role, speed: team === 'player' ? 3 : 2.5, targetX: x, targetY: y, hasBall: false, routePoints: [], routeIdx: 0, tackled: false };
+}
+
+function setupPlay() {
+  myTeam = [];
+  oppTeam = [];
+  playActive = false;
+  throwInProgress = false;
+  ballCarrier = null;
+  selectedReceiver = -1;
+  playTimer = 0;
+
+  fieldX = (W - FIELD_W) / 2;
+  fieldY = (H - FIELD_H) / 2;
+
+  const lineY = fieldY + scrimmageY;
+  const cx = fieldX + FIELD_W / 2;
+
+  // Offense (my team)
+  const qb = createPlayer(cx, lineY + 30, 'player', 'QB');
+  qb.hasBall = true;
+  ballCarrier = qb;
+  myTeam.push(qb);
+
+  // Receivers
+  const wr1 = createPlayer(cx - 150, lineY, 'player', 'WR');
+  wr1.routePoints = [{ x: cx - 150, y: lineY - 60 }, { x: cx - 80, y: lineY - 120 }];
+  myTeam.push(wr1);
+
+  const wr2 = createPlayer(cx + 150, lineY, 'player', 'WR');
+  wr2.routePoints = [{ x: cx + 150, y: lineY - 80 }, { x: cx + 60, y: lineY - 140 }];
+  myTeam.push(wr2);
+
+  const te = createPlayer(cx - 50, lineY, 'player', 'TE');
+  te.routePoints = [{ x: cx - 50, y: lineY - 40 }, { x: cx + 30, y: lineY - 80 }];
+  myTeam.push(te);
+
+  const rb = createPlayer(cx + 20, lineY + 40, 'player', 'RB');
+  rb.routePoints = [{ x: cx + 80, y: lineY - 20 }, { x: cx + 120, y: lineY - 60 }];
+  myTeam.push(rb);
+
+  // Defense (opponent)
+  for (let i = 0; i < 4; i++) {
+    const d = createPlayer(cx - 90 + i * 60, lineY - 10, 'opponent', 'DL');
+    oppTeam.push(d);
+  }
+  for (let i = 0; i < 3; i++) {
+    const lb = createPlayer(cx - 60 + i * 60, lineY - 50, 'opponent', 'LB');
+    oppTeam.push(lb);
+  }
+  const cb1 = createPlayer(cx - 150, lineY - 30, 'opponent', 'CB');
+  oppTeam.push(cb1);
+  const cb2 = createPlayer(cx + 150, lineY - 30, 'opponent', 'CB');
+  oppTeam.push(cb2);
+
+  ball = { x: qb.x, y: qb.y, vx: 0, vy: 0, airborne: false, height: 0, vHeight: 0 };
+}
+
+function startMatch() {
+  score = 0;
+  opponentScore = 0;
+  quarter = 1;
+  gameTime = 0;
+  down = 1;
+  yardsToGo = 10;
+  scrimmageY = FIELD_H * 0.7;
+  driveStartY = scrimmageY;
+  possession = 'player';
+  setupPlay();
+  state = PLAYING;
+}
+
+function throwBall(targetIdx) {
+  if (throwInProgress || !ballCarrier || ballCarrier.role !== 'QB') return;
+  const target = myTeam[targetIdx];
+  if (!target) return;
+
+  const planet = planets[currentPlanet];
+  const dx = target.targetX - ballCarrier.x;
+  const dy = target.targetY - ballCarrier.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const speed = 8 * planet.throwMult;
+
+  ball.x = ballCarrier.x;
+  ball.y = ballCarrier.y;
+  ball.vx = (dx / dist) * speed;
+  ball.vy = (dy / dist) * speed;
+  ball.airborne = true;
+  ball.height = 10;
+  ball.vHeight = 3;
+  ballCarrier.hasBall = false;
+  ballCarrier = null;
+  throwInProgress = true;
+}
+
+function update() {
+  if (state !== PLAYING) return;
+
+  gameTime++;
+  if (messageTimer > 0) messageTimer--;
+
+  const planet = planets[currentPlanet];
+
+  if (turnoverTimer > 0) {
+    turnoverTimer--;
+    if (turnoverTimer === 0) {
+      if (possession === 'player') {
+        // Opponent scores, reset
+        opponentScore += 7;
+        showMessage('Opponent scores! ' + score + ' - ' + opponentScore);
+        scrimmageY = FIELD_H * 0.7;
+        driveStartY = scrimmageY;
+        down = 1; yardsToGo = 10;
+        setupPlay();
+      }
+    }
+    return;
+  }
+
+  if (gameTime >= maxGameTime) {
+    if (score > opponentScore) {
+      if (matchNum >= 3) { state = WIN; return; }
+      matchNum++;
+      state = PLANET_SELECT;
+      showMessage('You win! Next match!');
+    } else {
+      state = GAMEOVER;
+    }
+    return;
+  }
+
+  // Run play
+  if (playActive) {
+    playTimer++;
+
+    // Move receivers along routes
+    for (let i = 1; i < myTeam.length; i++) {
+      const p = myTeam[i];
+      if (p.tackled) continue;
+      if (p.hasBall) {
+        // Run upfield
+        p.vy = -p.speed;
+        p.vx = 0;
+        p.x += p.vx;
+        p.y += p.vy;
+      } else if (p.routeIdx < p.routePoints.length) {
+        const target = p.routePoints[p.routeIdx];
+        const dx = target.x - p.x, dy = target.y - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 5) { p.routeIdx++; }
+        else {
+          p.x += (dx / dist) * p.speed;
+          p.y += (dy / dist) * p.speed;
+        }
+        p.targetX = p.x; p.targetY = p.y;
+      }
+    }
+
+    // Move defenders
+    for (const d of oppTeam) {
+      let target = null;
+      if (ball.airborne) {
+        // Chase ball
+        target = { x: ball.x + ball.vx * 5, y: ball.y + ball.vy * 5 };
+      } else if (ballCarrier) {
+        target = ballCarrier;
+      } else {
+        // Cover nearest receiver
+        let minDist = Infinity;
+        for (let i = 1; i < myTeam.length; i++) {
+          const dx = myTeam[i].x - d.x, dy = myTeam[i].y - d.y;
+          const dist = dx * dx + dy * dy;
+          if (dist < minDist) { minDist = dist; target = myTeam[i]; }
+        }
+      }
+      if (target) {
+        const dx = target.x - d.x, dy = target.y - d.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 3) {
+          d.x += (dx / dist) * d.speed;
+          d.y += (dy / dist) * d.speed;
+        }
+      }
+    }
+
+    // Ball physics
+    if (ball.airborne) {
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+      ball.vHeight -= planet.gravity * 0.15;
+      ball.height += ball.vHeight;
+
+      if (planet.bounce && ball.height <= 0 && ball.vHeight < 0) {
+        ball.height = 0;
+        ball.vHeight = Math.abs(ball.vHeight) * 0.5;
+        if (ball.vHeight < 0.5) { ball.airborne = false; ball.height = 0; }
+      }
+
+      if (ball.height <= 0 && !planet.bounce) {
+        ball.airborne = false;
+        ball.height = 0;
+      }
+
+      // Check catch
+      for (let i = 1; i < myTeam.length; i++) {
+        const p = myTeam[i];
+        const dx = p.x - ball.x, dy = p.y - ball.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 20 && ball.height < 15) {
+          p.hasBall = true;
+          ballCarrier = p;
+          ball.airborne = false;
+          throwInProgress = false;
+          showMessage('Caught!');
+          break;
+        }
+      }
+
+      // Interception check
+      if (ball.airborne) {
+        for (const d of oppTeam) {
+          const dx = d.x - ball.x, dy = d.y - ball.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 15 && ball.height < 15 && Math.random() < 0.15) {
+            showMessage('Intercepted!');
+            ball.airborne = false;
+            throwInProgress = false;
+            turnoverTimer = 90;
+            possession = 'player';
+            break;
+          }
+        }
+      }
+
+      // Incomplete
+      if (!ball.airborne && !ballCarrier) {
+        showMessage('Incomplete!');
+        down++;
+        if (down > 4) {
+          showMessage('Turnover on downs!');
+          turnoverTimer = 90;
+          possession = 'player';
+        } else {
+          setTimeout(() => setupPlay(), 500);
+        }
+        throwInProgress = false;
+      }
+    }
+
+    // Tackle check
+    if (ballCarrier && !ball.airborne) {
+      for (const d of oppTeam) {
+        const dx = d.x - ballCarrier.x, dy = d.y - ballCarrier.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 15) {
+          const gained = scrimmageY - (ballCarrier.y - fieldY);
+          scrimmageY = ballCarrier.y - fieldY;
+          yardsToGo -= gained / 4;
+
+          if (scrimmageY <= 10) {
+            score += 7;
+            showMessage('TOUCHDOWN! ' + score + ' - ' + opponentScore);
+            scrimmageY = FIELD_H * 0.7;
+            driveStartY = scrimmageY;
+            down = 1; yardsToGo = 10;
+            setTimeout(() => setupPlay(), 1000);
+            return;
+          }
+
+          if (yardsToGo <= 0) {
+            down = 1; yardsToGo = 10; driveStartY = scrimmageY;
+            showMessage('First down!');
+          } else {
+            down++;
+            if (down > 4) {
+              showMessage('Turnover on downs!');
+              turnoverTimer = 90;
+              possession = 'player';
+              return;
+            }
+          }
+          showMessage('Tackled! Down ' + down + ', ' + Math.max(1, Math.round(yardsToGo)) + ' to go');
+          setTimeout(() => setupPlay(), 500);
+          return;
+        }
+      }
+    }
+
+    // QB sacked
+    if (ballCarrier && ballCarrier.role === 'QB' && playTimer > 120) {
+      for (const d of oppTeam) {
+        const dx = d.x - ballCarrier.x, dy = d.y - ballCarrier.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 18) {
+          showMessage('Sacked!');
+          down++;
+          scrimmageY += 10;
+          if (down > 4) {
+            turnoverTimer = 90;
+            possession = 'player';
+          } else {
+            setTimeout(() => setupPlay(), 500);
+          }
+          return;
+        }
+      }
+    }
+  }
+}
+
+function showMessage(msg) {
+  message = msg;
+  messageTimer = 120;
+}
+
+function drawStars() {
+  const t = Date.now() * 0.001;
+  for (const s of stars) {
+    const brightness = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t + s.b * 10));
+    ctx.fillStyle = `rgba(200,200,255,${brightness})`;
+    ctx.fillRect(s.x * W, s.y * H, s.s, s.s);
+  }
+}
+
+function drawPlanetBg() {
+  const planet = planets[currentPlanet];
+  // Big planet in background
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  const grad = ctx.createRadialGradient(W * 0.8, H * 0.15, 10, W * 0.8, H * 0.15, 120);
+  grad.addColorStop(0, planet.bgPlanetColor);
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(W * 0.8, H * 0.15, 100, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawField() {
+  fieldX = (W - FIELD_W) / 2;
+  fieldY = (H - FIELD_H) / 2;
+  const planet = planets[currentPlanet];
+
+  // Field bg
+  ctx.fillStyle = '#1a3d1a';
+  ctx.fillRect(fieldX, fieldY, FIELD_W, FIELD_H);
+
+  // Yard lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const y = fieldY + (FIELD_H / 10) * i;
+    ctx.beginPath();
+    ctx.moveTo(fieldX, y);
+    ctx.lineTo(fieldX + FIELD_W, y);
+    ctx.stroke();
+  }
+
+  // End zones
+  ctx.fillStyle = '#c0392b44';
+  ctx.fillRect(fieldX, fieldY, FIELD_W, FIELD_H / 10);
+  ctx.fillStyle = '#2980b944';
+  ctx.fillRect(fieldX, fieldY + FIELD_H * 0.9, FIELD_W, FIELD_H / 10);
+
+  // Scrimmage line
+  ctx.strokeStyle = '#f1c40f';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(fieldX, fieldY + scrimmageY);
+  ctx.lineTo(fieldX + FIELD_W, fieldY + scrimmageY);
+  ctx.stroke();
+
+  // Planet tint overlay
+  ctx.fillStyle = planet.color + '11';
+  ctx.fillRect(fieldX, fieldY, FIELD_W, FIELD_H);
+
+  // Spectators (aliens)
+  drawSpectators(planet);
+}
+
+function drawSpectators(planet) {
+  const t = Date.now() * 0.003;
+  for (let i = 0; i < 30; i++) {
+    const x = fieldX + (i / 30) * FIELD_W + 10;
+    const yTop = fieldY - 20 - Math.sin(t + i) * 3;
+    const yBot = fieldY + FIELD_H + 15 + Math.sin(t + i + 1) * 3;
+
+    ctx.fillStyle = planet.spectatorColor;
+    // Top row
+    ctx.beginPath();
+    ctx.arc(x, yTop, 6, 0, Math.PI * 2);
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x - 3, yTop - 2, 2, 2);
+    ctx.fillRect(x + 1, yTop - 2, 2, 2);
+
+    ctx.fillStyle = planet.spectatorColor;
+    // Bottom row
+    ctx.beginPath();
+    ctx.arc(x, yBot, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x - 3, yBot - 2, 2, 2);
+    ctx.fillRect(x + 1, yBot - 2, 2, 2);
+  }
+}
+
+function drawPlayers() {
+  // My team (blue)
+  for (let i = 0; i < myTeam.length; i++) {
+    const p = myTeam[i];
+    ctx.fillStyle = p.hasBall ? '#f1c40f' : '#3498db';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.role, p.x, p.y + 3);
+
+    // Highlight clickable receivers during play
+    if (playActive && !throwInProgress && ballCarrier && ballCarrier.role === 'QB' && i > 0) {
+      ctx.strokeStyle = '#2ecc71';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // Opponent team (red)
+  for (const p of oppTeam) {
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.role, p.x, p.y + 3);
+  }
+
+  // Ball
+  if (ball) {
+    const size = 5 + ball.height * 0.3;
+    ctx.fillStyle = '#8B4513';
+    ctx.beginPath();
+    ctx.ellipse(ball.x, ball.y - ball.height, size, size * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (ball.height > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(ball.x, ball.y, 4, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawHUD() {
+  const planet = planets[currentPlanet];
+  const timeLeft = Math.max(0, Math.ceil((maxGameTime - gameTime) / 60));
+
+  ui.innerHTML = `
+    <div style="color:#f1c40f;font-size:18px;">${planet.name}</div>
+    <div>Score: <span style="color:#3498db">${score}</span> - <span style="color:#e74c3c">${opponentScore}</span></div>
+    <div>Time: ${timeLeft}s | Match ${matchNum}/3</div>
+    <div>Down: ${down} | ${Math.max(1, Math.round(yardsToGo))} to go</div>
+  `;
+
+  if (messageTimer > 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(W / 2 - 200, H / 2 - 25, 400, 50);
+    ctx.fillStyle = '#f1c40f';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(message, W / 2, H / 2 + 7);
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawStars();
+
+  // Title
+  ctx.fillStyle = '#f1c40f';
+  ctx.font = 'bold 48px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('GRIDIRON GALAXIES', W / 2, H * 0.25);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '18px monospace';
+  ctx.fillText('Play football across the cosmos!', W / 2, H * 0.33);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '14px monospace';
+  const instructions = [
+    'Click SNAP to start each play',
+    'Click on receivers (green circles) to throw the ball',
+    'Players auto-run their routes',
+    'Score touchdowns to win!',
+    'Win 3 matches to claim the Intergalactic Bowl!'
+  ];
+  instructions.forEach((line, i) => {
+    ctx.fillText(line, W / 2, H * 0.45 + i * 24);
+  });
+
+  // Start button
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 100, H * 0.75, 200, 50);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText('START', W / 2, H * 0.75 + 32);
+
+  if (clicked) {
+    if (mouseX > W / 2 - 100 && mouseX < W / 2 + 100 && mouseY > H * 0.75 && mouseY < H * 0.75 + 50) {
+      matchNum = 1;
+      state = PLANET_SELECT;
+    }
+  }
+}
+
+function drawPlanetSelect() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawStars();
+
+  ctx.fillStyle = '#f1c40f';
+  ctx.font = 'bold 36px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('SELECT YOUR PLANET', W / 2, H * 0.15);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '16px monospace';
+  ctx.fillText('Match ' + matchNum + ' of 3', W / 2, H * 0.22);
+
+  planets.forEach((p, i) => {
+    const x = W / 2 - 250 + i * 250;
+    const y = H * 0.4;
+    const hover = mouseX > x - 80 && mouseX < x + 80 && mouseY > y - 60 && mouseY < y + 80;
+
+    // Planet circle
+    ctx.fillStyle = p.bgPlanetColor;
+    ctx.beginPath();
+    ctx.arc(x, y, hover ? 55 : 50, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(p.name, x, y + 5);
+
+    ctx.fillStyle = '#e0e0ff';
+    ctx.font = '12px monospace';
+    ctx.fillText(p.desc, x, y + 80);
+
+    if (hover) {
+      ctx.strokeStyle = '#f1c40f';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, 58, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (clicked && hover) {
+      currentPlanet = i;
+      startMatch();
+    }
+  });
+}
+
+function drawPlaying() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawStars();
+  drawPlanetBg();
+  drawField();
+  drawPlayers();
+  drawHUD();
+
+  // Snap button
+  if (!playActive) {
+    const bx = W / 2 - 60, by = fieldY + FIELD_H + 30;
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(bx, by, 120, 35);
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SNAP!', W / 2, by + 23);
+
+    if (clicked && mouseX > bx && mouseX < bx + 120 && mouseY > by && mouseY < by + 35) {
+      playActive = true;
+    }
+  }
+
+  // Click on receivers to throw
+  if (clicked && playActive && !throwInProgress && ballCarrier && ballCarrier.role === 'QB') {
+    for (let i = 1; i < myTeam.length; i++) {
+      const p = myTeam[i];
+      const dx = p.x - mouseX, dy = p.y - mouseY;
+      if (Math.sqrt(dx * dx + dy * dy) < 20) {
+        throwBall(i);
+        break;
+      }
+    }
+  }
+}
+
+function drawGameOver() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawStars();
+
+  ctx.fillStyle = '#e74c3c';
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('GAME OVER', W / 2, H * 0.3);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '20px monospace';
+  ctx.fillText(`Final: ${score} - ${opponentScore}`, W / 2, H * 0.42);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.55, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('RETRY', W / 2, H * 0.55 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.55 && mouseY < H * 0.55 + 45) {
+    state = TITLE;
+  }
+}
+
+function drawWin() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawStars();
+
+  const t = Date.now() * 0.003;
+  ctx.fillStyle = `hsl(${(t * 50) % 360}, 80%, 60%)`;
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('INTERGALACTIC BOWL', W / 2, H * 0.25);
+  ctx.fillText('CHAMPION!', W / 2, H * 0.33);
+
+  ctx.fillStyle = '#f1c40f';
+  ctx.font = '60px monospace';
+  ctx.fillText('🏆', W / 2, H * 0.48);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px monospace';
+  ctx.fillText('You conquered all 3 planets!', W / 2, H * 0.6);
+
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(W / 2 - 80, H * 0.7, 160, 45);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('PLAY AGAIN', W / 2, H * 0.7 + 30);
+
+  if (clicked && mouseX > W / 2 - 80 && mouseX < W / 2 + 80 && mouseY > H * 0.7 && mouseY < H * 0.7 + 45) {
+    state = TITLE;
+  }
+}
+
+function gameLoop() {
+  update();
+
+  switch (state) {
+    case TITLE: drawTitle(); break;
+    case PLANET_SELECT: drawPlanetSelect(); break;
+    case PLAYING: drawPlaying(); break;
+    case GAMEOVER: drawGameOver(); break;
+    case WIN: drawWin(); break;
+  }
+
+  clicked = false;
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

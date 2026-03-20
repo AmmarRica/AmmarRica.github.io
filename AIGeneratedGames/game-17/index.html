@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Punt Returner: Bullet Hell</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; cursor: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+resize();
+
+// Game state
+let state = 'title'; // title, catching, playing, gameover, boss
+let player = { x: W/2, y: H*0.8, r: 14, speed: 5, invincible: 0, spinCooldown: 0, stiffCooldown: 0, jukeCooldown: 0 };
+let punt = { x: W/2, y: -30, vy: 3, caught: false };
+let defenders = [];
+let particles = [];
+let flashEffects = [];
+let yards = 0;
+let wave = 0;
+let waveTimer = 0;
+let lives = 3;
+let bossActive = false;
+let bossHP = 0;
+let bossMaxHP = 0;
+let bossAngle = 0;
+let mouseX = W/2, mouseY = H/2;
+let keys = {};
+let spinActive = false;
+let comboCounter = 0;
+let comboTimer = 0;
+let screenShake = 0;
+let bgScroll = 0;
+
+const COLORS = ['#ff4444','#ff8844','#ffcc44','#44ff88','#4488ff','#8844ff','#ff44aa'];
+
+document.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; e.preventDefault(); });
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+canvas.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY; }, {passive:false});
+canvas.addEventListener('click', () => {
+  if (state === 'title') { startGame(); }
+  else if (state === 'gameover') { startGame(); }
+});
+
+function startGame() {
+  state = 'catching';
+  player = { x: W/2, y: H*0.8, r: 14, speed: 5, invincible: 0, spinCooldown: 0, stiffCooldown: 0, jukeCooldown: 0 };
+  punt = { x: W/2 + (Math.random()-0.5)*200, y: -30, vy: 3, caught: false };
+  defenders = [];
+  particles = [];
+  flashEffects = [];
+  yards = 0;
+  wave = 0;
+  waveTimer = 0;
+  lives = 3;
+  bossActive = false;
+  comboCounter = 0;
+}
+
+function spawnWave() {
+  wave++;
+  if (wave > 0 && wave % 5 === 0) {
+    // Boss wave
+    bossActive = true;
+    bossHP = 20 + wave * 3;
+    bossMaxHP = bossHP;
+    bossAngle = 0;
+    return;
+  }
+  let patterns = [
+    () => { // V formation
+      for (let i = 0; i < 5+wave; i++) {
+        let angle = -0.5 + i * (1/(5+wave));
+        defenders.push({ x: W/2 + angle*300, y: -20 - i*30, vx: angle*-1.5, vy: 2+wave*0.15, r: 8, hp: 1, type: 'normal' });
+      }
+    },
+    () => { // Side sweep
+      let side = Math.random() > 0.5 ? 1 : -1;
+      for (let i = 0; i < 7+wave; i++) {
+        defenders.push({ x: side > 0 ? -20 : W+20, y: 100 + i*40, vx: side * (3+wave*0.2), vy: 1, r: 8, hp: 1, type: 'fast' });
+      }
+    },
+    () => { // Circle burst
+      for (let i = 0; i < 8+wave; i++) {
+        let a = (i/(8+wave)) * Math.PI * 2;
+        defenders.push({ x: W/2, y: -20, vx: Math.cos(a)*2.5, vy: Math.sin(a)*2.5+1.5, r: 8, hp: 1, type: 'burst' });
+      }
+    },
+    () => { // Wall
+      let count = 8 + wave;
+      let gap = Math.floor(Math.random() * count);
+      for (let i = 0; i < count; i++) {
+        if (Math.abs(i-gap) <= 1) continue;
+        defenders.push({ x: (i/count)*W + 20, y: -20, vx: 0, vy: 2.5+wave*0.1, r: 10, hp: 1, type: 'wall' });
+      }
+    },
+    () => { // Spiral
+      for (let i = 0; i < 12+wave*2; i++) {
+        let a = i * 0.5;
+        let delay = i * 5;
+        setTimeout(() => {
+          if (state !== 'playing') return;
+          defenders.push({ x: W/2 + Math.cos(a)*100, y: -20, vx: Math.cos(a+Math.PI/2)*2, vy: 2+wave*0.1, r: 7, hp: 1, type: 'spiral' });
+        }, delay * 50);
+      }
+    }
+  ];
+  let pattern = patterns[Math.floor(Math.random() * patterns.length)];
+  pattern();
+}
+
+function spawnBossBullets() {
+  for (let i = 0; i < 8; i++) {
+    let a = bossAngle + i * Math.PI/4;
+    defenders.push({ x: W/2, y: 80, vx: Math.cos(a)*3, vy: Math.sin(a)*3+1, r: 6, hp: 1, type: 'boss-bullet' });
+  }
+  // Aimed shots
+  let dx = player.x - W/2, dy = player.y - 80;
+  let dist = Math.sqrt(dx*dx+dy*dy);
+  if (dist > 0) {
+    defenders.push({ x: W/2, y: 80, vx: (dx/dist)*4, vy: (dy/dist)*4, r: 10, hp: 1, type: 'boss-aimed' });
+  }
+}
+
+function addParticles(x, y, color, count=8) {
+  for (let i = 0; i < count; i++) {
+    let a = Math.random() * Math.PI * 2;
+    let s = 1 + Math.random() * 4;
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 1, color, size: 2+Math.random()*3 });
+  }
+}
+
+function addFlash(x, y, r, color) {
+  flashEffects.push({ x, y, r, maxR: r, color, life: 1 });
+}
+
+function update() {
+  bgScroll += 1.5;
+  if (screenShake > 0) screenShake *= 0.9;
+  if (comboTimer > 0) { comboTimer -= 1/60; if (comboTimer <= 0) comboCounter = 0; }
+
+  if (state === 'catching') {
+    // Move player toward mouse
+    let dx = mouseX - player.x, dy = mouseY - player.y;
+    let dist = Math.sqrt(dx*dx+dy*dy);
+    if (dist > 3) { player.x += dx/dist * 6; player.y += dy/dist * 6; }
+    punt.y += punt.vy;
+    punt.vy += 0.05;
+    // Check catch
+    let pd = Math.sqrt((player.x-punt.x)**2 + (player.y-punt.y)**2);
+    if (pd < 30) { punt.caught = true; state = 'playing'; waveTimer = 60; }
+    if (punt.y > H + 50) { punt.y = -30; punt.x = W/2 + (Math.random()-0.5)*300; punt.vy = 3; }
+    return;
+  }
+
+  if (state !== 'playing') return;
+
+  // Player movement
+  let dx = mouseX - player.x, dy = mouseY - player.y;
+  let dist = Math.sqrt(dx*dx+dy*dy);
+  let spd = player.speed;
+  if (keys['shift']) spd *= 0.4; // Focus mode
+  if (dist > 3) { player.x += dx/dist * spd; player.y += dy/dist * spd; }
+  player.x = Math.max(player.r, Math.min(W-player.r, player.x));
+  player.y = Math.max(player.r, Math.min(H-player.r, player.y));
+
+  // Abilities
+  if (player.invincible > 0) player.invincible -= 1/60;
+  if (player.spinCooldown > 0) player.spinCooldown -= 1/60;
+  if (player.stiffCooldown > 0) player.stiffCooldown -= 1/60;
+  if (player.jukeCooldown > 0) player.jukeCooldown -= 1/60;
+
+  // Z = spin move
+  if (keys['z'] && player.spinCooldown <= 0) {
+    player.invincible = 0.5;
+    player.spinCooldown = 2;
+    addFlash(player.x, player.y, 40, '#a78bfa');
+    addParticles(player.x, player.y, '#a78bfa', 15);
+  }
+  // X = stiff arm
+  if (keys['x'] && player.stiffCooldown <= 0) {
+    player.stiffCooldown = 1.5;
+    let closest = null, closestDist = 100;
+    defenders.forEach(d => {
+      let dd = Math.sqrt((d.x-player.x)**2 + (d.y-player.y)**2);
+      if (dd < closestDist) { closestDist = dd; closest = d; }
+    });
+    if (closest) {
+      closest.hp = 0;
+      addFlash(closest.x, closest.y, 30, '#fbbf24');
+      addParticles(closest.x, closest.y, '#fbbf24', 12);
+      screenShake = 8;
+      comboCounter++; comboTimer = 2;
+      yards += 5 * comboCounter;
+      if (bossActive) bossHP--;
+    }
+  }
+  // C = juke
+  if (keys['c'] && player.jukeCooldown <= 0) {
+    player.jukeCooldown = 1;
+    let jukeDir = player.x < W/2 ? 1 : -1;
+    player.x += jukeDir * 80;
+    player.invincible = 0.2;
+    addParticles(player.x, player.y, '#60a5fa', 10);
+  }
+
+  // Waves
+  waveTimer--;
+  if (waveTimer <= 0 && !bossActive) {
+    spawnWave();
+    waveTimer = 180 - Math.min(wave * 8, 120);
+  }
+
+  // Boss
+  if (bossActive) {
+    bossAngle += 0.03;
+    if (Math.random() < 0.05 + wave * 0.005) spawnBossBullets();
+    if (bossHP <= 0) {
+      bossActive = false;
+      yards += 100;
+      addFlash(W/2, 80, 150, '#fbbf24');
+      for (let i = 0; i < 40; i++) addParticles(W/2, 80, COLORS[i%COLORS.length], 5);
+      screenShake = 20;
+      defenders = [];
+    }
+  }
+
+  // Update defenders
+  defenders.forEach(d => {
+    d.x += d.vx;
+    d.y += d.vy;
+    // Collision with player
+    if (player.invincible <= 0) {
+      let dd = Math.sqrt((d.x-player.x)**2 + (d.y-player.y)**2);
+      if (dd < player.r + d.r) {
+        lives--;
+        player.invincible = 1.5;
+        screenShake = 15;
+        addFlash(player.x, player.y, 60, '#ff4444');
+        addParticles(player.x, player.y, '#ff4444', 20);
+        if (lives <= 0) { state = 'gameover'; }
+      }
+    }
+  });
+  defenders = defenders.filter(d => d.hp > 0 && d.x > -50 && d.x < W+50 && d.y > -50 && d.y < H+50);
+
+  // Score yards
+  yards += 0.05 + wave * 0.01;
+
+  // Particles
+  particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life -= 0.03; p.vy += 0.05; });
+  particles = particles.filter(p => p.life > 0);
+  flashEffects.forEach(f => { f.life -= 0.05; f.r = f.maxR * f.life; });
+  flashEffects = flashEffects.filter(f => f.life > 0);
+}
+
+function drawBG() {
+  // Scrolling field lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 2;
+  for (let y = (bgScroll % 80) - 80; y < H; y += 80) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  // Side lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(50, 0); ctx.lineTo(50, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W-50, 0); ctx.lineTo(W-50, H); ctx.stroke();
+}
+
+function drawPlayer() {
+  let sx = screenShake > 0.5 ? (Math.random()-0.5)*screenShake : 0;
+  let sy = screenShake > 0.5 ? (Math.random()-0.5)*screenShake : 0;
+  ctx.save();
+  ctx.translate(sx, sy);
+  // Glow
+  if (player.invincible > 0) {
+    let grad = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, 30);
+    grad.addColorStop(0, player.spinCooldown > 1.5 ? 'rgba(167,139,250,0.5)' : 'rgba(255,255,255,0.3)');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.fillRect(player.x-30, player.y-30, 60, 60);
+  }
+  // Player body
+  ctx.fillStyle = '#4ade80';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+  // Jersey number
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('1', player.x, player.y);
+  ctx.restore();
+}
+
+function drawDefenders() {
+  let sx = screenShake > 0.5 ? (Math.random()-0.5)*screenShake : 0;
+  let sy = screenShake > 0.5 ? (Math.random()-0.5)*screenShake : 0;
+  ctx.save(); ctx.translate(sx, sy);
+  defenders.forEach(d => {
+    let c = '#ff4444';
+    if (d.type === 'fast') c = '#ff8844';
+    else if (d.type === 'burst') c = '#ff44aa';
+    else if (d.type === 'boss-bullet') c = '#ffcc44';
+    else if (d.type === 'boss-aimed') c = '#ff0000';
+    else if (d.type === 'wall') c = '#8844ff';
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Trail
+    ctx.fillStyle = c + '40';
+    ctx.beginPath();
+    ctx.arc(d.x - d.vx*2, d.y - d.vy*2, d.r*0.7, 0, Math.PI*2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawBoss() {
+  if (!bossActive) return;
+  // Boss body
+  let pulse = Math.sin(Date.now()*0.005) * 5;
+  ctx.fillStyle = '#ff0044';
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(W/2, 80, 30+pulse, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+  // HP bar
+  ctx.fillStyle = '#333';
+  ctx.fillRect(W/2-80, 30, 160, 12);
+  ctx.fillStyle = '#ff0044';
+  ctx.fillRect(W/2-80, 30, 160*(bossHP/bossMaxHP), 12);
+  ctx.strokeStyle = '#fff';
+  ctx.strokeRect(W/2-80, 30, 160, 12);
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('BOSS', W/2, 25);
+  // Spinning orbs
+  for (let i = 0; i < 6; i++) {
+    let a = bossAngle + i * Math.PI/3;
+    ctx.fillStyle = COLORS[i];
+    ctx.beginPath();
+    ctx.arc(W/2 + Math.cos(a)*50, 80 + Math.sin(a)*50, 5, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+  flashEffects.forEach(f => {
+    ctx.globalAlpha = f.life * 0.5;
+    ctx.fillStyle = f.color;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.r, 0, Math.PI*2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '16px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Yards: ${Math.floor(yards)}`, W-20, 30);
+  ctx.fillText(`Wave: ${wave}`, W-20, 50);
+  // Lives
+  ctx.textAlign = 'left';
+  for (let i = 0; i < lives; i++) {
+    ctx.fillStyle = '#4ade80';
+    ctx.beginPath();
+    ctx.arc(80 + i*25, 50, 8, 0, Math.PI*2);
+    ctx.fill();
+  }
+  // Cooldowns
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = player.spinCooldown <= 0 ? '#4ade80' : '#666';
+  ctx.fillText(`[Z] Spin${player.spinCooldown > 0 ? ' ('+Math.ceil(player.spinCooldown)+'s)' : ''}`, 20, H-60);
+  ctx.fillStyle = player.stiffCooldown <= 0 ? '#fbbf24' : '#666';
+  ctx.fillText(`[X] Stiff Arm${player.stiffCooldown > 0 ? ' ('+Math.ceil(player.stiffCooldown)+'s)' : ''}`, 20, H-40);
+  ctx.fillStyle = player.jukeCooldown <= 0 ? '#60a5fa' : '#666';
+  ctx.fillText(`[C] Juke${player.jukeCooldown > 0 ? ' ('+Math.ceil(player.jukeCooldown)+'s)' : ''}`, 20, H-20);
+  ctx.fillStyle = '#888';
+  ctx.fillText('[Shift] Focus', 180, H-60);
+  // Combo
+  if (comboCounter > 1) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = `bold ${16+comboCounter*2}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${comboCounter}x COMBO!`, W/2, H-30);
+  }
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawBG();
+  // Title
+  let glow = Math.sin(Date.now()*0.003) * 0.3 + 0.7;
+  ctx.globalAlpha = glow;
+  ctx.fillStyle = '#ff4444';
+  ctx.font = `bold ${Math.min(60, W*0.08)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('PUNT RETURNER', W/2, H*0.25);
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = `bold ${Math.min(48, W*0.06)}px sans-serif`;
+  ctx.fillText('BULLET HELL', W/2, H*0.35);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px sans-serif';
+  ctx.fillText('Dodge defenders. Gain yards. Survive.', W/2, H*0.47);
+  ctx.font = '14px sans-serif';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('Mouse = Move | Z = Spin (invincible) | X = Stiff Arm | C = Juke | Shift = Focus', W/2, H*0.55);
+  ctx.fillText('Catch the punt, then dodge the bullet hell!', W/2, H*0.60);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 24px sans-serif';
+  let blink = Math.sin(Date.now()*0.004) > 0;
+  if (blink) ctx.fillText('CLICK TO START', W/2, H*0.75);
+}
+
+function drawCatching() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawBG();
+  // Draw punt
+  ctx.fillStyle = '#8B4513';
+  ctx.beginPath();
+  ctx.ellipse(punt.x, punt.y, 12, 8, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(punt.x, punt.y+40, 15, 5, 0, 0, Math.PI*2);
+  ctx.fill();
+  drawPlayer();
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 28px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('CATCH THE PUNT!', W/2, H*0.2);
+  ctx.font = '16px sans-serif';
+  ctx.fillText('Move under the ball!', W/2, H*0.26);
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(15,15,26,0.85)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#ff4444';
+  ctx.font = `bold ${Math.min(56, W*0.07)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('TACKLED!', W/2, H*0.35);
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '28px sans-serif';
+  ctx.fillText(`${Math.floor(yards)} Yards Returned`, W/2, H*0.48);
+  ctx.fillText(`Wave ${wave} Reached`, W/2, H*0.55);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '20px sans-serif';
+  let blink = Math.sin(Date.now()*0.004) > 0;
+  if (blink) ctx.fillText('Click to Retry', W/2, H*0.7);
+}
+
+function gameLoop() {
+  requestAnimationFrame(gameLoop);
+  update();
+  if (state === 'title') { drawTitle(); return; }
+  if (state === 'catching') { drawCatching(); return; }
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawBG();
+  drawParticles();
+  drawDefenders();
+  drawBoss();
+  drawPlayer();
+  drawHUD();
+  if (state === 'gameover') drawGameOver();
+}
+
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

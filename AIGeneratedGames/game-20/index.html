@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Couch Coach</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+nav { position: fixed; top: 10px; left: 10px; z-index: 100; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 18px; }
+nav a:hover { color: #c4b5fd; }
+canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+resize();
+
+let state = 'title';
+let keys = {};
+document.addEventListener('keydown', e => { keys[e.key] = true; });
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// Game data
+let quarter = 1, gameTime = 900; // 15min quarters (in tenths of second)
+let homeScore = 0, awayScore = 0;
+let stress = 0; // 0-100
+let crowdEnergy = 0; // 0-100
+let chips = [];
+let chipBoost = 0;
+let seatBonus = 0;
+let currentSeat = 0; // 0-4
+let seatCooldown = 0;
+let commentary = [];
+let gameEvents = [];
+let ballPos = 50; // yard line
+let possession = 'home'; // home = your team
+let playTimer = 0;
+let playResult = '';
+let playResultTimer = 0;
+let drunkMeter = 0;
+let beerCount = 0;
+let tvStatic = 0;
+let shoutParticles = [];
+let chipParticles = [];
+let tvGlow = 0;
+let totalChipsThrown = 0;
+let screamTime = 0;
+let clutchPlays = 0;
+
+// TV dimensions
+let tvX, tvY, tvW, tvH, screenX, screenY, screenW, screenH;
+
+function calcTV() {
+  tvW = Math.min(W * 0.65, 700);
+  tvH = tvW * 0.56;
+  tvX = W/2 - tvW/2;
+  tvY = H*0.08;
+  screenX = tvX + tvW*0.05;
+  screenY = tvY + tvH*0.05;
+  screenW = tvW * 0.9;
+  screenH = tvH * 0.82;
+}
+calcTV();
+window.addEventListener('resize', () => { resize(); calcTV(); });
+
+canvas.addEventListener('click', e => {
+  if (state === 'title') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+  if (state !== 'playing') return;
+  // Throw chips at screen
+  let dx = (screenX + screenW/2) - e.clientX;
+  let dy = (screenY + screenH/2) - e.clientY;
+  chips.push({
+    x: e.clientX, y: e.clientY,
+    vx: dx * 0.05 + (Math.random()-0.5)*3,
+    vy: dy * 0.05 - 3 + (Math.random()-0.5)*2,
+    rot: Math.random() * Math.PI * 2,
+    rotSpeed: (Math.random()-0.5)*0.3,
+    life: 1, size: 4 + Math.random()*4,
+    color: Math.random() > 0.5 ? '#fbbf24' : '#f97316'
+  });
+  totalChipsThrown++;
+  chipBoost = Math.min(chipBoost + 2, 30);
+  addCommentary("*crunch* Go go go!", '#fbbf24');
+});
+
+const SEAT_NAMES = ['Recliner', 'Left Couch', 'Middle', 'Right Couch', 'Floor'];
+const SEAT_BONUSES = [
+  { name: 'Lucky Recliner', bonus: 'fumble', desc: '+Fumble luck' },
+  { name: 'Left Lean', bonus: 'run', desc: '+Run plays' },
+  { name: 'Center Seat', bonus: 'balanced', desc: 'Balanced' },
+  { name: 'Right Lean', bonus: 'pass', desc: '+Pass plays' },
+  { name: 'Floor Desperation', bonus: 'hail_mary', desc: '+Hail Mary luck' },
+];
+
+function addCommentary(text, color='#e0e0ff') {
+  commentary.unshift({ text, color, life: 1 });
+  if (commentary.length > 6) commentary.pop();
+}
+
+function startGame() {
+  state = 'playing';
+  quarter = 1; gameTime = 900;
+  homeScore = 0; awayScore = 0;
+  stress = 20; crowdEnergy = 10;
+  chips = []; chipBoost = 0;
+  seatBonus = 0; currentSeat = 2;
+  seatCooldown = 0;
+  commentary = [];
+  ballPos = 25; possession = 'home';
+  playTimer = 0; playResult = ''; playResultTimer = 0;
+  drunkMeter = 0; beerCount = 0;
+  totalChipsThrown = 0; screamTime = 0; clutchPlays = 0;
+  addCommentary("Game's on! Your team kicks off!", '#4ade80');
+  addCommentary("Throw chips! Hold SPACE to scream! 1-5 = change seat!", '#aaa');
+}
+
+function runPlay() {
+  let isHome = possession === 'home';
+  let luck = (chipBoost * 0.3) + (crowdEnergy * 0.2) + (Math.random() * 50);
+  let seatMod = SEAT_BONUSES[currentSeat].bonus;
+
+  // Add seat modifiers
+  if (seatMod === 'run' && isHome) luck += 8;
+  if (seatMod === 'pass' && isHome) luck += 8;
+  if (seatMod === 'hail_mary' && isHome && luck > 60) luck += 20;
+  if (seatMod === 'balanced') luck += 3;
+
+  let play;
+  if (isHome) {
+    if (luck > 75) {
+      // Big play
+      let yards = 15 + Math.floor(Math.random() * 40);
+      ballPos += yards;
+      play = `YOUR TEAM gains ${yards} yards! BIG PLAY!`;
+      stress = Math.max(0, stress - 10);
+      clutchPlays++;
+      tvGlow = 20;
+    } else if (luck > 45) {
+      let yards = 3 + Math.floor(Math.random() * 8);
+      ballPos += yards;
+      play = `Your team picks up ${yards} yards.`;
+      stress = Math.max(0, stress - 2);
+    } else if (luck > 25) {
+      play = 'Incomplete pass. No gain.';
+      stress += 5;
+    } else {
+      let loss = Math.floor(Math.random() * 5) + 1;
+      ballPos -= loss;
+      play = `Sacked! Lost ${loss} yards!`;
+      stress += 12;
+    }
+  } else {
+    // Away team plays - crowd energy can cause fumbles
+    let fumbleChance = crowdEnergy * 0.3 + (seatMod === 'fumble' ? 15 : 0);
+    if (Math.random() * 100 < fumbleChance) {
+      play = 'THE CROWD NOISE CAUSES A FUMBLE! YOUR BALL!';
+      possession = 'home';
+      stress = Math.max(0, stress - 20);
+      tvGlow = 30;
+      clutchPlays++;
+    } else if (luck > 60) {
+      let yards = 5 + Math.floor(Math.random() * 20);
+      ballPos -= yards;
+      play = `They gain ${yards} yards...`;
+      stress += 8;
+    } else if (luck > 35) {
+      let yards = 2 + Math.floor(Math.random() * 5);
+      ballPos -= yards;
+      play = `They get ${yards} yards.`;
+      stress += 3;
+    } else {
+      play = 'Their pass falls incomplete!';
+      stress = Math.max(0, stress - 3);
+    }
+  }
+
+  // Scoring
+  if (ballPos >= 100 && isHome) {
+    homeScore += 7;
+    play = 'TOUCHDOWN YOUR TEAM!!! 🏈🎉';
+    stress = Math.max(0, stress - 30);
+    ballPos = 25; possession = 'away';
+    tvGlow = 40;
+    addCommentary('YEAHHHHH!!! TOUCHDOWN!!!', '#4ade80');
+  } else if (ballPos <= 0 && !isHome) {
+    awayScore += 7;
+    play = 'They scored... ugh.';
+    stress += 25;
+    ballPos = 75; possession = 'home';
+    addCommentary('NOOOOO! They scored!', '#ff4444');
+  }
+
+  // Possession changes (simplified)
+  if (Math.random() < 0.15) {
+    possession = possession === 'home' ? 'away' : 'home';
+    if (possession === 'home') ballPos = 100 - ballPos;
+    else ballPos = 100 - ballPos;
+    play += ' (Change of possession)';
+  }
+
+  ballPos = Math.max(1, Math.min(99, ballPos));
+  playResult = play;
+  playResultTimer = 90;
+  addCommentary(play, isHome && play.includes('TOUCH') ? '#4ade80' : isHome ? '#60a5fa' : '#ff8888');
+
+  chipBoost = Math.max(0, chipBoost - 5);
+}
+
+function update() {
+  if (state !== 'playing') return;
+
+  // Game clock
+  gameTime -= 0.3;
+  if (gameTime <= 0) {
+    quarter++;
+    if (quarter > 4) {
+      state = 'gameover';
+      return;
+    }
+    gameTime = 900;
+    addCommentary(`End of Q${quarter-1}. Q${quarter} starts!`, '#a78bfa');
+  }
+
+  // Scream (hold space)
+  if (keys[' ']) {
+    crowdEnergy = Math.min(100, crowdEnergy + 0.5);
+    screamTime += 1/60;
+    stress += 0.1;
+    // Scream particles
+    if (Math.random() < 0.3) {
+      shoutParticles.push({
+        x: W/2 + (Math.random()-0.5)*200,
+        y: tvY + tvH + 80,
+        vy: -2 - Math.random()*2,
+        life: 1,
+        text: ['COME ON!','GO!','YEAH!','MOVE!','RUN!','THROW IT!','DEFENSE!'][Math.floor(Math.random()*7)],
+        color: '#fbbf24'
+      });
+    }
+  } else {
+    crowdEnergy = Math.max(0, crowdEnergy - 0.15);
+  }
+
+  // Change seat (1-5 keys)
+  if (seatCooldown > 0) seatCooldown--;
+  for (let i = 1; i <= 5; i++) {
+    if (keys[String(i)] && seatCooldown <= 0) {
+      currentSeat = i - 1;
+      seatCooldown = 30;
+      addCommentary(`Moved to ${SEAT_BONUSES[currentSeat].name}! ${SEAT_BONUSES[currentSeat].desc}`, '#a78bfa');
+    }
+  }
+
+  // Beer (B key)
+  if (keys['b'] && drunkMeter < 80) {
+    drunkMeter += 0.5;
+    beerCount++;
+    stress = Math.max(0, stress - 0.3);
+    if (beerCount % 100 === 0) addCommentary(`*opens another beer* (${Math.floor(beerCount/100)+1} beers deep)`, '#fbbf24');
+  }
+
+  // Play simulation
+  playTimer++;
+  if (playTimer >= 90 + Math.random() * 60) {
+    playTimer = 0;
+    runPlay();
+  }
+
+  // Stress effects
+  if (stress >= 100) {
+    // Heart attack! (game over equivalent - just max it)
+    stress = 100;
+    addCommentary('YOUR BLOOD PRESSURE IS CRITICAL!', '#ff0000');
+  }
+
+  // Decay
+  if (playResultTimer > 0) playResultTimer--;
+  if (tvGlow > 0) tvGlow -= 0.5;
+
+  // Particles
+  chips.forEach(c => {
+    c.x += c.vx; c.y += c.vy; c.vy += 0.15;
+    c.rot += c.rotSpeed; c.life -= 0.01;
+  });
+  chips = chips.filter(c => c.life > 0 && c.y < H);
+
+  shoutParticles.forEach(p => { p.y += p.vy; p.life -= 0.015; });
+  shoutParticles = shoutParticles.filter(p => p.life > 0);
+}
+
+function drawTV() {
+  // TV body
+  ctx.fillStyle = '#222';
+  ctx.fillRect(tvX-8, tvY-8, tvW+16, tvH+16);
+  ctx.fillStyle = '#111';
+  ctx.fillRect(tvX, tvY, tvW, tvH);
+
+  // Screen
+  ctx.fillStyle = '#0a2a0a';
+  ctx.fillRect(screenX, screenY, screenW, screenH);
+
+  // Mini football field on TV
+  let fx = screenX + screenW*0.05, fy = screenY + screenH*0.15;
+  let fw = screenW*0.9, fh = screenH*0.65;
+  ctx.fillStyle = '#1a4d1a';
+  ctx.fillRect(fx, fy, fw, fh);
+
+  // Yard lines
+  ctx.strokeStyle = '#fff3';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    let x = fx + (i/10)*fw;
+    ctx.beginPath(); ctx.moveTo(x, fy); ctx.lineTo(x, fy+fh); ctx.stroke();
+  }
+
+  // End zones
+  ctx.fillStyle = '#1a1a6644';
+  ctx.fillRect(fx, fy, fw*0.1, fh);
+  ctx.fillStyle = '#6a1a1a44';
+  ctx.fillRect(fx+fw*0.9, fy, fw*0.1, fh);
+
+  // Ball position
+  let ballScreenX = fx + (ballPos/100)*fw;
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.ellipse(ballScreenX, fy+fh/2, 6, 4, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Players (dots)
+  let t = Date.now()*0.003;
+  for (let i = 0; i < 6; i++) {
+    // Home (blue)
+    ctx.fillStyle = '#3b82f6';
+    ctx.beginPath();
+    ctx.arc(ballScreenX - 15 - i*12 + Math.sin(t+i)*5, fy+fh*0.3+i*fh*0.08, 3, 0, Math.PI*2);
+    ctx.fill();
+    // Away (red)
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(ballScreenX + 15 + i*10 + Math.cos(t+i)*4, fy+fh*0.35+i*fh*0.07, 3, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Score overlay on TV
+  ctx.fillStyle = '#000000aa';
+  ctx.fillRect(screenX, screenY, screenW, 22);
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`HOME ${homeScore}`, screenX+10, screenY+16);
+  ctx.fillStyle = '#ef4444';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${awayScore} AWAY`, screenX+screenW-10, screenY+16);
+  ctx.fillStyle = '#fbbf24';
+  ctx.textAlign = 'center';
+  let mins = Math.floor(gameTime/60);
+  let secs = Math.floor(gameTime%60);
+  ctx.fillText(`Q${quarter} ${mins}:${secs.toString().padStart(2,'0')}`, screenX+screenW/2, screenY+16);
+
+  // Play result on screen
+  if (playResultTimer > 0) {
+    ctx.fillStyle = '#000000cc';
+    ctx.fillRect(screenX, screenY+screenH*0.7, screenW, 25);
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(playResult.substring(0, 60), screenX+screenW/2, screenY+screenH*0.7+17);
+  }
+
+  // TV glow
+  if (tvGlow > 0) {
+    ctx.fillStyle = `rgba(74,222,128,${tvGlow*0.01})`;
+    ctx.fillRect(screenX, screenY, screenW, screenH);
+  }
+
+  // Static
+  if (Math.random() < 0.01) tvStatic = 5;
+  if (tvStatic > 0) {
+    tvStatic--;
+    let imgData = ctx.getImageData(screenX, screenY, screenW, screenH);
+    for (let i = 0; i < imgData.data.length; i += 40) {
+      let v = Math.random() * 100;
+      imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = v;
+    }
+    ctx.putImageData(imgData, screenX, screenY);
+  }
+
+  // TV stand
+  ctx.fillStyle = '#333';
+  ctx.fillRect(W/2-30, tvY+tvH+8, 60, 15);
+  ctx.fillRect(W/2-50, tvY+tvH+23, 100, 5);
+}
+
+function drawCouch() {
+  let couchY = tvY + tvH + 60;
+  // Couch
+  ctx.fillStyle = '#3d2b1f';
+  ctx.fillRect(W/2 - 200, couchY, 400, 60);
+  ctx.fillStyle = '#4a3728';
+  ctx.fillRect(W/2 - 200, couchY, 400, 15);
+  // Cushions
+  for (let i = 0; i < 5; i++) {
+    let cx = W/2 - 180 + i*80;
+    let isActive = i === currentSeat;
+    ctx.fillStyle = isActive ? '#6b4c3b' : '#4a3728';
+    ctx.fillRect(cx, couchY+5, 70, 50);
+    ctx.strokeStyle = isActive ? '#fbbf24' : '#3d2b1f';
+    ctx.lineWidth = isActive ? 2 : 1;
+    ctx.strokeRect(cx, couchY+5, 70, 50);
+    // Label
+    ctx.fillStyle = isActive ? '#fbbf24' : '#888';
+    ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`[${i+1}]`, cx+35, couchY+60);
+  }
+  // Fan on current seat
+  let fanX = W/2 - 180 + currentSeat*80 + 35;
+  let fanY = couchY - 10;
+  // Body
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath(); ctx.arc(fanX, fanY, 12, 0, Math.PI*2); ctx.fill();
+  // Arms up if screaming
+  if (keys[' ']) {
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(fanX-8, fanY); ctx.lineTo(fanX-15, fanY-20); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fanX+8, fanY); ctx.lineTo(fanX+15, fanY-20); ctx.stroke();
+    // Mouth open
+    ctx.fillStyle = '#ff4444';
+    ctx.beginPath(); ctx.arc(fanX, fanY+4, 5, 0, Math.PI); ctx.fill();
+  }
+  // Jersey
+  ctx.fillStyle = '#1d4ed8';
+  ctx.fillRect(fanX-8, fanY+3, 16, 12);
+  ctx.fillStyle = '#fff';
+  ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('#1', fanX, fanY+12);
+}
+
+function drawMeters() {
+  let mX = 20, mY = tvY + tvH + 40;
+  // Stress
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '13px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('STRESS', mX, mY);
+  ctx.fillStyle = '#333';
+  ctx.fillRect(mX, mY+5, 120, 12);
+  ctx.fillStyle = stress > 70 ? '#ff4444' : stress > 40 ? '#fbbf24' : '#4ade80';
+  ctx.fillRect(mX, mY+5, 120*(stress/100), 12);
+
+  // Crowd Energy
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText('CROWD', mX, mY+35);
+  ctx.fillStyle = '#333';
+  ctx.fillRect(mX, mY+40, 120, 12);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillRect(mX, mY+40, 120*(crowdEnergy/100), 12);
+
+  // Chip boost
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillText('CHIP BOOST', mX, mY+70);
+  ctx.fillStyle = '#333';
+  ctx.fillRect(mX, mY+75, 120, 12);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillRect(mX, mY+75, 120*(chipBoost/30), 12);
+
+  // Right side info
+  let rX = W - 180;
+  ctx.fillStyle = '#888';
+  ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`Seat: ${SEAT_BONUSES[currentSeat].name}`, rX, mY);
+  ctx.fillText(`Perk: ${SEAT_BONUSES[currentSeat].desc}`, rX, mY+18);
+  ctx.fillText(`Chips thrown: ${totalChipsThrown}`, rX, mY+36);
+  ctx.fillText(`Beers: ${Math.floor(beerCount/100)}`, rX, mY+54);
+  ctx.fillText(`Clutch plays: ${clutchPlays}`, rX, mY+72);
+}
+
+function drawCommentary() {
+  let cX = W/2, cY = H - 20;
+  commentary.forEach((c, i) => {
+    ctx.globalAlpha = c.life;
+    ctx.fillStyle = c.color;
+    ctx.font = `${i===0?'bold ':''}${13-i}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(c.text.substring(0, 70), cX, cY - i*18);
+    c.life -= 0.001;
+  });
+  ctx.globalAlpha = 1;
+  commentary = commentary.filter(c => c.life > 0);
+}
+
+function drawChips() {
+  chips.forEach(c => {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot);
+    ctx.globalAlpha = c.life;
+    ctx.fillStyle = c.color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, c.size, c.size*0.6, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawShouts() {
+  shoutParticles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(p.text, p.x, p.y);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawControls() {
+  ctx.fillStyle = '#555';
+  ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('CLICK = Throw Chips | SPACE = Scream | 1-5 = Change Seat | B = Drink Beer', W/2, H-5);
+}
+
+function drawTitle() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawTV();
+  ctx.fillStyle = 'rgba(15,15,26,0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = `bold ${Math.min(52, W*0.07)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('COUCH COACH', W/2, H*0.3);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '18px sans-serif';
+  ctx.fillText("You're a fan watching the game. You can't play, but you CAN influence!", W/2, H*0.42);
+
+  ctx.font = '14px sans-serif'; ctx.fillStyle = '#aaa';
+  ctx.fillText('Click to throw chips at the TV (slight boost)', W/2, H*0.52);
+  ctx.fillText('Hold SPACE to scream (builds crowd energy, may cause fumble)', W/2, H*0.57);
+  ctx.fillText('Press 1-5 to change seats (superstition bonuses)', W/2, H*0.62);
+  ctx.fillText('Press B to drink beer (reduces stress)', W/2, H*0.67);
+  ctx.fillText('Survive 4 quarters without your stress maxing out!', W/2, H*0.72);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 24px sans-serif';
+  if (Math.sin(Date.now()*0.004) > 0) ctx.fillText('CLICK TO START', W/2, H*0.85);
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(15,15,26,0.85)';
+  ctx.fillRect(0, 0, W, H);
+
+  let won = homeScore > awayScore;
+  ctx.fillStyle = won ? '#4ade80' : '#ff4444';
+  ctx.font = `bold ${Math.min(48, W*0.06)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(won ? 'YOUR TEAM WINS!' : 'YOUR TEAM LOST...', W/2, H*0.25);
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = '24px sans-serif';
+  ctx.fillText(`Final: HOME ${homeScore} - ${awayScore} AWAY`, W/2, H*0.38);
+
+  ctx.font = '16px sans-serif'; ctx.fillStyle = '#aaa';
+  ctx.fillText(`Chips thrown: ${totalChipsThrown}`, W/2, H*0.5);
+  ctx.fillText(`Time screaming: ${Math.floor(screamTime)}s`, W/2, H*0.55);
+  ctx.fillText(`Beers consumed: ${Math.floor(beerCount/100)}`, W/2, H*0.6);
+  ctx.fillText(`Clutch moments: ${clutchPlays}`, W/2, H*0.65);
+  ctx.fillText(`Final stress: ${Math.floor(stress)}%`, W/2, H*0.7);
+
+  // Fan rating
+  let rating = totalChipsThrown > 20 ? 'Hardcore' : totalChipsThrown > 5 ? 'Dedicated' : 'Casual';
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillText(`Fan Rating: ${rating}`, W/2, H*0.78);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '18px sans-serif';
+  if (Math.sin(Date.now()*0.004) > 0) ctx.fillText('Click to Replay', W/2, H*0.88);
+}
+
+function gameLoop() {
+  requestAnimationFrame(gameLoop);
+  if (state === 'title') { drawTitle(); return; }
+
+  update();
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Living room ambiance
+  ctx.fillStyle = '#121218';
+  ctx.fillRect(0, 0, W, H);
+  // Wall
+  ctx.fillStyle = '#1a1820';
+  ctx.fillRect(0, 0, W, tvY + tvH + 30);
+
+  drawTV();
+  drawCouch();
+  drawChips();
+  drawShouts();
+  drawMeters();
+  drawCommentary();
+  drawControls();
+
+  // Drunk wobble
+  if (drunkMeter > 30) {
+    let wobble = Math.sin(Date.now()*0.002) * (drunkMeter*0.02);
+    ctx.translate(wobble, 0);
+  }
+
+  if (state === 'gameover') drawGameOver();
+}
+
+requestAnimationFrame(gameLoop);
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

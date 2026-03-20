@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Day 18 – Block Koala</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0ff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+      overflow: hidden;
+      touch-action: none;
+    }
+    nav { width: 100%; max-width: 480px; margin-bottom: 0.5rem; }
+    nav a { color: #a78bfa; text-decoration: none; font-size: 0.9rem; }
+    h1 { color: #a78bfa; font-size: 1.5rem; margin-bottom: 0.25rem; }
+    #info { color: #9ca3af; font-size: 0.85rem; margin-bottom: 0.5rem; text-align: center; }
+    canvas {
+      background: #1a1a2e;
+      border-radius: 8px;
+      border: 1px solid #3b3b5c;
+      max-width: 480px;
+      width: 100%;
+      touch-action: none;
+    }
+    #hud { font-size: 1rem; margin-top: 0.5rem; color: #e0e0ff; }
+    #overlay {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(15,15,26,0.95); border: 2px solid #a78bfa; border-radius: 12px;
+      padding: 2rem; text-align: center; display: none; z-index: 10;
+    }
+    #overlay h2 { color: #a78bfa; margin-bottom: 0.5rem; }
+    #overlay p { color: #9ca3af; margin-bottom: 1rem; }
+    #overlay button {
+      background: #a78bfa; color: #0f0f1a; border: none; padding: 0.75rem 2rem;
+      border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: bold;
+      margin: 0.25rem;
+    }
+</style>
+</head>
+<body>
+  <h1>Block Koala</h1>
+  <div id="info">Tap direction to move. Swipe into blocks to push them. Reach the eucalyptus!</div>
+  <canvas id="c"></canvas>
+  <div id="hud">Level 1 | Moves: 0</div>
+  <div id="overlay"><h2 id="oTitle"></h2><p id="oText"></p><button id="oBtn">Next</button><button id="oReset">Retry</button></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const hudEl = document.getElementById('hud');
+const overlay = document.getElementById('overlay');
+const oTitle = document.getElementById('oTitle');
+const oText = document.getElementById('oText');
+const oBtn = document.getElementById('oBtn');
+const oReset = document.getElementById('oReset');
+
+const TILE = 48;
+const COLS = 10, ROWS = 10;
+const W = COLS * TILE, H = ROWS * TILE;
+canvas.width = W; canvas.height = H;
+
+// Tile types: 0=empty, 1=wall, 2=block(pushable), 3=goal(eucalyptus), 4=koala start, 5=hole
+let level = 0;
+let moves = 0;
+let koala = { x: 0, y: 0, dir: 0 }; // dir: 0=right,1=down,2=left,3=up
+let grid = [];
+let blockPositions = [];
+let goalPos = { x: 0, y: 0 };
+let animating = false;
+let gameState = 'playing';
+let undoStack = [];
+
+const LEVELS = [
+  // Level 1 - Simple push
+  { map: [
+    '1111111111',
+    '1000000001',
+    '1000000001',
+    '1004000001',
+    '1000200001',
+    '1000000001',
+    '1000003001',
+    '1000000001',
+    '1000000001',
+    '1111111111',
+  ]},
+  // Level 2 - Push around corner
+  { map: [
+    '1111111111',
+    '1000000001',
+    '1040000001',
+    '1000000001',
+    '1011200001',
+    '1010000001',
+    '1010003001',
+    '1010000001',
+    '1000000001',
+    '1111111111',
+  ]},
+  // Level 3 - Two blocks
+  { map: [
+    '1111111111',
+    '1000001001',
+    '1040001001',
+    '1000001001',
+    '1002000001',
+    '1000010001',
+    '1000012001',
+    '1000010001',
+    '1000003001',
+    '1111111111',
+  ]},
+  // Level 4 - Bridge the gap
+  { map: [
+    '1111111111',
+    '1000000001',
+    '1040020001',
+    '1000000001',
+    '1111511111',
+    '1000000001',
+    '1000020001',
+    '1000000001',
+    '1000003001',
+    '1111111111',
+  ]},
+  // Level 5 - Complex
+  { map: [
+    '1111111111',
+    '1400000001',
+    '1011110001',
+    '1000020001',
+    '1010111101',
+    '1010500001',
+    '1010102001',
+    '1000100001',
+    '1000100031',
+    '1111111111',
+  ]},
+  // Level 6 - Multi block
+  { map: [
+    '1111111111',
+    '1000010001',
+    '1040010001',
+    '1000010001',
+    '1002050201',
+    '1000010001',
+    '1000010001',
+    '1000010001',
+    '1003000001',
+    '1111111111',
+  ]},
+  // Level 7 - Harder
+  { map: [
+    '1111111111',
+    '1000000031',
+    '1010111101',
+    '1010000001',
+    '1012020001',
+    '1010000001',
+    '1010111101',
+    '1050000001',
+    '1040000001',
+    '1111111111',
+  ]},
+  // Level 8 - Tricky
+  { map: [
+    '1111111111',
+    '1400001001',
+    '1000001001',
+    '1020001001',
+    '1011151001',
+    '1000002001',
+    '1000001001',
+    '1000001001',
+    '1000003001',
+    '1111111111',
+  ]},
+];
+
+function loadLevel(n) {
+  level = n;
+  moves = 0;
+  undoStack = [];
+  gameState = 'playing';
+  overlay.style.display = 'none';
+  const lvl = LEVELS[n];
+  grid = [];
+  blockPositions = [];
+
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      const ch = parseInt(lvl.map[r][c]);
+      if (ch === 4) {
+        koala.x = c; koala.y = r;
+        grid[r][c] = 0;
+      } else if (ch === 2) {
+        blockPositions.push({ x: c, y: r });
+        grid[r][c] = 0;
+      } else if (ch === 3) {
+        goalPos = { x: c, y: r };
+        grid[r][c] = 3;
+      } else {
+        grid[r][c] = ch; // 0=empty, 1=wall, 5=hole
+      }
+    }
+  }
+  updateHud();
+}
+
+function updateHud() {
+  hudEl.textContent = `Level ${level + 1}/${LEVELS.length} | Moves: ${moves}`;
+}
+
+function getCanvasPos(touch) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: (touch.clientX - rect.left) * W / rect.width, y: (touch.clientY - rect.top) * H / rect.height };
+}
+
+let touchStartPos = null;
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (gameState !== 'playing' || animating) return;
+  touchStartPos = getCanvasPos(e.changedTouches[0]);
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (!touchStartPos || gameState !== 'playing' || animating) return;
+  const endPos = getCanvasPos(e.changedTouches[0]);
+  const dx = endPos.x - touchStartPos.x;
+  const dy = endPos.y - touchStartPos.y;
+  touchStartPos = null;
+
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  if (absDx < 15 && absDy < 15) {
+    // Tap: use position relative to koala
+    const kpx = koala.x * TILE + TILE/2;
+    const kpy = koala.y * TILE + TILE/2;
+    const tdx = endPos.x - kpx;
+    const tdy = endPos.y - kpy;
+    if (Math.abs(tdx) > Math.abs(tdy)) {
+      tryMove(tdx > 0 ? 1 : -1, 0);
+    } else {
+      tryMove(0, tdy > 0 ? 1 : -1);
+    }
+  } else {
+    // Swipe
+    if (absDx > absDy) {
+      tryMove(dx > 0 ? 1 : -1, 0);
+    } else {
+      tryMove(0, dy > 0 ? 1 : -1);
+    }
+  }
+}, { passive: false });
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+  if (gameState !== 'playing' || animating) return;
+  if (e.key === 'ArrowLeft' || e.key === 'a') tryMove(-1, 0);
+  if (e.key === 'ArrowRight' || e.key === 'd') tryMove(1, 0);
+  if (e.key === 'ArrowUp' || e.key === 'w') tryMove(0, -1);
+  if (e.key === 'ArrowDown' || e.key === 's') tryMove(0, 1);
+  if (e.key === 'z') undo();
+});
+
+// Mouse
+canvas.addEventListener('mousedown', (e) => {
+  if (gameState !== 'playing' || animating) return;
+  const rect = canvas.getBoundingClientRect();
+  touchStartPos = { x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height };
+});
+canvas.addEventListener('mouseup', (e) => {
+  if (!touchStartPos || gameState !== 'playing' || animating) return;
+  const rect = canvas.getBoundingClientRect();
+  const endPos = { x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height };
+  const dx = endPos.x - touchStartPos.x, dy = endPos.y - touchStartPos.y;
+  touchStartPos = null;
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  if (absDx < 15 && absDy < 15) {
+    const kpx = koala.x * TILE + TILE/2, kpy = koala.y * TILE + TILE/2;
+    const tdx = endPos.x - kpx, tdy = endPos.y - kpy;
+    if (Math.abs(tdx) > Math.abs(tdy)) tryMove(tdx > 0 ? 1 : -1, 0);
+    else tryMove(0, tdy > 0 ? 1 : -1);
+  } else {
+    if (absDx > absDy) tryMove(dx > 0 ? 1 : -1, 0);
+    else tryMove(0, dy > 0 ? 1 : -1);
+  }
+});
+
+function getBlockAt(x, y) {
+  return blockPositions.findIndex(b => b.x === x && b.y === y);
+}
+
+function isWalkable(x, y) {
+  if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return false;
+  if (grid[y][x] === 1) return false;
+  if (getBlockAt(x, y) >= 0) return false;
+  return true;
+}
+
+function isBlockWalkable(x, y) {
+  if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return false;
+  if (grid[y][x] === 1) return false;
+  if (getBlockAt(x, y) >= 0) return false;
+  return true;
+}
+
+function tryMove(dx, dy) {
+  const nx = koala.x + dx, ny = koala.y + dy;
+
+  // Update facing direction
+  if (dx === 1) koala.dir = 0;
+  else if (dy === 1) koala.dir = 1;
+  else if (dx === -1) koala.dir = 2;
+  else if (dy === -1) koala.dir = 3;
+
+  // Check if target has a block
+  const blockIdx = getBlockAt(nx, ny);
+  if (blockIdx >= 0) {
+    // Try to push block
+    const bx = nx + dx, by = ny + dy;
+    if (isBlockWalkable(bx, by)) {
+      // Save undo state
+      undoStack.push({
+        kx: koala.x, ky: koala.y,
+        blocks: blockPositions.map(b => ({ ...b })),
+        moves: moves
+      });
+
+      // Push block
+      const block = blockPositions[blockIdx];
+      block.x = bx; block.y = by;
+
+      // Check if block fell in hole
+      if (grid[by][bx] === 5) {
+        grid[by][bx] = 0; // Fill hole
+        blockPositions.splice(blockIdx, 1); // Remove block
+      }
+
+      // Move koala
+      koala.x = nx; koala.y = ny;
+      moves++;
+      updateHud();
+      checkWin();
+    }
+  } else if (isWalkable(nx, ny)) {
+    undoStack.push({
+      kx: koala.x, ky: koala.y,
+      blocks: blockPositions.map(b => ({ ...b })),
+      moves: moves
+    });
+    koala.x = nx; koala.y = ny;
+    moves++;
+    updateHud();
+    checkWin();
+  }
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  const state = undoStack.pop();
+  koala.x = state.kx; koala.y = state.ky;
+  blockPositions.length = 0;
+  for (let b of state.blocks) blockPositions.push({ ...b });
+  moves = state.moves;
+  // Restore holes that might have been filled - reload from level data
+  const lvl = LEVELS[level];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const ch = parseInt(lvl.map[r][c]);
+      if (ch === 5) {
+        // Check if any block is on it in the restored state
+        if (getBlockAt(c, r) < 0) {
+          grid[r][c] = 5;
+        } else {
+          grid[r][c] = 0;
+        }
+      }
+    }
+  }
+  updateHud();
+}
+
+function checkWin() {
+  if (koala.x === goalPos.x && koala.y === goalPos.y) {
+    gameState = 'won';
+    if (level + 1 >= LEVELS.length) {
+      oTitle.textContent = 'All Levels Complete!';
+      oText.textContent = `Total moves: ${moves}`;
+      oBtn.textContent = 'Play Again';
+    } else {
+      oTitle.textContent = 'Level Clear!';
+      oText.textContent = `Moves: ${moves}`;
+      oBtn.textContent = 'Next Level';
+    }
+    oReset.style.display = 'none';
+    overlay.style.display = 'block';
+  }
+}
+
+oBtn.addEventListener('click', () => {
+  overlay.style.display = 'none';
+  if (gameState === 'won') {
+    if (level + 1 < LEVELS.length) loadLevel(level + 1);
+    else loadLevel(0);
+  } else {
+    loadLevel(level);
+  }
+});
+oReset.addEventListener('click', () => {
+  overlay.style.display = 'none';
+  loadLevel(level);
+});
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw grid
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = c * TILE, y = r * TILE;
+      const tile = grid[r][c];
+
+      if (tile === 1) {
+        // Wall
+        ctx.fillStyle = '#2a2a4a';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.fillStyle = '#333360';
+        ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
+        // Brick pattern
+        ctx.strokeStyle = '#2a2a4a';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x + TILE/2, y); ctx.lineTo(x + TILE/2, y + TILE/2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, y + TILE/2); ctx.lineTo(x + TILE, y + TILE/2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + TILE/4, y + TILE/2); ctx.lineTo(x + TILE/4, y + TILE); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + TILE*3/4, y + TILE/2); ctx.lineTo(x + TILE*3/4, y + TILE); ctx.stroke();
+      } else if (tile === 5) {
+        // Hole
+        ctx.fillStyle = '#0a0a15';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.fillStyle = '#050508';
+        ctx.beginPath(); ctx.arc(x + TILE/2, y + TILE/2, TILE/2 - 4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#1a1a30';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else {
+        // Floor
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = '#222240';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x, y, TILE, TILE);
+      }
+
+      if (tile === 3) {
+        // Goal - eucalyptus tree
+        drawEucalyptus(x + TILE/2, y + TILE/2);
+      }
+    }
+  }
+
+  // Draw blocks
+  for (let b of blockPositions) {
+    const x = b.x * TILE, y = b.y * TILE;
+    ctx.fillStyle = '#8B6914';
+    ctx.fillRect(x + 3, y + 3, TILE - 6, TILE - 6);
+    ctx.fillStyle = '#a67c00';
+    ctx.fillRect(x + 5, y + 5, TILE - 10, TILE - 10);
+    // Wood grain
+    ctx.strokeStyle = '#8B6914';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + 8, y + 10 + i * 12);
+      ctx.lineTo(x + TILE - 8, y + 10 + i * 12);
+      ctx.stroke();
+    }
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(x + TILE - 6, y + 6, 4, TILE - 6);
+    ctx.fillRect(x + 6, y + TILE - 6, TILE - 6, 4);
+  }
+
+  // Draw koala
+  drawKoala(koala.x * TILE + TILE/2, koala.y * TILE + TILE/2, koala.dir);
+
+  // Level indicator
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, 22);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 12px system-ui';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText(`Level ${level + 1}`, 8, 5);
+  ctx.textAlign = 'right';
+  ctx.fillText(`Moves: ${moves}`, W - 8, 5);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#9ca3af';
+  ctx.fillText('Swipe/Tap to move', W/2, 5);
+}
+
+function drawEucalyptus(x, y) {
+  // Trunk
+  ctx.fillStyle = '#8B6914';
+  ctx.fillRect(x - 3, y - 2, 6, 18);
+  // Leaves
+  ctx.fillStyle = '#22c55e';
+  ctx.beginPath(); ctx.arc(x, y - 8, 12, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#16a34a';
+  ctx.beginPath(); ctx.arc(x - 4, y - 6, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 4, y - 10, 7, 0, Math.PI * 2); ctx.fill();
+  // Highlight
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath(); ctx.arc(x + 2, y - 12, 4, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawKoala(x, y, dir) {
+  // Body
+  ctx.fillStyle = '#9ca3af';
+  ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.fill();
+
+  // Determine face direction
+  let fx = 0, fy = 0;
+  if (dir === 0) fx = 3;
+  else if (dir === 1) fy = 3;
+  else if (dir === 2) fx = -3;
+  else fy = -3;
+
+  // Ears
+  ctx.fillStyle = '#6b7280';
+  ctx.beginPath(); ctx.arc(x - 10, y - 10, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 10, y - 10, 7, 0, Math.PI * 2); ctx.fill();
+  // Inner ears
+  ctx.fillStyle = '#f9a8d4';
+  ctx.beginPath(); ctx.arc(x - 10, y - 10, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 10, y - 10, 4, 0, Math.PI * 2); ctx.fill();
+
+  // Face
+  ctx.fillStyle = '#d1d5db';
+  ctx.beginPath(); ctx.arc(x + fx, y + fy, 10, 0, Math.PI * 2); ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = '#1f2937';
+  ctx.beginPath(); ctx.arc(x + fx - 4, y + fy - 3, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + fx + 4, y + fy - 3, 2.5, 0, Math.PI * 2); ctx.fill();
+  // Eye shine
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(x + fx - 3.5, y + fy - 3.5, 1, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + fx + 4.5, y + fy - 3.5, 1, 0, Math.PI * 2); ctx.fill();
+
+  // Nose
+  ctx.fillStyle = '#1f2937';
+  ctx.beginPath(); ctx.ellipse(x + fx, y + fy + 1, 3.5, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Mouth
+  ctx.strokeStyle = '#4b5563';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x + fx, y + fy + 4, 3, 0, Math.PI);
+  ctx.stroke();
+}
+
+function gameLoop() {
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+loadLevel(0);
+gameLoop();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Camp Clicker</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f0f1a; color: #e0e0ff; font-family: 'Segoe UI', Arial, sans-serif; min-height: 100vh; }
+nav { width: 100%; padding: 10px 20px; }
+nav a { color: #a78bfa; text-decoration: none; font-size: 1.1em; }
+nav a:hover { color: #c4b5fd; }
+#game { display: flex; gap: 15px; padding: 0 20px 20px; max-width: 1100px; margin: 0 auto; flex-wrap: wrap; }
+.col { flex: 1; min-width: 240px; }
+.panel { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 10px; padding: 15px; margin-bottom: 12px; }
+.panel h3 { color: #a78bfa; margin-bottom: 10px; font-size: 1em; border-bottom: 1px solid #2a2a4a; padding-bottom: 6px; }
+#clickArea { text-align: center; padding: 20px; cursor: pointer; user-select: none; transition: transform 0.1s; }
+#clickArea:active { transform: scale(0.97); }
+#football { font-size: 80px; display: block; margin: 0 auto 10px; filter: drop-shadow(0 0 15px rgba(167,139,250,0.3)); transition: transform 0.1s; }
+#football:active { transform: scale(1.15) rotate(10deg); }
+#xpDisplay { font-size: 2em; font-weight: bold; color: #ffcc00; text-shadow: 0 0 10px rgba(255,204,0,0.3); }
+#xpPerSec { color: #8888cc; font-size: 0.9em; margin-top: 4px; }
+.stat-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.88em; border-bottom: 1px solid #1a1a2a; }
+.stat-row .label { color: #8888cc; }
+.stat-row .value { color: #e0e0ff; font-weight: bold; }
+.upgrade-btn { width: 100%; padding: 10px; margin-bottom: 6px; background: #1a1a3e; border: 1px solid #333; border-radius: 6px; color: #e0e0ff; cursor: pointer; text-align: left; transition: all 0.2s; font-size: 0.85em; }
+.upgrade-btn:hover { background: #2a2a5e; border-color: #a78bfa; }
+.upgrade-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.upgrade-btn .cost { color: #ffcc00; float: right; font-weight: bold; }
+.upgrade-btn .name { font-weight: bold; color: #a78bfa; }
+.upgrade-btn .desc { color: #666; font-size: 0.85em; }
+.progress-bar { width: 100%; height: 20px; background: #111; border-radius: 10px; overflow: hidden; margin: 8px 0; }
+.progress-fill { height: 100%; border-radius: 10px; transition: width 0.3s; }
+.green { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.purple { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+.gold { background: linear-gradient(90deg, #d97706, #fbbf24); }
+#prestige-btn { width: 100%; padding: 12px; background: linear-gradient(135deg, #7c3aed, #ec4899); border: none; border-radius: 8px; color: #fff; font-size: 1.1em; font-weight: bold; cursor: pointer; margin-top: 8px; display: none; }
+#prestige-btn:hover { filter: brightness(1.2); }
+#overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15,15,26,0.94); z-index: 20; }
+#overlay h1 { font-size: 2.5em; color: #a78bfa; margin-bottom: 10px; }
+#overlay h2 { font-size: 1.2em; color: #ffcc00; margin-bottom: 15px; }
+#overlay .sub { color: #8888cc; margin-bottom: 5px; font-size: 0.9em; max-width: 500px; text-align: center; }
+#overlay button { padding: 14px 36px; font-size: 1.2em; background: #7c3aed; color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-top: 15px; }
+#overlay button:hover { background: #6d28d9; }
+.hidden { display: none !important; }
+.click-particle { position: absolute; pointer-events: none; color: #ffcc00; font-weight: bold; font-size: 1em; animation: floatUp 1s ease-out forwards; z-index: 100; }
+@keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-60px); } }
+#header { text-align: center; padding: 5px; }
+#header h2 { color: #a78bfa; font-size: 1.2em; }
+</style>
+</head>
+<body>
+<div id="header"><h2>Training Camp Clicker</h2></div>
+<div id="game">
+  <div class="col">
+    <div class="panel" id="clickArea">
+      <span id="football">🏈</span>
+      <div id="xpDisplay">0 XP</div>
+      <div id="xpPerSec">0 XP/sec</div>
+      <div style="color:#666;font-size:0.8em;margin-top:5px;">Click the football to practice!</div>
+    </div>
+    <div class="panel">
+      <h3>Team Stats</h3>
+      <div class="stat-row"><span class="label">Speed</span><span class="value" id="sSPD">1</span></div>
+      <div class="stat-row"><span class="label">Strength</span><span class="value" id="sSTR">1</span></div>
+      <div class="stat-row"><span class="label">Football IQ</span><span class="value" id="sIQ">1</span></div>
+      <div class="stat-row"><span class="label">Morale</span><span class="value" id="sMOR">50%</span></div>
+      <div class="stat-row"><span class="label">Team Level</span><span class="value" id="sLVL">1</span></div>
+      <div class="stat-row"><span class="label">Prestige</span><span class="value" id="sPRES">0</span></div>
+    </div>
+    <div class="panel">
+      <h3>Season Progress</h3>
+      <div style="color:#8888cc;font-size:0.85em;" id="seasonText">Win 0/16 to reach playoffs</div>
+      <div class="progress-bar"><div class="progress-fill green" id="seasonBar" style="width:0%"></div></div>
+      <div style="color:#8888cc;font-size:0.85em;" id="playoffText"></div>
+      <div class="progress-bar"><div class="progress-fill gold" id="playoffBar" style="width:0%"></div></div>
+      <button id="prestige-btn" onclick="prestige()">🏆 Win Championship & Prestige!</button>
+    </div>
+  </div>
+  <div class="col">
+    <div class="panel">
+      <h3>Coaches (Auto-Practice)</h3>
+      <div id="coachList"></div>
+    </div>
+    <div class="panel">
+      <h3>Player Upgrades</h3>
+      <div id="playerUpgrades"></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="panel">
+      <h3>Facilities</h3>
+      <div id="facilityList"></div>
+    </div>
+    <div class="panel">
+      <h3>Abilities Unlocked</h3>
+      <div id="abilityList" style="font-size:0.85em;color:#8888cc;">Level up to unlock abilities!</div>
+    </div>
+  </div>
+</div>
+<div id="overlay">
+  <h1>Training Camp Clicker</h1>
+  <h2>Build Your Football Dynasty!</h2>
+  <div class="sub">Click the football to earn XP and train your team.</div>
+  <div class="sub">Hire coaches for auto-practice. Build facilities for bonuses.</div>
+  <div class="sub">Level up players, unlock abilities, win the championship!</div>
+  <div class="sub">Prestige to reset with permanent bonuses!</div>
+  <button id="startBtn">START TRAINING!</button>
+</div>
+<script>
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+
+let xp = 0;
+let totalXp = 0;
+let xpPerClick = 1;
+let xpPerSec = 0;
+let prestige = 0;
+let prestigeMultiplier = 1;
+
+let stats = { speed: 1, strength: 1, iq: 1, morale: 50 };
+let teamLevel = 1;
+let wins = 0;
+let playoffWins = 0;
+let inPlayoffs = false;
+
+const COACHES = [
+  { name: 'Volunteer Dad', desc: '+1 XP/sec', baseCost: 10, xps: 1, count: 0, icon: '👨' },
+  { name: 'Assistant Coach', desc: '+5 XP/sec', baseCost: 100, xps: 5, count: 0, icon: '🧑‍🏫' },
+  { name: 'Position Coach', desc: '+25 XP/sec', baseCost: 500, xps: 25, count: 0, icon: '📋' },
+  { name: 'Coordinator', desc: '+100 XP/sec', baseCost: 2500, xps: 100, count: 0, icon: '🎯' },
+  { name: 'Head Coach', desc: '+500 XP/sec', baseCost: 15000, xps: 500, count: 0, icon: '🏆' },
+  { name: 'Legend Coach', desc: '+2500 XP/sec', baseCost: 100000, xps: 2500, count: 0, icon: '⭐' }
+];
+
+const PLAYER_UPGRADES = [
+  { name: 'Speed Drills', desc: '+1 Speed', stat: 'speed', baseCost: 50, level: 0, icon: '⚡' },
+  { name: 'Weight Training', desc: '+1 Strength', stat: 'strength', baseCost: 50, level: 0, icon: '💪' },
+  { name: 'Film Study', desc: '+1 Football IQ', stat: 'iq', baseCost: 50, level: 0, icon: '🧠' },
+  { name: 'Team Building', desc: '+5% Morale', stat: 'morale', baseCost: 80, level: 0, icon: '🤝' },
+  { name: 'Click Power', desc: '+1 XP/click', stat: 'click', baseCost: 30, level: 0, icon: '👆' }
+];
+
+const FACILITIES = [
+  { name: 'Practice Field', desc: 'All coaches +20%', baseCost: 500, level: 0, mult: 0.2, icon: '🏟️', maxLevel: 10 },
+  { name: 'Weight Room', desc: 'Strength gains +50%', baseCost: 1000, level: 0, mult: 0.5, icon: '🏋️', maxLevel: 5 },
+  { name: 'Film Room', desc: 'IQ gains +50%', baseCost: 1000, level: 0, mult: 0.5, icon: '📺', maxLevel: 5 },
+  { name: 'Cafeteria', desc: 'Morale decay -50%', baseCost: 2000, level: 0, mult: 0.5, icon: '🍽️', maxLevel: 3 },
+  { name: 'Stadium', desc: 'Win chance +10%', baseCost: 5000, level: 0, mult: 0.1, icon: '🏟️', maxLevel: 5 },
+  { name: 'Sports Science', desc: 'All XP +25%', baseCost: 10000, level: 0, mult: 0.25, icon: '🔬', maxLevel: 5 }
+];
+
+const ABILITIES = [
+  { level: 3, name: 'Screen Pass', desc: 'Double click XP for 10s', unlocked: false },
+  { level: 5, name: 'Hurry-Up Offense', desc: '+50% coach speed for 10s', unlocked: false },
+  { level: 8, name: 'Blitz Package', desc: 'Triple XP for 5s', unlocked: false },
+  { level: 12, name: 'Draft Pick', desc: 'Free random coach', unlocked: false },
+  { level: 15, name: 'Hail Mary', desc: '10x XP for 3s', unlocked: false },
+  { level: 20, name: 'Dynasty Mode', desc: 'Permanent +100% XP', unlocked: false }
+];
+
+function getCost(base, level) {
+  return Math.floor(base * Math.pow(1.15, level));
+}
+
+function formatNum(n) {
+  if (n >= 1e12) return (n/1e12).toFixed(1) + 'T';
+  if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return Math.floor(n).toString();
+}
+
+function calcXpPerSec() {
+  let base = 0;
+  COACHES.forEach(c => { base += c.xps * c.count; });
+  // Practice Field bonus
+  const pfLevel = FACILITIES[0].level;
+  base *= (1 + pfLevel * FACILITIES[0].mult);
+  // Sports Science bonus
+  const ssLevel = FACILITIES[5].level;
+  base *= (1 + ssLevel * FACILITIES[5].mult);
+  // Dynasty Mode
+  if (ABILITIES[5].unlocked) base *= 2;
+  base *= prestigeMultiplier;
+  xpPerSec = base;
+  return base;
+}
+
+function calcXpPerClick() {
+  let base = 1 + PLAYER_UPGRADES[4].level;
+  base *= prestigeMultiplier;
+  if (ABILITIES[5].unlocked) base *= 2;
+  xpPerClick = Math.floor(base);
+  return xpPerClick;
+}
+
+function clickFootball(e) {
+  const gain = calcXpPerClick();
+  xp += gain;
+  totalXp += gain;
+
+  // Particle
+  const particle = document.createElement('div');
+  particle.className = 'click-particle';
+  particle.textContent = `+${formatNum(gain)}`;
+  particle.style.left = (e.clientX - 20) + 'px';
+  particle.style.top = (e.clientY - 10) + 'px';
+  document.body.appendChild(particle);
+  setTimeout(() => particle.remove(), 1000);
+
+  // Football bounce
+  const fb = document.getElementById('football');
+  fb.style.transform = 'scale(1.15) rotate(' + (Math.random()*20-10) + 'deg)';
+  setTimeout(() => fb.style.transform = '', 100);
+
+  updateUI();
+}
+
+function buyCoach(idx) {
+  const c = COACHES[idx];
+  const cost = getCost(c.baseCost, c.count);
+  if (xp >= cost) {
+    xp -= cost;
+    c.count++;
+    calcXpPerSec();
+    updateUI();
+  }
+}
+
+function buyPlayerUpgrade(idx) {
+  const u = PLAYER_UPGRADES[idx];
+  const cost = getCost(u.baseCost, u.level);
+  if (xp >= cost) {
+    xp -= cost;
+    u.level++;
+    if (u.stat === 'speed') stats.speed++;
+    else if (u.stat === 'strength') stats.strength++;
+    else if (u.stat === 'iq') stats.iq++;
+    else if (u.stat === 'morale') stats.morale = Math.min(100, stats.morale + 5);
+    else if (u.stat === 'click') calcXpPerClick();
+
+    // Level up check
+    const totalStats = stats.speed + stats.strength + stats.iq;
+    const newLevel = Math.floor(totalStats / 10) + 1;
+    if (newLevel > teamLevel) {
+      teamLevel = newLevel;
+      checkAbilities();
+    }
+    updateUI();
+  }
+}
+
+function buyFacility(idx) {
+  const f = FACILITIES[idx];
+  if (f.level >= f.maxLevel) return;
+  const cost = getCost(f.baseCost, f.level);
+  if (xp >= cost) {
+    xp -= cost;
+    f.level++;
+    calcXpPerSec();
+    updateUI();
+  }
+}
+
+function checkAbilities() {
+  ABILITIES.forEach(a => {
+    if (!a.unlocked && teamLevel >= a.level) {
+      a.unlocked = true;
+    }
+  });
+}
+
+function tryWin() {
+  const baseChance = 0.3;
+  const statBonus = (stats.speed + stats.strength + stats.iq) * 0.005;
+  const moraleBonus = stats.morale * 0.003;
+  const stadiumBonus = FACILITIES[4].level * FACILITIES[4].mult;
+  const chance = Math.min(0.95, baseChance + statBonus + moraleBonus + stadiumBonus);
+  return Math.random() < chance;
+}
+
+function doPrestige() {
+  prestige++;
+  prestigeMultiplier = 1 + prestige * 0.5;
+  xp = 0; totalXp = 0;
+  stats = { speed: 1, strength: 1, iq: 1, morale: 50 };
+  teamLevel = 1; wins = 0; playoffWins = 0; inPlayoffs = false;
+  COACHES.forEach(c => c.count = 0);
+  PLAYER_UPGRADES.forEach(u => u.level = 0);
+  FACILITIES.forEach(f => f.level = 0);
+  ABILITIES.forEach(a => a.unlocked = false);
+  calcXpPerSec();
+  calcXpPerClick();
+  updateUI();
+}
+
+function updateUI() {
+  document.getElementById('xpDisplay').textContent = formatNum(xp) + ' XP';
+  document.getElementById('xpPerSec').textContent = formatNum(calcXpPerSec()) + ' XP/sec | ' + formatNum(calcXpPerClick()) + ' XP/click';
+  document.getElementById('sSPD').textContent = stats.speed;
+  document.getElementById('sSTR').textContent = stats.strength;
+  document.getElementById('sIQ').textContent = stats.iq;
+  document.getElementById('sMOR').textContent = Math.floor(stats.morale) + '%';
+  document.getElementById('sLVL').textContent = teamLevel;
+  document.getElementById('sPRES').textContent = prestige + (prestige ? ` (${prestigeMultiplier}x)` : '');
+
+  // Season
+  if (!inPlayoffs) {
+    document.getElementById('seasonText').textContent = `Wins: ${wins}/16 to reach playoffs`;
+    document.getElementById('seasonBar').style.width = (wins/16*100) + '%';
+    document.getElementById('playoffText').textContent = '';
+    document.getElementById('playoffBar').style.width = '0%';
+  } else {
+    document.getElementById('seasonText').textContent = `Season: ${wins}/16 wins (PLAYOFFS!)`;
+    document.getElementById('seasonBar').style.width = '100%';
+    document.getElementById('playoffText').textContent = `Playoff Wins: ${playoffWins}/4 to championship`;
+    document.getElementById('playoffBar').style.width = (playoffWins/4*100) + '%';
+  }
+
+  const prestigeBtn = document.getElementById('prestige-btn');
+  prestigeBtn.style.display = (inPlayoffs && playoffWins >= 4) ? 'block' : 'none';
+
+  // Coaches
+  const coachDiv = document.getElementById('coachList');
+  coachDiv.innerHTML = COACHES.map((c, i) => {
+    const cost = getCost(c.baseCost, c.count);
+    return `<button class="upgrade-btn" ${xp < cost ? 'disabled' : ''} onclick="buyCoach(${i})">
+      <span class="name">${c.icon} ${c.name}</span> <span class="cost">${formatNum(cost)} XP</span><br>
+      <span class="desc">${c.desc} (owned: ${c.count})</span>
+    </button>`;
+  }).join('');
+
+  // Player upgrades
+  const puDiv = document.getElementById('playerUpgrades');
+  puDiv.innerHTML = PLAYER_UPGRADES.map((u, i) => {
+    const cost = getCost(u.baseCost, u.level);
+    return `<button class="upgrade-btn" ${xp < cost ? 'disabled' : ''} onclick="buyPlayerUpgrade(${i})">
+      <span class="name">${u.icon} ${u.name}</span> <span class="cost">${formatNum(cost)} XP</span><br>
+      <span class="desc">${u.desc} (Lv ${u.level})</span>
+    </button>`;
+  }).join('');
+
+  // Facilities
+  const fDiv = document.getElementById('facilityList');
+  fDiv.innerHTML = FACILITIES.map((f, i) => {
+    const cost = getCost(f.baseCost, f.level);
+    const maxed = f.level >= f.maxLevel;
+    return `<button class="upgrade-btn" ${(xp < cost || maxed) ? 'disabled' : ''} onclick="buyFacility(${i})">
+      <span class="name">${f.icon} ${f.name}</span> <span class="cost">${maxed ? 'MAX' : formatNum(cost) + ' XP'}</span><br>
+      <span class="desc">${f.desc} (Lv ${f.level}/${f.maxLevel})</span>
+    </button>`;
+  }).join('');
+
+  // Abilities
+  const abDiv = document.getElementById('abilityList');
+  abDiv.innerHTML = ABILITIES.map(a =>
+    `<div style="margin-bottom:4px;${a.unlocked ? 'color:#4ade80;' : 'color:#444;'}">
+      ${a.unlocked ? '✅' : '🔒'} Lv${a.level}: ${a.name} - ${a.desc}
+    </div>`
+  ).join('');
+}
+
+function gameLoop() {
+  const gain = xpPerSec / 60;
+  xp += gain;
+  totalXp += gain;
+
+  // Morale decay
+  const cafBonus = FACILITIES[3].level;
+  stats.morale = Math.max(10, stats.morale - 0.01 * (1 - cafBonus * 0.3));
+
+  // Auto-win games
+  if (totalXp > 0 && Math.random() < 0.005) {
+    if (!inPlayoffs && wins < 16) {
+      if (tryWin()) {
+        wins++;
+        if (wins >= 16) inPlayoffs = true;
+      }
+    } else if (inPlayoffs && playoffWins < 4) {
+      if (tryWin()) {
+        playoffWins++;
+      }
+    }
+  }
+
+  updateUI();
+}
+
+document.getElementById('clickArea').addEventListener('click', clickFootball);
+
+function startGame() {
+  overlay.classList.add('hidden');
+  calcXpPerSec();
+  calcXpPerClick();
+  updateUI();
+  setInterval(gameLoop, 1000/60);
+}
+
+startBtn.onclick = startGame;
+</script>
+<script src="../header.js"></script>
+</body>
+</html>
