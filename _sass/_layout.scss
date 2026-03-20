@@ -248,6 +248,10 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: $space-6;
+
+  @media (max-width: $bp-sm) {
+    grid-template-columns: 1fr;
+  }
 }
 
 .post-card {
@@ -318,7 +322,8 @@
 
 // ── Blog Page ───────────────────────────────────────────────
 .blog-page {
-  padding: $space-16 0;
+  padding-top: $space-16;
+  padding-bottom: $space-16;
 
   &__header {
     text-align: center;
@@ -333,6 +338,14 @@
   &__desc {
     color: $color-text-muted;
     font-size: $font-size-lg;
+  }
+
+  @media (max-width: $bp-md) {
+    padding-top: $space-10;
+    padding-bottom: $space-10;
+
+    &__title { font-size: $font-size-3xl; }
+    &__header { margin-bottom: $space-10; }
   }
 }
 
@@ -435,11 +448,23 @@
     padding: $space-8 0 $space-16;
     border-top: 1px solid $color-border;
   }
+
+  @media (max-width: $bp-md) {
+    padding-top: $space-10;
+
+    &__header {
+      padding-bottom: $space-8;
+      margin-bottom: $space-8;
+    }
+
+    &__excerpt { font-size: $font-size-base; }
+  }
 }
 
 // ── Generic Page ────────────────────────────────────────────
 .page {
-  padding: $space-16 0;
+  padding-top: $space-16;
+  padding-bottom: $space-16;
   max-width: 760px;
 
   &__header {
@@ -466,6 +491,14 @@
     p { margin-bottom: $space-6; }
     a { color: $color-primary; &:hover { color: $color-accent; } }
   }
+
+  @media (max-width: $bp-md) {
+    padding-top: $space-10;
+    padding-bottom: $space-10;
+
+    &__title { font-size: $font-size-3xl; }
+    &__header { margin-bottom: $space-8; }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -489,7 +522,7 @@
   }
 
   &__subtitle {
-    color: $color-muted;
+    color: $color-text-muted;
     font-size: $font-size-base;
     max-width: 70ch;
     line-height: 1.7;
@@ -514,7 +547,7 @@
 
   &__hint {
     font-size: $font-size-sm;
-    color: $color-muted;
+    color: $color-text-muted;
     margin-bottom: $space-6;
   }
 
@@ -565,7 +598,7 @@
     right: $space-4;
     background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.15);
-    color: $color-muted;
+    color: $color-text-muted;
     border-radius: 6px;
     width: 32px;
     height: 32px;
@@ -589,7 +622,7 @@
   align-items: center;
   gap: 6px;
   font-size: $font-size-sm;
-  color: $color-muted;
+  color: $color-text-muted;
 }
 
 .vg-legend-dot {
@@ -635,7 +668,7 @@
 
   &__year {
     font-size: $font-size-sm;
-    color: $color-muted;
+    color: $color-text-muted;
     margin-bottom: $space-4;
   }
 
@@ -644,7 +677,7 @@
     color: #cbd5e1;
     line-height: 1.75;
     max-width: 80ch;
-    margin-bottom: $space-5;
+    margin-bottom: $space-6;
   }
 
   &__examples {
@@ -652,7 +685,7 @@
       font-size: $font-size-sm;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: $color-muted;
+      color: $color-text-muted;
       margin-bottom: $space-2;
     }
 
