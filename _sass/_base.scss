@@ -1,7 +1,7 @@
 // ============================================================
 // Base / Reset
 // ============================================================
-@use "variables" as *;
+@import "variables";
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -188,18 +188,20 @@ table {
     position: relative;
 
     &::after {
-      content: '';
+      content: '🐾';
       display: block;
-      width: 48px;
-      height: 3px;
-      background: $color-primary;
+      font-size: 1.2rem;
       margin: $space-3 auto 0;
-      border-radius: $border-radius-full;
+      line-height: 1;
     }
   }
 
   &__cta {
     text-align: center;
     margin-top: $space-12;
+  }
+
+  @media (max-width: $bp-md) {
+    padding: $space-12 0;
   }
 }
