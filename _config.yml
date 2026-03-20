@@ -1,0 +1,58 @@
+title: Ammar Rica
+description: >-
+  Personal site of Ammar Rica — developer, tinkerer, and lifelong learner.
+baseurl: ""
+url: "https://ammarrica.github.io"
+
+author:
+  name: Ammar Rica
+  email: ammar@example.com
+  bio: >-
+    Hi, I'm Ammar! I'm a software developer passionate about building great
+    products and exploring new technologies.
+  avatar: /assets/images/avatar.png
+  location: "Earth"
+  links:
+    - label: GitHub
+      icon: github
+      url: https://github.com/AmmarRica
+    - label: Twitter / X
+      icon: twitter
+      url: https://twitter.com/AmmarRica
+    - label: LinkedIn
+      icon: linkedin
+      url: https://linkedin.com/in/AmmarRica
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+permalink: /blog/:year/:month/:day/:title/
+paginate: 5
+paginate_path: "/blog/page:num/"
+
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jekyll-paginate
+
+# Navigation
+navigation:
+  - title: Home
+    url: /
+  - title: About
+    url: /about/
+  - title: Blog
+    url: /blog/
+
+future: true
+
+# Exclude from build
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+  - .bundle
+  - .jekyll-cache
+  - README.md

@@ -1,0 +1,203 @@
+// ============================================================
+// Base / Reset
+// ============================================================
+@use "variables" as *;
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: $font-sans;
+  font-size: $font-size-base;
+  line-height: $line-height-base;
+  color: $color-text;
+  background-color: $color-bg;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img, svg { display: block; max-width: 100%; }
+
+a {
+  color: $color-primary;
+  text-decoration: none;
+  transition: color $transition-base;
+  &:hover { color: $color-accent; text-decoration: underline; }
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: $color-heading;
+  line-height: $line-height-heading;
+  font-weight: 700;
+}
+
+p { margin-bottom: $space-4; }
+ul, ol { padding-left: $space-6; margin-bottom: $space-4; }
+li { margin-bottom: $space-2; }
+
+code, pre {
+  font-family: $font-mono;
+  font-size: $font-size-sm;
+}
+
+pre {
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: $border-radius;
+  padding: $space-4 $space-6;
+  overflow-x: auto;
+  margin-bottom: $space-6;
+  line-height: 1.5;
+}
+
+code {
+  background: $color-surface;
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  font-size: 0.9em;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid $color-primary;
+  margin: $space-6 0;
+  padding: $space-3 $space-6;
+  color: $color-text-muted;
+  font-style: italic;
+  background: $color-surface;
+  border-radius: 0 $border-radius $border-radius 0;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid $color-border;
+  margin: $space-8 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: $space-6;
+
+  th, td {
+    padding: $space-3 $space-4;
+    border: 1px solid $color-border;
+    text-align: left;
+  }
+
+  th {
+    background: $color-surface;
+    color: $color-heading;
+    font-weight: 600;
+  }
+
+  tr:nth-child(even) td { background: rgba($color-surface, 0.5); }
+}
+
+// Utility
+.container {
+  max-width: $max-width;
+  margin: 0 auto;
+  padding: 0 $space-6;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-2;
+  padding: $space-3 $space-6;
+  border-radius: $border-radius-full;
+  font-weight: 600;
+  font-size: $font-size-sm;
+  letter-spacing: 0.02em;
+  transition: all $transition-base;
+  cursor: pointer;
+  text-decoration: none;
+  border: 2px solid transparent;
+
+  &--primary {
+    background: $color-primary;
+    color: #fff;
+    &:hover {
+      background: $color-primary-dark;
+      color: #fff;
+      text-decoration: none;
+      transform: translateY(-1px);
+      box-shadow: $shadow-md;
+    }
+  }
+
+  &--outline {
+    background: transparent;
+    color: $color-primary;
+    border-color: $color-primary;
+    &:hover {
+      background: $color-primary;
+      color: #fff;
+      text-decoration: none;
+      transform: translateY(-1px);
+      box-shadow: $shadow-md;
+    }
+  }
+}
+
+.social-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: $border-radius-full;
+  color: $color-text-muted;
+  border: 1px solid $color-border;
+  transition: all $transition-base;
+  text-decoration: none;
+
+  &:hover {
+    color: $color-heading;
+    border-color: $color-text-muted;
+    background: $color-surface;
+    transform: translateY(-2px);
+    text-decoration: none;
+  }
+}
+
+.section {
+  padding: $space-20 0;
+
+  &__title {
+    font-size: $font-size-3xl;
+    margin-bottom: $space-12;
+    text-align: center;
+    position: relative;
+
+    &::after {
+      content: '';
+      display: block;
+      width: 48px;
+      height: 3px;
+      background: $color-primary;
+      margin: $space-3 auto 0;
+      border-radius: $border-radius-full;
+    }
+  }
+
+  &__cta {
+    text-align: center;
+    margin-top: $space-12;
+  }
+}
