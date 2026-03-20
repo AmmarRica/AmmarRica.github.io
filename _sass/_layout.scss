@@ -467,3 +467,211 @@
     a { color: $color-primary; &:hover { color: $color-accent; } }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Videogames Ishkur — genre-evolution visualization page
+// ─────────────────────────────────────────────────────────────────────────────
+.vgishkur {
+  padding: $space-10 0 $space-16;
+
+  &__header {
+    margin-bottom: $space-8;
+  }
+
+  &__title {
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    font-weight: 800;
+    background: linear-gradient(135deg, $color-primary 0%, $color-accent 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: $space-4;
+  }
+
+  &__subtitle {
+    color: $color-muted;
+    font-size: $font-size-base;
+    max-width: 70ch;
+    line-height: 1.7;
+    margin-bottom: $space-6;
+
+    a {
+      color: $color-accent;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+
+      &:hover { color: $color-primary; }
+    }
+  }
+
+  // Colour-coded family legend
+  &__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2 $space-4;
+    margin-bottom: $space-4;
+  }
+
+  &__hint {
+    font-size: $font-size-sm;
+    color: $color-muted;
+    margin-bottom: $space-6;
+  }
+
+  &__hint-star {
+    color: #fbbf24;
+  }
+
+  // Horizontally-scrollable SVG wrapper
+  &__scroll-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    background: #0a1120;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+    &::-webkit-scrollbar { height: 8px; }
+    &::-webkit-scrollbar-track { background: #0f172a; }
+    &::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+      &:hover { background: #475569; }
+    }
+  }
+
+  &__container {
+    display: inline-block;
+    vertical-align: top;
+  }
+
+  // Info panel shown when a genre is clicked
+  &__panel {
+    position: relative;
+    margin-top: $space-6;
+    padding: $space-6 $space-8;
+    background: #111827;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+
+    &[hidden] { display: none; }
+  }
+
+  &__panel-close {
+    position: absolute;
+    top: $space-4;
+    right: $space-4;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: $color-muted;
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+    cursor: pointer;
+    line-height: 1;
+    transition: background 0.15s, color 0.15s;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+  }
+
+  &__panel-body { /* content injected by JS */ }
+}
+
+// Legend items (injected by JS into #viz-legend)
+.vg-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: $font-size-sm;
+  color: $color-muted;
+}
+
+.vg-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+// Panel content (injected by JS into #panel-content)
+.vgp {
+  &__badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2;
+    margin-bottom: $space-4;
+  }
+
+  &__badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border: 1px solid;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+
+    &--unique {
+      background: #fbbf2422;
+      color: #fbbf24;
+      border-color: #fbbf2444;
+    }
+  }
+
+  &__name {
+    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    font-weight: 800;
+    margin: 0 0 $space-1;
+    color: #f1f5f9;
+  }
+
+  &__year {
+    font-size: $font-size-sm;
+    color: $color-muted;
+    margin-bottom: $space-4;
+  }
+
+  &__desc {
+    font-size: $font-size-base;
+    color: #cbd5e1;
+    line-height: 1.75;
+    max-width: 80ch;
+    margin-bottom: $space-5;
+  }
+
+  &__examples {
+    h3 {
+      font-size: $font-size-sm;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: $color-muted;
+      margin-bottom: $space-2;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: $space-2;
+    }
+
+    li {
+      font-size: $font-size-sm;
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 3px 10px;
+      border-radius: 4px;
+    }
+  }
+}

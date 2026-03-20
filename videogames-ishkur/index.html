@@ -1,0 +1,35 @@
+---
+layout: default
+title: "Videogames Ishkur — Genre Evolution"
+permalink: /videogames-ishkur/
+---
+
+<section class="vgishkur">
+
+  <div class="vgishkur__header container">
+    <h1 class="vgishkur__title">🎮 Videogames Ishkur</h1>
+    <p class="vgishkur__subtitle">
+      An interactive guide to how video-game genres spawned, split, and evolved — from the first pixels to today.
+      Inspired by <a href="https://music.ishkur.com/" target="_blank" rel="noopener noreferrer">Ishkur's Guide to Electronic Music</a>.
+    </p>
+    <div class="vgishkur__legend" id="viz-legend"></div>
+    <p class="vgishkur__hint">
+      Click any genre block to learn more &nbsp;·&nbsp; Scroll right to travel through time
+      &nbsp;·&nbsp; <span class="vgishkur__hint-star">★ starred genres are truly unique — no children, no direct lineage</span>
+    </p>
+  </div>
+
+  <div class="vgishkur__scroll-wrapper">
+    <div class="vgishkur__container" id="viz-container"></div>
+  </div>
+
+  <div class="vgishkur__panel" id="info-panel" hidden>
+    <button class="vgishkur__panel-close" id="panel-close" aria-label="Close panel">✕</button>
+    <div class="vgishkur__panel-body" id="panel-content"></div>
+  </div>
+
+</section>
+
+<script src="{{ '/assets/js/d3.v7.min.js' | relative_url }}"></script>
+<script>window.d3 || document.write('<script src="https://d3js.org/d3.v7.min.js"><\/script>')</script>
+<script src="{{ '/assets/js/videogames-ishkur.js' | relative_url }}"></script>

@@ -44,6 +44,8 @@ navigation:
     url: /about/
   - title: Blog
     url: /blog/
+  - title: Videogames Ishkur
+    url: /videogames-ishkur/
 
 future: true
 
