@@ -1,128 +1,7 @@
 // ============================================================
-// Layout
+// Layout -- Custom component styles (Hyde provides the base layout)
 // ============================================================
 @import "variables";
-
-// ── Site Header ─────────────────────────────────────────────
-.site-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: rgba($color-bg, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid $color-border;
-
-  &__inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 64px;
-  }
-
-  &__logo {
-    font-size: $font-size-lg;
-    font-weight: 700;
-    color: $color-heading;
-    letter-spacing: -0.02em;
-    text-decoration: none;
-
-    &:hover { color: $color-primary; text-decoration: none; }
-  }
-}
-
-.nav-toggle {
-  display: none;
-  flex-direction: column;
-  gap: 5px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: $space-2;
-
-  span {
-    display: block;
-    width: 22px;
-    height: 2px;
-    background: $color-text;
-    border-radius: 2px;
-    transition: all $transition-base;
-  }
-
-  @media (max-width: $bp-md) { display: flex; }
-}
-
-.site-nav {
-  &__list {
-    display: flex;
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    gap: $space-8;
-  }
-
-  &__link {
-    font-size: $font-size-sm;
-    font-weight: 500;
-    color: $color-text-muted;
-    text-decoration: none;
-    transition: color $transition-base;
-    letter-spacing: 0.02em;
-
-    &:hover, &--active {
-      color: $color-heading;
-      text-decoration: none;
-    }
-
-    &--active { color: $color-primary; }
-  }
-
-  @media (max-width: $bp-md) {
-    position: absolute;
-    top: 64px;
-    left: 0;
-    right: 0;
-    z-index: 99;
-    background: $color-surface;
-    border-bottom: 1px solid $color-border;
-    padding: $space-4 $space-6;
-    display: none;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-
-    &--open { display: block; }
-
-    &__list { flex-direction: column; gap: $space-3; }
-    &__link { font-size: $font-size-base; }
-  }
-}
-
-// ── Main Content ────────────────────────────────────────────
-.main-content { min-height: calc(100vh - 64px - 80px); }
-
-// ── Site Footer ─────────────────────────────────────────────
-.site-footer {
-  background: $color-surface;
-  border-top: 1px solid $color-border;
-  padding: $space-6 0;
-
-  &__inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: $space-4;
-    flex-wrap: wrap;
-  }
-
-  &__copy {
-    font-size: $font-size-sm;
-    color: $color-text-muted;
-    margin: 0;
-
-    a { color: $color-text-muted; &:hover { color: $color-primary; } }
-  }
-
-  &__social { display: flex; gap: $space-3; }
-}
 
 // ── Hero Section ────────────────────────────────────────────
 .hero {
@@ -473,7 +352,7 @@
 }
 
 // ── Generic Page ────────────────────────────────────────────
-.page {
+div.page {
   padding-top: $space-16;
   padding-bottom: $space-16;
   max-width: 760px;
