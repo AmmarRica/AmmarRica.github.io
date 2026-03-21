@@ -205,3 +205,86 @@ table {
     padding: $space-12 0;
   }
 }
+
+// -- Hyde sidebar overrides --
+.sidebar {
+  background-color: $color-surface;
+  color: $color-text-muted;
+
+  a {
+    color: $color-text;
+
+    &:hover { color: $color-accent; text-decoration: none; }
+  }
+
+  h1 {
+    color: $color-heading;
+    font-size: $font-size-2xl;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .lead {
+    font-size: $font-size-sm;
+    color: $color-text-muted;
+  }
+}
+
+.sidebar-nav-item {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+
+  &:hover,
+  &.active {
+    color: $color-accent;
+    text-decoration: none;
+  }
+
+  &.active {
+    font-weight: 600;
+  }
+}
+
+.sidebar-copyright {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin-top: $space-8;
+}
+
+.sidebar-social {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $space-2;
+  margin-top: $space-4;
+
+  &__link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: $border-radius-full;
+    color: $color-text-muted;
+    border: 1px solid $color-border;
+    transition: all $transition-base;
+    text-decoration: none;
+
+    &:hover {
+      color: $color-heading;
+      border-color: $color-text-muted;
+      background: $color-bg;
+      transform: translateY(-2px);
+      text-decoration: none;
+    }
+  }
+}
+
+// Hyde content area overrides
+.content {
+  background-color: $color-bg;
+}
+
+// Override Hyde theme-base-09 sidebar color to match our amber brand
+.theme-base-09 .sidebar {
+  background-color: $color-surface-2;
+}

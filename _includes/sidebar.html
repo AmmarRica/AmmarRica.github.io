@@ -1,0 +1,29 @@
+<div class="sidebar">
+  <div class="container sidebar-sticky">
+    <div class="sidebar-about">
+      <a href="{{ '/' | relative_url }}">
+        <h1>{{ site.title }}</h1>
+      </a>
+      <p class="lead">{{ site.author.bio | default: site.description }}</p>
+    </div>
+
+    <nav class="sidebar-nav">
+      {% for item in site.navigation %}
+      <a class="sidebar-nav-item{% if page.url == item.url or item.url != '/' and page.url contains item.url %} active{% endif %}"
+         href="{{ item.url | relative_url }}">{{ item.title }}</a>
+      {% endfor %}
+    </nav>
+
+    {% if site.author.links %}
+    <div class="sidebar-social">
+      {% for link in site.author.links %}
+      <a href="{{ link.url }}" class="sidebar-social__link" target="_blank" rel="noopener noreferrer" aria-label="{{ link.label }}">
+        {% include icon-{{ link.icon }}.html %}
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <p class="sidebar-copyright">&copy; {{ 'now' | date: "%Y" }} {{ site.author.name }}</p>
+  </div>
+</div>
