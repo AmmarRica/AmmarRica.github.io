@@ -185,7 +185,8 @@
       var SECTIONS = [
         { series: 'daily',    title: 'Daily Games',            labelFn: function(i, g) { return 'Day ' + (i + 1); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } },
         { series: 'ufo-like', title: 'UFO-Like Games',          labelFn: function(i, g) { return 'UFO ' + (i + 1); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } },
-        { series: 'football', title: 'Football Games Collection', labelFn: function(i, g) { return g.genre || ('Game ' + (i + 1)); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } }
+        { series: 'football', title: 'Football Games Collection', labelFn: function(i, g) { return g.genre || ('Game ' + (i + 1)); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } },
+        { series: 'charlotte', title: '3D Experiences',         labelFn: function(i, g) { return g.genre || ('Experience ' + (i + 1)); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } }
       ];
 
       var BADGE = {
