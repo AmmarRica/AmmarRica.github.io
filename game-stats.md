@@ -1,7 +1,8 @@
-# Feetball - Game Stats, Abilities & Roles
-
-Complete reference for all gameplay stats, player abilities, character roles, and AI behaviors.
-
+---
+layout: page
+title: "Feetball — Game Stats & Roles"
+subtitle: "Complete reference for all gameplay stats, player abilities, character roles, and AI behaviors"
+permalink: /game-stats/
 ---
 
 ## Player Stats

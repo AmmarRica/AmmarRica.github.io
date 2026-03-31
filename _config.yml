@@ -48,6 +48,8 @@ navigation:
     url: /videogames-ishkur/
   - title: AI-Generated Games
     url: /AIGeneratedGames/
+  - title: Game Stats
+    url: /game-stats/
 
 future: true
 
