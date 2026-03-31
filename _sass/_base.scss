@@ -62,6 +62,7 @@ pre {
 
 code {
   background: $color-surface;
+  color: $color-text;
   border-radius: 4px;
   padding: 0.15em 0.4em;
   font-size: 0.9em;
@@ -106,6 +107,9 @@ table {
     color: $color-heading;
     font-weight: 600;
   }
+
+  tbody tr:nth-child(odd) td,
+  tbody tr:nth-child(odd) th { background: $color-bg; }
 
   tr:nth-child(even) td { background: rgba($color-surface, 0.5); }
 
