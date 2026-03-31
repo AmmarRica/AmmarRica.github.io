@@ -501,6 +501,12 @@
     h3 { font-size: $font-size-xl; margin: $space-8 0 $space-3; }
     p { margin-bottom: $space-6; }
     a { color: $color-primary; &:hover { color: $color-accent; } }
+
+    // Ensure code inside table cells doesn't force overflow
+    td code, th code {
+      white-space: nowrap;
+      font-size: 0.8em;
+    }
   }
 
   @media (max-width: $bp-md) {
@@ -509,6 +515,20 @@
 
     &__title { font-size: $font-size-3xl; }
     &__header { margin-bottom: $space-8; }
+  }
+
+  @media (max-width: $bp-sm) {
+    padding-top: $space-8;
+    padding-bottom: $space-8;
+
+    &__title { font-size: $font-size-2xl; }
+    &__subtitle { font-size: $font-size-base; }
+    &__header { margin-bottom: $space-6; padding-bottom: $space-6; }
+
+    &__body {
+      h2 { font-size: $font-size-xl; margin: $space-8 0 $space-3; }
+      h3 { font-size: $font-size-lg; margin: $space-6 0 $space-2; }
+    }
   }
 }
 
