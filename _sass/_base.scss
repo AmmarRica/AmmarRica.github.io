@@ -108,6 +108,19 @@ table {
   }
 
   tr:nth-child(even) td { background: rgba($color-surface, 0.5); }
+
+  @media (max-width: $bp-md) {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+
+    th, td {
+      padding: $space-2 $space-3;
+      font-size: $font-size-sm;
+      white-space: nowrap;
+    }
+  }
 }
 
 // Utility
@@ -115,6 +128,10 @@ table {
   max-width: $max-width;
   margin: 0 auto;
   padding: 0 $space-6;
+
+  @media (max-width: $bp-sm) {
+    padding: 0 $space-4;
+  }
 }
 
 .btn {
