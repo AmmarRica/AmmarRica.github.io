@@ -100,6 +100,8 @@ table {
     padding: $space-3 $space-4;
     border: 1px solid $color-border;
     text-align: left;
+    color: $color-text;
+    background: $color-bg;
   }
 
   th {
@@ -111,7 +113,8 @@ table {
   tbody tr:nth-child(odd) td,
   tbody tr:nth-child(odd) th { background: $color-bg; }
 
-  tr:nth-child(even) td { background: rgba($color-surface, 0.5); }
+  tbody tr:nth-child(even) td,
+  tbody tr:nth-child(even) th { background: $color-surface; }
 
   @media (max-width: $bp-md) {
     display: block;
