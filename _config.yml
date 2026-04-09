@@ -57,6 +57,8 @@ navigation:
     url: /AIGeneratedGames/
   - title: Game Stats
     url: /game-stats/
+  - title: Dog Breed Swiper
+    url: /dog-swiper/
 
 future: true
 

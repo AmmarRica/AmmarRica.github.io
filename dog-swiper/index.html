@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Dog Breed Swiper</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --yes-color: #4CAF50;
+      --no-color:  #F44336;
+      --bg:        #1a1a2e;
+      --card-bg:   #16213e;
+      --text:      #e0e0ff;
+      --accent:    #e94560;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── Top nav ─────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 48px;
+      background: rgba(26,26,46,0.95);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      z-index: 200;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    nav a {
+      color: #a78bfa;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    nav a:hover { color: #c4b5fd; }
+    .nav-title {
+      flex: 1;
+      text-align: center;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      pointer-events: none;
+    }
+
+    /* ── Swiper screen ───────────────────────────────── */
+    #swiper-screen, #results-screen {
+      position: fixed;
+      top: 48px; left: 0; right: 0; bottom: 0;
+    }
+
+    /* ── Card stack ──────────────────────────────────── */
+    #card-stack {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      bottom: 120px;          /* leave room for buttons */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      perspective: 800px;
+    }
+
+    .card {
+      position: absolute;
+      width: min(340px, 92vw);
+      height: min(460px, 68vh);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      background: var(--card-bg);
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: grab;
+      /* smooth promotion animation; JS overrides this during active drag */
+      transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .card:active { cursor: grabbing; }
+
+    /*
+     * Cards are inserted as firstChild so the LAST child is always the
+     * front (top) card.  Use nth-last-child so card behind the top card
+     * gets the peek-back scaling regardless of total card count.
+     */
+    .card:nth-last-child(2) { transform: scale(0.95) translateY(12px); }
+    .card:nth-last-child(3) { transform: scale(0.90) translateY(24px); }
+    .card:nth-last-child(n+4) { transform: scale(0.85) translateY(36px); opacity: 0; }
+
+    /* top card: full size, above all others */
+    .card--top { z-index: 10; }
+
+    .card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      pointer-events: none;
+      display: block;
+    }
+    .card-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      color: #555;
+    }
+
+    .card__info {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 20px 16px 14px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.85));
+    }
+    .card__breed {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+    }
+    .card__sub {
+      font-size: 0.8rem;
+      color: #ccc;
+      margin-top: 2px;
+    }
+
+    /* swipe stamp overlays */
+    .stamp {
+      position: absolute;
+      top: 30px;
+      font-size: 2.4rem;
+      font-weight: 900;
+      border: 4px solid currentColor;
+      border-radius: 8px;
+      padding: 6px 14px;
+      opacity: 0;
+      pointer-events: none;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      transform: rotate(-15deg);
+      transition: opacity 0.1s;
+    }
+    .stamp--yes { right: 20px; color: var(--yes-color); transform: rotate(-20deg); }
+    .stamp--no  { left: 20px;  color: var(--no-color);  transform: rotate(20deg);  }
+
+    /* ── Action buttons ──────────────────────────────── */
+    #action-buttons {
+      position: absolute;
+      bottom: 20px; left: 0; right: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 40px;
+    }
+    .btn-action {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      border: none;
+      font-size: 2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-action:active { transform: scale(0.9); }
+    #btn-no  { background: #fff; color: var(--no-color); }
+    #btn-yes { background: var(--yes-color); color: #fff; }
+
+    /* progress */
+    #progress {
+      position: absolute;
+      top: 12px; left: 0; right: 0;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #888;
+    }
+
+    /* empty state */
+    #empty-state {
+      display: none;
+      position: absolute;
+      inset: 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      text-align: center;
+      padding: 20px;
+    }
+    #empty-state h2 { font-size: 1.6rem; }
+    #empty-state p  { color: #aaa; }
+    #btn-see-results {
+      margin-top: 8px;
+      padding: 14px 32px;
+      border-radius: 30px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(233,69,96,0.4);
+      transition: transform 0.15s;
+    }
+    #btn-see-results:active { transform: scale(0.95); }
+
+    /* ── Results screen ──────────────────────────────── */
+    #results-screen {
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #results-screen.active { display: flex; }
+
+    .results-header {
+      padding: 16px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      flex-shrink: 0;
+    }
+    .results-header h2 { font-size: 1.4rem; }
+    .results-header p  { font-size: 0.85rem; color: #aaa; margin-top: 4px; }
+
+    #results-list {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+      align-content: start;
+    }
+
+    .result-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .result-card img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+    }
+    .result-card__name {
+      padding: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-align: center;
+      color: #ddd;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .results-empty {
+      grid-column: 1/-1;
+      text-align: center;
+      color: #666;
+      padding: 40px 16px;
+      font-size: 1rem;
+    }
+
+    .results-footer {
+      padding: 12px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    #btn-restart {
+      padding: 12px 28px;
+      border-radius: 30px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(233,69,96,0.4);
+      transition: transform 0.15s;
+    }
+    #btn-restart:active { transform: scale(0.95); }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ─────────────────────────────────────── -->
+<nav>
+  <a href="/">← Home</a>
+  <span class="nav-title">🐶 Dog Breed Swiper</span>
+  <span style="width:60px"></span>
+</nav>
+
+<!-- ── Swiper Screen ──────────────────────────────────── -->
+<div id="swiper-screen">
+  <div id="progress"></div>
+  <div id="card-stack"></div>
+
+  <div id="action-buttons">
+    <button class="btn-action" id="btn-no"  title="Nope">✕</button>
+    <button class="btn-action" id="btn-yes" title="Like">♥</button>
+  </div>
+
+  <!-- Shown after all cards are swiped -->
+  <div id="empty-state">
+    <div style="font-size:3rem">🎉</div>
+    <h2>That's all the breeds!</h2>
+    <p>See the ones you liked below.</p>
+    <button id="btn-see-results">See My Picks</button>
+  </div>
+</div>
+
+<!-- ── Results Screen ─────────────────────────────────── -->
+<div id="results-screen">
+  <div class="results-header">
+    <h2>❤️ Your Favorite Breeds</h2>
+    <p id="results-count"></p>
+  </div>
+  <div id="results-list"></div>
+  <div class="results-footer">
+    <button id="btn-restart">Start Over</button>
+  </div>
+</div>
+
+<script>
+// ── Dog breed data ──────────────────────────────────────
+// Using the Dog CEO API (https://dog.ceo/dog-api/)
+// breed slug → display name
+const BREEDS = [
+  { slug: 'labrador',       name: 'Labrador Retriever' },
+  { slug: 'golden',         name: 'Golden Retriever'   },
+  { slug: 'bulldog/english',name: 'English Bulldog'    },
+  { slug: 'poodle/standard',name: 'Standard Poodle'    },
+  { slug: 'beagle',         name: 'Beagle'             },
+  { slug: 'rottweiler',     name: 'Rottweiler'         },
+  { slug: 'germanshepherd', name: 'German Shepherd'    },
+  { slug: 'husky',          name: 'Siberian Husky'     },
+  { slug: 'boxer',          name: 'Boxer'              },
+  { slug: 'dachshund',      name: 'Dachshund'          },
+  { slug: 'pomeranian',     name: 'Pomeranian'         },
+  { slug: 'corgi/cardigan', name: 'Cardigan Corgi'     },
+  { slug: 'shiba',          name: 'Shiba Inu'          },
+  { slug: 'dalmatian',      name: 'Dalmatian'          },
+  { slug: 'maltese',        name: 'Maltese'            },
+  { slug: 'chihuahua',      name: 'Chihuahua'          },
+  { slug: 'samoyed',        name: 'Samoyed'            },
+  { slug: 'akita',          name: 'Akita'              },
+  { slug: 'doberman',       name: 'Doberman Pinscher'  },
+  { slug: 'bordercollie',   name: 'Border Collie'      },
+];
+
+const DOG_API = slug => `https://dog.ceo/api/breed/${slug}/images/random`;
+
+// ── State ───────────────────────────────────────────────
+let deck       = [];   // remaining breed objects
+let liked      = [];   // { name, imgUrl }
+let topCard    = null; // DOM element currently being dragged
+let startX     = 0, startY = 0;
+let currentX   = 0;
+const SWIPE_THRESHOLD = 80; // px to trigger a swipe decision
+
+// ── DOM refs ─────────────────────────────────────────────
+const cardStack     = document.getElementById('card-stack');
+const progressEl    = document.getElementById('progress');
+const emptyState    = document.getElementById('empty-state');
+const actionButtons = document.getElementById('action-buttons');
+const resultsScreen = document.getElementById('results-screen');
+const resultsList   = document.getElementById('results-list');
+const resultsCount  = document.getElementById('results-count');
+
+// ── Init ─────────────────────────────────────────────────
+function init() {
+  deck   = [...BREEDS];
+  liked  = [];
+  cardStack.innerHTML   = '';
+  cardStack.style.display = '';
+  emptyState.style.display = 'none';
+  actionButtons.style.display = 'flex';
+  progressEl.style.display   = '';
+  resultsScreen.classList.remove('active');
+  document.getElementById('swiper-screen').style.display = '';
+
+  // Pre-render first 3 cards (rest fetched on demand)
+  renderDeck();
+}
+
+// ── Render ───────────────────────────────────────────────
+function renderDeck() {
+  const existing = cardStack.querySelectorAll('.card');
+  const needed   = 3 - existing.length;
+  for (let i = 0; i < needed && deck.length > i; i++) {
+    // Only create cards that aren't already rendered
+    const idx = existing.length + i;
+    if (idx < deck.length) {
+      createCard(deck[idx], idx === 0);
+    }
+  }
+  updateProgress();
+}
+
+function createCard(breed, isTop) {
+  const card = document.createElement('div');
+  card.className = 'card' + (isTop ? ' card--top' : '');
+  card.dataset.slug = breed.slug;
+  card.dataset.name = breed.name;
+
+  // Placeholder while image loads
+  card.innerHTML = `
+    <div class="card-placeholder">🐶</div>
+    <div class="stamp stamp--yes">LIKE</div>
+    <div class="stamp stamp--no">NOPE</div>
+    <div class="card__info">
+      <div class="card__breed">${breed.name}</div>
+      <div class="card__sub">Swipe right to like · left to skip</div>
+    </div>`;
+
+  // Fetch image
+  fetch(DOG_API(breed.slug))
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'success') {
+        const img = document.createElement('img');
+        img.src = data.message;
+        img.alt = breed.name;
+        img.onload = () => {
+          const placeholder = card.querySelector('.card-placeholder');
+          if (placeholder) placeholder.replaceWith(img);
+        };
+      }
+    })
+    .catch(() => {}); // keep placeholder on error
+
+  // Insert at bottom of stack
+  cardStack.insertBefore(card, cardStack.firstChild);
+
+  if (isTop) attachDragListeners(card);
+  return card;
+}
+
+function updateProgress() {
+  const total   = BREEDS.length;
+  const done    = total - deck.length;
+  progressEl.textContent = `${done} / ${total}`;
+}
+
+// ── Drag / Swipe logic ───────────────────────────────────
+function attachDragListeners(card) {
+  // Touch
+  card.addEventListener('touchstart',  onDragStart, { passive: true });
+  card.addEventListener('touchmove',   onDragMove,  { passive: false });
+  card.addEventListener('touchend',    onDragEnd,   { passive: true });
+  card.addEventListener('touchcancel', onDragEnd,   { passive: true });
+  // Mouse (desktop)
+  card.addEventListener('mousedown',   onDragStart);
+}
+
+function getXY(e) {
+  if (e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  return { x: e.clientX, y: e.clientY };
+}
+
+function onDragStart(e) {
+  if (topCard) return;
+  topCard = e.currentTarget;
+  const { x, y } = getXY(e);
+  startX   = x;
+  startY   = y;
+  currentX = 0;
+  topCard.style.transition = 'none';
+  if (e.type === 'mousedown') {
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup',   onDragEnd);
+  }
+}
+
+function onDragMove(e) {
+  if (!topCard) return;
+  if (e.cancelable) e.preventDefault();
+  const { x, y } = getXY(e);
+  const dx = x - startX;
+  const dy = y - startY;
+  currentX = dx;
+  const rotate = dx * 0.08;
+  topCard.style.transform = `translate(${dx}px, ${dy * 0.3}px) rotate(${rotate}deg)`;
+
+  // Update stamp opacity
+  const ratio = Math.min(Math.abs(dx) / SWIPE_THRESHOLD, 1);
+  const stampYes = topCard.querySelector('.stamp--yes');
+  const stampNo  = topCard.querySelector('.stamp--no');
+  if (dx > 0) {
+    stampYes.style.opacity = ratio;
+    stampNo.style.opacity  = 0;
+  } else {
+    stampNo.style.opacity  = ratio;
+    stampYes.style.opacity = 0;
+  }
+}
+
+function onDragEnd(e) {
+  if (!topCard) return;
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup',   onDragEnd);
+
+  if (Math.abs(currentX) >= SWIPE_THRESHOLD) {
+    const direction = currentX > 0 ? 'yes' : 'no';
+    flyOff(topCard, direction);
+  } else {
+    // Snap back
+    topCard.style.transition = 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    topCard.style.transform  = '';
+    topCard.querySelector('.stamp--yes').style.opacity = 0;
+    topCard.querySelector('.stamp--no').style.opacity  = 0;
+    topCard = null;
+  }
+}
+
+function flyOff(card, direction) {
+  const xTarget = direction === 'yes' ? window.innerWidth * 1.5 : -window.innerWidth * 1.5;
+  card.style.transition = 'transform 0.45s ease-in, opacity 0.45s ease-in';
+  card.style.transform  = `translate(${xTarget}px, 60px) rotate(${direction === 'yes' ? 30 : -30}deg)`;
+  card.style.opacity    = '0';
+
+  // Record decision
+  const breed = { slug: card.dataset.slug, name: card.dataset.name };
+  const imgEl = card.querySelector('img');
+  if (direction === 'yes') {
+    liked.push({ name: breed.name, imgUrl: imgEl ? imgEl.src : '' });
+  }
+
+  topCard = null;
+
+  setTimeout(() => {
+    card.remove();
+    // Advance deck
+    deck.shift();
+    if (deck.length === 0) {
+      // All done
+      showEmpty();
+    } else {
+      // Promote next card as top
+      const nextCard = cardStack.querySelector('.card:last-child');
+      if (nextCard) {
+        nextCard.classList.add('card--top');
+        // Clear any stale inline transform so CSS nth-last-child rule takes over
+        nextCard.style.transform = '';
+        attachDragListeners(nextCard);
+      }
+      // Pre-render card one slot further into the deck
+      const rendered = cardStack.querySelectorAll('.card').length;
+      if (deck.length > rendered) {
+        createCard(deck[rendered], false);
+      }
+      updateProgress();
+    }
+  }, 450);
+}
+
+// ── Button actions ───────────────────────────────────────
+document.getElementById('btn-no').addEventListener('click', () => {
+  const top = cardStack.querySelector('.card--top');
+  if (top && !topCard) flyOff(top, 'no');
+});
+document.getElementById('btn-yes').addEventListener('click', () => {
+  const top = cardStack.querySelector('.card--top');
+  if (top && !topCard) flyOff(top, 'yes');
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft')  document.getElementById('btn-no').click();
+  if (e.key === 'ArrowRight') document.getElementById('btn-yes').click();
+});
+
+// ── Empty / Results ──────────────────────────────────────
+function showEmpty() {
+  cardStack.style.display        = 'none';
+  actionButtons.style.display    = 'none';
+  progressEl.style.display       = 'none';
+  emptyState.style.display       = 'flex';
+}
+
+document.getElementById('btn-see-results').addEventListener('click', showResults);
+document.getElementById('btn-restart').addEventListener('click', init);
+
+function showResults() {
+  document.getElementById('swiper-screen').style.display = 'none';
+  resultsScreen.classList.add('active');
+
+  resultsList.innerHTML = '';
+  if (liked.length === 0) {
+    resultsList.innerHTML = '<p class="results-empty">You didn\'t like any breeds this round. Try again!</p>';
+    resultsCount.textContent = '0 breeds selected';
+  } else {
+    resultsCount.textContent = `${liked.length} breed${liked.length === 1 ? '' : 's'} selected`;
+    liked.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      card.innerHTML = `
+        ${item.imgUrl ? `<img src="${item.imgUrl}" alt="${item.name}" loading="lazy" />` : '<div style="aspect-ratio:1;background:#16213e;display:flex;align-items:center;justify-content:center;font-size:2.5rem">🐶</div>'}
+        <div class="result-card__name">${item.name}</div>`;
+      resultsList.appendChild(card);
+    });
+  }
+}
+
+// ── Start ────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
