@@ -658,3 +658,50 @@ div.page {
     }
   }
 }
+
+// ── Projects Grid ────────────────────────────────────────────
+.projects__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: $space-6;
+
+  @media (max-width: $bp-sm) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.project-card {
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: $border-radius-lg;
+  padding: $space-8;
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  transition: all $transition-base;
+
+  &:hover {
+    border-color: $color-primary;
+    transform: translateY(-4px);
+    box-shadow: $shadow-md;
+  }
+
+  &__icon {
+    font-size: 2rem;
+    margin-bottom: $space-4;
+  }
+
+  &__title {
+    font-size: $font-size-lg;
+    margin-bottom: $space-3;
+    color: $color-heading;
+  }
+
+  &__desc {
+    font-size: $font-size-sm;
+    color: $color-text-muted;
+    line-height: 1.6;
+    margin: 0;
+    flex: 1;
+  }
+}

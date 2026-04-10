@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crab Breed Swiper</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: hidden;
+      color: #fff;
+    }
+
+    .header {
+      text-align: center;
+      padding: 24px 16px 8px;
+    }
+
+    .header h1 {
+      font-size: 2rem;
+      background: linear-gradient(90deg, #ff6b35, #f7c948, #ff6b35);
+      background-size: 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 3s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .header p {
+      color: #8ecae6;
+      margin-top: 4px;
+      font-size: 0.95rem;
+    }
+
+    .back-link {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      color: #8ecae6;
+      text-decoration: none;
+      font-size: 0.9rem;
+      opacity: 0.8;
+      transition: opacity 0.2s;
+    }
+
+    .back-link:hover { opacity: 1; }
+
+    .scoreboard {
+      display: flex;
+      gap: 32px;
+      margin: 12px 0 16px;
+      font-size: 1.1rem;
+    }
+
+    .score-nope { color: #ef476f; }
+    .score-like { color: #06d6a0; }
+    .score-num { font-weight: bold; font-size: 1.3rem; }
+
+    /* Swiper area */
+    .swiper-container {
+      position: relative;
+      width: 340px;
+      height: 480px;
+      perspective: 1000px;
+    }
+
+    .card {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 20px;
+      overflow: hidden;
+      cursor: grab;
+      user-select: none;
+      transition: transform 0.1s ease, box-shadow 0.2s;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    .card:active { cursor: grabbing; }
+
+    .card-inner {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-image {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card-image .bubble {
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.15;
+      animation: float 6s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-20px) scale(1.1); }
+    }
+
+    .card-info {
+      padding: 20px;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
+    }
+
+    .card-info h2 {
+      font-size: 1.4rem;
+      margin-bottom: 4px;
+    }
+
+    .card-info .scientific {
+      font-style: italic;
+      color: #8ecae6;
+      font-size: 0.85rem;
+      margin-bottom: 8px;
+    }
+
+    .card-info .facts {
+      font-size: 0.85rem;
+      color: #ccc;
+      line-height: 1.4;
+    }
+
+    .card-info .tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .card-info .tag {
+      background: rgba(255,255,255,0.12);
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      color: #ddd;
+    }
+
+    /* Swipe overlays */
+    .stamp {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%) rotate(-15deg);
+      font-size: 3rem;
+      font-weight: 900;
+      padding: 8px 20px;
+      border: 6px solid;
+      border-radius: 12px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 10;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+    }
+
+    .stamp-like {
+      right: 20px;
+      color: #06d6a0;
+      border-color: #06d6a0;
+    }
+
+    .stamp-nope {
+      left: 20px;
+      color: #ef476f;
+      border-color: #ef476f;
+    }
+
+    /* Buttons */
+    .controls {
+      display: flex;
+      gap: 24px;
+      margin-top: 24px;
+    }
+
+    .btn {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 3px solid;
+      background: rgba(255,255,255,0.05);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      transition: transform 0.15s, background 0.2s;
+      backdrop-filter: blur(4px);
+    }
+
+    .btn:hover { transform: scale(1.12); }
+    .btn:active { transform: scale(0.95); }
+
+    .btn-nope { border-color: #ef476f; color: #ef476f; }
+    .btn-nope:hover { background: rgba(239,71,111,0.15); }
+
+    .btn-like { border-color: #06d6a0; color: #06d6a0; }
+    .btn-like:hover { background: rgba(6,214,160,0.15); }
+
+    .btn-info { border-color: #8ecae6; color: #8ecae6; font-size: 1.2rem; }
+    .btn-info:hover { background: rgba(142,202,230,0.15); }
+
+    /* End screen */
+    .end-screen {
+      display: none;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .end-screen h2 {
+      font-size: 2rem;
+      margin-bottom: 16px;
+      color: #f7c948;
+    }
+
+    .end-screen .results {
+      display: flex;
+      gap: 40px;
+      justify-content: center;
+      margin: 20px 0;
+    }
+
+    .end-screen .result-item {
+      text-align: center;
+    }
+
+    .end-screen .result-num {
+      font-size: 2.5rem;
+      font-weight: bold;
+    }
+
+    .end-screen .liked-list {
+      margin-top: 24px;
+      text-align: left;
+      max-width: 300px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .end-screen .liked-list h3 {
+      color: #06d6a0;
+      margin-bottom: 8px;
+    }
+
+    .end-screen .liked-list li {
+      list-style: none;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      font-size: 0.95rem;
+    }
+
+    .restart-btn {
+      margin-top: 24px;
+      padding: 12px 32px;
+      border: 2px solid #f7c948;
+      background: transparent;
+      color: #f7c948;
+      border-radius: 30px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .restart-btn:hover { background: rgba(247,201,72,0.15); }
+
+    /* Card flying away animation */
+    .card.fly-left {
+      transition: transform 0.5s ease, opacity 0.5s ease;
+      transform: translateX(-150%) rotate(-30deg) !important;
+      opacity: 0;
+    }
+
+    .card.fly-right {
+      transition: transform 0.5s ease, opacity 0.5s ease;
+      transform: translateX(150%) rotate(30deg) !important;
+      opacity: 0;
+    }
+
+    /* SVG crab styles */
+    .crab-svg {
+      width: 180px;
+      height: 180px;
+      z-index: 1;
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+      animation: crab-idle 2s ease-in-out infinite;
+    }
+
+    @keyframes crab-idle {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      25% { transform: translateY(-5px) rotate(1deg); }
+      75% { transform: translateY(-3px) rotate(-1deg); }
+    }
+
+    @media (max-width: 400px) {
+      .swiper-container { width: 300px; height: 440px; }
+      .header h1 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-link">&larr; Home</a>
+
+  <div class="header">
+    <h1>Crab Breed Swiper</h1>
+    <p>Swipe right if you'd befriend this crab</p>
+  </div>
+
+  <div class="scoreboard">
+    <span class="score-nope">&#x2717; <span class="score-num" id="nope-count">0</span></span>
+    <span class="score-like">&#x2764; <span class="score-num" id="like-count">0</span></span>
+  </div>
+
+  <div class="swiper-container" id="swiper"></div>
+
+  <div class="controls" id="controls">
+    <button class="btn btn-nope" id="btn-nope" title="Nope">&#x2717;</button>
+    <button class="btn btn-info" id="btn-shuffle" title="Shuffle">&#x1F500;</button>
+    <button class="btn btn-like" id="btn-like" title="Like">&#x2764;</button>
+  </div>
+
+  <div class="end-screen" id="end-screen">
+    <h2>You've seen all the crabs!</h2>
+    <div class="results">
+      <div class="result-item">
+        <div class="result-num score-nope" id="final-nope">0</div>
+        <div>Noped</div>
+      </div>
+      <div class="result-item">
+        <div class="result-num score-like" id="final-like">0</div>
+        <div>Liked</div>
+      </div>
+    </div>
+    <div class="liked-list" id="liked-list">
+      <h3>Your Crab Squad:</h3>
+      <ul id="liked-names"></ul>
+    </div>
+    <button class="restart-btn" id="restart-btn">Go Again</button>
+  </div>
+
+  <script>
+    const crabs = [
+      {
+        name: "Blue Crab",
+        scientific: "Callinectes sapidus",
+        fact: "Their scientific name means 'beautiful savory swimmer'. They can swim sideways using paddle-shaped back legs and are the state crustacean of Maryland.",
+        tags: ["swimmer", "tasty", "east coast"],
+        bodyColor: "#2274a5",
+        shellColor: "#1b5e7a",
+        clawColor: "#3498db",
+        legColor: "#2980b9",
+        bgGrad: ["#0a3d62", "#1e6f9f"],
+        eyeColor: "#e74c3c"
+      },
+      {
+        name: "Red King Crab",
+        scientific: "Paralithodes camtschaticus",
+        fact: "Leg span can reach 6 feet! Despite the name, they aren't true crabs — they're more closely related to hermit crabs. One of the most prized seafood species on Earth.",
+        tags: ["massive", "alaska", "royalty"],
+        bodyColor: "#c0392b",
+        shellColor: "#922b21",
+        clawColor: "#e74c3c",
+        legColor: "#d63031",
+        bgGrad: ["#4a1a2e", "#8b3a3a"],
+        eyeColor: "#f1c40f"
+      },
+      {
+        name: "Coconut Crab",
+        scientific: "Birgus latro",
+        fact: "The largest land-living arthropod! They can crack coconuts with their claws, climb trees, and have an incredible sense of smell. They can live up to 60 years.",
+        tags: ["giant", "land dweller", "strong"],
+        bodyColor: "#6d4c41",
+        shellColor: "#4e342e",
+        clawColor: "#8d6e63",
+        legColor: "#795548",
+        bgGrad: ["#2d1b0e", "#5d4037"],
+        eyeColor: "#ff9800"
+      },
+      {
+        name: "Japanese Spider Crab",
+        scientific: "Macrocheira kaempferi",
+        fact: "Has the longest leg span of any arthropod — up to 12.5 feet! Despite their terrifying appearance, they're gentle giants that scavenge the deep sea floor.",
+        tags: ["deep sea", "enormous", "gentle"],
+        bodyColor: "#e65100",
+        shellColor: "#bf360c",
+        clawColor: "#ff6d00",
+        legColor: "#d84315",
+        bgGrad: ["#1a237e", "#0d47a1"],
+        eyeColor: "#fff176"
+      },
+      {
+        name: "Dungeness Crab",
+        scientific: "Metacarcinus magister",
+        fact: "Named after a small fishing village in Washington state. They prefer sandy ocean floors and are the most commercially important crab on the west coast.",
+        tags: ["west coast", "sandy", "delicious"],
+        bodyColor: "#d4a574",
+        shellColor: "#b8864e",
+        clawColor: "#e8c49a",
+        legColor: "#c9956b",
+        bgGrad: ["#1b4332", "#2d6a4f"],
+        eyeColor: "#2c3e50"
+      },
+      {
+        name: "Horseshoe Crab",
+        scientific: "Limulus polyphemus",
+        fact: "Not actually a crab! They're more related to spiders and scorpions. Their blue blood is used in medicine to test for bacterial contamination. 450 million years old!",
+        tags: ["ancient", "blue blood", "living fossil"],
+        bodyColor: "#5d6d7e",
+        shellColor: "#4a5568",
+        clawColor: "#718096",
+        legColor: "#607D8B",
+        bgGrad: ["#1a1a2e", "#16213e"],
+        eyeColor: "#27ae60"
+      },
+      {
+        name: "Fiddler Crab",
+        scientific: "Uca pugilator",
+        fact: "Males have one massive claw that can be up to half their body weight! They wave it around to attract mates and intimidate rivals. It's basically a crab bicep curl.",
+        tags: ["one big claw", "beach", "showoff"],
+        bodyColor: "#f39c12",
+        shellColor: "#d68910",
+        clawColor: "#f1c40f",
+        legColor: "#e67e22",
+        bgGrad: ["#2c3e50", "#34495e"],
+        eyeColor: "#1abc9c"
+      },
+      {
+        name: "Snow Crab",
+        scientific: "Chionoecetes opilio",
+        fact: "They live in the icy waters of the North Atlantic and North Pacific. Their populations have recently crashed due to warming oceans — billions vanished from Alaska.",
+        tags: ["arctic", "long legs", "endangered"],
+        bodyColor: "#aed6f1",
+        shellColor: "#85c1e9",
+        clawColor: "#d4e6f1",
+        legColor: "#a9cce3",
+        bgGrad: ["#154360", "#1a5276"],
+        eyeColor: "#2c3e50"
+      },
+      {
+        name: "Christmas Island Red Crab",
+        scientific: "Gecarcoidea natalis",
+        fact: "Every year, 50 million of these crabs migrate from the forest to the coast to spawn. Roads are closed and special crab bridges are built for their journey!",
+        tags: ["migration", "millions", "festive"],
+        bodyColor: "#e74c3c",
+        shellColor: "#c0392b",
+        clawColor: "#ff6b6b",
+        legColor: "#d63031",
+        bgGrad: ["#0b3d0b", "#1b5e20"],
+        eyeColor: "#f1c40f"
+      },
+      {
+        name: "Vampire Crab",
+        scientific: "Geosesarma dennerle",
+        fact: "Tiny crabs with striking purple/orange coloring and glowing yellow eyes. Popular in aquariums, they were only scientifically described in 2015 despite being sold as pets for years!",
+        tags: ["tiny", "colorful", "spooky"],
+        bodyColor: "#7b1fa2",
+        shellColor: "#6a1b9a",
+        clawColor: "#ab47bc",
+        legColor: "#8e24aa",
+        bgGrad: ["#1a1a2e", "#0d0d1a"],
+        eyeColor: "#ffeb3b"
+      },
+      {
+        name: "Porcelain Crab",
+        scientific: "Petrolisthes spp.",
+        fact: "Not true crabs — they're closely related to squat lobsters! They can autotomize (drop) their claws when threatened and regrow them. They filter-feed with feathery mouthparts.",
+        tags: ["delicate", "filter feeder", "sneaky"],
+        bodyColor: "#e8d5b7",
+        shellColor: "#d4bc94",
+        clawColor: "#f0e6d3",
+        legColor: "#dcc8a8",
+        bgGrad: ["#2c3e50", "#4a6741"],
+        eyeColor: "#c0392b"
+      },
+      {
+        name: "Yeti Crab",
+        scientific: "Kiwa hirsuta",
+        fact: "Discovered in 2005 near hydrothermal vents 7,500 feet deep! Their hairy claws host bacteria that may detoxify poisonous minerals from the vents. They're basically farming bacteria.",
+        tags: ["deep sea", "hairy", "weird"],
+        bodyColor: "#fdfbf7",
+        shellColor: "#ece4d4",
+        clawColor: "#fff8ef",
+        legColor: "#f5ebe0",
+        bgGrad: ["#1a1a2e", "#2d1f3d"],
+        eyeColor: "#e74c3c"
+      }
+    ];
+
+    function createCrabSVG(crab) {
+      const bc = crab.bodyColor;
+      const sc = crab.shellColor;
+      const cc = crab.clawColor;
+      const lc = crab.legColor;
+      const ec = crab.eyeColor;
+
+      return `<svg viewBox="0 0 200 200" class="crab-svg" xmlns="http://www.w3.org/2000/svg">
+        <!-- Legs (back) -->
+        <g>
+          <!-- Left legs -->
+          <line x1="55" y1="110" x2="15" y2="85" stroke="${lc}" stroke-width="5" stroke-linecap="round"/>
+          <line x1="15" y1="85" x2="8" y2="105" stroke="${lc}" stroke-width="4" stroke-linecap="round"/>
+          <line x1="50" y1="118" x2="12" y2="105" stroke="${lc}" stroke-width="5" stroke-linecap="round"/>
+          <line x1="12" y1="105" x2="5" y2="128" stroke="${lc}" stroke-width="4" stroke-linecap="round"/>
+          <line x1="48" y1="126" x2="14" y2="125" stroke="${lc}" stroke-width="5" stroke-linecap="round"/>
+          <line x1="14" y1="125" x2="8" y2="148" stroke="${lc}" stroke-width="4" stroke-linecap="round"/>
+
+          <!-- Right legs -->
+          <line x1="145" y1="110" x2="185" y2="85" stroke="${lc}" stroke-width="5" stroke-linecap="round"/>
+          <line x1="185" y1="85" x2="192" y2="105" stroke="${lc}" stroke-width="4" stroke-linecap="round"/>
+          <line x1="150" y1="118" x2="188" y2="105" stroke="${lc}" stroke-width="5" stroke-linecap="round"/>
+          <line x1="188" y1="105" x2="195" y2="128" stroke="${lc}" stroke-width="4" stroke-linecap="round"/>
+          <line x1="152" y1="126" x2="186" y2="125" stroke="${lc}" stroke-width="5" stroke-linecap="round"/>
+          <line x1="186" y1="125" x2="192" y2="148" stroke="${lc}" stroke-width="4" stroke-linecap="round"/>
+        </g>
+
+        <!-- Claws -->
+        <g>
+          <!-- Left claw arm -->
+          <line x1="60" y1="100" x2="30" y2="65" stroke="${cc}" stroke-width="6" stroke-linecap="round"/>
+          <!-- Left claw pincer -->
+          <ellipse cx="22" cy="55" rx="16" ry="12" fill="${cc}" transform="rotate(-20, 22, 55)"/>
+          <ellipse cx="18" cy="46" rx="12" ry="7" fill="${cc}" transform="rotate(-40, 18, 46)"/>
+          <line x1="12" y1="50" x2="28" y2="56" stroke="${sc}" stroke-width="2" stroke-linecap="round"/>
+
+          <!-- Right claw arm -->
+          <line x1="140" y1="100" x2="170" y2="65" stroke="${cc}" stroke-width="6" stroke-linecap="round"/>
+          <!-- Right claw pincer -->
+          <ellipse cx="178" cy="55" rx="16" ry="12" fill="${cc}" transform="rotate(20, 178, 55)"/>
+          <ellipse cx="182" cy="46" rx="12" ry="7" fill="${cc}" transform="rotate(40, 182, 46)"/>
+          <line x1="172" y1="56" x2="188" y2="50" stroke="${sc}" stroke-width="2" stroke-linecap="round"/>
+        </g>
+
+        <!-- Body/Shell -->
+        <ellipse cx="100" cy="115" rx="55" ry="35" fill="${bc}"/>
+        <ellipse cx="100" cy="110" rx="50" ry="30" fill="${sc}" opacity="0.4"/>
+
+        <!-- Shell pattern -->
+        <path d="M70 105 Q100 90 130 105" stroke="${sc}" stroke-width="2" fill="none" opacity="0.5"/>
+        <path d="M75 115 Q100 100 125 115" stroke="${sc}" stroke-width="1.5" fill="none" opacity="0.4"/>
+
+        <!-- Eye stalks -->
+        <line x1="82" y1="90" x2="75" y2="72" stroke="${bc}" stroke-width="4" stroke-linecap="round"/>
+        <line x1="118" y1="90" x2="125" y2="72" stroke="${bc}" stroke-width="4" stroke-linecap="round"/>
+
+        <!-- Eyes -->
+        <circle cx="75" cy="70" r="7" fill="white"/>
+        <circle cx="125" cy="70" r="7" fill="white"/>
+        <circle cx="76" cy="69" r="4.5" fill="${ec}"/>
+        <circle cx="126" cy="69" r="4.5" fill="${ec}"/>
+        <circle cx="77" cy="68" r="2" fill="white" opacity="0.8"/>
+        <circle cx="127" cy="68" r="2" fill="white" opacity="0.8"/>
+
+        <!-- Mouth -->
+        <ellipse cx="100" cy="128" rx="6" ry="3" fill="${sc}" opacity="0.6"/>
+
+        <!-- Bubbles -->
+        <circle cx="95" cy="135" r="2.5" fill="white" opacity="0.3">
+          <animate attributeName="cy" values="135;125;115" dur="2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.3;0.1;0" dur="2s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx="105" cy="138" r="1.8" fill="white" opacity="0.2">
+          <animate attributeName="cy" values="138;126;114" dur="2.5s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.2;0.1;0" dur="2.5s" repeatCount="indefinite"/>
+        </circle>
+      </svg>`;
+    }
+
+    function createBubbles(colors) {
+      let html = '';
+      for (let i = 0; i < 6; i++) {
+        const size = 40 + Math.random() * 80;
+        const left = Math.random() * 100;
+        const top = Math.random() * 100;
+        const delay = Math.random() * 4;
+        const color = colors[i % 2];
+        html += `<div class="bubble" style="
+          width:${size}px; height:${size}px;
+          left:${left}%; top:${top}%;
+          background:${color};
+          animation-delay:${delay}s;
+        "></div>`;
+      }
+      return html;
+    }
+
+    // State
+    let deck = [];
+    let currentIndex = 0;
+    let likes = 0;
+    let nopes = 0;
+    let likedCrabs = [];
+
+    function shuffle(arr) {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function init() {
+      deck = shuffle(crabs);
+      currentIndex = 0;
+      likes = 0;
+      nopes = 0;
+      likedCrabs = [];
+      document.getElementById('nope-count').textContent = '0';
+      document.getElementById('like-count').textContent = '0';
+      document.getElementById('end-screen').style.display = 'none';
+      document.getElementById('controls').style.display = 'flex';
+      document.querySelector('.swiper-container').style.display = 'block';
+      document.querySelector('.scoreboard').style.display = 'flex';
+      renderCards();
+    }
+
+    function renderCards() {
+      const container = document.getElementById('swiper');
+      container.innerHTML = '';
+
+      // Show current and next card (next behind current)
+      const count = Math.min(2, deck.length - currentIndex);
+      for (let i = count - 1; i >= 0; i--) {
+        const idx = currentIndex + i;
+        const crab = deck[idx];
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.background = `linear-gradient(135deg, ${crab.bgGrad[0]}, ${crab.bgGrad[1]})`;
+
+        if (i === 1) {
+          card.style.transform = 'scale(0.95) translateY(10px)';
+          card.style.zIndex = '1';
+        } else {
+          card.style.zIndex = '2';
+          card.dataset.active = 'true';
+        }
+
+        card.innerHTML = `
+          <div class="card-inner">
+            <div class="card-image">
+              ${createBubbles(crab.bgGrad)}
+              ${createCrabSVG(crab)}
+            </div>
+            <div class="card-info">
+              <h2>${crab.name}</h2>
+              <div class="scientific">${crab.scientific}</div>
+              <div class="facts">${crab.fact}</div>
+              <div class="tags">
+                ${crab.tags.map(t => `<span class="tag">${t}</span>`).join('')}
+              </div>
+            </div>
+          </div>
+          <div class="stamp stamp-like">Like</div>
+          <div class="stamp stamp-nope">Nope</div>
+        `;
+
+        container.appendChild(card);
+
+        if (i === 0) setupDrag(card);
+      }
+    }
+
+    function setupDrag(card) {
+      let startX = 0, offsetX = 0, isDragging = false;
+      const stampLike = card.querySelector('.stamp-like');
+      const stampNope = card.querySelector('.stamp-nope');
+
+      function onStart(x) {
+        isDragging = true;
+        startX = x;
+        card.style.transition = 'none';
+      }
+
+      function onMove(x) {
+        if (!isDragging) return;
+        offsetX = x - startX;
+        const rotate = offsetX * 0.08;
+        card.style.transform = `translateX(${offsetX}px) rotate(${rotate}deg)`;
+
+        const progress = Math.min(Math.abs(offsetX) / 120, 1);
+        if (offsetX > 0) {
+          stampLike.style.opacity = progress;
+          stampNope.style.opacity = 0;
+        } else {
+          stampNope.style.opacity = progress;
+          stampLike.style.opacity = 0;
+        }
+      }
+
+      function onEnd() {
+        if (!isDragging) return;
+        isDragging = false;
+        card.style.transition = 'transform 0.3s ease';
+
+        if (offsetX > 100) {
+          swipe('right');
+        } else if (offsetX < -100) {
+          swipe('left');
+        } else {
+          card.style.transform = '';
+          stampLike.style.opacity = 0;
+          stampNope.style.opacity = 0;
+        }
+        offsetX = 0;
+      }
+
+      // Mouse
+      card.addEventListener('mousedown', e => { e.preventDefault(); onStart(e.clientX); });
+      window.addEventListener('mousemove', e => onMove(e.clientX));
+      window.addEventListener('mouseup', onEnd);
+
+      // Touch
+      card.addEventListener('touchstart', e => onStart(e.touches[0].clientX), { passive: true });
+      window.addEventListener('touchmove', e => onMove(e.touches[0].clientX));
+      window.addEventListener('touchend', onEnd);
+    }
+
+    function swipe(dir) {
+      const card = document.querySelector('.card[data-active="true"]');
+      if (!card) return;
+
+      card.classList.add(dir === 'right' ? 'fly-right' : 'fly-left');
+
+      if (dir === 'right') {
+        likes++;
+        likedCrabs.push(deck[currentIndex].name);
+        document.getElementById('like-count').textContent = likes;
+      } else {
+        nopes++;
+        document.getElementById('nope-count').textContent = nopes;
+      }
+
+      currentIndex++;
+
+      setTimeout(() => {
+        if (currentIndex >= deck.length) {
+          showEnd();
+        } else {
+          renderCards();
+        }
+      }, 400);
+    }
+
+    function showEnd() {
+      document.getElementById('swiper').innerHTML = '';
+      document.getElementById('controls').style.display = 'none';
+      document.querySelector('.swiper-container').style.display = 'none';
+      document.querySelector('.scoreboard').style.display = 'none';
+
+      const end = document.getElementById('end-screen');
+      end.style.display = 'block';
+      document.getElementById('final-like').textContent = likes;
+      document.getElementById('final-nope').textContent = nopes;
+
+      const list = document.getElementById('liked-names');
+      list.innerHTML = '';
+      if (likedCrabs.length === 0) {
+        list.innerHTML = '<li>No crabs? You monster.</li>';
+      } else {
+        likedCrabs.forEach(name => {
+          const li = document.createElement('li');
+          li.textContent = name;
+          list.appendChild(li);
+        });
+      }
+    }
+
+    // Button handlers
+    document.getElementById('btn-like').addEventListener('click', () => swipe('right'));
+    document.getElementById('btn-nope').addEventListener('click', () => swipe('left'));
+    document.getElementById('btn-shuffle').addEventListener('click', () => {
+      const remaining = deck.slice(currentIndex);
+      const shuffled = shuffle(remaining);
+      deck = [...deck.slice(0, currentIndex), ...shuffled];
+      renderCards();
+    });
+    document.getElementById('restart-btn').addEventListener('click', init);
+
+    // Keyboard support
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight') swipe('right');
+      if (e.key === 'ArrowLeft') swipe('left');
+    });
+
+    // Start
+    init();
+  </script>
+</body>
+</html>
