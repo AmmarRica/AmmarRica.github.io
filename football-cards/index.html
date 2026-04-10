@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gridiron Legends - RPG Football Cards</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;600;700&family=Press+Start+2P&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #0a0a12;
+    color: #e0e0e0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .back-link {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    color: #aaa;
+    text-decoration: none;
+    font-size: 14px;
+    z-index: 100;
+    transition: color .2s;
+  }
+  .back-link:hover { color: #fff; }
+
+  header {
+    text-align: center;
+    padding: 28px 16px 8px;
+  }
+  header h1 {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(22px, 5vw, 36px);
+    background: linear-gradient(135deg, #f5c842, #e8922d);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  header p {
+    font-size: 13px;
+    color: #777;
+    margin-top: 4px;
+  }
+
+  .card-counter {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    color: #f5c842;
+    margin: 10px 0 6px;
+  }
+
+  /* ── Swiper container ── */
+  .swiper-area {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    height: 580px;
+    perspective: 1000px;
+    touch-action: pan-y;
+    margin: 0 auto;
+  }
+
+  /* ── Card ── */
+  .card {
+    position: absolute;
+    width: 92%;
+    left: 4%;
+    top: 0;
+    height: 100%;
+    border-radius: 16px;
+    overflow: hidden;
+    transition: transform .35s ease, opacity .35s ease;
+    cursor: grab;
+    user-select: none;
+    will-change: transform;
+    display: flex;
+    flex-direction: column;
+  }
+  .card.active { z-index: 10; }
+  .card.next { z-index: 5; transform: scale(.95) translateY(12px); opacity: .6; }
+  .card.hidden { display: none; }
+
+  /* outer border gradient */
+  .card-border {
+    flex: 1;
+    border-radius: 16px;
+    padding: 3px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .card-inner {
+    flex: 1;
+    background: #111118;
+    border-radius: 13px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Portrait area ── */
+  .card-portrait {
+    height: 190px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .card-portrait::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 50px;
+    background: linear-gradient(transparent, #111118);
+  }
+  .portrait-icon {
+    font-size: 90px;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,.5));
+    z-index: 1;
+  }
+
+  /* OVR badge */
+  .ovr-badge {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    background: rgba(0,0,0,.7);
+    border: 2px solid;
+    border-radius: 10px;
+    padding: 4px 10px;
+    font-family: 'Cinzel', serif;
+    font-weight: 900;
+    font-size: 22px;
+    z-index: 2;
+    line-height: 1;
+  }
+  .ovr-label {
+    font-size: 8px;
+    letter-spacing: 2px;
+    display: block;
+    text-align: center;
+    opacity: .7;
+  }
+
+  /* Position badge */
+  .pos-badge {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    background: rgba(0,0,0,.7);
+    border: 2px solid;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    z-index: 2;
+    letter-spacing: 1px;
+  }
+
+  /* ── Card body ── */
+  .card-body {
+    flex: 1;
+    padding: 12px 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .player-name {
+    font-family: 'Cinzel', serif;
+    font-size: 18px;
+    font-weight: 900;
+    text-align: center;
+    line-height: 1.15;
+  }
+  .player-nickname {
+    font-size: 12px;
+    text-align: center;
+    opacity: .6;
+    font-style: italic;
+    margin-top: -4px;
+  }
+
+  /* Stats grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px 14px;
+  }
+  .stat-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    width: 42px;
+    flex-shrink: 0;
+    opacity: .7;
+  }
+  .stat-bar-bg {
+    flex: 1;
+    height: 8px;
+    background: rgba(255,255,255,.08);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .stat-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .6s ease;
+  }
+  .stat-val {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    width: 18px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  /* Personality */
+  .personality-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .personality-tag {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Abilities */
+  .abilities-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+  }
+  .ability-chip {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    white-space: nowrap;
+  }
+  .ability-chip .ability-type {
+    font-size: 8px;
+    opacity: .5;
+    margin-right: 3px;
+    text-transform: uppercase;
+  }
+
+  /* Info button */
+  .info-btn {
+    display: block;
+    margin: 4px auto 0;
+    background: none;
+    border: 1px solid rgba(255,255,255,.2);
+    color: #ccc;
+    padding: 5px 24px;
+    border-radius: 20px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .info-btn:hover { border-color: #f5c842; color: #f5c842; }
+
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    gap: 16px;
+    margin: 16px 0 10px;
+    align-items: center;
+  }
+  .ctrl-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.15);
+    background: rgba(255,255,255,.04);
+    color: #ccc;
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .ctrl-btn:hover { border-color: #f5c842; color: #f5c842; }
+  .ctrl-btn:active { transform: scale(.9); }
+
+  .swipe-hint {
+    font-size: 11px;
+    color: #555;
+    margin-bottom: 20px;
+  }
+
+  /* ── Info Modal ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.85);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.active { display: flex; }
+
+  .modal-card {
+    background: #16161f;
+    border-radius: 16px;
+    max-width: 400px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 24px;
+    position: relative;
+    border: 2px solid #333;
+  }
+  .modal-close {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 24px;
+    cursor: pointer;
+  }
+  .modal-close:hover { color: #fff; }
+
+  .modal-header {
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .modal-header .portrait-icon { font-size: 60px; }
+  .modal-name {
+    font-family: 'Cinzel', serif;
+    font-size: 22px;
+    font-weight: 900;
+    margin-top: 8px;
+  }
+  .modal-pos-ovr {
+    font-size: 13px;
+    color: #999;
+    margin-top: 2px;
+  }
+
+  .modal-section {
+    margin-top: 16px;
+  }
+  .modal-section h3 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: #f5c842;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  .modal-bio {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #bbb;
+  }
+  .modal-stats-list {
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .modal-stats-list li {
+    display: flex;
+    justify-content: space-between;
+    background: rgba(255,255,255,.04);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .modal-stats-list .ms-val {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+  }
+  .modal-abilities-list {
+    list-style: none;
+  }
+  .modal-abilities-list li {
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+    font-size: 13px;
+  }
+  .modal-abilities-list li:last-child { border-bottom: none; }
+  .modal-abilities-list .ma-type {
+    font-size: 10px;
+    opacity: .5;
+    text-transform: uppercase;
+    margin-right: 6px;
+  }
+  .modal-personality {
+    display: inline-block;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 1px solid;
+  }
+  .modal-growth {
+    font-size: 12px;
+    color: #999;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+
+<a href="/" class="back-link">&larr; Home</a>
+
+<header>
+  <h1>Gridiron Legends</h1>
+  <p>RPG Football Player Cards</p>
+</header>
+
+<div class="card-counter" id="counter">1 / 12</div>
+
+<div class="swiper-area" id="swiperArea"></div>
+
+<div class="controls">
+  <button class="ctrl-btn" id="prevBtn">&#8592;</button>
+  <button class="ctrl-btn" id="nextBtn">&#8594;</button>
+</div>
+
+<p class="swipe-hint">Swipe or use arrows to browse</p>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal-card" id="modalCard">
+    <button class="modal-close" id="modalClose">&times;</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<script>
+const PLAYERS = [
+  {
+    name: "Marcus Johnson",
+    nickname: "Thunder",
+    position: "RB",
+    ovr: 88,
+    color: "#c0392b",
+    icon: "\u{1F3C8}",
+    speed: 6, power: 9, hands: 6, awareness: 8,
+    personality: "Aggressive",
+    personalityColor: "#e74c3c",
+    growthEffect: "+Power growth, \u2212Awareness growth",
+    abilities: [
+      { type: "Active", name: "Stiff Arm" },
+      { type: "Passive", name: "Intimidation Aura" },
+      { type: "Reaction", name: "Brace for Impact" }
+    ],
+    bio: "A bruising back who punishes defenders at the point of attack. Built like a tank with a mean streak."
+  },
+  {
+    name: "Dante Williams",
+    nickname: "Flash",
+    position: "WR",
+    ovr: 91,
+    color: "#f39c12",
+    icon: "\u26A1",
+    speed: 10, power: 4, hands: 9, awareness: 8,
+    personality: "Shifty",
+    personalityColor: "#3498db",
+    growthEffect: "+Speed growth, \u2212Power growth",
+    abilities: [
+      { type: "Active", name: "Spin Move" },
+      { type: "Passive", name: "+Catch Radius" }
+    ],
+    bio: "Blazing speed and sticky hands make him uncoverable on deep routes. A true game-breaker."
+  },
+  {
+    name: "Ray Castellano",
+    nickname: "Big Ray",
+    position: "OL",
+    ovr: 85,
+    color: "#7f8c8d",
+    icon: "\u{1F6E1}\uFE0F",
+    speed: 3, power: 10, hands: 5, awareness: 9,
+    personality: "Lazy",
+    personalityColor: "#95a5a6",
+    growthEffect: "Slower growth but higher stat ceiling",
+    abilities: [
+      { type: "Active", name: "Pancake Block" },
+      { type: "Passive", name: "+Stamina Regen" }
+    ],
+    bio: "Slow to develop but becomes an immovable wall given time. Anchors any offensive line."
+  },
+  {
+    name: "Zion Okafor",
+    nickname: "The Wall",
+    position: "DL",
+    ovr: 87,
+    color: "#27ae60",
+    icon: "\u{1F4A5}",
+    speed: 5, power: 10, hands: 6, awareness: 7,
+    personality: "Aggressive",
+    personalityColor: "#e74c3c",
+    growthEffect: "+Power growth, \u2212Awareness growth",
+    abilities: [
+      { type: "Active", name: "Bull Rush" },
+      { type: "Passive", name: "Intimidation Aura" },
+      { type: "Reaction", name: "Brace for Impact" }
+    ],
+    bio: "Collapses pockets with raw power and a relentless motor. Offensive lines fear him."
+  },
+  {
+    name: "Jasper Reeves",
+    nickname: "Hawk",
+    position: "S",
+    ovr: 89,
+    color: "#16a085",
+    icon: "\u{1F985}",
+    speed: 8, power: 6, hands: 8, awareness: 10,
+    personality: "Clutch",
+    personalityColor: "#f5c842",
+    growthEffect: "+All stats in high-pressure moments",
+    abilities: [
+      { type: "Active", name: "Ball Hawk" },
+      { type: "Passive", name: "+Reaction Time" }
+    ],
+    bio: "Reads quarterbacks like a book and always finds the ball. A centerfielder with instincts."
+  },
+  {
+    name: "Ricky Delgado",
+    nickname: "Hotshot",
+    position: "QB",
+    ovr: 90,
+    color: "#2980b9",
+    icon: "\u{1F451}",
+    speed: 7, power: 5, hands: 8, awareness: 9,
+    personality: "Hotdog",
+    personalityColor: "#e67e22",
+    growthEffect: "+Speed, +Hands, \u2212Team synergy",
+    abilities: [
+      { type: "Active", name: "Bullet Pass" },
+      { type: "Passive", name: "Accuracy Under Pressure" },
+      { type: "Reaction", name: "Auto-Juke" }
+    ],
+    bio: "A showman with an arm cannon who lives for the highlight reel. Born entertainer."
+  },
+  {
+    name: "Tommy Novak",
+    nickname: "Ice",
+    position: "K",
+    ovr: 82,
+    color: "#2c3e50",
+    icon: "\u{1F9CA}",
+    speed: 4, power: 7, hands: 5, awareness: 9,
+    personality: "Clutch",
+    personalityColor: "#f5c842",
+    growthEffect: "+All stats in high-pressure moments",
+    abilities: [
+      { type: "Active", name: "Power Kick" },
+      { type: "Passive", name: "Pressure Immunity" }
+    ],
+    bio: "Nerves of steel when the game is on the line. Automatic from fifty yards out."
+  },
+  {
+    name: "DeAndre Mitchell",
+    nickname: "Smoke",
+    position: "CB",
+    ovr: 86,
+    color: "#8e44ad",
+    icon: "\u{1F32B}\uFE0F",
+    speed: 9, power: 4, hands: 7, awareness: 8,
+    personality: "Shifty",
+    personalityColor: "#3498db",
+    growthEffect: "+Speed growth, \u2212Power growth",
+    abilities: [
+      { type: "Active", name: "Press Coverage" },
+      { type: "Passive", name: "+Man Coverage" }
+    ],
+    bio: "A lockdown corner with quick feet and mirror technique. Receivers disappear against him."
+  },
+  {
+    name: "Bubba Lewis",
+    nickname: "Freight Train",
+    position: "FB",
+    ovr: 83,
+    color: "#6c3b2a",
+    icon: "\u{1F682}",
+    speed: 5, power: 9, hands: 6, awareness: 7,
+    personality: "Aggressive",
+    personalityColor: "#e74c3c",
+    growthEffect: "+Power growth, \u2212Awareness growth",
+    abilities: [
+      { type: "Active", name: "Lead Block" },
+      { type: "Passive", name: "+Team Synergy" },
+      { type: "Reaction", name: "Brace for Impact" }
+    ],
+    bio: "Clears lanes with devastating blocks and zero hesitation. Old-school football enforcer."
+  },
+  {
+    name: "Miles Tanaka",
+    nickname: "Glitch",
+    position: "WR",
+    ovr: 88,
+    color: "#f39c12",
+    icon: "\u{1F91F}",
+    speed: 9, power: 3, hands: 10, awareness: 7,
+    personality: "Hotdog",
+    personalityColor: "#e67e22",
+    growthEffect: "+Speed, +Hands, \u2212Team synergy",
+    abilities: [
+      { type: "Active", name: "One-Hand Grab" },
+      { type: "Passive", name: "+Catch Radius" }
+    ],
+    bio: "Makes impossible catches look routine with supernatural hands. A living highlight reel."
+  },
+  {
+    name: "Cortez Washington",
+    nickname: "General",
+    position: "MLB",
+    ovr: 92,
+    color: "#d35400",
+    icon: "\u{1FA96}",
+    speed: 7, power: 8, hands: 7, awareness: 10,
+    personality: "Clutch",
+    personalityColor: "#f5c842",
+    growthEffect: "+All stats in high-pressure moments",
+    abilities: [
+      { type: "Active", name: "Strip Tackle" },
+      { type: "Passive", name: "Field General Aura" },
+      { type: "Reaction", name: "Auto-Blitz Read" }
+    ],
+    bio: "The defensive quarterback who orchestrates chaos from the middle. Born leader."
+  },
+  {
+    name: "Jalen Price",
+    nickname: "Rocket",
+    position: "KR",
+    ovr: 84,
+    color: "#c0392b",
+    icon: "\u{1F680}",
+    speed: 10, power: 3, hands: 8, awareness: 6,
+    personality: "Shifty",
+    personalityColor: "#3498db",
+    growthEffect: "+Speed growth, \u2212Power growth",
+    abilities: [
+      { type: "Active", name: "Spin Move" },
+      { type: "Passive", name: "+Acceleration" },
+      { type: "Reaction", name: "Auto-Juke" }
+    ],
+    bio: "Electric in the open field with game-breaking return ability. Human joystick."
+  }
+];
+
+let currentIndex = 0;
+const swiperArea = document.getElementById('swiperArea');
+const counter = document.getElementById('counter');
+const modal = document.getElementById('modal');
+const modalContent = document.getElementById('modalContent');
+
+function statColor(val) {
+  if (val >= 9) return '#2ecc71';
+  if (val >= 7) return '#f5c842';
+  if (val >= 5) return '#e67e22';
+  return '#e74c3c';
+}
+
+function buildCard(player, idx) {
+  const card = document.createElement('div');
+  card.className = 'card hidden';
+  card.dataset.index = idx;
+
+  const abilitiesHTML = player.abilities.map(a =>
+    `<span class="ability-chip"><span class="ability-type">${a.type}</span>${a.name}</span>`
+  ).join('');
+
+  card.innerHTML = `
+    <div class="card-border" style="background: linear-gradient(135deg, ${player.color}, #222);">
+      <div class="card-inner">
+        <div class="card-portrait" style="background: radial-gradient(circle at 50% 40%, ${player.color}33, transparent 70%), linear-gradient(180deg, ${player.color}22, #111118);">
+          <div class="pos-badge" style="border-color: ${player.color}; color: ${player.color};">${player.position}</div>
+          <div class="ovr-badge" style="border-color: ${player.color}; color: ${player.color};">
+            <span class="ovr-label">OVR</span>
+            ${player.ovr}
+          </div>
+          <div class="portrait-icon">${player.icon}</div>
+        </div>
+        <div class="card-body">
+          <div class="player-name" style="color: ${player.color};">${player.name}</div>
+          <div class="player-nickname">"${player.nickname}"</div>
+          <div class="stats-grid">
+            ${buildStatRow('SPD', player.speed, player.color)}
+            ${buildStatRow('PWR', player.power, player.color)}
+            ${buildStatRow('HND', player.hands, player.color)}
+            ${buildStatRow('AWR', player.awareness, player.color)}
+          </div>
+          <div class="personality-row">
+            <span class="personality-tag" style="border-color: ${player.personalityColor}; color: ${player.personalityColor};">${player.personality}</span>
+          </div>
+          <div class="abilities-row">${abilitiesHTML}</div>
+          <button class="info-btn" onclick="openModal(${idx})">INFO</button>
+        </div>
+      </div>
+    </div>
+  `;
+  return card;
+}
+
+function buildStatRow(label, val, color) {
+  return `
+    <div class="stat-row">
+      <span class="stat-label">${label}</span>
+      <div class="stat-bar-bg">
+        <div class="stat-bar-fill" style="width:${val * 10}%; background: ${statColor(val)};"></div>
+      </div>
+      <span class="stat-val" style="color: ${statColor(val)};">${val}</span>
+    </div>
+  `;
+}
+
+function renderCards() {
+  swiperArea.innerHTML = '';
+  PLAYERS.forEach((p, i) => {
+    swiperArea.appendChild(buildCard(p, i));
+  });
+  updateDisplay();
+}
+
+function updateDisplay() {
+  const cards = swiperArea.querySelectorAll('.card');
+  cards.forEach((c, i) => {
+    c.className = 'card hidden';
+    if (i === currentIndex) c.className = 'card active';
+    else if (i === currentIndex + 1) c.className = 'card next';
+  });
+  counter.textContent = `${currentIndex + 1} / ${PLAYERS.length}`;
+}
+
+function goNext() {
+  if (currentIndex < PLAYERS.length - 1) {
+    const active = swiperArea.querySelector('.card.active');
+    if (active) {
+      active.style.transform = 'translateX(-120%) rotate(-8deg)';
+      active.style.opacity = '0';
+    }
+    setTimeout(() => {
+      currentIndex++;
+      updateDisplay();
+      const newActive = swiperArea.querySelector('.card.active');
+      if (newActive) {
+        newActive.style.transform = '';
+        newActive.style.opacity = '';
+      }
+    }, 200);
+  }
+}
+
+function goPrev() {
+  if (currentIndex > 0) {
+    currentIndex--;
+    updateDisplay();
+    const active = swiperArea.querySelector('.card.active');
+    if (active) {
+      active.style.transform = '';
+      active.style.opacity = '';
+    }
+  }
+}
+
+/* Touch / mouse drag */
+let startX = 0, deltaX = 0, dragging = false;
+swiperArea.addEventListener('touchstart', e => {
+  startX = e.touches[0].clientX;
+  dragging = true;
+}, { passive: true });
+swiperArea.addEventListener('touchmove', e => {
+  if (!dragging) return;
+  deltaX = e.touches[0].clientX - startX;
+  const active = swiperArea.querySelector('.card.active');
+  if (active) {
+    active.style.transform = `translateX(${deltaX}px) rotate(${deltaX * 0.04}deg)`;
+  }
+}, { passive: true });
+swiperArea.addEventListener('touchend', () => {
+  dragging = false;
+  if (deltaX < -60) goNext();
+  else if (deltaX > 60) goPrev();
+  else {
+    const active = swiperArea.querySelector('.card.active');
+    if (active) { active.style.transform = ''; active.style.opacity = ''; }
+  }
+  deltaX = 0;
+});
+
+/* Mouse drag */
+swiperArea.addEventListener('mousedown', e => { startX = e.clientX; dragging = true; });
+swiperArea.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  deltaX = e.clientX - startX;
+  const active = swiperArea.querySelector('.card.active');
+  if (active) {
+    active.style.transform = `translateX(${deltaX}px) rotate(${deltaX * 0.04}deg)`;
+  }
+});
+document.addEventListener('mouseup', () => {
+  if (!dragging) return;
+  dragging = false;
+  if (deltaX < -60) goNext();
+  else if (deltaX > 60) goPrev();
+  else {
+    const active = swiperArea.querySelector('.card.active');
+    if (active) { active.style.transform = ''; active.style.opacity = ''; }
+  }
+  deltaX = 0;
+});
+
+/* Keyboard */
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') goPrev();
+  if (e.key === 'ArrowRight') goNext();
+  if (e.key === 'Escape') closeModal();
+});
+
+document.getElementById('prevBtn').addEventListener('click', goPrev);
+document.getElementById('nextBtn').addEventListener('click', goNext);
+
+/* Modal */
+function openModal(idx) {
+  const p = PLAYERS[idx];
+  modalContent.innerHTML = `
+    <div class="modal-header">
+      <div class="portrait-icon">${p.icon}</div>
+      <div class="modal-name" style="color: ${p.color};">${p.name}</div>
+      <div class="modal-pos-ovr">${p.position} &bull; OVR ${p.ovr} &bull; "${p.nickname}"</div>
+    </div>
+    <div class="modal-section">
+      <h3>Scouting Report</h3>
+      <p class="modal-bio">${p.bio}</p>
+    </div>
+    <div class="modal-section">
+      <h3>Core Stats</h3>
+      <ul class="modal-stats-list">
+        <li><span>Speed</span><span class="ms-val" style="color:${statColor(p.speed)}">${p.speed}</span></li>
+        <li><span>Power</span><span class="ms-val" style="color:${statColor(p.power)}">${p.power}</span></li>
+        <li><span>Hands</span><span class="ms-val" style="color:${statColor(p.hands)}">${p.hands}</span></li>
+        <li><span>Awareness</span><span class="ms-val" style="color:${statColor(p.awareness)}">${p.awareness}</span></li>
+      </ul>
+    </div>
+    <div class="modal-section">
+      <h3>Personality</h3>
+      <span class="modal-personality" style="border-color: ${p.personalityColor}; color: ${p.personalityColor};">${p.personality}</span>
+      <p class="modal-growth">${p.growthEffect}</p>
+    </div>
+    <div class="modal-section">
+      <h3>Abilities</h3>
+      <ul class="modal-abilities-list">
+        ${p.abilities.map(a => `<li><span class="ma-type">${a.type}</span>${a.name}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+  modal.classList.add('active');
+}
+
+function closeModal() { modal.classList.remove('active'); }
+document.getElementById('modalClose').addEventListener('click', closeModal);
+modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+renderCards();
+</script>
+</body>
+</html>

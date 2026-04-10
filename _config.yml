@@ -59,6 +59,10 @@ navigation:
     url: /game-stats/
   - title: Dog Breed Swiper
     url: /dog-swiper/
+  - title: Crab Breed Swiper
+    url: /crab-breed-swiper/
+  - title: Gridiron Legends
+    url: /football-cards/
 
 future: true
 
