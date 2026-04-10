@@ -365,7 +365,8 @@ const BREEDS = [
   { slug: 'bordercollie',   name: 'Border Collie'      },
 ];
 
-const DOG_API = slug => `https://dog.ceo/api/breed/${slug}/images/random`;
+const DOG_API   = slug => `https://dog.ceo/api/breed/${slug}/images/random`;
+const IMG_CACHE = slug => `dogSwiper_img_${slug}`;
 
 // ── State ───────────────────────────────────────────────
 let deck       = [];   // remaining breed objects
@@ -430,21 +431,41 @@ function createCard(breed, isTop) {
       <div class="card__sub">Swipe right to like · left to skip</div>
     </div>`;
 
-  // Fetch image
+  // Fetch image (with localStorage cache fallback)
+  function applyImage(url) {
+    const img = document.createElement('img');
+    img.alt = breed.name;
+    img.onload = () => {
+      try { localStorage.setItem(IMG_CACHE(breed.slug), url); } catch (e) { console.warn('Failed to cache image:', e); }
+      const placeholder = card.querySelector('.card-placeholder');
+      if (placeholder) placeholder.replaceWith(img);
+    };
+    img.onerror = () => {
+      // Try the cached URL once if it differs from what we just tried
+      const cached = localStorage.getItem(IMG_CACHE(breed.slug));
+      if (cached && cached !== url) {
+        img.onerror = null; // prevent retrying if the cached URL also fails
+        img.src = cached;
+      }
+      // Otherwise keep the placeholder
+    };
+    img.src = url;
+  }
+
+  const cachedUrl = localStorage.getItem(IMG_CACHE(breed.slug));
   fetch(DOG_API(breed.slug))
     .then(r => r.json())
     .then(data => {
       if (data.status === 'success') {
-        const img = document.createElement('img');
-        img.src = data.message;
-        img.alt = breed.name;
-        img.onload = () => {
-          const placeholder = card.querySelector('.card-placeholder');
-          if (placeholder) placeholder.replaceWith(img);
-        };
+        applyImage(data.message);
+      } else if (cachedUrl) {
+        applyImage(cachedUrl);
       }
     })
-    .catch(() => {}); // keep placeholder on error
+    .catch(() => {
+      if (cachedUrl) applyImage(cachedUrl);
+      // else keep placeholder
+    });
 
   // Insert at bottom of stack
   cardStack.insertBefore(card, cardStack.firstChild);
