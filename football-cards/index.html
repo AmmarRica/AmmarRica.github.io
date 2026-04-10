@@ -317,6 +317,254 @@
     margin-bottom: 20px;
   }
 
+  /* ── Mode switcher ── */
+  .mode-switch {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0 14px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 24px;
+    padding: 4px;
+  }
+  .mode-btn {
+    background: none;
+    border: none;
+    color: #999;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 8px 18px;
+    border-radius: 20px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all .2s;
+  }
+  .mode-btn.active {
+    background: linear-gradient(135deg, #f5c842, #e8922d);
+    color: #111;
+  }
+  .mode-btn:hover:not(.active) { color: #fff; }
+
+  /* ── Battle mode ── */
+  .battle-view { display: none; flex-direction: column; align-items: center; width: 100%; }
+  .battle-view.active { display: flex; }
+  .collection-view { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  .collection-view.hidden { display: none; }
+
+  .scoreboard {
+    display: flex;
+    gap: 16px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    margin-bottom: 12px;
+  }
+  .score-box {
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 8px;
+    padding: 8px 14px;
+    text-align: center;
+  }
+  .score-box .score-label {
+    font-size: 8px;
+    opacity: .6;
+    display: block;
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+  }
+  .score-box.you { border-color: #2ecc71; color: #2ecc71; }
+  .score-box.cpu { border-color: #e74c3c; color: #e74c3c; }
+  .score-box.round { color: #f5c842; border-color: #f5c842; }
+
+  .battle-arena {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 420px;
+    padding: 0 12px;
+  }
+
+  .battle-slot-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    opacity: .6;
+    margin-top: 4px;
+  }
+  .battle-slot-label.you { color: #2ecc71; }
+  .battle-slot-label.cpu { color: #e74c3c; }
+
+  .battle-card-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 360px;
+    aspect-ratio: 360 / 430;
+  }
+
+  .battle-card {
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: transform .45s ease, opacity .45s ease;
+  }
+  .battle-card.face-down {
+    background: repeating-linear-gradient(45deg, #1a1a26, #1a1a26 10px, #22222e 10px, #22222e 20px);
+    border: 2px solid #333;
+    align-items: center;
+    justify-content: center;
+    color: #f5c842;
+    font-family: 'Cinzel', serif;
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 3px;
+  }
+  .battle-card.face-down::before {
+    content: 'GL';
+    font-size: 54px;
+    text-shadow: 0 0 18px rgba(245, 200, 66, 0.4);
+  }
+
+  .battle-card-inner {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #111118;
+    border-radius: 12px;
+  }
+  .battle-card-border {
+    flex: 1;
+    border-radius: 14px;
+    padding: 3px;
+    display: flex;
+    flex-direction: column;
+  }
+  .battle-portrait {
+    height: 130px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .battle-portrait .portrait-icon { font-size: 68px; }
+  .battle-portrait .pos-badge { top: 8px; left: 8px; font-size: 10px; padding: 4px 8px; }
+  .battle-portrait .ovr-badge { top: 8px; right: 8px; font-size: 18px; padding: 3px 8px; }
+  .battle-body {
+    flex: 1;
+    padding: 8px 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .battle-body .player-name { font-size: 15px; }
+  .battle-body .player-nickname { font-size: 10px; }
+
+  .battle-stat-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid transparent;
+    transition: all .2s;
+  }
+  .battle-stat-row.selectable { cursor: pointer; }
+  .battle-stat-row.selectable:hover {
+    background: rgba(245, 200, 66, .12);
+    border-color: rgba(245, 200, 66, .4);
+  }
+  .battle-stat-row.picked {
+    background: rgba(245, 200, 66, .18);
+    border-color: #f5c842;
+  }
+  .battle-stat-row.win { background: rgba(46, 204, 113, .18); border-color: #2ecc71; }
+  .battle-stat-row.lose { background: rgba(231, 76, 60, .18); border-color: #e74c3c; }
+
+  .battle-stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    width: 42px;
+    flex-shrink: 0;
+    opacity: .85;
+  }
+  .battle-stat-bar-bg {
+    flex: 1;
+    height: 8px;
+    background: rgba(255,255,255,.08);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .battle-stat-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .6s ease;
+  }
+  .battle-stat-val {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    width: 18px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .battle-status {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: #f5c842;
+    min-height: 18px;
+    text-align: center;
+    margin: 10px 0 6px;
+    letter-spacing: 1px;
+  }
+  .battle-status.win { color: #2ecc71; }
+  .battle-status.lose { color: #e74c3c; }
+  .battle-status.tie { color: #f5c842; }
+
+  .battle-controls {
+    display: flex;
+    gap: 10px;
+    margin: 6px 0 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .battle-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: 2px solid rgba(255,255,255,.15);
+    background: rgba(255,255,255,.04);
+    color: #ccc;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all .2s;
+  }
+  .battle-btn:hover:not(:disabled) { border-color: #f5c842; color: #f5c842; }
+  .battle-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .battle-btn.primary {
+    border-color: #f5c842;
+    color: #f5c842;
+    background: rgba(245, 200, 66, .08);
+  }
+
+  .battle-vs {
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    font-weight: 900;
+    color: #f5c842;
+    letter-spacing: 3px;
+    margin: 2px 0;
+    opacity: .7;
+  }
+
   /* ── Info Modal ── */
   .modal-overlay {
     display: none;
@@ -442,16 +690,48 @@
   <p>RPG Football Player Cards</p>
 </header>
 
-<div class="card-counter" id="counter">1 / 12</div>
-
-<div class="swiper-area" id="swiperArea"></div>
-
-<div class="controls">
-  <button class="ctrl-btn" id="prevBtn">&#8592;</button>
-  <button class="ctrl-btn" id="nextBtn">&#8594;</button>
+<div class="mode-switch" role="tablist">
+  <button class="mode-btn active" id="modeCollection" role="tab">COLLECTION</button>
+  <button class="mode-btn" id="modeBattle" role="tab">BATTLE</button>
 </div>
 
-<p class="swipe-hint">Swipe or use arrows to browse</p>
+<div class="collection-view" id="collectionView">
+  <div class="card-counter" id="counter">1 / 12</div>
+
+  <div class="swiper-area" id="swiperArea"></div>
+
+  <div class="controls">
+    <button class="ctrl-btn" id="prevBtn">&#8592;</button>
+    <button class="ctrl-btn" id="nextBtn">&#8594;</button>
+  </div>
+
+  <p class="swipe-hint">Swipe or use arrows to browse</p>
+</div>
+
+<div class="battle-view" id="battleView">
+  <div class="scoreboard">
+    <div class="score-box you"><span class="score-label">YOU</span><span id="scoreYou">0</span></div>
+    <div class="score-box round"><span class="score-label">ROUND</span><span id="scoreRound">1</span></div>
+    <div class="score-box cpu"><span class="score-label">CPU</span><span id="scoreCpu">0</span></div>
+  </div>
+
+  <div class="battle-arena">
+    <div class="battle-slot-label cpu">CPU</div>
+    <div class="battle-card-wrap" id="cpuCardWrap"></div>
+
+    <div class="battle-vs">VS</div>
+
+    <div class="battle-card-wrap" id="youCardWrap"></div>
+    <div class="battle-slot-label you">YOUR CARD &bull; tap a stat to challenge</div>
+  </div>
+
+  <div class="battle-status" id="battleStatus">Pick a stat to battle with!</div>
+
+  <div class="battle-controls">
+    <button class="battle-btn primary" id="nextRoundBtn" disabled>NEXT ROUND</button>
+    <button class="battle-btn" id="resetBattleBtn">RESET</button>
+  </div>
+</div>
 
 <div class="modal-overlay" id="modal">
   <div class="modal-card" id="modalCard">
@@ -671,6 +951,130 @@ const PLAYERS = [
       { type: "Reaction", name: "Auto-Juke" }
     ],
     bio: "Electric in the open field with game-breaking return ability. Human joystick."
+  },
+  {
+    name: "Kai Sullivan",
+    nickname: "Surgeon",
+    position: "QB",
+    ovr: 93,
+    color: "#2980b9",
+    icon: "\u{1F3AF}",
+    speed: 6, power: 6, hands: 9, awareness: 10,
+    personality: "Clutch",
+    personalityColor: "#f5c842",
+    growthEffect: "+All stats in high-pressure moments",
+    abilities: [
+      { type: "Active", name: "Precision Throw" },
+      { type: "Passive", name: "Field Vision" },
+      { type: "Reaction", name: "Pocket Escape" }
+    ],
+    bio: "A meticulous field general with pinpoint accuracy. Dissects defenses with methodical patience."
+  },
+  {
+    name: "Rashad Greene",
+    nickname: "Ghost",
+    position: "WR",
+    ovr: 87,
+    color: "#f39c12",
+    icon: "\u{1F47B}",
+    speed: 9, power: 4, hands: 9, awareness: 9,
+    personality: "Shifty",
+    personalityColor: "#3498db",
+    growthEffect: "+Speed growth, \u2212Power growth",
+    abilities: [
+      { type: "Active", name: "Double Move" },
+      { type: "Passive", name: "Route Master" }
+    ],
+    bio: "Vanishes from coverage with crisp route running. Defenders grasp at empty air."
+  },
+  {
+    name: "Iron Mike Petrov",
+    nickname: "Anvil",
+    position: "OL",
+    ovr: 90,
+    color: "#7f8c8d",
+    icon: "\u2692\uFE0F",
+    speed: 2, power: 10, hands: 4, awareness: 10,
+    personality: "Aggressive",
+    personalityColor: "#e74c3c",
+    growthEffect: "+Power growth, \u2212Awareness growth",
+    abilities: [
+      { type: "Active", name: "Crushing Block" },
+      { type: "Passive", name: "Unmovable Anchor" },
+      { type: "Reaction", name: "Counter Shove" }
+    ],
+    bio: "A granite cornerstone who never yields ground. The standard by which guards are measured."
+  },
+  {
+    name: "Tyrese Brooks",
+    nickname: "Blur",
+    position: "RB",
+    ovr: 89,
+    color: "#c0392b",
+    icon: "\u{1F3C3}",
+    speed: 10, power: 5, hands: 7, awareness: 7,
+    personality: "Shifty",
+    personalityColor: "#3498db",
+    growthEffect: "+Speed growth, \u2212Power growth",
+    abilities: [
+      { type: "Active", name: "Jump Cut" },
+      { type: "Passive", name: "+Breakaway Speed" }
+    ],
+    bio: "One missed tackle and he's gone. Outside zone runs become 80-yard touchdowns."
+  },
+  {
+    name: "Grigori Volkov",
+    nickname: "Beast",
+    position: "DL",
+    ovr: 91,
+    color: "#27ae60",
+    icon: "\u{1F43B}",
+    speed: 6, power: 10, hands: 7, awareness: 8,
+    personality: "Aggressive",
+    personalityColor: "#e74c3c",
+    growthEffect: "+Power growth, \u2212Awareness growth",
+    abilities: [
+      { type: "Active", name: "Swim Move" },
+      { type: "Passive", name: "Relentless Motor" },
+      { type: "Reaction", name: "Quarterback Hunt" }
+    ],
+    bio: "An unrelenting force off the edge. Quarterbacks develop nervous ticks when he lines up across."
+  },
+  {
+    name: "Santos Ibarra",
+    nickname: "Lockdown",
+    position: "CB",
+    ovr: 88,
+    color: "#8e44ad",
+    icon: "\u{1F512}",
+    speed: 9, power: 5, hands: 8, awareness: 9,
+    personality: "Clutch",
+    personalityColor: "#f5c842",
+    growthEffect: "+All stats in high-pressure moments",
+    abilities: [
+      { type: "Active", name: "Jam at the Line" },
+      { type: "Passive", name: "Mirror Technique" },
+      { type: "Reaction", name: "Ball Swat" }
+    ],
+    bio: "Glues himself to receivers from snap to whistle. The ultimate shutdown corner."
+  },
+  {
+    name: "Phoenix Adeyemi",
+    nickname: "Firestorm",
+    position: "OLB",
+    ovr: 90,
+    color: "#d35400",
+    icon: "\u{1F525}",
+    speed: 8, power: 8, hands: 7, awareness: 9,
+    personality: "Aggressive",
+    personalityColor: "#e74c3c",
+    growthEffect: "+Power growth, \u2212Awareness growth",
+    abilities: [
+      { type: "Active", name: "Speed Rush" },
+      { type: "Passive", name: "Intimidation Aura" },
+      { type: "Reaction", name: "Contain Edge" }
+    ],
+    bio: "Burns off the edge with unstoppable momentum. Sets the perimeter and collapses pockets."
   }
 ];
 
@@ -888,6 +1292,215 @@ document.getElementById('modalClose').addEventListener('click', closeModal);
 modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 
 renderCards();
+
+/* ─────────────────────────────────────────────
+   BATTLE MODE
+   Top-Trumps style card game: draw a random
+   card, pick a stat to challenge the CPU's
+   random card. Higher wins the round.
+   ───────────────────────────────────────────── */
+
+const STAT_KEYS = [
+  { key: 'speed', label: 'SPD', full: 'Speed' },
+  { key: 'power', label: 'PWR', full: 'Power' },
+  { key: 'hands', label: 'HND', full: 'Hands' },
+  { key: 'awareness', label: 'AWR', full: 'Awareness' }
+];
+
+const battleState = {
+  you: 0,
+  cpu: 0,
+  round: 1,
+  youCard: null,
+  cpuCard: null,
+  resolved: false,
+  cpuRevealed: false
+};
+
+const collectionView = document.getElementById('collectionView');
+const battleView = document.getElementById('battleView');
+const modeCollectionBtn = document.getElementById('modeCollection');
+const modeBattleBtn = document.getElementById('modeBattle');
+const youCardWrap = document.getElementById('youCardWrap');
+const cpuCardWrap = document.getElementById('cpuCardWrap');
+const battleStatus = document.getElementById('battleStatus');
+const nextRoundBtn = document.getElementById('nextRoundBtn');
+const resetBattleBtn = document.getElementById('resetBattleBtn');
+const scoreYouEl = document.getElementById('scoreYou');
+const scoreCpuEl = document.getElementById('scoreCpu');
+const scoreRoundEl = document.getElementById('scoreRound');
+
+function drawRandomPlayer(excludeIdx) {
+  let idx;
+  do {
+    idx = Math.floor(Math.random() * PLAYERS.length);
+  } while (idx === excludeIdx && PLAYERS.length > 1);
+  return idx;
+}
+
+function buildBattleCardHTML(player, options = {}) {
+  const { selectable = false, revealed = true, highlightStat = null, result = null } = options;
+  if (!revealed) {
+    return `<div class="battle-card face-down"></div>`;
+  }
+  const statsHTML = STAT_KEYS.map(s => {
+    const val = player[s.key];
+    let cls = 'battle-stat-row';
+    if (selectable) cls += ' selectable';
+    if (highlightStat === s.key) {
+      cls += ' picked';
+      if (result === 'win') cls += ' win';
+      else if (result === 'lose') cls += ' lose';
+    }
+    const action = selectable ? `data-stat="${s.key}"` : '';
+    return `
+      <div class="${cls}" ${action}>
+        <span class="battle-stat-label">${s.label}</span>
+        <div class="battle-stat-bar-bg">
+          <div class="battle-stat-bar-fill" style="width:${val * 10}%; background: ${statColor(val)};"></div>
+        </div>
+        <span class="battle-stat-val" style="color: ${statColor(val)};">${val}</span>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="battle-card">
+      <div class="battle-card-border" style="background: linear-gradient(135deg, ${player.color}, #222);">
+        <div class="battle-card-inner">
+          <div class="battle-portrait" style="background: radial-gradient(circle at 50% 40%, ${player.color}33, transparent 70%), linear-gradient(180deg, ${player.color}22, #111118);">
+            <div class="pos-badge" style="border-color: ${player.color}; color: ${player.color};">${player.position}</div>
+            <div class="ovr-badge" style="border-color: ${player.color}; color: ${player.color};">
+              <span class="ovr-label">OVR</span>
+              ${player.ovr}
+            </div>
+            <div class="portrait-icon">${player.icon}</div>
+          </div>
+          <div class="battle-body">
+            <div class="player-name" style="color: ${player.color};">${player.name}</div>
+            <div class="player-nickname">"${player.nickname}"</div>
+            ${statsHTML}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderBattle(highlightStat = null, result = null) {
+  const you = PLAYERS[battleState.youCard];
+  const cpu = PLAYERS[battleState.cpuCard];
+
+  cpuCardWrap.innerHTML = buildBattleCardHTML(cpu, {
+    revealed: battleState.cpuRevealed,
+    highlightStat,
+    result: result ? (result === 'win' ? 'lose' : result === 'lose' ? 'win' : null) : null
+  });
+
+  youCardWrap.innerHTML = buildBattleCardHTML(you, {
+    selectable: !battleState.resolved,
+    revealed: true,
+    highlightStat,
+    result
+  });
+
+  if (!battleState.resolved) {
+    youCardWrap.querySelectorAll('.battle-stat-row.selectable').forEach(row => {
+      row.addEventListener('click', () => handleStatPick(row.dataset.stat));
+    });
+  }
+
+  scoreYouEl.textContent = battleState.you;
+  scoreCpuEl.textContent = battleState.cpu;
+  scoreRoundEl.textContent = battleState.round;
+}
+
+function handleStatPick(statKey) {
+  if (battleState.resolved) return;
+  battleState.resolved = true;
+  battleState.cpuRevealed = true;
+
+  const you = PLAYERS[battleState.youCard];
+  const cpu = PLAYERS[battleState.cpuCard];
+  const youVal = you[statKey];
+  const cpuVal = cpu[statKey];
+
+  let result;
+  let statusText;
+  let statusClass = '';
+  const statFull = STAT_KEYS.find(s => s.key === statKey).full;
+
+  if (youVal > cpuVal) {
+    result = 'win';
+    battleState.you++;
+    statusText = `YOU WIN! ${statFull} ${youVal} vs ${cpuVal}`;
+    statusClass = 'win';
+  } else if (youVal < cpuVal) {
+    result = 'lose';
+    battleState.cpu++;
+    statusText = `CPU WINS ${statFull} ${cpuVal} vs ${youVal}`;
+    statusClass = 'lose';
+  } else {
+    result = 'tie';
+    statusText = `TIE! ${statFull} ${youVal} each`;
+    statusClass = 'tie';
+  }
+
+  renderBattle(statKey, result);
+  battleStatus.textContent = statusText;
+  battleStatus.className = 'battle-status ' + statusClass;
+  nextRoundBtn.disabled = false;
+}
+
+function newBattleRound() {
+  battleState.round++;
+  battleState.youCard = drawRandomPlayer(battleState.youCard);
+  battleState.cpuCard = drawRandomPlayer(battleState.cpuCard);
+  battleState.resolved = false;
+  battleState.cpuRevealed = false;
+  battleStatus.textContent = 'Pick a stat to battle with!';
+  battleStatus.className = 'battle-status';
+  nextRoundBtn.disabled = true;
+  renderBattle();
+}
+
+function initBattle() {
+  battleState.you = 0;
+  battleState.cpu = 0;
+  battleState.round = 1;
+  battleState.youCard = drawRandomPlayer(-1);
+  battleState.cpuCard = drawRandomPlayer(battleState.youCard);
+  battleState.resolved = false;
+  battleState.cpuRevealed = false;
+  battleStatus.textContent = 'Pick a stat to battle with!';
+  battleStatus.className = 'battle-status';
+  nextRoundBtn.disabled = true;
+  renderBattle();
+}
+
+nextRoundBtn.addEventListener('click', newBattleRound);
+resetBattleBtn.addEventListener('click', initBattle);
+
+/* Mode switching */
+function setMode(mode) {
+  if (mode === 'battle') {
+    modeBattleBtn.classList.add('active');
+    modeCollectionBtn.classList.remove('active');
+    collectionView.classList.add('hidden');
+    battleView.classList.add('active');
+    if (battleState.youCard === null) initBattle();
+  } else {
+    modeCollectionBtn.classList.add('active');
+    modeBattleBtn.classList.remove('active');
+    battleView.classList.remove('active');
+    collectionView.classList.remove('hidden');
+  }
+}
+modeCollectionBtn.addEventListener('click', () => setMode('collection'));
+modeBattleBtn.addEventListener('click', () => setMode('battle'));
+
+/* Update collection counter to reflect dynamic roster size */
+counter.textContent = `1 / ${PLAYERS.length}`;
 </script>
 </body>
 </html>
