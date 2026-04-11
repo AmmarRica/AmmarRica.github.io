@@ -52,6 +52,7 @@
   { "dir": "day-51", "title": "Seaside Drive", "input": "both", "series": "ufo-like" },
   { "dir": "day-52", "title": "Campanella 3", "input": "both", "series": "ufo-like" },
   { "dir": "day-53", "title": "Cyber Owls", "input": "both", "series": "ufo-like" },
+  { "dir": "day-54", "title": "Penguin Bumper Army", "input": "touch", "series": "ufo-like" },
   { "dir": "game-01", "title": "Gridiron Kicker", "input": "keyboard", "series": "football", "genre": "Arcade" },
   { "dir": "game-02", "title": "Football Auto Chess", "input": "touch", "series": "football", "genre": "Strategy" },
   { "dir": "game-03", "title": "Pigskin Spire", "input": "touch", "series": "football", "genre": "Card Game" },
