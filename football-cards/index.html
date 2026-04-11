@@ -63,9 +63,9 @@
     position: relative;
     width: 100%;
     max-width: 400px;
-    height: 580px;
+    height: min(580px, 68vh);
     perspective: 1000px;
-    touch-action: pan-y;
+    touch-action: none;
     margin: 0 auto;
   }
 
@@ -1202,11 +1202,12 @@ swiperArea.addEventListener('touchstart', e => {
 swiperArea.addEventListener('touchmove', e => {
   if (!dragging) return;
   deltaX = e.touches[0].clientX - startX;
+  e.preventDefault();
   const active = swiperArea.querySelector('.card.active');
   if (active) {
     active.style.transform = `translateX(${deltaX}px) rotate(${deltaX * 0.04}deg)`;
   }
-}, { passive: true });
+}, { passive: false });
 swiperArea.addEventListener('touchend', () => {
   dragging = false;
   if (deltaX < -60) goNext();
