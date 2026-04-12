@@ -1,1 +1,862 @@
-<!doctype html><meta charset="utf-8"><title>Penguin Bumper Army — WIP</title><p>WIP placeholder — full game coming next.</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f0f1a" />
+  <title>Day 54 – Penguin Bumper Army</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0a0a15;
+      color: #e0e0ff;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      position: fixed;
+      inset: 0;
+      /* Respect iOS safe areas */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    #game-root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #topbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(26, 26, 46, 0.92);
+      border-bottom: 1px solid #3b3b5c;
+      font-size: 0.85rem;
+      min-height: 44px;
+    }
+    #topbar a {
+      color: #a78bfa;
+      text-decoration: none;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    #topbar a:hover { text-decoration: underline; }
+    .hud {
+      display: flex;
+      gap: 0.9rem;
+      color: #e0e0ff;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .hud span b { color: #a78bfa; font-weight: 700; }
+
+    #stage {
+      flex: 1 1 auto;
+      position: relative;
+      min-height: 0;
+      width: 100%;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(ellipse at center, #0f1a2e 0%, #050510 90%);
+      touch-action: none;
+    }
+
+    /* Overlays (title, game-over) */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.9rem;
+      padding: 1rem;
+      text-align: center;
+      background: rgba(10, 10, 25, 0.78);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 5;
+    }
+    .overlay.hidden { display: none; }
+    .overlay h1 {
+      font-size: clamp(1.5rem, 6vw, 2.4rem);
+      color: #a78bfa;
+      letter-spacing: 0.02em;
+      text-shadow: 0 2px 10px rgba(167, 139, 250, 0.35);
+    }
+    .overlay h2 {
+      font-size: clamp(1.1rem, 4.5vw, 1.6rem);
+      color: #f472b6;
+    }
+    .overlay p {
+      max-width: 34ch;
+      color: #c7c7e0;
+      font-size: clamp(0.8rem, 3.2vw, 1rem);
+      line-height: 1.45;
+    }
+    .overlay .stat-row {
+      display: flex;
+      gap: 1.2rem;
+      color: #9ca3af;
+      font-size: 0.9rem;
+    }
+    .overlay .stat-row b { color: #e0e0ff; }
+    .btn {
+      display: inline-block;
+      background: #a78bfa;
+      color: #0f0f1a;
+      border: none;
+      border-radius: 999px;
+      padding: 0.75rem 1.6rem;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      box-shadow: 0 4px 16px rgba(167, 139, 250, 0.35);
+      transition: transform 0.1s ease;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn.ghost {
+      background: transparent;
+      color: #a78bfa;
+      border: 1px solid #a78bfa;
+      box-shadow: none;
+    }
+
+    /* Compact the HUD on very small phones */
+    @media (max-width: 360px) {
+      #topbar { font-size: 0.78rem; padding: 0.4rem 0.55rem; }
+      .hud { gap: 0.55rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="game-root">
+    <div id="topbar">
+      <a href="/AIGeneratedGames/">&larr; Games</a>
+      <div class="hud">
+        <span>Wave <b id="hud-wave">1</b></span>
+        <span>Score <b id="hud-score">0</b></span>
+        <span>Best <b id="hud-best">0</b></span>
+      </div>
+    </div>
+    <div id="stage">
+      <canvas id="gc"></canvas>
+      <div id="title-overlay" class="overlay">
+        <h1>Penguin Bumper Army</h1>
+        <p>Drag your penguin to move. Bump enemy penguins off the icy arena — momentum is everything. Don't fall off yourself!</p>
+        <button class="btn" id="start-btn">Start Game</button>
+      </div>
+      <div id="gameover-overlay" class="overlay hidden">
+        <h2 id="go-title">You Slipped Off!</h2>
+        <div class="stat-row">
+          <span>Score <b id="go-score">0</b></span>
+          <span>Wave <b id="go-wave">1</b></span>
+          <span>Best <b id="go-best">0</b></span>
+        </div>
+        <button class="btn" id="retry-btn">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------
+  // Canvas sizing — fully responsive for any screen / DPI
+  // ---------------------------------------------------------------
+  var canvas = document.getElementById('gc');
+  var ctx = canvas.getContext('2d');
+  var stage = document.getElementById('stage');
+
+  var W = 0, H = 0;                // CSS pixel dimensions of stage
+  var DPR = 1;                      // device pixel ratio (capped)
+  var arena = { cx: 0, cy: 0, r: 0 };
+
+  function resize() {
+    var rect = stage.getBoundingClientRect();
+    W = Math.max(200, Math.floor(rect.width));
+    H = Math.max(200, Math.floor(rect.height));
+    DPR = Math.min(window.devicePixelRatio || 1, 2); // cap DPR for perf
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // Arena: big inscribed circle
+    arena.cx = W / 2;
+    arena.cy = H / 2;
+    arena.r = Math.max(80, Math.min(W, H) * 0.46);
+
+    // Keep penguins inside the arena on resize
+    if (player) clampToArena(player);
+    for (var i = 0; i < enemies.length; i++) clampToArena(enemies[i]);
+  }
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function () {
+    // Some browsers resize slightly after orientation settles
+    setTimeout(resize, 50);
+    setTimeout(resize, 300);
+  });
+
+  // ---------------------------------------------------------------
+  // Game state
+  // ---------------------------------------------------------------
+  var STATE_TITLE = 0, STATE_PLAY = 1, STATE_OVER = 2;
+  var state = STATE_TITLE;
+
+  var player = null;
+  var enemies = [];
+  var fallingPenguins = []; // visual: penguins tumbling off the edge
+  var particles = [];
+  var wave = 1;
+  var score = 0;
+  var best = 0;
+  var spawnTimer = 0;
+  var waveAnnounceTimer = 0;
+
+  try { best = parseInt(localStorage.getItem('penguin-bumper-best') || '0', 10) || 0; } catch (e) {}
+
+  var hudWave = document.getElementById('hud-wave');
+  var hudScore = document.getElementById('hud-score');
+  var hudBest = document.getElementById('hud-best');
+  var titleOverlay = document.getElementById('title-overlay');
+  var gameOverOverlay = document.getElementById('gameover-overlay');
+  var goScore = document.getElementById('go-score');
+  var goWave = document.getElementById('go-wave');
+  var goBest = document.getElementById('go-best');
+
+  function updateHud() {
+    hudWave.textContent = wave;
+    hudScore.textContent = score;
+    hudBest.textContent = best;
+  }
+
+  // ---------------------------------------------------------------
+  // Penguin factory
+  // ---------------------------------------------------------------
+  var ENEMY_COLORS = [
+    { body: '#ef4444', belly: '#fecaca', beak: '#fbbf24' }, // red
+    { body: '#10b981', belly: '#a7f3d0', beak: '#fbbf24' }, // green
+    { body: '#f59e0b', belly: '#fde68a', beak: '#ef4444' }, // orange
+    { body: '#8b5cf6', belly: '#ddd6fe', beak: '#fbbf24' }, // purple
+    { body: '#ec4899', belly: '#fbcfe8', beak: '#fbbf24' }  // pink
+  ];
+
+  function makePenguin(opts) {
+    return {
+      x: opts.x, y: opts.y,
+      vx: 0, vy: 0,
+      r: opts.r || 22,
+      mass: opts.mass || 1,
+      maxSpeed: opts.maxSpeed || 3.2,
+      accel: opts.accel || 0.35,
+      colors: opts.colors || { body: '#2563eb', belly: '#e0e7ff', beak: '#fbbf24' },
+      isPlayer: !!opts.isPlayer,
+      alive: true,
+      falling: false,
+      fallT: 0,
+      faceDir: 0,      // for waddle animation
+      waddleT: Math.random() * Math.PI * 2,
+      hitFlash: 0
+    };
+  }
+
+  function clampToArena(p) {
+    var dx = p.x - arena.cx, dy = p.y - arena.cy;
+    var d = Math.hypot(dx, dy);
+    var limit = arena.r - p.r;
+    if (d > limit) {
+      var s = limit / (d || 1);
+      p.x = arena.cx + dx * s;
+      p.y = arena.cy + dy * s;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Input — pointer drag anywhere on canvas
+  // ---------------------------------------------------------------
+  var target = null; // {x, y} in CSS pixels relative to canvas
+  var pointerId = null;
+
+  function getPoint(ev) {
+    var rect = canvas.getBoundingClientRect();
+    var cx, cy;
+    if (ev.touches && ev.touches.length) {
+      cx = ev.touches[0].clientX;
+      cy = ev.touches[0].clientY;
+    } else {
+      cx = ev.clientX;
+      cy = ev.clientY;
+    }
+    return { x: cx - rect.left, y: cy - rect.top };
+  }
+
+  function onPointerDown(ev) {
+    if (state !== STATE_PLAY) return;
+    ev.preventDefault();
+    target = getPoint(ev);
+    if (ev.pointerId != null) {
+      pointerId = ev.pointerId;
+      try { canvas.setPointerCapture(pointerId); } catch (e) {}
+    }
+  }
+  function onPointerMove(ev) {
+    if (state !== STATE_PLAY || target == null) return;
+    ev.preventDefault();
+    target = getPoint(ev);
+  }
+  function onPointerUp(ev) {
+    target = null;
+    if (pointerId != null && ev.pointerId === pointerId) {
+      try { canvas.releasePointerCapture(pointerId); } catch (e) {}
+      pointerId = null;
+    }
+  }
+
+  if (window.PointerEvent) {
+    canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+    canvas.addEventListener('pointermove', onPointerMove, { passive: false });
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerUp);
+    canvas.addEventListener('pointerleave', onPointerUp);
+  } else {
+    canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+    canvas.addEventListener('touchmove', onPointerMove, { passive: false });
+    canvas.addEventListener('touchend', onPointerUp);
+    canvas.addEventListener('touchcancel', onPointerUp);
+    canvas.addEventListener('mousedown', onPointerDown);
+    canvas.addEventListener('mousemove', onPointerMove);
+    canvas.addEventListener('mouseup', onPointerUp);
+  }
+
+  // Keyboard fallback for desktops
+  var keys = {};
+  window.addEventListener('keydown', function (e) {
+    if (state === STATE_TITLE && (e.key === ' ' || e.key === 'Enter')) { startGame(); return; }
+    if (state === STATE_OVER && (e.key === ' ' || e.key === 'Enter' || e.key === 'r' || e.key === 'R')) { startGame(); return; }
+    keys[e.key.toLowerCase()] = true;
+  });
+  window.addEventListener('keyup', function (e) { keys[e.key.toLowerCase()] = false; });
+
+  // ---------------------------------------------------------------
+  // Game flow
+  // ---------------------------------------------------------------
+  function startGame() {
+    resize();
+    player = makePenguin({
+      x: arena.cx, y: arena.cy,
+      r: Math.max(18, arena.r * 0.09),
+      mass: 1.2,
+      maxSpeed: 3.6,
+      accel: 0.42,
+      colors: { body: '#2563eb', belly: '#e0e7ff', beak: '#fbbf24' },
+      isPlayer: true
+    });
+    enemies = [];
+    fallingPenguins = [];
+    particles = [];
+    wave = 1;
+    score = 0;
+    spawnTimer = 0;
+    waveAnnounceTimer = 90;
+    target = null;
+    state = STATE_PLAY;
+    titleOverlay.classList.add('hidden');
+    gameOverOverlay.classList.add('hidden');
+    updateHud();
+    spawnWave();
+  }
+
+  function endGame() {
+    state = STATE_OVER;
+    if (score > best) {
+      best = score;
+      try { localStorage.setItem('penguin-bumper-best', String(best)); } catch (e) {}
+    }
+    goScore.textContent = score;
+    goWave.textContent = wave;
+    goBest.textContent = best;
+    updateHud();
+    gameOverOverlay.classList.remove('hidden');
+  }
+
+  function spawnWave() {
+    var count = 2 + Math.floor(wave * 1.3);
+    if (count > 14) count = 14;
+    var pr = Math.max(16, arena.r * 0.085);
+    var baseSpeed = 1.6 + Math.min(2.0, wave * 0.15);
+    for (var i = 0; i < count; i++) {
+      var ang = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+      var dist = arena.r * (0.55 + Math.random() * 0.35);
+      var mass = 0.85 + Math.random() * 0.55 + Math.min(0.6, wave * 0.04);
+      var color = ENEMY_COLORS[Math.floor(Math.random() * ENEMY_COLORS.length)];
+      var e = makePenguin({
+        x: arena.cx + Math.cos(ang) * dist,
+        y: arena.cy + Math.sin(ang) * dist,
+        r: pr,
+        mass: mass,
+        maxSpeed: baseSpeed,
+        accel: 0.08 + Math.min(0.1, wave * 0.008),
+        colors: color
+      });
+      enemies.push(e);
+    }
+    waveAnnounceTimer = 90;
+  }
+
+  document.getElementById('start-btn').addEventListener('click', startGame);
+  document.getElementById('retry-btn').addEventListener('click', startGame);
+
+  // ---------------------------------------------------------------
+  // Physics & update
+  // ---------------------------------------------------------------
+  var FRICTION = 0.94;
+
+  function updatePlayer() {
+    if (!player.alive) return;
+    var ax = 0, ay = 0;
+
+    if (target) {
+      var dx = target.x - player.x;
+      var dy = target.y - player.y;
+      var d = Math.hypot(dx, dy);
+      if (d > 2) {
+        ax = (dx / d) * player.accel;
+        ay = (dy / d) * player.accel;
+      }
+    }
+    // Keyboard fallback
+    if (keys['arrowleft'] || keys['a']) ax -= player.accel;
+    if (keys['arrowright'] || keys['d']) ax += player.accel;
+    if (keys['arrowup'] || keys['w']) ay -= player.accel;
+    if (keys['arrowdown'] || keys['s']) ay += player.accel;
+
+    player.vx += ax;
+    player.vy += ay;
+
+    var sp = Math.hypot(player.vx, player.vy);
+    if (sp > player.maxSpeed) {
+      var k = player.maxSpeed / sp;
+      player.vx *= k; player.vy *= k;
+    }
+
+    player.vx *= FRICTION;
+    player.vy *= FRICTION;
+    player.x += player.vx;
+    player.y += player.vy;
+
+    if (Math.abs(player.vx) + Math.abs(player.vy) > 0.3) {
+      player.waddleT += 0.35;
+      player.faceDir = Math.atan2(player.vy, player.vx);
+    }
+
+    checkFall(player);
+    if (player.hitFlash > 0) player.hitFlash--;
+  }
+
+  function updateEnemy(e) {
+    if (!e.alive || e.falling) return;
+    // Seek toward the player with a bit of wobble
+    if (player && player.alive) {
+      var dx = player.x - e.x;
+      var dy = player.y - e.y;
+      var d = Math.hypot(dx, dy) || 1;
+      var wobble = Math.sin((e.waddleT + e.x * 0.01) ) * 0.15;
+      e.vx += (dx / d) * e.accel + wobble * e.accel;
+      e.vy += (dy / d) * e.accel - wobble * e.accel;
+    }
+    var sp = Math.hypot(e.vx, e.vy);
+    if (sp > e.maxSpeed) {
+      var k = e.maxSpeed / sp;
+      e.vx *= k; e.vy *= k;
+    }
+    e.vx *= 0.96;
+    e.vy *= 0.96;
+    e.x += e.vx;
+    e.y += e.vy;
+
+    if (Math.abs(e.vx) + Math.abs(e.vy) > 0.2) {
+      e.waddleT += 0.25;
+      e.faceDir = Math.atan2(e.vy, e.vx);
+    }
+
+    checkFall(e);
+    if (e.hitFlash > 0) e.hitFlash--;
+  }
+
+  function checkFall(p) {
+    var dx = p.x - arena.cx, dy = p.y - arena.cy;
+    var d = Math.hypot(dx, dy);
+    if (d > arena.r + p.r * 0.1) {
+      // Penguin is over the edge — tumble!
+      p.alive = false;
+      p.falling = true;
+      fallingPenguins.push(p);
+      // Remove from active lists after adding
+      if (p.isPlayer) {
+        // slight delay before game over so animation is visible
+        setTimeout(endGame, 700);
+      } else {
+        score += 10 * wave;
+        updateHud();
+        spawnPoof(p.x, p.y, p.colors.body);
+      }
+    }
+  }
+
+  function resolveCollisions() {
+    // Combine all alive penguins
+    var all = [];
+    if (player && player.alive) all.push(player);
+    for (var i = 0; i < enemies.length; i++) {
+      if (enemies[i].alive) all.push(enemies[i]);
+    }
+    for (var a = 0; a < all.length; a++) {
+      for (var b = a + 1; b < all.length; b++) {
+        var p1 = all[a], p2 = all[b];
+        var dx = p2.x - p1.x, dy = p2.y - p1.y;
+        var dist = Math.hypot(dx, dy);
+        var minDist = p1.r + p2.r;
+        if (dist > 0 && dist < minDist) {
+          var nx = dx / dist, ny = dy / dist;
+          // Separate
+          var overlap = (minDist - dist);
+          var tot = p1.mass + p2.mass;
+          p1.x -= nx * overlap * (p2.mass / tot);
+          p1.y -= ny * overlap * (p2.mass / tot);
+          p2.x += nx * overlap * (p1.mass / tot);
+          p2.y += ny * overlap * (p1.mass / tot);
+
+          // Elastic-ish collision along normal
+          var v1n = p1.vx * nx + p1.vy * ny;
+          var v2n = p2.vx * nx + p2.vy * ny;
+          var BOUNCE = 1.55; // > 1 for punchy bumper feel
+          var newV1n = ((p1.mass - p2.mass) * v1n + 2 * p2.mass * v2n) / tot * BOUNCE;
+          var newV2n = ((p2.mass - p1.mass) * v2n + 2 * p1.mass * v1n) / tot * BOUNCE;
+          p1.vx += (newV1n - v1n) * nx;
+          p1.vy += (newV1n - v1n) * ny;
+          p2.vx += (newV2n - v2n) * nx;
+          p2.vy += (newV2n - v2n) * ny;
+
+          p1.hitFlash = 6;
+          p2.hitFlash = 6;
+          spawnHit((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+        }
+      }
+    }
+  }
+
+  function updateFalling() {
+    for (var i = fallingPenguins.length - 1; i >= 0; i--) {
+      var p = fallingPenguins[i];
+      p.fallT++;
+      p.x += p.vx;
+      p.y += p.vy;
+      // grow scale down via fallT in draw
+      if (p.fallT > 60) fallingPenguins.splice(i, 1);
+    }
+  }
+
+  function cleanupEnemies() {
+    for (var i = enemies.length - 1; i >= 0; i--) {
+      if (!enemies[i].alive) enemies.splice(i, 1);
+    }
+    if (state === STATE_PLAY && enemies.length === 0) {
+      wave++;
+      updateHud();
+      spawnWave();
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Particles
+  // ---------------------------------------------------------------
+  function spawnHit(x, y) {
+    for (var i = 0; i < 8; i++) {
+      particles.push({
+        x: x, y: y,
+        vx: (Math.random() - 0.5) * 4,
+        vy: (Math.random() - 0.5) * 4,
+        life: 18 + Math.random() * 10,
+        r: 2 + Math.random() * 2,
+        color: '#ffffff'
+      });
+    }
+  }
+  function spawnPoof(x, y, color) {
+    for (var i = 0; i < 14; i++) {
+      particles.push({
+        x: x, y: y,
+        vx: (Math.random() - 0.5) * 5,
+        vy: (Math.random() - 0.5) * 5,
+        life: 28 + Math.random() * 14,
+        r: 2 + Math.random() * 3,
+        color: color
+      });
+    }
+  }
+  function updateParticles() {
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.vx *= 0.92; p.vy *= 0.92;
+      p.life--;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Drawing
+  // ---------------------------------------------------------------
+  function draw() {
+    // Background
+    ctx.clearRect(0, 0, W, H);
+
+    drawArena();
+
+    // Draw falling penguins first (behind)
+    for (var i = 0; i < fallingPenguins.length; i++) {
+      drawFallingPenguin(fallingPenguins[i]);
+    }
+
+    // Sort by y so overlap looks natural
+    var drawList = enemies.slice();
+    if (player && player.alive) drawList.push(player);
+    drawList.sort(function (a, b) { return a.y - b.y; });
+    for (var j = 0; j < drawList.length; j++) {
+      drawPenguin(drawList[j]);
+    }
+
+    // Particles
+    for (var p = 0; p < particles.length; p++) {
+      var pp = particles[p];
+      ctx.globalAlpha = Math.max(0, pp.life / 30);
+      ctx.fillStyle = pp.color;
+      ctx.beginPath();
+      ctx.arc(pp.x, pp.y, pp.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Wave announce banner
+    if (waveAnnounceTimer > 0) {
+      waveAnnounceTimer--;
+      var alpha = Math.min(1, waveAnnounceTimer / 30);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(15, 15, 30, 0.6)';
+      var bh = Math.min(70, H * 0.14);
+      ctx.fillRect(0, H * 0.25 - bh / 2, W, bh);
+      ctx.fillStyle = '#a78bfa';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '700 ' + Math.round(Math.min(36, H * 0.06)) + 'px system-ui, sans-serif';
+      ctx.fillText('Wave ' + wave, W / 2, H * 0.25);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawArena() {
+    // Void outside the arena
+    ctx.fillStyle = '#05050c';
+    ctx.fillRect(0, 0, W, H);
+
+    // Stars
+    var starCount = 60;
+    ctx.fillStyle = '#1e1e3a';
+    for (var s = 0; s < starCount; s++) {
+      var sx = ((s * 73) % W);
+      var sy = ((s * 131) % H);
+      ctx.fillRect(sx, sy, 1.5, 1.5);
+    }
+
+    // Arena shadow
+    ctx.beginPath();
+    ctx.arc(arena.cx + 4, arena.cy + 8, arena.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fill();
+
+    // Ice disk gradient
+    var grad = ctx.createRadialGradient(arena.cx, arena.cy, arena.r * 0.2, arena.cx, arena.cy, arena.r);
+    grad.addColorStop(0, '#e0f2fe');
+    grad.addColorStop(0.65, '#bae6fd');
+    grad.addColorStop(1, '#7dd3fc');
+    ctx.beginPath();
+    ctx.arc(arena.cx, arena.cy, arena.r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Rim
+    ctx.lineWidth = Math.max(3, arena.r * 0.03);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.stroke();
+
+    // Ice cracks (decorative)
+    ctx.save();
+    ctx.translate(arena.cx, arena.cy);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1;
+    for (var c = 0; c < 6; c++) {
+      var a = c * (Math.PI / 3);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * arena.r * 0.15, Math.sin(a) * arena.r * 0.15);
+      ctx.lineTo(Math.cos(a) * arena.r * 0.8, Math.sin(a) * arena.r * 0.8);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Center marker
+    ctx.beginPath();
+    ctx.arc(arena.cx, arena.cy, Math.max(8, arena.r * 0.08), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+    ctx.fill();
+  }
+
+  function drawPenguin(p) {
+    var waddle = Math.sin(p.waddleT) * 0.12;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(waddle);
+    var r = p.r;
+
+    // Shadow
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.85, r * 0.95, r * 0.28, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fill();
+
+    // Body (rounded)
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.95, r * 1.05, 0, 0, Math.PI * 2);
+    ctx.fillStyle = p.colors.body;
+    ctx.fill();
+
+    // Belly
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.1, r * 0.6, r * 0.75, 0, 0, Math.PI * 2);
+    ctx.fillStyle = p.colors.belly;
+    ctx.fill();
+
+    // Eyes
+    var eyeOff = r * 0.28;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(-eyeOff, -r * 0.35, r * 0.18, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc( eyeOff, -r * 0.35, r * 0.18, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.beginPath(); ctx.arc(-eyeOff + 1, -r * 0.32, r * 0.09, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc( eyeOff + 1, -r * 0.32, r * 0.09, 0, Math.PI * 2); ctx.fill();
+
+    // Beak
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.12, -r * 0.05);
+    ctx.lineTo( r * 0.12, -r * 0.05);
+    ctx.lineTo( 0,          r * 0.22);
+    ctx.closePath();
+    ctx.fillStyle = p.colors.beak;
+    ctx.fill();
+
+    // Tiny feet
+    ctx.fillStyle = p.colors.beak;
+    ctx.beginPath(); ctx.ellipse(-r * 0.35, r * 0.95, r * 0.22, r * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( r * 0.35, r * 0.95, r * 0.22, r * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Hit flash
+    if (p.hitFlash > 0) {
+      ctx.globalAlpha = p.hitFlash / 10;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * 1.1, r * 1.2, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Player indicator ring
+    if (p.isPlayer) {
+      ctx.beginPath();
+      ctx.arc(0, r * 1.25, r * 0.45, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.9)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawFallingPenguin(p) {
+    var scale = Math.max(0, 1 - p.fallT / 60);
+    if (scale <= 0.05) return;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.fallT * 0.2);
+    ctx.scale(scale, scale);
+    var r = p.r;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, r * 1.1, 0, 0, Math.PI * 2);
+    ctx.fillStyle = p.colors.body;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.1, r * 0.6, r * 0.75, 0, 0, Math.PI * 2);
+    ctx.fillStyle = p.colors.belly;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------
+  // Main loop
+  // ---------------------------------------------------------------
+  function tick() {
+    if (state === STATE_PLAY) {
+      updatePlayer();
+      for (var i = 0; i < enemies.length; i++) updateEnemy(enemies[i]);
+      resolveCollisions();
+      updateFalling();
+      updateParticles();
+      cleanupEnemies();
+    } else {
+      updateFalling();
+      updateParticles();
+    }
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  // ---------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------
+  resize();
+  updateHud();
+  // Delay a frame so the layout settles on iOS before first paint
+  requestAnimationFrame(function () {
+    resize();
+    tick();
+  });
+
+  // Prevent pull-to-refresh / scroll on the whole document
+  document.addEventListener('touchmove', function (e) {
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+})();
+</script>
+</body>
+</html>
