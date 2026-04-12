@@ -2,58 +2,6 @@
 layout: default
 ---
 
-<section class="hero">
-  <div class="hero__inner">
-    <div class="hero__text">
-      <p class="hero__greeting">Hello, I'm</p>
-      <h1 class="hero__name">{{ site.author.name }}</h1>
-      <p class="hero__bio">{{ site.author.bio }}</p>
-      <div class="hero__links">
-        <a href="{{ '/about/' | relative_url }}" class="btn btn--primary">About Me</a>
-        <a href="{{ '/blog/' | relative_url }}" class="btn btn--outline">Read Blog</a>
-      </div>
-      <div class="hero__social">
-        {% for link in site.author.links %}
-        <a href="{{ link.url }}" class="social-link social-link--{{ link.icon }}" target="_blank" rel="noopener noreferrer" aria-label="{{ link.label }}">
-          {% include icon-{{ link.icon }}.html %}
-        </a>
-        {% endfor %}
-      </div>
-    </div>
-    <div class="hero__avatar">
-      <img src="{{ '/assets/images/avatar.svg' | relative_url }}" alt="{{ site.author.name }}" width="280" height="280" />
-    </div>
-  </div>
-</section>
-
-<section class="section skills">
-  <div class="container">
-    <h2 class="section__title">What I Do</h2>
-    <div class="skills__grid">
-      <div class="skill-card">
-        <div class="skill-card__icon">⚙️</div>
-        <h3 class="skill-card__title">Backend Development</h3>
-        <p class="skill-card__desc">Building robust APIs, services, and data pipelines that power modern applications.</p>
-      </div>
-      <div class="skill-card">
-        <div class="skill-card__icon">🎨</div>
-        <h3 class="skill-card__title">Frontend Development</h3>
-        <p class="skill-card__desc">Crafting responsive and accessible interfaces that users love to interact with.</p>
-      </div>
-      <div class="skill-card">
-        <div class="skill-card__icon">☁️</div>
-        <h3 class="skill-card__title">Cloud & DevOps</h3>
-        <p class="skill-card__desc">Deploying and scaling applications on modern cloud infrastructure with CI/CD pipelines.</p>
-      </div>
-      <div class="skill-card">
-        <div class="skill-card__icon">🔍</div>
-        <h3 class="skill-card__title">Open Source</h3>
-        <p class="skill-card__desc">Contributing to and maintaining open source projects that make developers' lives easier.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section class="section projects">
   <div class="container">
     <h2 class="section__title">Featured Projects</h2>

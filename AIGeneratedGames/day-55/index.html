@@ -1,0 +1,1645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f0f1a" />
+  <title>Day 55 – Penguin Bumper Army: Tactics</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0a0a15;
+      color: #e0e0ff;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      position: fixed; inset: 0;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    #game-root {
+      position: relative; width: 100%; height: 100%;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    #topbar {
+      flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 0.4rem; padding: 0.4rem 0.6rem;
+      background: rgba(26, 26, 46, 0.94);
+      border-bottom: 1px solid #3b3b5c;
+      font-size: 0.8rem; min-height: 40px;
+    }
+    #topbar a { color: #a78bfa; text-decoration: none; font-weight: 600; white-space: nowrap; }
+    #topbar a:hover { text-decoration: underline; }
+    .hud { display: flex; gap: 0.6rem; color: #e0e0ff; font-variant-numeric: tabular-nums; font-weight: 600; align-items: center; }
+    .hud span b { font-weight: 700; }
+    .hud .blue { color: #60a5fa; }
+    .hud .pink { color: #f472b6; }
+    .hud .turn-indicator { color: #a78bfa; font-weight: 700; }
+    #stage { flex: 1 1 auto; position: relative; min-height: 0; width: 100%; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+    #bottom-bar {
+      flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: center;
+      gap: 0.6rem; padding: 0.4rem 0.6rem;
+      background: rgba(26, 26, 46, 0.94);
+      border-top: 1px solid #3b3b5c;
+      min-height: 44px;
+    }
+    .btn {
+      display: inline-block; border: none; border-radius: 999px;
+      padding: 0.55rem 1.2rem; font-size: 0.85rem; font-weight: 700;
+      cursor: pointer; -webkit-tap-highlight-color: transparent;
+      transition: transform 0.1s ease, opacity 0.15s;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-primary { background: #a78bfa; color: #0f0f1a; box-shadow: 0 3px 12px rgba(167,139,250,0.3); }
+    .btn-ghost { background: transparent; color: #a78bfa; border: 1px solid #a78bfa; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn:disabled { opacity: 0.35; pointer-events: none; }
+    .overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0.8rem; padding: 1rem; text-align: center;
+      background: rgba(10, 10, 25, 0.82);
+      backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+      z-index: 5;
+    }
+    .overlay.hidden { display: none; }
+    .overlay h1 { font-size: clamp(1.4rem, 5.5vw, 2.2rem); color: #a78bfa; letter-spacing: 0.02em; text-shadow: 0 2px 10px rgba(167,139,250,0.35); }
+    .overlay h2 { font-size: clamp(1rem, 4vw, 1.5rem); color: #f472b6; }
+    .overlay p { max-width: 32ch; color: #c7c7e0; font-size: clamp(0.75rem, 3vw, 0.95rem); line-height: 1.45; }
+    .overlay .menu-btns { display: flex; flex-direction: column; gap: 0.5rem; width: 100%; max-width: 240px; }
+    .overlay .menu-btns .btn { width: 100%; text-align: center; }
+    .tip-banner {
+      position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
+      background: rgba(15, 15, 30, 0.85); color: #e0e0ff;
+      padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem;
+      max-width: 90vw; text-align: center; z-index: 4;
+      border: 1px solid #3b3b5c; pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .tip-banner.hidden { opacity: 0; }
+    @media (max-width: 360px) {
+      #topbar { font-size: 0.72rem; padding: 0.3rem 0.4rem; }
+      .hud { gap: 0.4rem; }
+      .btn { padding: 0.45rem 0.9rem; font-size: 0.78rem; }
+    }
+  </style>
+</head>
+<body>
+<div id="game-root">
+  <div id="topbar">
+    <a href="/AIGeneratedGames/">&larr; Games</a>
+    <div class="hud">
+      <span class="turn-indicator" id="hud-turn">BLUE TURN</span>
+      <span>R<b id="hud-round">1</b></span>
+      <span>&#x1F535;<b class="blue" id="hud-blue">3</b></span>
+      <span>&#x1F534;<b class="pink" id="hud-pink">3</b></span>
+      <span id="hud-seal" style="display:none">&#x1F9AD;<b id="hud-seal-count"></b></span>
+    </div>
+    <button class="btn btn-ghost" id="restart-btn" style="font-size:0.7rem;padding:0.3rem 0.6rem;">&#8635;</button>
+  </div>
+  <div id="stage">
+    <canvas id="gc"></canvas>
+    <div id="tip" class="tip-banner hidden"></div>
+    <div id="menu-overlay" class="overlay">
+      <h1>Penguin Bumper Army</h1>
+      <p>Slingshot your penguins to knock enemies off the iceberg!</p>
+      <div class="menu-btns">
+        <button class="btn btn-primary" id="btn-story">Story Mode</button>
+        <button class="btn btn-ghost" id="btn-open">Open Play</button>
+      </div>
+    </div>
+    <div id="win-overlay" class="overlay hidden">
+      <h2 id="win-title">Victory!</h2>
+      <p id="win-msg"></p>
+      <div class="menu-btns">
+        <button class="btn btn-primary" id="btn-next">Next Level</button>
+        <button class="btn btn-ghost" id="btn-menu">Main Menu</button>
+      </div>
+    </div>
+    <div id="lose-overlay" class="overlay hidden">
+      <h2 style="color:#ef4444">Defeated!</h2>
+      <p id="lose-msg">Your penguins were knocked off the iceberg.</p>
+      <div class="menu-btns">
+        <button class="btn btn-primary" id="btn-retry">Retry</button>
+        <button class="btn btn-ghost" id="btn-menu2">Main Menu</button>
+      </div>
+    </div>
+  </div>
+  <div id="bottom-bar">
+    <button class="btn btn-primary" id="btn-end-turn" disabled>End Turn</button>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ===================================================================
+// CANVAS & SIZING
+// ===================================================================
+var canvas = document.getElementById('gc');
+var ctx = canvas.getContext('2d');
+var stageEl = document.getElementById('stage');
+var W = 0, H = 0, DPR = 1;
+
+function resize() {
+  var rect = stageEl.getBoundingClientRect();
+  W = Math.max(200, Math.floor(rect.width));
+  H = Math.max(200, Math.floor(rect.height));
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize,50); setTimeout(resize,300); });
+
+// ===================================================================
+// CONSTANTS
+// ===================================================================
+var FRICTION = 0.97;
+var MIN_VEL = 0.15;
+var MAX_DRAG = 160;
+var LAUNCH_SCALE = 0.065;
+var PENGUIN_R = 16;
+var FISH_R = 8;
+var EGG_R = 7;
+var WALL_COLOR = '#94a3b8';
+var BOUNCE_WALL = 0.6;
+var BOUNCE_PENGUIN = 1.4;
+
+// ===================================================================
+// GAME STATE
+// ===================================================================
+var MODE_MENU = 0, MODE_STORY = 1, MODE_OPEN = 2;
+var PHASE_AIM = 0, PHASE_MOVING = 1, PHASE_AI = 2, PHASE_SEAL = 3, PHASE_WAIT = 4;
+
+var mode = MODE_MENU;
+var phase = PHASE_AIM;
+var storyLevel = 0;
+var roundNum = 1;
+var currentPenguinIdx = 0; // which blue penguin is being aimed
+var movedThisTurn = 0;
+var penguins = [];
+var eggs = [];
+var fish = [];
+var walls = [];
+var islands = []; // array of {points:[], cx, cy}
+var bridges = []; // array of {x,y,w,h} or polygon
+var particles = [];
+var fallingList = [];
+var sealActive = false;
+var seal = null; // {x,y,vx,vy,alive}
+var sealCountdown = 0;
+var aiQueue = [];
+var aiDelay = 0;
+var bannerText = '';
+var bannerTimer = 0;
+var tipText = '';
+var tipTimer = 0;
+var gameOver = false;
+var animFrame = 0;
+
+// Camera / viewport for scrolling maps
+var camX = 0, camY = 0, camScale = 1;
+var worldW = 0, worldH = 0;
+
+// DOM refs
+var hudTurn = document.getElementById('hud-turn');
+var hudRound = document.getElementById('hud-round');
+var hudBlue = document.getElementById('hud-blue');
+var hudPink = document.getElementById('hud-pink');
+var hudSeal = document.getElementById('hud-seal');
+var hudSealCount = document.getElementById('hud-seal-count');
+var menuOverlay = document.getElementById('menu-overlay');
+var winOverlay = document.getElementById('win-overlay');
+var loseOverlay = document.getElementById('lose-overlay');
+var btnEndTurn = document.getElementById('btn-end-turn');
+var tipEl = document.getElementById('tip');
+var winTitle = document.getElementById('win-title');
+var winMsg = document.getElementById('win-msg');
+
+// ===================================================================
+// UTILITY
+// ===================================================================
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+function randInt(a, b) { return Math.floor(rand(a, b + 1)); }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+function pointInPolygon(px, py, poly) {
+  var inside = false;
+  for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    var xi = poly[i].x, yi = poly[i].y;
+    var xj = poly[j].x, yj = poly[j].y;
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+function pointInRect(px, py, r) {
+  return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+
+function pointOnTerrain(px, py) {
+  for (var i = 0; i < islands.length; i++) {
+    if (pointInPolygon(px, py, islands[i].points)) return true;
+  }
+  for (var i = 0; i < bridges.length; i++) {
+    if (pointInRect(px, py, bridges[i])) return true;
+  }
+  return false;
+}
+
+function pointInWall(px, py) {
+  for (var i = 0; i < walls.length; i++) {
+    var w = walls[i];
+    if (px >= w.x && px <= w.x + w.w && py >= w.y && py <= w.y + w.h) return true;
+  }
+  return false;
+}
+
+// ===================================================================
+// ENTITY FACTORIES
+// ===================================================================
+function makePenguin(x, y, team) {
+  return {
+    x: x, y: y, vx: 0, vy: 0,
+    r: PENGUIN_R, mass: 1, team: team,
+    alive: true, moved: false,
+    falling: false, fallT: 0,
+    ghost: false, // seal kill
+    fishCount: 0,
+    waddleT: Math.random() * 6.28,
+    hitFlash: 0, selected: false
+  };
+}
+
+function makeEgg(x, y, team) {
+  return { x: x, y: y, team: team, turnsLeft: 3, crackLevel: 0 };
+}
+
+function makeFish(x, y) {
+  return { x: x, y: y, active: true };
+}
+
+function makeSeal(edge) {
+  // edge: 'left','right','top','bottom' relative to world bounds
+  var sx, sy, svx, svy;
+  var speed = 3;
+  if (edge === 'left') { sx = 10; sy = worldH / 2; svx = speed; svy = 0; }
+  else if (edge === 'right') { sx = worldW - 10; sy = worldH / 2; svx = -speed; svy = 0; }
+  else if (edge === 'top') { sx = worldW / 2; sy = 10; svx = 0; svy = speed; }
+  else { sx = worldW / 2; sy = worldH - 10; svx = 0; svy = -speed; }
+  return { x: sx, y: sy, vx: svx, vy: svy, alive: true, r: 20 };
+}
+
+// ===================================================================
+// CAMERA
+// ===================================================================
+function updateCamera() {
+  // Fit world into viewport
+  var scaleX = W / worldW;
+  var scaleY = H / worldH;
+  camScale = Math.min(scaleX, scaleY) * 0.92;
+  camX = (W - worldW * camScale) / 2;
+  camY = (H - worldH * camScale) / 2;
+}
+
+function worldToScreen(wx, wy) {
+  return { x: wx * camScale + camX, y: wy * camScale + camY };
+}
+function screenToWorld(sx, sy) {
+  return { x: (sx - camX) / camScale, y: (sy - camY) / camScale };
+}
+
+// ===================================================================
+// LEVEL DEFINITIONS
+// ===================================================================
+function makeIslandPoly(cx, cy, radius, verts) {
+  var pts = [];
+  for (var i = 0; i < verts; i++) {
+    var angle = (i / verts) * Math.PI * 2;
+    var r = radius * (0.8 + Math.random() * 0.4);
+    pts.push({ x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r });
+  }
+  return pts;
+}
+
+function makeRegularIsland(cx, cy, radius, verts) {
+  var pts = [];
+  for (var i = 0; i < verts; i++) {
+    var angle = (i / verts) * Math.PI * 2;
+    pts.push({ x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
+  }
+  return pts;
+}
+
+function islandCenter(pts) {
+  var cx = 0, cy = 0;
+  for (var i = 0; i < pts.length; i++) { cx += pts[i].x; cy += pts[i].y; }
+  return { x: cx / pts.length, y: cy / pts.length };
+}
+
+function buildLevel(levelNum) {
+  penguins = []; eggs = []; fish = []; walls = []; islands = []; bridges = [];
+  particles = []; fallingList = [];
+  sealActive = false; seal = null; sealCountdown = 3;
+  roundNum = 1; phase = PHASE_AIM; currentPenguinIdx = 0;
+  movedThisTurn = 0; gameOver = false;
+  aiQueue = []; aiDelay = 0;
+  bannerText = ''; bannerTimer = 0;
+
+  if (levelNum === 1) {
+    // Tutorial: 1v1, no AI
+    worldW = 400; worldH = 500;
+    var pts = makeRegularIsland(200, 250, 150, 12);
+    islands.push({ points: pts, cx: 200, cy: 250 });
+    penguins.push(makePenguin(200, 310, 'blue'));
+    penguins.push(makePenguin(200, 170, 'pink'));
+    showTip('Hold your penguin and drag back to launch!');
+  } else if (levelNum === 2) {
+    // Egg lesson: 2 blue vs 1 pink, no AI
+    worldW = 400; worldH = 500;
+    var pts = makeRegularIsland(200, 250, 160, 12);
+    islands.push({ points: pts, cx: 200, cy: 250 });
+    penguins.push(makePenguin(160, 340, 'blue'));
+    penguins.push(makePenguin(240, 340, 'blue'));
+    penguins.push(makePenguin(200, 220, 'pink'));
+    showTip('Bump into enemies to lay eggs! Eggs hatch after 3 rounds.');
+  } else if (levelNum === 3) {
+    // First fight: 2v2 with AI
+    worldW = 450; worldH = 550;
+    var pts = makeIslandPoly(225, 275, 175, 10);
+    islands.push({ points: pts, cx: 225, cy: 275 });
+    walls.push({ x: 200, y: 240, w: 50, h: 14 });
+    penguins.push(makePenguin(180, 380, 'blue'));
+    penguins.push(makePenguin(270, 380, 'blue'));
+    penguins.push(makePenguin(180, 170, 'pink'));
+    penguins.push(makePenguin(270, 170, 'pink'));
+  } else if (levelNum === 4) {
+    // 3v3
+    worldW = 500; worldH = 600;
+    var pts = makeIslandPoly(250, 300, 200, 10);
+    islands.push({ points: pts, cx: 250, cy: 300 });
+    walls.push({ x: 180, y: 260, w: 50, h: 14 });
+    walls.push({ x: 290, y: 320, w: 50, h: 14 });
+    penguins.push(makePenguin(200, 430, 'blue'));
+    penguins.push(makePenguin(250, 450, 'blue'));
+    penguins.push(makePenguin(300, 430, 'blue'));
+    penguins.push(makePenguin(200, 160, 'pink'));
+    penguins.push(makePenguin(250, 140, 'pink'));
+    penguins.push(makePenguin(300, 160, 'pink'));
+  } else if (levelNum === 5) {
+    // Bridge map: two islands
+    worldW = 500; worldH = 650;
+    var pts1 = makeIslandPoly(150, 200, 120, 8);
+    var pts2 = makeIslandPoly(350, 450, 120, 8);
+    islands.push({ points: pts1, cx: 150, cy: 200 });
+    islands.push({ points: pts2, cx: 350, cy: 450 });
+    bridges.push({ x: 230, y: 300, w: 40, h: 120 });
+    walls.push({ x: 120, y: 170, w: 40, h: 12 });
+    walls.push({ x: 320, y: 420, w: 40, h: 12 });
+    penguins.push(makePenguin(120, 220, 'blue'));
+    penguins.push(makePenguin(150, 250, 'blue'));
+    penguins.push(makePenguin(180, 220, 'blue'));
+    penguins.push(makePenguin(320, 430, 'pink'));
+    penguins.push(makePenguin(350, 470, 'pink'));
+    penguins.push(makePenguin(380, 430, 'pink'));
+  } else if (levelNum === 6) {
+    // Seal map: two islands with 2 bridges
+    worldW = 550; worldH = 700;
+    var pts1 = makeIslandPoly(160, 200, 130, 8);
+    var pts2 = makeIslandPoly(390, 500, 130, 8);
+    islands.push({ points: pts1, cx: 160, cy: 200 });
+    islands.push({ points: pts2, cx: 390, cy: 500 });
+    bridges.push({ x: 240, y: 290, w: 38, h: 100 });
+    bridges.push({ x: 290, y: 370, w: 38, h: 100 });
+    walls.push({ x: 130, y: 170, w: 40, h: 12 });
+    walls.push({ x: 360, y: 470, w: 40, h: 12 });
+    sealActive = true;
+    sealCountdown = 3;
+    penguins.push(makePenguin(130, 220, 'blue'));
+    penguins.push(makePenguin(160, 250, 'blue'));
+    penguins.push(makePenguin(190, 220, 'blue'));
+    penguins.push(makePenguin(360, 480, 'pink'));
+    penguins.push(makePenguin(390, 520, 'pink'));
+    penguins.push(makePenguin(420, 480, 'pink'));
+  }
+
+  updateCamera();
+  updateHud();
+  selectNextBluePenguin();
+}
+
+function buildOpenPlay() {
+  penguins = []; eggs = []; fish = []; walls = []; islands = []; bridges = [];
+  particles = []; fallingList = [];
+  sealActive = false; seal = null;
+  roundNum = 1; phase = PHASE_AIM; currentPenguinIdx = 0;
+  movedThisTurn = 0; gameOver = false;
+  aiQueue = []; aiDelay = 0;
+  bannerText = ''; bannerTimer = 0;
+
+  var numIslands = randInt(1, 3);
+  worldW = numIslands === 1 ? 450 : numIslands === 2 ? 550 : 650;
+  worldH = numIslands === 1 ? 550 : numIslands === 2 ? 650 : 750;
+
+  var islandCenters = [];
+  if (numIslands === 1) {
+    islandCenters.push({ x: worldW / 2, y: worldH / 2 });
+  } else if (numIslands === 2) {
+    islandCenters.push({ x: worldW * 0.3, y: worldH * 0.3 });
+    islandCenters.push({ x: worldW * 0.7, y: worldH * 0.7 });
+  } else {
+    islandCenters.push({ x: worldW * 0.25, y: worldH * 0.25 });
+    islandCenters.push({ x: worldW * 0.75, y: worldH * 0.3 });
+    islandCenters.push({ x: worldW * 0.5, y: worldH * 0.75 });
+  }
+
+  for (var i = 0; i < numIslands; i++) {
+    var r = rand(100, 150);
+    var v = randInt(7, 10);
+    var pts = makeIslandPoly(islandCenters[i].x, islandCenters[i].y, r, v);
+    islands.push({ points: pts, cx: islandCenters[i].x, cy: islandCenters[i].y });
+  }
+
+  // Connect islands with bridges
+  for (var i = 1; i < numIslands; i++) {
+    var c0 = islandCenters[i - 1];
+    var c1 = islandCenters[i];
+    var mx = (c0.x + c1.x) / 2;
+    var my = (c0.y + c1.y) / 2;
+    var dx = c1.x - c0.x, dy = c1.y - c0.y;
+    var len = Math.hypot(dx, dy);
+    // Place bridge rect along the line
+    bridges.push({
+      x: Math.min(c0.x, c1.x) + Math.abs(dx) * 0.3,
+      y: Math.min(c0.y, c1.y) + Math.abs(dy) * 0.3,
+      w: Math.max(38, Math.abs(dx) * 0.4),
+      h: Math.max(38, Math.abs(dy) * 0.4)
+    });
+  }
+
+  // Walls
+  var numWalls = randInt(1, 3);
+  for (var i = 0; i < numWalls; i++) {
+    var isle = islands[randInt(0, islands.length - 1)];
+    walls.push({
+      x: isle.cx + rand(-40, 40),
+      y: isle.cy + rand(-40, 40),
+      w: rand(30, 60), h: 12
+    });
+  }
+
+  // Place penguins
+  var blueIsle = islands[0];
+  var pinkIsle = islands[islands.length - 1];
+  for (var i = 0; i < 3; i++) {
+    penguins.push(makePenguin(
+      blueIsle.cx + rand(-50, 50),
+      blueIsle.cy + rand(20, 60),
+      'blue'
+    ));
+    penguins.push(makePenguin(
+      pinkIsle.cx + rand(-50, 50),
+      pinkIsle.cy + rand(-60, -20),
+      'pink'
+    ));
+  }
+
+  // Initial fish
+  spawnFishRandom();
+
+  updateCamera();
+  updateHud();
+  selectNextBluePenguin();
+}
+
+// ===================================================================
+// FISH SPAWNING
+// ===================================================================
+function spawnFishRandom() {
+  var activeFish = fish.filter(function(f){ return f.active; }).length;
+  var needed = 3 - activeFish;
+  for (var i = 0; i < needed; i++) {
+    var tries = 50;
+    while (tries-- > 0) {
+      var isle = islands[randInt(0, islands.length - 1)];
+      var fx = isle.cx + rand(-60, 60);
+      var fy = isle.cy + rand(-60, 60);
+      if (pointOnTerrain(fx, fy) && !pointInWall(fx, fy)) {
+        fish.push(makeFish(fx, fy));
+        break;
+      }
+    }
+  }
+}
+
+// ===================================================================
+// TURN MANAGEMENT
+// ===================================================================
+function getAlive(team) {
+  return penguins.filter(function(p){ return p.alive && !p.ghost && p.team === team; });
+}
+
+function selectNextBluePenguin() {
+  var blues = getAlive('blue');
+  var found = false;
+  for (var i = 0; i < blues.length; i++) {
+    if (!blues[i].moved) {
+      blues[i].selected = true;
+      currentPenguinIdx = penguins.indexOf(blues[i]);
+      found = true;
+      break;
+    }
+  }
+  if (!found && blues.length > 0) {
+    // All have moved, allow end turn
+  }
+  btnEndTurn.disabled = movedThisTurn === 0;
+}
+
+function deselectAll() {
+  for (var i = 0; i < penguins.length; i++) penguins[i].selected = false;
+}
+
+function endPlayerTurn() {
+  deselectAll();
+  phase = PHASE_AI;
+  hudTurn.textContent = 'PINK TURN';
+  hudTurn.style.color = '#f472b6';
+  btnEndTurn.disabled = true;
+
+  var pinks = getAlive('pink');
+  var hasAI = storyLevel >= 3 || mode === MODE_OPEN;
+
+  if (!hasAI || pinks.length === 0) {
+    // No AI: skip to next round
+    startNewRound();
+    return;
+  }
+
+  // Queue AI moves
+  aiQueue = [];
+  for (var i = 0; i < pinks.length; i++) {
+    aiQueue.push(pinks[i]);
+  }
+  aiDelay = 30; // initial delay before first AI move
+}
+
+function startNewRound() {
+  // Hatch eggs
+  for (var i = eggs.length - 1; i >= 0; i--) {
+    eggs[i].turnsLeft--;
+    eggs[i].crackLevel++;
+    if (eggs[i].turnsLeft <= 0) {
+      // Hatch!
+      var e = eggs[i];
+      penguins.push(makePenguin(e.x, e.y, e.team));
+      spawnPoof(e.x, e.y, e.team === 'blue' ? '#60a5fa' : '#f472b6');
+      eggs.splice(i, 1);
+    }
+  }
+
+  // Fish respawn check
+  if (roundNum % 5 === 0 || fish.filter(function(f){ return f.active; }).length < 3) {
+    spawnFishRandom();
+  }
+
+  roundNum++;
+
+  // Seal check (level 6)
+  if (sealActive) {
+    sealCountdown--;
+    if (sealCountdown <= 0) {
+      // Trigger seal
+      phase = PHASE_SEAL;
+      var edges = ['left', 'right', 'top', 'bottom'];
+      seal = makeSeal(edges[randInt(0, 3)]);
+      showBanner('SEAL INCOMING!');
+      sealCountdown = 3;
+      return;
+    }
+  }
+
+  // Reset for player turn
+  for (var i = 0; i < penguins.length; i++) penguins[i].moved = false;
+  movedThisTurn = 0;
+  phase = PHASE_AIM;
+  hudTurn.textContent = 'BLUE TURN';
+  hudTurn.style.color = '#60a5fa';
+  updateHud();
+  selectNextBluePenguin();
+}
+
+function checkWinLose() {
+  if (gameOver) return;
+  var blues = getAlive('blue');
+  var pinks = getAlive('pink');
+  if (blues.length === 0) {
+    gameOver = true;
+    setTimeout(function(){ showLose(); }, 600);
+  } else if (pinks.length === 0) {
+    gameOver = true;
+    setTimeout(function(){ showWin(); }, 600);
+  }
+}
+
+// ===================================================================
+// PHYSICS
+// ===================================================================
+function allSettled() {
+  for (var i = 0; i < penguins.length; i++) {
+    var p = penguins[i];
+    if (p.alive && !p.ghost && (Math.abs(p.vx) > MIN_VEL || Math.abs(p.vy) > MIN_VEL)) return false;
+  }
+  return true;
+}
+
+function physicsStep() {
+  for (var i = 0; i < penguins.length; i++) {
+    var p = penguins[i];
+    if (!p.alive || p.ghost) continue;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= FRICTION;
+    p.vy *= FRICTION;
+    if (Math.abs(p.vx) < MIN_VEL * 0.5) p.vx = 0;
+    if (Math.abs(p.vy) < MIN_VEL * 0.5) p.vy = 0;
+
+    // Wall collisions
+    for (var w = 0; w < walls.length; w++) {
+      resolveWallCollision(p, walls[w]);
+    }
+
+    // Check if off terrain
+    if (!pointOnTerrain(p.x, p.y)) {
+      p.alive = false;
+      p.falling = true;
+      fallingList.push(p);
+      spawnPoof(p.x, p.y, p.team === 'blue' ? '#60a5fa' : '#f472b6');
+    }
+
+    // Waddle animation
+    if (Math.abs(p.vx) + Math.abs(p.vy) > 0.3) p.waddleT += 0.2;
+    if (p.hitFlash > 0) p.hitFlash--;
+  }
+
+  // Penguin-penguin collisions
+  for (var a = 0; a < penguins.length; a++) {
+    for (var b = a + 1; b < penguins.length; b++) {
+      var p1 = penguins[a], p2 = penguins[b];
+      if (!p1.alive || p1.ghost || !p2.alive || p2.ghost) continue;
+      var dx = p2.x - p1.x, dy = p2.y - p1.y;
+      var d = Math.hypot(dx, dy);
+      var minD = p1.r + p2.r;
+      if (d > 0 && d < minD) {
+        var nx = dx / d, ny = dy / d;
+        var overlap = minD - d;
+        var tot = p1.mass + p2.mass;
+        p1.x -= nx * overlap * (p2.mass / tot);
+        p1.y -= ny * overlap * (p1.mass / tot);
+        p2.x += nx * overlap * (p1.mass / tot);
+        p2.y += ny * overlap * (p2.mass / tot);
+
+        var v1n = p1.vx * nx + p1.vy * ny;
+        var v2n = p2.vx * nx + p2.vy * ny;
+        var newV1n = ((p1.mass - p2.mass) * v1n + 2 * p2.mass * v2n) / tot * BOUNCE_PENGUIN;
+        var newV2n = ((p2.mass - p1.mass) * v2n + 2 * p1.mass * v1n) / tot * BOUNCE_PENGUIN;
+        p1.vx += (newV1n - v1n) * nx;
+        p1.vy += (newV1n - v1n) * ny;
+        p2.vx += (newV2n - v2n) * nx;
+        p2.vy += (newV2n - v2n) * ny;
+
+        p1.hitFlash = 6; p2.hitFlash = 6;
+        spawnHit((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+
+        // Egg spawning: if different teams and moving penguin initiated
+        if (p1.team !== p2.team) {
+          var speed1 = Math.hypot(p1.vx, p1.vy);
+          var speed2 = Math.hypot(p2.vx, p2.vy);
+          var initiator = speed1 > speed2 ? p1 : p2;
+          eggs.push(makeEgg((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, initiator.team));
+        }
+      }
+    }
+  }
+
+  // Fish pickup
+  for (var i = 0; i < penguins.length; i++) {
+    var p = penguins[i];
+    if (!p.alive || p.ghost) continue;
+    for (var f = 0; f < fish.length; f++) {
+      if (!fish[f].active) continue;
+      if (dist(p, fish[f]) < p.r + FISH_R) {
+        fish[f].active = false;
+        p.fishCount++;
+        p.mass += 0.25;
+        p.r = PENGUIN_R * Math.sqrt(1 + p.fishCount * 0.25);
+        spawnPoof(fish[f].x, fish[f].y, '#fb923c');
+      }
+    }
+  }
+
+  // Falling animation
+  for (var i = fallingList.length - 1; i >= 0; i--) {
+    var p = fallingList[i];
+    p.fallT++;
+    p.x += p.vx * 0.5;
+    p.y += p.vy * 0.5;
+    if (p.fallT > 50) fallingList.splice(i, 1);
+  }
+
+  // Particles
+  for (var i = particles.length - 1; i >= 0; i--) {
+    var pp = particles[i];
+    pp.x += pp.vx; pp.y += pp.vy;
+    pp.vx *= 0.92; pp.vy *= 0.92;
+    pp.life--;
+    if (pp.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function resolveWallCollision(p, w) {
+  // AABB vs circle
+  var closestX = clamp(p.x, w.x, w.x + w.w);
+  var closestY = clamp(p.y, w.y, w.y + w.h);
+  var dx = p.x - closestX, dy = p.y - closestY;
+  var d = Math.hypot(dx, dy);
+  if (d < p.r && d > 0) {
+    var nx = dx / d, ny = dy / d;
+    p.x = closestX + nx * p.r;
+    p.y = closestY + ny * p.r;
+    var dot = p.vx * nx + p.vy * ny;
+    p.vx -= 2 * dot * nx * BOUNCE_WALL;
+    p.vy -= 2 * dot * ny * BOUNCE_WALL;
+  }
+}
+
+// ===================================================================
+// SEAL LOGIC
+// ===================================================================
+function updateSeal() {
+  if (!seal || !seal.alive) return;
+  seal.x += seal.vx;
+  seal.y += seal.vy;
+
+  // Kill any penguin it touches
+  for (var i = 0; i < penguins.length; i++) {
+    var p = penguins[i];
+    if (!p.alive || p.ghost) continue;
+    if (dist(p, seal) < p.r + seal.r) {
+      p.ghost = true;
+      p.alive = false;
+      spawnPoof(p.x, p.y, '#6b7280');
+    }
+  }
+
+  // Off-world?
+  if (seal.x < -30 || seal.x > worldW + 30 || seal.y < -30 || seal.y > worldH + 30) {
+    seal.alive = false;
+    seal = null;
+    // Continue to new round
+    for (var i = 0; i < penguins.length; i++) penguins[i].moved = false;
+    movedThisTurn = 0;
+    phase = PHASE_AIM;
+    hudTurn.textContent = 'BLUE TURN';
+    hudTurn.style.color = '#60a5fa';
+    updateHud();
+    selectNextBluePenguin();
+  }
+}
+
+// ===================================================================
+// AI
+// ===================================================================
+function runAIMove(p) {
+  var bestScore = -Infinity;
+  var bestAngle = 0, bestPower = 0;
+  var blues = getAlive('blue');
+  if (blues.length === 0) return;
+
+  var angles = 16, powers = 5;
+  for (var ai = 0; ai < angles; ai++) {
+    var angle = (ai / angles) * Math.PI * 2;
+    for (var pi = 1; pi <= powers; pi++) {
+      var power = (pi / powers) * MAX_DRAG * LAUNCH_SCALE;
+      var vx = Math.cos(angle) * power;
+      var vy = Math.sin(angle) * power;
+
+      // Simple simulation: predict where penguin ends up
+      var sx = p.x, sy = p.y, svx = vx, svy = vy;
+      var score = 0;
+      for (var step = 0; step < 60; step++) {
+        sx += svx; sy += svy;
+        svx *= FRICTION; svy *= FRICTION;
+
+        // Check if we go off edge (bad)
+        if (!pointOnTerrain(sx, sy)) {
+          score -= 200;
+          break;
+        }
+
+        // Check proximity to blue penguins near edges
+        for (var b = 0; b < blues.length; b++) {
+          var bd = Math.hypot(sx - blues[b].x, sy - blues[b].y);
+          if (bd < p.r + blues[b].r + 5) {
+            // Would we push them toward an edge?
+            var pushDir = { x: blues[b].x - sx, y: blues[b].y - sy };
+            var pLen = Math.hypot(pushDir.x, pushDir.y) || 1;
+            var testX = blues[b].x + (pushDir.x / pLen) * 40;
+            var testY = blues[b].y + (pushDir.y / pLen) * 40;
+            if (!pointOnTerrain(testX, testY)) {
+              score += 100; // likely knockoff
+            } else {
+              score += 20; // at least a hit
+            }
+          }
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestAngle = angle;
+        bestPower = power;
+      }
+    }
+  }
+
+  // If no good move, random
+  if (bestScore <= -200) {
+    bestAngle = Math.random() * Math.PI * 2;
+    bestPower = MAX_DRAG * LAUNCH_SCALE * 0.5;
+  }
+
+  p.vx = Math.cos(bestAngle) * bestPower;
+  p.vy = Math.sin(bestAngle) * bestPower;
+  p.moved = true;
+}
+
+// ===================================================================
+// INPUT — SLINGSHOT
+// ===================================================================
+var dragging = false;
+var dragPenguin = null;
+var dragStartX = 0, dragStartY = 0;
+var dragCurX = 0, dragCurY = 0;
+
+function getTouchPos(e) {
+  var rect = canvas.getBoundingClientRect();
+  var t = e.touches ? e.touches[0] : e;
+  return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+}
+
+canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+canvas.addEventListener('mousedown', onPointerDown);
+canvas.addEventListener('touchmove', onPointerMove, { passive: false });
+canvas.addEventListener('mousemove', onPointerMove);
+canvas.addEventListener('touchend', onPointerUp);
+canvas.addEventListener('mouseup', onPointerUp);
+
+function onPointerDown(e) {
+  if (e.cancelable) e.preventDefault();
+  if (phase !== PHASE_AIM || gameOver) return;
+
+  var pos = getTouchPos(e);
+  var wp = screenToWorld(pos.x, pos.y);
+
+  // Find the selected blue penguin
+  var blues = getAlive('blue');
+  for (var i = 0; i < blues.length; i++) {
+    if (blues[i].selected && dist(wp, blues[i]) < blues[i].r + 15) {
+      dragging = true;
+      dragPenguin = blues[i];
+      dragStartX = wp.x;
+      dragStartY = wp.y;
+      dragCurX = wp.x;
+      dragCurY = wp.y;
+      break;
+    }
+  }
+
+  // If tapped a different unmoved blue penguin, select it instead
+  if (!dragging) {
+    for (var i = 0; i < blues.length; i++) {
+      if (!blues[i].moved && dist(wp, blues[i]) < blues[i].r + 15) {
+        deselectAll();
+        blues[i].selected = true;
+        currentPenguinIdx = penguins.indexOf(blues[i]);
+        break;
+      }
+    }
+  }
+}
+
+function onPointerMove(e) {
+  if (e.cancelable) e.preventDefault();
+  if (!dragging) return;
+  var pos = getTouchPos(e);
+  var wp = screenToWorld(pos.x, pos.y);
+  dragCurX = wp.x;
+  dragCurY = wp.y;
+}
+
+function onPointerUp(e) {
+  if (!dragging || !dragPenguin) { dragging = false; return; }
+
+  var dx = dragPenguin.x - dragCurX;
+  var dy = dragPenguin.y - dragCurY;
+  var dragDist = Math.hypot(dx, dy);
+
+  if (dragDist > 10) {
+    var power = Math.min(dragDist, MAX_DRAG) * LAUNCH_SCALE;
+    var angle = Math.atan2(dy, dx);
+    dragPenguin.vx = Math.cos(angle) * power;
+    dragPenguin.vy = Math.sin(angle) * power;
+    dragPenguin.moved = true;
+    dragPenguin.selected = false;
+    movedThisTurn++;
+    phase = PHASE_MOVING;
+  }
+
+  dragging = false;
+  dragPenguin = null;
+}
+
+// ===================================================================
+// PARTICLES
+// ===================================================================
+function spawnHit(x, y) {
+  for (var i = 0; i < 8; i++) {
+    particles.push({
+      x: x, y: y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4,
+      life: 18 + Math.random() * 10,
+      r: 2 + Math.random() * 2,
+      color: '#ffffff'
+    });
+  }
+}
+function spawnPoof(x, y, color) {
+  for (var i = 0; i < 12; i++) {
+    particles.push({
+      x: x, y: y,
+      vx: (Math.random() - 0.5) * 5,
+      vy: (Math.random() - 0.5) * 5,
+      life: 25 + Math.random() * 12,
+      r: 2 + Math.random() * 3,
+      color: color
+    });
+  }
+}
+
+// ===================================================================
+// HUD & UI
+// ===================================================================
+function updateHud() {
+  hudRound.textContent = roundNum;
+  hudBlue.textContent = getAlive('blue').length;
+  hudPink.textContent = getAlive('pink').length;
+  if (sealActive) {
+    hudSeal.style.display = '';
+    hudSealCount.textContent = sealCountdown;
+  } else {
+    hudSeal.style.display = 'none';
+  }
+}
+
+function showBanner(text) {
+  bannerText = text;
+  bannerTimer = 90;
+}
+
+function showTip(text) {
+  tipEl.textContent = text;
+  tipEl.classList.remove('hidden');
+  clearTimeout(tipEl._timer);
+  tipEl._timer = setTimeout(function(){ tipEl.classList.add('hidden'); }, 5000);
+}
+
+function showWin() {
+  winOverlay.classList.remove('hidden');
+  if (mode === MODE_STORY && storyLevel < 6) {
+    winTitle.textContent = 'Level ' + storyLevel + ' Complete!';
+    winMsg.textContent = storyLevel < 6 ? 'Ready for the next challenge?' : 'You conquered the Antarctic!';
+    document.getElementById('btn-next').style.display = '';
+  } else if (mode === MODE_STORY && storyLevel >= 6) {
+    winTitle.textContent = 'Campaign Complete!';
+    winMsg.textContent = 'You conquered all 6 levels! You are the Penguin Commander!';
+    document.getElementById('btn-next').style.display = 'none';
+  } else {
+    winTitle.textContent = 'Victory!';
+    winMsg.textContent = 'All enemy penguins eliminated!';
+    document.getElementById('btn-next').textContent = 'New Map';
+    document.getElementById('btn-next').style.display = '';
+  }
+}
+
+function showLose() {
+  loseOverlay.classList.remove('hidden');
+  document.getElementById('lose-msg').textContent =
+    mode === MODE_STORY ? 'Level ' + storyLevel + ' failed. Try again!' : 'Your army fell. Try a new map!';
+}
+
+function hideOverlays() {
+  menuOverlay.classList.add('hidden');
+  winOverlay.classList.add('hidden');
+  loseOverlay.classList.add('hidden');
+}
+
+// ===================================================================
+// DRAWING
+// ===================================================================
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background: dark ocean
+  ctx.fillStyle = '#05050c';
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars
+  ctx.fillStyle = '#1e1e3a';
+  for (var s = 0; s < 50; s++) {
+    ctx.fillRect((s * 73) % W, (s * 131) % H, 1.5, 1.5);
+  }
+
+  // Water ripples
+  ctx.save();
+  ctx.translate(camX, camY);
+  ctx.scale(camScale, camScale);
+  drawWater();
+  drawTerrain();
+  drawWalls();
+  drawBridges();
+  drawEggs();
+  drawFish();
+
+  // Draw falling penguins behind
+  for (var i = 0; i < fallingList.length; i++) drawFallingPenguin(fallingList[i]);
+
+  // Sort penguins by y for overlap
+  var drawList = penguins.filter(function(p){ return p.alive || p.ghost; });
+  drawList.sort(function(a, b){ return a.y - b.y; });
+  for (var i = 0; i < drawList.length; i++) drawPenguin(drawList[i]);
+
+  // Seal
+  if (seal && seal.alive) drawSeal(seal);
+
+  // Slingshot preview
+  if (dragging && dragPenguin) drawSlingshot();
+
+  // Particles (in world space)
+  for (var i = 0; i < particles.length; i++) {
+    var pp = particles[i];
+    ctx.globalAlpha = Math.max(0, pp.life / 30);
+    ctx.fillStyle = pp.color;
+    ctx.beginPath();
+    ctx.arc(pp.x, pp.y, pp.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+
+  // Banner
+  if (bannerTimer > 0) {
+    bannerTimer--;
+    var alpha = Math.min(1, bannerTimer / 20);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(15, 15, 30, 0.7)';
+    var bh = Math.min(60, H * 0.1);
+    ctx.fillRect(0, H * 0.3 - bh / 2, W, bh);
+    ctx.fillStyle = '#f472b6';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '700 ' + Math.round(Math.min(28, H * 0.05)) + 'px system-ui, sans-serif';
+    ctx.fillText(bannerText, W / 2, H * 0.3);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawWater() {
+  // Subtle water behind islands
+  var t = animFrame * 0.02;
+  ctx.fillStyle = '#0c1929';
+  ctx.fillRect(-50, -50, worldW + 100, worldH + 100);
+
+  // Ripple lines
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+  ctx.lineWidth = 1;
+  for (var i = 0; i < 8; i++) {
+    ctx.beginPath();
+    var y = (i * worldH / 8) + Math.sin(t + i) * 5;
+    ctx.moveTo(-20, y);
+    for (var x = 0; x < worldW + 40; x += 30) {
+      ctx.lineTo(x, y + Math.sin(t + x * 0.02 + i) * 4);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawTerrain() {
+  for (var i = 0; i < islands.length; i++) {
+    var isle = islands[i];
+    var pts = isle.points;
+
+    // Shadow
+    ctx.save();
+    ctx.translate(3, 5);
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (var j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    ctx.restore();
+
+    // Ice surface
+    var grad = ctx.createRadialGradient(isle.cx, isle.cy, 20, isle.cx, isle.cy, 160);
+    grad.addColorStop(0, '#e0f2fe');
+    grad.addColorStop(0.6, '#bae6fd');
+    grad.addColorStop(1, '#7dd3fc');
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (var j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Ice cracks
+    ctx.save();
+    ctx.translate(isle.cx, isle.cy);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 0.8;
+    for (var c = 0; c < 5; c++) {
+      var a = c * (Math.PI * 2 / 5) + 0.3;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 15, Math.sin(a) * 15);
+      ctx.lineTo(Math.cos(a) * 80, Math.sin(a) * 80);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawBridges() {
+  for (var i = 0; i < bridges.length; i++) {
+    var b = bridges[i];
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(b.x + 3, b.y + 5, b.w, b.h);
+    // Bridge surface
+    var grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
+    grad.addColorStop(0, '#bae6fd');
+    grad.addColorStop(1, '#93c5fd');
+    ctx.fillStyle = grad;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+  }
+}
+
+function drawWalls() {
+  for (var i = 0; i < walls.length; i++) {
+    var w = walls[i];
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(w.x + 2, w.y + 3, w.w, w.h);
+    ctx.fillStyle = WALL_COLOR;
+    ctx.fillRect(w.x, w.y, w.w, w.h);
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(w.x, w.y, w.w, w.h);
+    // Snow top
+    ctx.fillStyle = '#f0f9ff';
+    ctx.fillRect(w.x, w.y - 2, w.w, 3);
+  }
+}
+
+function drawEggs() {
+  for (var i = 0; i < eggs.length; i++) {
+    var e = eggs[i];
+    ctx.save();
+    ctx.translate(e.x, e.y);
+
+    // Egg body
+    ctx.beginPath();
+    ctx.ellipse(0, 0, EGG_R * 0.8, EGG_R, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#fefce8';
+    ctx.fill();
+    ctx.strokeStyle = e.team === 'blue' ? '#60a5fa' : '#f472b6';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Cracks based on crack level
+    if (e.crackLevel >= 1) {
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(-2, -EGG_R * 0.5);
+      ctx.lineTo(1, 0);
+      ctx.lineTo(-3, EGG_R * 0.3);
+      ctx.stroke();
+    }
+    if (e.crackLevel >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(2, -EGG_R * 0.4);
+      ctx.lineTo(4, EGG_R * 0.2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawFish() {
+  for (var i = 0; i < fish.length; i++) {
+    if (!fish[i].active) continue;
+    var f = fish[i];
+    ctx.save();
+    ctx.translate(f.x, f.y);
+
+    // Fish body
+    ctx.fillStyle = '#fb923c';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, FISH_R, FISH_R * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(FISH_R * 0.8, 0);
+    ctx.lineTo(FISH_R * 1.5, -FISH_R * 0.5);
+    ctx.lineTo(FISH_R * 1.5, FISH_R * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    // Eye
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(-FISH_R * 0.4, -1, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+function drawPenguin(p) {
+  var waddle = Math.sin(p.waddleT) * 0.1;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(waddle);
+  var r = p.r;
+
+  if (p.ghost) {
+    ctx.globalAlpha = 0.3;
+  }
+
+  // Shadow
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.85, r * 0.9, r * 0.25, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fill();
+
+  // Body
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.9, r, 0, 0, Math.PI * 2);
+  ctx.fillStyle = p.team === 'blue' ? '#2563eb' : '#db2777';
+  ctx.fill();
+
+  // Belly
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.08, r * 0.55, r * 0.7, 0, 0, Math.PI * 2);
+  ctx.fillStyle = p.team === 'blue' ? '#dbeafe' : '#fce7f3';
+  ctx.fill();
+
+  // Eyes
+  var eyeOff = r * 0.26;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(-eyeOff, -r * 0.32, r * 0.16, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(eyeOff, -r * 0.32, r * 0.16, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#111827';
+  ctx.beginPath(); ctx.arc(-eyeOff + 0.5, -r * 0.3, r * 0.08, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(eyeOff + 0.5, -r * 0.3, r * 0.08, 0, Math.PI * 2); ctx.fill();
+
+  // Beak
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.1, -r * 0.04);
+  ctx.lineTo(r * 0.1, -r * 0.04);
+  ctx.lineTo(0, r * 0.18);
+  ctx.closePath();
+  ctx.fillStyle = '#f97316';
+  ctx.fill();
+
+  // Feet
+  ctx.fillStyle = '#f97316';
+  ctx.beginPath(); ctx.ellipse(-r * 0.32, r * 0.9, r * 0.18, r * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(r * 0.32, r * 0.9, r * 0.18, r * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Hit flash
+  if (p.hitFlash > 0) {
+    ctx.globalAlpha = (p.ghost ? 0.15 : 1) * (p.hitFlash / 8);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 1.05, r * 1.15, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.globalAlpha = p.ghost ? 0.3 : 1;
+  }
+
+  // Selected indicator
+  if (p.selected && !p.ghost) {
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.3, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Pulsing glow
+    var pulse = 0.5 + Math.sin(animFrame * 0.1) * 0.3;
+    ctx.beginPath();
+    ctx.arc(0, -r * 1.4, 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(250, 204, 21, ' + pulse + ')';
+    ctx.fill();
+  }
+
+  // Moved indicator (checkmark)
+  if (p.moved && p.team === 'blue' && !p.ghost) {
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
+    ctx.font = '700 ' + Math.round(r * 0.7) + 'px system-ui';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('\u2713', 0, -r * 1.35);
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawFallingPenguin(p) {
+  var scale = Math.max(0, 1 - p.fallT / 50);
+  if (scale <= 0.05) return;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.fallT * 0.15);
+  ctx.scale(scale, scale);
+  var r = p.r;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.9, r, 0, 0, Math.PI * 2);
+  ctx.fillStyle = p.team === 'blue' ? '#2563eb' : '#db2777';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.08, r * 0.55, r * 0.7, 0, 0, Math.PI * 2);
+  ctx.fillStyle = p.team === 'blue' ? '#dbeafe' : '#fce7f3';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSeal(s) {
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  var r = s.r;
+
+  // Body
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 1.2, r * 0.7, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#4b5563';
+  ctx.fill();
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(-r * 0.7, -r * 0.1, r * 0.45, 0, Math.PI * 2);
+  ctx.fillStyle = '#6b7280';
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(-r * 0.85, -r * 0.2, 2, 0, Math.PI * 2); ctx.fill();
+
+  // Whiskers
+  ctx.strokeStyle = '#9ca3af';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(-r * 0.95, -r * 0.05); ctx.lineTo(-r * 1.3, -r * 0.2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-r * 0.95, 0.05); ctx.lineTo(-r * 1.3, r * 0.15); ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawSlingshot() {
+  var p = dragPenguin;
+  var dx = dragCurX - p.x;
+  var dy = dragCurY - p.y;
+  var dragDist = Math.min(Math.hypot(dx, dy), MAX_DRAG);
+
+  // Direction line (from penguin toward drag point)
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.5)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(p.x, p.y);
+  ctx.lineTo(dragCurX, dragCurY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Power indicator circle
+  var power = dragDist / MAX_DRAG;
+  var color = power < 0.33 ? '#22c55e' : power < 0.66 ? '#eab308' : '#ef4444';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r + 4 + power * 12, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Launch direction arrow
+  var launchAngle = Math.atan2(p.y - dragCurY, p.x - dragCurX);
+  var arrowLen = 20 + power * 40;
+  var ax = p.x + Math.cos(launchAngle) * arrowLen;
+  var ay = p.y + Math.sin(launchAngle) * arrowLen;
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.7)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(p.x, p.y);
+  ctx.lineTo(ax, ay);
+  ctx.stroke();
+
+  // Arrowhead
+  var headLen = 6;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(ax - Math.cos(launchAngle - 0.4) * headLen, ay - Math.sin(launchAngle - 0.4) * headLen);
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(ax - Math.cos(launchAngle + 0.4) * headLen, ay - Math.sin(launchAngle + 0.4) * headLen);
+  ctx.stroke();
+
+  // Dotted trajectory preview
+  var simVx = Math.cos(launchAngle) * dragDist * LAUNCH_SCALE;
+  var simVy = Math.sin(launchAngle) * dragDist * LAUNCH_SCALE;
+  var simX = p.x, simY = p.y;
+  ctx.fillStyle = 'rgba(250, 204, 21, 0.4)';
+  for (var s = 0; s < 20; s++) {
+    simX += simVx;
+    simY += simVy;
+    simVx *= FRICTION;
+    simVy *= FRICTION;
+    ctx.beginPath();
+    ctx.arc(simX, simY, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ===================================================================
+// MAIN LOOP
+// ===================================================================
+function tick() {
+  animFrame++;
+
+  if (mode !== MODE_MENU && !gameOver) {
+    if (phase === PHASE_MOVING) {
+      physicsStep();
+      if (allSettled()) {
+        checkWinLose();
+        if (!gameOver) {
+          // Select next unmoved blue penguin
+          var blues = getAlive('blue');
+          var hasUnmoved = blues.some(function(b){ return !b.moved; });
+          if (hasUnmoved) {
+            phase = PHASE_AIM;
+            selectNextBluePenguin();
+          } else {
+            // All moved, enable end turn
+            phase = PHASE_AIM;
+            btnEndTurn.disabled = false;
+          }
+        }
+      }
+    } else if (phase === PHASE_AI) {
+      physicsStep();
+      if (allSettled()) {
+        if (aiDelay > 0) {
+          aiDelay--;
+        } else if (aiQueue.length > 0) {
+          var nextAI = aiQueue.shift();
+          if (nextAI.alive && !nextAI.ghost) {
+            runAIMove(nextAI);
+            aiDelay = 25;
+          }
+        } else {
+          checkWinLose();
+          if (!gameOver) startNewRound();
+        }
+      }
+    } else if (phase === PHASE_SEAL) {
+      updateSeal();
+      physicsStep();
+      checkWinLose();
+    } else {
+      // PHASE_AIM — just update falling/particles
+      physicsStep();
+    }
+
+    updateHud();
+  }
+
+  draw();
+  requestAnimationFrame(tick);
+}
+
+// ===================================================================
+// BUTTON HANDLERS
+// ===================================================================
+document.getElementById('btn-story').addEventListener('click', function() {
+  mode = MODE_STORY;
+  storyLevel = 1;
+  hideOverlays();
+  buildLevel(storyLevel);
+  showBanner('Level 1');
+});
+
+document.getElementById('btn-open').addEventListener('click', function() {
+  mode = MODE_OPEN;
+  hideOverlays();
+  buildOpenPlay();
+  showBanner('Open Play');
+});
+
+btnEndTurn.addEventListener('click', function() {
+  if (phase === PHASE_AIM && movedThisTurn > 0) {
+    endPlayerTurn();
+  }
+});
+
+document.getElementById('btn-next').addEventListener('click', function() {
+  hideOverlays();
+  if (mode === MODE_STORY) {
+    storyLevel++;
+    if (storyLevel > 6) storyLevel = 6;
+    buildLevel(storyLevel);
+    showBanner('Level ' + storyLevel);
+  } else {
+    buildOpenPlay();
+    showBanner('New Map');
+  }
+});
+
+document.getElementById('btn-retry').addEventListener('click', function() {
+  hideOverlays();
+  if (mode === MODE_STORY) {
+    buildLevel(storyLevel);
+  } else {
+    buildOpenPlay();
+  }
+});
+
+document.getElementById('btn-menu').addEventListener('click', function() {
+  mode = MODE_MENU;
+  hideOverlays();
+  menuOverlay.classList.remove('hidden');
+});
+
+document.getElementById('btn-menu2').addEventListener('click', function() {
+  mode = MODE_MENU;
+  hideOverlays();
+  menuOverlay.classList.remove('hidden');
+});
+
+document.getElementById('restart-btn').addEventListener('click', function() {
+  if (mode === MODE_STORY) {
+    hideOverlays();
+    buildLevel(storyLevel);
+  } else if (mode === MODE_OPEN) {
+    hideOverlays();
+    buildOpenPlay();
+  }
+});
+
+// ===================================================================
+// BOOT
+// ===================================================================
+resize();
+requestAnimationFrame(function() {
+  resize();
+  tick();
+});
+
+document.addEventListener('touchmove', function(e) {
+  if (e.cancelable) e.preventDefault();
+}, { passive: false });
+
+})();
+</script>
+</body>
+</html>

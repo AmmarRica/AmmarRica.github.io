@@ -5,185 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Game a Day</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
-      font-family: system-ui, sans-serif;
-      background: #0f0f1a;
-      color: #e0e0ff;
-      min-height: 100vh;
-      padding: 2rem;
+      font-family: monospace;
+      max-width: 720px;
+      margin: 2rem auto;
+      padding: 0 1rem;
     }
-
-    header {
-      text-align: center;
-      margin-bottom: 1.5rem;
-    }
-
-    header h1 {
-      font-size: 3rem;
-      letter-spacing: 0.05em;
-      color: #a78bfa;
-    }
-
-    header p {
-      margin-top: 0.5rem;
-      color: #9ca3af;
-      font-size: 1.1rem;
-    }
-
-    /* Filter bar */
-    .filter-bar {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-      max-width: 1200px;
-      margin: 0 auto 2rem;
-    }
-
-    .filter-label {
-      color: #9ca3af;
-      font-size: 0.9rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-right: 0.25rem;
-    }
-
-    .filter-btn {
-      background: #1e1e2e;
-      border: 1px solid #3b3b5c;
-      border-radius: 20px;
-      color: #9ca3af;
+    nav a { margin-right: 1rem; }
+    .filter-bar { margin: 1rem 0; }
+    .filter-bar button {
+      background: none;
+      border: 1px solid #999;
+      padding: 0.2rem 0.6rem;
       cursor: pointer;
+      font-family: monospace;
       font-size: 0.85rem;
-      padding: 0.4rem 1rem;
-      transition: border-color 0.15s, color 0.15s, background 0.15s;
-      -webkit-tap-highlight-color: transparent;
     }
-
-    .filter-btn:hover {
-      border-color: #a78bfa;
-      color: #e0e0ff;
+    .filter-bar button.active {
+      background: #000;
+      color: #fff;
     }
-
-    .filter-btn.active {
-      background: #a78bfa;
-      border-color: #a78bfa;
-      color: #0f0f1a;
-      font-weight: 600;
-    }
-
-    .section-title {
-      text-align: center;
-      font-size: 1.4rem;
-      color: #a78bfa;
-      margin: 2rem auto 1rem;
-      max-width: 1200px;
-      border-bottom: 1px solid #3b3b5c;
-      padding-bottom: 0.5rem;
-    }
-
-    .gallery {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 1.5rem;
-      max-width: 1200px;
-      margin: 0 auto 2rem;
-    }
-
-    .card {
-      background: #1e1e2e;
-      border: 1px solid #3b3b5c;
-      border-radius: 12px;
-      padding: 1.2rem;
-      text-align: center;
-      text-decoration: none;
-      color: inherit;
-      transition: transform 0.15s, border-color 0.15s;
-      position: relative;
-    }
-
-    .card:hover {
-      transform: translateY(-4px);
-      border-color: #a78bfa;
-    }
-
-    .card.hidden {
-      display: none;
-    }
-
-    .card .day-number {
-      font-size: 1.6rem;
-      font-weight: 700;
-      color: #a78bfa;
-    }
-
-    .card .day-label {
-      font-size: 0.75rem;
-      color: #9ca3af;
-      margin-top: 0.15rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .card .day-title {
-      margin-top: 0.5rem;
-      font-size: 0.95rem;
-      color: #e0e0ff;
-      font-weight: 500;
-    }
-
-    .input-badge {
-      display: inline-block;
-      margin-top: 0.55rem;
-      font-size: 0.7rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 10px;
-      font-weight: 600;
-      letter-spacing: 0.03em;
-    }
-
-    .input-badge.touch   { background: #14532d; color: #86efac; }
-    .input-badge.keyboard { background: #431407; color: #fdba74; }
-    .input-badge.both    { background: #1e1b4b; color: #a5b4fc; }
-
-    .section-block {
-      margin-bottom: 0.5rem;
-    }
-
-    .section-empty-msg {
-      text-align: center;
-      color: #4b4b6e;
-      font-size: 0.9rem;
-      padding: 1rem 0;
-      grid-column: 1 / -1;
-    }
+    h2 { margin-top: 1.5rem; font-size: 1.1rem; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 0.15rem 0; }
+    li.hidden { display: none; }
+    .empty-msg { color: #999; font-size: 0.85rem; display: none; }
   </style>
 </head>
 <body>
-  <nav style="background:#1a1a2e;border-bottom:1px solid #3b3b5c;padding:0.6rem 2rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
-    <a href="/" style="color:#a78bfa;text-decoration:none;font-weight:700;font-size:1.1rem;">Ammar Rica</a>
-    <a href="/" style="color:#9ca3af;text-decoration:none;font-size:0.9rem;">Home</a>
-    <a href="/about/" style="color:#9ca3af;text-decoration:none;font-size:0.9rem;">About</a>
-    <a href="/blog/" style="color:#9ca3af;text-decoration:none;font-size:0.9rem;">Blog</a>
-    <a href="/videogames-ishkur/" style="color:#9ca3af;text-decoration:none;font-size:0.9rem;">Videogames Ishkur</a>
-    <a href="/AIGeneratedGames/" style="color:#e0e0ff;text-decoration:none;font-size:0.9rem;font-weight:600;">AI-Generated Games</a>
-    <a href="/game-stats/" style="color:#9ca3af;text-decoration:none;font-size:0.9rem;">Game Stats</a>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/about/">About</a>
+    <a href="/blog/">Blog</a>
+    <a href="/videogames-ishkur/">Videogames Ishkur</a>
+    <a href="/AIGeneratedGames/"><strong>AI-Generated Games</strong></a>
+    <a href="/game-stats/">Game Stats</a>
   </nav>
 
-  <header>
-    <h1>Game a Day</h1>
-    <p>One small game built every day.</p>
-  </header>
+  <h1>Game a Day</h1>
+  <p>One small game built every day.</p>
 
   <div class="filter-bar">
-    <span class="filter-label">Filter:</span>
-    <button class="filter-btn active" data-filter="all">All</button>
-    <button class="filter-btn" data-filter="mobile">📱 Mobile-Friendly</button>
-    <button class="filter-btn" data-filter="keyboard">⌨️ Keyboard Only</button>
+    Filter:
+    <button class="active" data-filter="all">All</button>
+    <button data-filter="mobile">Mobile-Friendly</button>
+    <button data-filter="keyboard">Keyboard Only</button>
   </div>
 
   <div id="galleries"></div>
@@ -193,17 +59,11 @@
       var currentFilter = 'all';
 
       var SECTIONS = [
-        { series: 'daily',    title: 'Daily Games',            labelFn: function(i, g) { return 'Day ' + (i + 1); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } },
-        { series: 'ufo-like', title: 'UFO-Like Games',          labelFn: function(i, g) { return 'UFO ' + (i + 1); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } },
-        { series: 'football', title: 'Football Games Collection', labelFn: function(i, g) { return g.genre || ('Game ' + (i + 1)); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } },
-        { series: 'charlotte', title: '3D Experiences',         labelFn: function(i, g) { return g.genre || ('Experience ' + (i + 1)); }, numFn: function(i, g) { return String(i + 1).padStart(2, '0'); } }
+        { series: 'daily',     title: 'Daily Games' },
+        { series: 'ufo-like',  title: 'UFO-Like Games' },
+        { series: 'football',  title: 'Football Games' },
+        { series: 'charlotte', title: '3D Experiences' }
       ];
-
-      var BADGE = {
-        touch:    { cls: 'touch',    text: '📱 Mobile' },
-        keyboard: { cls: 'keyboard', text: '⌨️ Desktop' },
-        both:     { cls: 'both',     text: '📱 / ⌨️' }
-      };
 
       function matchesFilter(input, filter) {
         if (filter === 'all') return true;
@@ -213,31 +73,12 @@
       }
 
       function applyFilter() {
-        var cards = document.querySelectorAll('.card[data-input]');
-        cards.forEach(function (card) {
-          var input = card.getAttribute('data-input');
-          if (matchesFilter(input, currentFilter)) {
-            card.classList.remove('hidden');
-          } else {
-            card.classList.add('hidden');
-          }
+        document.querySelectorAll('li[data-input]').forEach(function (li) {
+          li.classList.toggle('hidden', !matchesFilter(li.getAttribute('data-input'), currentFilter));
         });
-
-        // Update empty messages per section
-        document.querySelectorAll('.gallery').forEach(function (gallery) {
-          var emptyMsg = gallery.querySelector('.section-empty-msg');
-          var visibleCount = gallery.querySelectorAll('.card:not(.hidden)').length;
-          if (visibleCount === 0) {
-            if (!emptyMsg) {
-              emptyMsg = document.createElement('p');
-              emptyMsg.className = 'section-empty-msg';
-              emptyMsg.textContent = 'No games match this filter in this section.';
-              gallery.appendChild(emptyMsg);
-            }
-            emptyMsg.style.display = '';
-          } else {
-            if (emptyMsg) emptyMsg.style.display = 'none';
-          }
+        document.querySelectorAll('.game-section').forEach(function (sec) {
+          var visible = sec.querySelectorAll('li:not(.hidden)').length;
+          sec.querySelector('.empty-msg').style.display = visible === 0 ? '' : 'none';
         });
       }
 
@@ -248,72 +89,50 @@
           var sectionGames = games.filter(function (g) { return g.series === section.series; });
           if (sectionGames.length === 0) return;
 
-          var block = document.createElement('div');
-          block.className = 'section-block';
+          var div = document.createElement('div');
+          div.className = 'game-section';
 
-          var heading = document.createElement('h2');
-          heading.className = 'section-title';
-          heading.textContent = section.title + ' (' + sectionGames.length + ' Games)';
-          block.appendChild(heading);
+          var h2 = document.createElement('h2');
+          h2.textContent = section.title + ' (' + sectionGames.length + ')';
+          div.appendChild(h2);
 
-          var gallery = document.createElement('div');
-          gallery.className = 'gallery';
-
-          sectionGames.forEach(function (game, i) {
-            var badge = BADGE[game.input] || BADGE['both'];
-
-            var card = document.createElement('a');
-            card.className = 'card';
-            card.href = game.dir + '/index.html';
-            card.setAttribute('data-input', game.input);
-
-            var numDiv = document.createElement('div');
-            numDiv.className = 'day-number';
-            numDiv.textContent = section.numFn(i, game);
-
-            var labelDiv = document.createElement('div');
-            labelDiv.className = 'day-label';
-            labelDiv.textContent = section.labelFn(i, game);
-
-            var titleDiv = document.createElement('div');
-            titleDiv.className = 'day-title';
-            titleDiv.textContent = game.title;
-
-            var badgeSpan = document.createElement('span');
-            badgeSpan.className = 'input-badge ' + badge.cls;
-            badgeSpan.textContent = badge.text;
-
-            card.appendChild(numDiv);
-            card.appendChild(labelDiv);
-            card.appendChild(titleDiv);
-            card.appendChild(badgeSpan);
-            gallery.appendChild(card);
+          var ul = document.createElement('ul');
+          sectionGames.forEach(function (game) {
+            var li = document.createElement('li');
+            li.setAttribute('data-input', game.input);
+            var a = document.createElement('a');
+            a.href = game.dir + '/index.html';
+            a.textContent = game.title;
+            li.appendChild(a);
+            ul.appendChild(li);
           });
+          div.appendChild(ul);
 
-          block.appendChild(gallery);
-          container.appendChild(block);
+          var emptyMsg = document.createElement('p');
+          emptyMsg.className = 'empty-msg';
+          emptyMsg.textContent = 'No games match this filter.';
+          div.appendChild(emptyMsg);
+
+          container.appendChild(div);
         });
 
         applyFilter();
       }
 
-      // Filter button logic
-      document.querySelectorAll('.filter-btn').forEach(function (btn) {
+      document.querySelectorAll('.filter-bar button').forEach(function (btn) {
         btn.addEventListener('click', function () {
-          document.querySelectorAll('.filter-btn').forEach(function (b) { b.classList.remove('active'); });
+          document.querySelectorAll('.filter-bar button').forEach(function (b) { b.classList.remove('active'); });
           btn.classList.add('active');
           currentFilter = btn.getAttribute('data-filter');
           applyFilter();
         });
       });
 
-      // Load games
       fetch('games.json')
         .then(function (r) { return r.json(); })
         .then(buildGalleries)
         .catch(function () {
-          document.getElementById('galleries').innerHTML =
-            '<p style="text-align:center;color:#9ca3af;margin-top:2rem">Failed to load games.</p>';
+          document.getElementById('galleries').innerHTML = '<p>Failed to load games.</p>';
         });
     })();
   </script>
