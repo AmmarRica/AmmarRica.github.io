@@ -712,9 +712,9 @@ function physicsStep() {
         var overlap = minD - d;
         var tot = p1.mass + p2.mass;
         p1.x -= nx * overlap * (p2.mass / tot);
-        p1.y -= ny * overlap * (p1.mass / tot);
+        p1.y -= ny * overlap * (p2.mass / tot);
         p2.x += nx * overlap * (p1.mass / tot);
-        p2.y += ny * overlap * (p2.mass / tot);
+        p2.y += ny * overlap * (p1.mass / tot);
 
         var v1n = p1.vx * nx + p1.vy * ny;
         var v2n = p2.vx * nx + p2.vy * ny;
