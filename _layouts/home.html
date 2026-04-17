@@ -2,99 +2,86 @@
 layout: default
 ---
 
-<section class="section projects">
-  <div class="container">
-    <h2 class="section__title">Featured Projects</h2>
-    <div class="projects__grid">
-      <a href="/AIGeneratedGames/" class="project-card">
-        <div class="project-card__icon">🤖</div>
-        <h3 class="project-card__title">AI-Generated Games</h3>
-        <p class="project-card__desc">A growing collection of mini-games and experiments generated with AI — new entries added regularly.</p>
-      </a>
-      <a href="/videogames-ishkur/" class="project-card">
-        <div class="project-card__icon">🎮</div>
-        <h3 class="project-card__title">Videogames Ishkur</h3>
-        <p class="project-card__desc">An interactive map of video game music history inspired by Ishkur's Guide.</p>
-      </a>
-      <a href="/dog-swiper/" class="project-card">
-        <div class="project-card__icon">🐶</div>
-        <h3 class="project-card__title">Dog Breed Swiper</h3>
-        <p class="project-card__desc">Tinder-style swipe app for discovering dog breeds — swipe right to save your favourites.</p>
-      </a>
-      <a href="/crab-breed-swiper/" class="project-card">
-        <div class="project-card__icon">🦀</div>
-        <h3 class="project-card__title">Crab Breed Swiper</h3>
-        <p class="project-card__desc">Tinder-style swipe app for crab species — learn fun facts while you swipe.</p>
-      </a>
-      <a href="/football-cards/" class="project-card">
-        <div class="project-card__icon">🏈</div>
-        <h3 class="project-card__title">Gridiron Legends</h3>
-        <p class="project-card__desc">An RPG football card game — collect, upgrade, and battle with legendary gridiron heroes.</p>
-      </a>
-      <a href="/game-stats/" class="project-card">
-        <div class="project-card__icon">📊</div>
-        <h3 class="project-card__title">Feetball — Game Stats</h3>
-        <p class="project-card__desc">Complete reference for gameplay stats, player abilities, character roles, and AI behaviors.</p>
-      </a>
-    </div>
-  </div>
-</section>
+<div class="hero-unit">
+  <h1>{{ site.title }}</h1>
+  <p>{{ site.author.bio | default: site.description }}</p>
+  <p>
+    <a href="{{ '/about/' | relative_url }}" class="btn btn-primary btn-large">Learn more &raquo;</a>
+    <a href="{{ '/blog/' | relative_url }}" class="btn btn-large">Read the blog</a>
+  </p>
+</div>
 
-{% if paginator.posts.size > 0 %}
-<section class="section recent-posts">
-  <div class="container">
-    <h2 class="section__title">Recent Posts</h2>
-    <div class="posts__grid">
-      {% for post in paginator.posts limit:3 %}
-      <article class="post-card">
-        <div class="post-card__meta">
-          <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%B %-d, %Y" }}</time>
-          {% if post.categories.size > 0 %}
-          <span class="post-card__category">{{ post.categories | first }}</span>
-          {% endif %}
-        </div>
-        <h3 class="post-card__title">
-          <a href="{{ post.url | relative_url }}">{{ post.title }}</a>
-        </h3>
-        <p class="post-card__excerpt">{{ post.excerpt | strip_html | truncatewords: 30 }}</p>
-        <a href="{{ post.url | relative_url }}" class="post-card__link">Read more &rarr;</a>
-      </article>
-      {% endfor %}
+<h2>Featured Projects</h2>
+<hr>
+
+<div class="row-fluid">
+  <div class="span4">
+    <div class="well project-well">
+      <h3><a href="/AIGeneratedGames/">AI-Generated Games</a></h3>
+      <p>A growing collection of mini-games and experiments generated with AI &mdash; new entries added regularly.</p>
+      <a href="/AIGeneratedGames/" class="btn btn-info">View &raquo;</a>
     </div>
-    {% if paginator.posts.size > 3 or paginator.total_pages > 1 %}
-    <div class="section__cta">
-      <a href="{{ '/blog/' | relative_url }}" class="btn btn--outline">View All Posts</a>
-    </div>
-    {% endif %}
   </div>
-</section>
-{% else %}
-{% assign recent_posts = site.posts | limit: 3 %}
+  <div class="span4">
+    <div class="well project-well">
+      <h3><a href="/videogames-ishkur/">Videogames Ishkur</a></h3>
+      <p>An interactive map of video game music history inspired by Ishkur's Guide.</p>
+      <a href="/videogames-ishkur/" class="btn btn-info">View &raquo;</a>
+    </div>
+  </div>
+  <div class="span4">
+    <div class="well project-well">
+      <h3><a href="/dog-swiper/">Dog Breed Swiper</a></h3>
+      <p>Tinder-style swipe app for discovering dog breeds &mdash; swipe right to save your favourites.</p>
+      <a href="/dog-swiper/" class="btn btn-info">View &raquo;</a>
+    </div>
+  </div>
+</div>
+
+<div class="row-fluid">
+  <div class="span4">
+    <div class="well project-well">
+      <h3><a href="/crab-breed-swiper/">Crab Breed Swiper</a></h3>
+      <p>Tinder-style swipe app for crab species &mdash; learn fun facts while you swipe.</p>
+      <a href="/crab-breed-swiper/" class="btn btn-info">View &raquo;</a>
+    </div>
+  </div>
+  <div class="span4">
+    <div class="well project-well">
+      <h3><a href="/football-cards/">Gridiron Legends</a></h3>
+      <p>An RPG football card game &mdash; collect, upgrade, and battle with legendary gridiron heroes.</p>
+      <a href="/football-cards/" class="btn btn-info">View &raquo;</a>
+    </div>
+  </div>
+  <div class="span4">
+    <div class="well project-well">
+      <h3><a href="/game-stats/">Feetball &mdash; Game Stats</a></h3>
+      <p>Complete reference for gameplay stats, player abilities, character roles, and AI behaviors.</p>
+      <a href="/game-stats/" class="btn btn-info">View &raquo;</a>
+    </div>
+  </div>
+</div>
+
+{% assign recent_posts = paginator.posts | default: site.posts %}
 {% if recent_posts.size > 0 %}
-<section class="section recent-posts">
-  <div class="container">
-    <h2 class="section__title">Recent Posts</h2>
-    <div class="posts__grid">
-      {% for post in recent_posts %}
-      <article class="post-card">
-        <div class="post-card__meta">
-          <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%B %-d, %Y" }}</time>
-          {% if post.categories.size > 0 %}
-          <span class="post-card__category">{{ post.categories | first }}</span>
-          {% endif %}
-        </div>
-        <h3 class="post-card__title">
-          <a href="{{ post.url | relative_url }}">{{ post.title }}</a>
-        </h3>
-        <p class="post-card__excerpt">{{ post.excerpt | strip_html | truncatewords: 30 }}</p>
-        <a href="{{ post.url | relative_url }}" class="post-card__link">Read more &rarr;</a>
-      </article>
-      {% endfor %}
-    </div>
-    <div class="section__cta">
-      <a href="{{ '/blog/' | relative_url }}" class="btn btn--outline">View All Posts</a>
-    </div>
+<h2>Recent Posts</h2>
+<hr>
+<div class="row-fluid">
+  {% for post in recent_posts limit:3 %}
+  <div class="span4">
+    <h4><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h4>
+    <p class="muted">
+      <small>
+        <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%B %-d, %Y" }}</time>
+        {% if post.categories.size > 0 %}
+        &middot; <span class="label label-info">{{ post.categories | first }}</span>
+        {% endif %}
+      </small>
+    </p>
+    <p>{{ post.excerpt | strip_html | truncatewords: 25 }}</p>
+    <p><a href="{{ post.url | relative_url }}" class="btn btn-small">Read more &raquo;</a></p>
   </div>
-</section>
-{% endif %}
+  {% endfor %}
+</div>
+<p><a href="{{ '/blog/' | relative_url }}" class="btn">View All Posts &raquo;</a></p>
 {% endif %}

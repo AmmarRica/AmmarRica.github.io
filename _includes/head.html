@@ -4,15 +4,14 @@
   <title>{% if page.title %}{{ page.title }} | {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
   <meta name="description" content="{% if page.excerpt %}{{ page.excerpt | strip_html | strip_newlines | truncatewords: 30 }}{% else %}{{ site.description }}{% endif %}">
   <link rel="canonical" href="{{ page.url | replace:'index.html','' | absolute_url }}">
-  <!-- Hyde base styles -->
-  <link rel="stylesheet" href="{{ '/public/css/poole.css' | relative_url }}">
-  <link rel="stylesheet" href="{{ '/public/css/syntax.css' | relative_url }}">
-  <link rel="stylesheet" href="{{ '/public/css/hyde.css' | relative_url }}">
-  <!-- Custom theme overrides -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- The og Bootstrap 2.3.2 -->
+  <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/2.3.2/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/2.3.2/css/bootstrap-responsive.min.css">
+
+  <!-- Site overrides -->
   <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+
   {% feed_meta %}
   {% seo %}
 </head>

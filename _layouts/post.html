@@ -2,27 +2,27 @@
 layout: default
 ---
 
-<article class="post-full">
-  <header class="post-full__header">
-    <div class="container">
-      <div class="post-full__meta">
-        <time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%B %-d, %Y" }}</time>
-        {% if page.categories.size > 0 %}
-        <span class="post-full__category">{{ page.categories | join: ", " }}</span>
-        {% endif %}
-      </div>
-      <h1 class="post-full__title">{{ page.title }}</h1>
-      {% if page.excerpt %}
-      <p class="post-full__excerpt">{{ page.excerpt | strip_html }}</p>
-      {% endif %}
-    </div>
-  </header>
+<div class="page-header">
+  <h1>{{ page.title }}</h1>
+  <p class="muted">
+    <time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%B %-d, %Y" }}</time>
+    {% if page.categories.size > 0 %}
+    &middot; <span class="label label-info">{{ page.categories | join: ", " }}</span>
+    {% endif %}
+  </p>
+</div>
 
-  <div class="post-full__body container">
+<div class="row-fluid">
+  <div class="span9 post-body">
     {{ content }}
-  </div>
 
-  <footer class="post-full__footer container">
-    <a href="{{ '/blog/' | relative_url }}" class="btn btn--outline">&larr; Back to Blog</a>
-  </footer>
-</article>
+    <hr>
+    <p><a href="{{ '/blog/' | relative_url }}" class="btn">&laquo; Back to Blog</a></p>
+  </div>
+  <div class="span3">
+    <div class="well">
+      <h5>About the author</h5>
+      <p>{{ site.author.bio }}</p>
+    </div>
+  </div>
+</div>

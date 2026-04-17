@@ -1,6 +1,107 @@
 ---
 ---
 
-@import "variables";
-@import "base";
-@import "layout";
+// Light overrides on top of Bootstrap 2.3.2.
+// Goal: keep that classic "OG Bootstrap" look (gradient navbar,
+// hero unit, blue btn-primary, wells with inset shadows).
+
+body {
+  // Fixed navbar takes ~40px; default Bootstrap docs use 60px.
+  padding-top: 60px;
+  padding-bottom: 40px;
+}
+
+.main-content {
+  margin-bottom: 40px;
+}
+
+// Hero unit: keep the cream background but add a subtle gradient
+// like the original Bootstrap docs landing page.
+.hero-unit {
+  background: #eeeeee;
+  background-image: -moz-linear-gradient(top, #f5f5f5, #e8e8e8);
+  background-image: -webkit-linear-gradient(top, #f5f5f5, #e8e8e8);
+  background-image: linear-gradient(to bottom, #f5f5f5, #e8e8e8);
+  border: 1px solid #e3e3e3;
+  border-radius: 6px;
+
+  h1 {
+    color: #333;
+    letter-spacing: -1px;
+  }
+}
+
+// Project wells -- equal heights look nicer in the grid.
+.project-well {
+  min-height: 180px;
+
+  h3 {
+    margin-top: 0;
+    line-height: 1.2;
+  }
+}
+
+// Page header tweaks.
+.page-header {
+  margin-top: 10px;
+
+  h1 small {
+    font-size: 60%;
+  }
+}
+
+// Blog post list spacing.
+.post-item {
+  padding: 14px 0;
+  border-bottom: 1px solid #eee;
+
+  &:last-child { border-bottom: 0; }
+}
+
+// Make markdown content (about page, posts) read nicely
+// without overriding Bootstrap typography too much.
+.post-body {
+  h2, h3 { margin-top: 24px; }
+
+  pre {
+    background: #f7f7f9;
+    border: 1px solid #e1e1e8;
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+  }
+
+  code {
+    color: #d14;
+    background: #f7f7f9;
+    padding: 2px 4px;
+    border: 1px solid #e1e1e8;
+    border-radius: 3px;
+  }
+
+  pre code {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+  }
+}
+
+// Footer
+.footer {
+  border-top: 1px solid #e5e5e5;
+  padding-top: 20px;
+  margin-top: 40px;
+  color: #999;
+  text-align: center;
+
+  p { margin: 0; }
+}
+
+// Small screen polish
+@media (max-width: 767px) {
+  body { padding-top: 0; }
+  .navbar-fixed-top { margin-bottom: 20px; }
+  .hero-unit { padding: 30px 20px; }
+  .project-well { min-height: 0; }
+}

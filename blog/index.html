@@ -4,31 +4,30 @@ title: Blog
 permalink: /blog/
 ---
 
-<div class="blog-page container">
-  <header class="blog-page__header">
-    <h1 class="blog-page__title">Blog</h1>
-    <p class="blog-page__desc">Thoughts, tutorials, and things I find interesting.</p>
-  </header>
-
-  {% if site.posts.size > 0 %}
-  <div class="posts__grid">
-    {% for post in site.posts %}
-    <article class="post-card">
-      <div class="post-card__meta">
-        <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%B %-d, %Y" }}</time>
-        {% if post.categories.size > 0 %}
-        <span class="post-card__category">{{ post.categories | first }}</span>
-        {% endif %}
-      </div>
-      <h2 class="post-card__title">
-        <a href="{{ post.url | relative_url }}">{{ post.title }}</a>
-      </h2>
-      <p class="post-card__excerpt">{{ post.excerpt | strip_html | truncatewords: 30 }}</p>
-      <a href="{{ post.url | relative_url }}" class="post-card__link">Read more &rarr;</a>
-    </article>
-    {% endfor %}
-  </div>
-  {% else %}
-  <p style="text-align:center; color: #94a3b8;">No posts yet — check back soon!</p>
-  {% endif %}
+<div class="page-header">
+  <h1>Blog <small>Thoughts, tutorials, and things I find interesting.</small></h1>
 </div>
+
+{% if site.posts.size > 0 %}
+<ul class="media-list">
+  {% for post in site.posts %}
+  <li class="media post-item">
+    <div class="media-body">
+      <h3 class="media-heading"><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
+      <p class="muted">
+        <small>
+          <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%B %-d, %Y" }}</time>
+          {% if post.categories.size > 0 %}
+          &middot; <span class="label label-info">{{ post.categories | first }}</span>
+          {% endif %}
+        </small>
+      </p>
+      <p>{{ post.excerpt | strip_html | truncatewords: 40 }}</p>
+      <a href="{{ post.url | relative_url }}" class="btn btn-small btn-primary">Read more &raquo;</a>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="alert alert-info">No posts yet &mdash; check back soon!</div>
+{% endif %}
