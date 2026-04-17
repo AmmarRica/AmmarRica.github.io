@@ -273,6 +273,79 @@ function pointInWall(px, py) {
 }
 
 // ===================================================================
+// BEATABILITY — every blue and pink must be on one connected terrain
+// component. Uses a coarse grid flood fill.
+// ===================================================================
+function validateBeatable() {
+  var step = 12;
+  var cols = Math.ceil(worldW / step) + 2;
+  var rows = Math.ceil(worldH / step) + 2;
+  var grid = new Uint8Array(cols * rows);
+
+  function key(cx, cy) { return cy * cols + cx; }
+  function cellAt(wx, wy) {
+    return { cx: Math.round(wx / step), cy: Math.round(wy / step) };
+  }
+  function terrainAtCell(cx, cy) {
+    return pointOnTerrain(cx * step, cy * step);
+  }
+
+  // Every penguin must stand on terrain.
+  var seeds = [];
+  for (var i = 0; i < penguins.length; i++) {
+    var p = penguins[i];
+    if (!pointOnTerrain(p.x, p.y)) return false;
+    seeds.push(cellAt(p.x, p.y));
+  }
+  if (seeds.length === 0) return true;
+
+  // BFS from first penguin.
+  var queue = [seeds[0]];
+  grid[key(seeds[0].cx, seeds[0].cy)] = 1;
+  var DX = [1, -1, 0, 0], DY = [0, 0, 1, -1];
+  while (queue.length) {
+    var c = queue.shift();
+    for (var d = 0; d < 4; d++) {
+      var nx = c.cx + DX[d], ny = c.cy + DY[d];
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      var k = key(nx, ny);
+      if (grid[k]) continue;
+      if (!terrainAtCell(nx, ny)) continue;
+      grid[k] = 1;
+      queue.push({ cx: nx, cy: ny });
+    }
+  }
+
+  // Every other penguin's cell must be reachable.
+  for (var i = 1; i < seeds.length; i++) {
+    if (!grid[key(seeds[i].cx, seeds[i].cy)]) return false;
+  }
+  return true;
+}
+
+// Story-mode safety net: if a penguin ends up off-terrain (shouldn't happen
+// with the fixed layouts, but cheap insurance), nudge it toward its island
+// center until it lands on terrain.
+function ensureBeatable(maxSteps) {
+  for (var i = 0; i < penguins.length; i++) {
+    var p = penguins[i];
+    if (pointOnTerrain(p.x, p.y)) continue;
+    // Find nearest island center
+    var best = null, bestD = Infinity;
+    for (var j = 0; j < islands.length; j++) {
+      var d = Math.hypot(p.x - islands[j].cx, p.y - islands[j].cy);
+      if (d < bestD) { bestD = d; best = islands[j]; }
+    }
+    if (!best) continue;
+    var steps = maxSteps || 40;
+    var dx = (best.cx - p.x) / steps, dy = (best.cy - p.y) / steps;
+    while (steps-- > 0 && !pointOnTerrain(p.x, p.y)) {
+      p.x += dx; p.y += dy;
+    }
+  }
+}
+
+// ===================================================================
 // ENTITY FACTORIES
 // ===================================================================
 function makePenguin(x, y, team) {
@@ -383,7 +456,7 @@ function buildLevel(levelNum) {
   } else if (levelNum === 3) {
     // First fight: 2v2 with AI
     worldW = 450; worldH = 550;
-    var pts = makeIslandPoly(225, 275, 175, 10);
+    var pts = makeRegularIsland(225, 275, 175, 14);
     islands.push({ points: pts, cx: 225, cy: 275 });
     walls.push({ x: 200, y: 240, w: 50, h: 14 });
     penguins.push(makePenguin(180, 380, 'blue'));
@@ -393,7 +466,7 @@ function buildLevel(levelNum) {
   } else if (levelNum === 4) {
     // 3v3
     worldW = 500; worldH = 600;
-    var pts = makeIslandPoly(250, 300, 200, 10);
+    var pts = makeRegularIsland(250, 300, 200, 14);
     islands.push({ points: pts, cx: 250, cy: 300 });
     walls.push({ x: 180, y: 260, w: 50, h: 14 });
     walls.push({ x: 290, y: 320, w: 50, h: 14 });
@@ -404,48 +477,75 @@ function buildLevel(levelNum) {
     penguins.push(makePenguin(250, 140, 'pink'));
     penguins.push(makePenguin(300, 160, 'pink'));
   } else if (levelNum === 5) {
-    // Bridge map: two islands
-    worldW = 500; worldH = 650;
-    var pts1 = makeIslandPoly(150, 200, 120, 8);
-    var pts2 = makeIslandPoly(350, 450, 120, 8);
-    islands.push({ points: pts1, cx: 150, cy: 200 });
-    islands.push({ points: pts2, cx: 350, cy: 450 });
-    bridges.push({ x: 230, y: 300, w: 40, h: 120 });
-    walls.push({ x: 120, y: 170, w: 40, h: 12 });
-    walls.push({ x: 320, y: 420, w: 40, h: 12 });
-    penguins.push(makePenguin(120, 220, 'blue'));
-    penguins.push(makePenguin(150, 250, 'blue'));
-    penguins.push(makePenguin(180, 220, 'blue'));
-    penguins.push(makePenguin(320, 430, 'pink'));
-    penguins.push(makePenguin(350, 470, 'pink'));
-    penguins.push(makePenguin(380, 430, 'pink'));
+    // Bridge map: two islands connected by a single wide diagonal bridge.
+    // Geometry is fixed so the bridge clearly overlaps both islands.
+    worldW = 520; worldH = 620;
+    var pts1 = makeRegularIsland(170, 200, 130, 14);
+    var pts2 = makeRegularIsland(360, 430, 130, 14);
+    islands.push({ points: pts1, cx: 170, cy: 200 });
+    islands.push({ points: pts2, cx: 360, cy: 430 });
+    // Bridge rectangle: corners (210,240) and (330,400) both lie well inside their islands.
+    // (210,240) vs (170,200): d=sqrt(40^2+40^2)=57 < 130  (on island 1)
+    // (330,400) vs (360,430): d=sqrt(30^2+30^2)=42 < 130  (on island 2)
+    bridges.push({ x: 210, y: 240, w: 120, h: 160 });
+    walls.push({ x: 140, y: 180, w: 60, h: 12 });
+    walls.push({ x: 340, y: 410, w: 60, h: 12 });
+    penguins.push(makePenguin(130, 220, 'blue'));
+    penguins.push(makePenguin(170, 250, 'blue'));
+    penguins.push(makePenguin(210, 210, 'blue'));
+    penguins.push(makePenguin(320, 420, 'pink'));
+    penguins.push(makePenguin(360, 460, 'pink'));
+    penguins.push(makePenguin(400, 420, 'pink'));
   } else if (levelNum === 6) {
-    // Seal map: two islands with 2 bridges
-    worldW = 550; worldH = 700;
-    var pts1 = makeIslandPoly(160, 200, 130, 8);
-    var pts2 = makeIslandPoly(390, 500, 130, 8);
-    islands.push({ points: pts1, cx: 160, cy: 200 });
-    islands.push({ points: pts2, cx: 390, cy: 500 });
-    bridges.push({ x: 240, y: 290, w: 38, h: 100 });
-    bridges.push({ x: 290, y: 370, w: 38, h: 100 });
-    walls.push({ x: 130, y: 170, w: 40, h: 12 });
-    walls.push({ x: 360, y: 470, w: 40, h: 12 });
+    // Seal map: two islands with two L-shaped bridge paths.
+    // Bridges are guaranteed to connect both islands.
+    worldW = 560; worldH = 720;
+    var pts1 = makeRegularIsland(180, 220, 140, 14);
+    var pts2 = makeRegularIsland(380, 490, 140, 14);
+    islands.push({ points: pts1, cx: 180, cy: 220 });
+    islands.push({ points: pts2, cx: 380, cy: 490 });
+    // Upper L: horizontal from island 1, vertical down to island 2
+    // Horizontal starts inside island 1 (x=220,y=202) and reaches x=396 (ends past vertical start)
+    // Vertical at x=362-398, y=202-500 — starts in horiz bridge, ends inside island 2
+    bridges.push({ x: 220, y: 202, w: 176, h: 36 });
+    bridges.push({ x: 362, y: 202, w: 36, h: 300 });
+    // Lower L: vertical from island 1 down, horizontal to island 2
+    // Vertical at x=162-198, y=240-540 — starts inside island 1, ends in horiz bridge
+    // Horizontal at x=180-400, y=504-540 — overlaps vertical, ends inside island 2
+    bridges.push({ x: 162, y: 240, w: 36, h: 300 });
+    bridges.push({ x: 180, y: 504, w: 220, h: 36 });
     sealActive = true;
     sealCountdown = 3;
-    penguins.push(makePenguin(130, 220, 'blue'));
-    penguins.push(makePenguin(160, 250, 'blue'));
-    penguins.push(makePenguin(190, 220, 'blue'));
-    penguins.push(makePenguin(360, 480, 'pink'));
-    penguins.push(makePenguin(390, 520, 'pink'));
-    penguins.push(makePenguin(420, 480, 'pink'));
+    penguins.push(makePenguin(140, 240, 'blue'));
+    penguins.push(makePenguin(180, 260, 'blue'));
+    penguins.push(makePenguin(220, 240, 'blue'));
+    penguins.push(makePenguin(340, 490, 'pink'));
+    penguins.push(makePenguin(380, 510, 'pink'));
+    penguins.push(makePenguin(420, 490, 'pink'));
   }
 
+  ensureBeatable(50);
   updateCamera();
   updateHud();
   selectNextBluePenguin();
 }
 
-function buildOpenPlay() {
+function addLShapedBridge(c0, c1) {
+  // Add an axis-aligned L bridge whose corners lie inside each island center.
+  // Segments overlap at the corner so flood fill reaches both ends.
+  var BW = 42;
+  var half = BW / 2;
+  // Horizontal segment from c0.x to c1.x at y = c0.y
+  var hx = Math.min(c0.x, c1.x);
+  var hw = Math.abs(c1.x - c0.x) + BW;
+  bridges.push({ x: hx - half, y: c0.y - half, w: hw, h: BW });
+  // Vertical segment from c0.y to c1.y at x = c1.x
+  var vy = Math.min(c0.y, c1.y);
+  var vh = Math.abs(c1.y - c0.y) + BW;
+  bridges.push({ x: c1.x - half, y: vy - half, w: BW, h: vh });
+}
+
+function attemptOpenPlay() {
   penguins = []; eggs = []; fish = []; walls = []; islands = []; bridges = [];
   particles = []; fallingList = [];
   sealActive = false; seal = null;
@@ -455,75 +555,82 @@ function buildOpenPlay() {
   bannerText = ''; bannerTimer = 0;
 
   var numIslands = randInt(1, 3);
-  worldW = numIslands === 1 ? 450 : numIslands === 2 ? 550 : 650;
-  worldH = numIslands === 1 ? 550 : numIslands === 2 ? 650 : 750;
+  worldW = numIslands === 1 ? 450 : numIslands === 2 ? 600 : 700;
+  worldH = numIslands === 1 ? 550 : numIslands === 2 ? 700 : 800;
 
   var islandCenters = [];
   if (numIslands === 1) {
     islandCenters.push({ x: worldW / 2, y: worldH / 2 });
   } else if (numIslands === 2) {
-    islandCenters.push({ x: worldW * 0.3, y: worldH * 0.3 });
-    islandCenters.push({ x: worldW * 0.7, y: worldH * 0.7 });
+    islandCenters.push({ x: worldW * 0.28, y: worldH * 0.28 });
+    islandCenters.push({ x: worldW * 0.72, y: worldH * 0.72 });
   } else {
     islandCenters.push({ x: worldW * 0.25, y: worldH * 0.25 });
     islandCenters.push({ x: worldW * 0.75, y: worldH * 0.3 });
-    islandCenters.push({ x: worldW * 0.5, y: worldH * 0.75 });
+    islandCenters.push({ x: worldW * 0.5, y: worldH * 0.78 });
   }
 
   for (var i = 0; i < numIslands; i++) {
-    var r = rand(100, 150);
-    var v = randInt(7, 10);
-    var pts = makeIslandPoly(islandCenters[i].x, islandCenters[i].y, r, v);
+    var r = rand(110, 145);
+    var v = randInt(9, 12);
+    // Use regular islands for multi-island maps so bridge endpoints lie on terrain.
+    var pts = numIslands === 1
+      ? makeIslandPoly(islandCenters[i].x, islandCenters[i].y, r, v)
+      : makeRegularIsland(islandCenters[i].x, islandCenters[i].y, r, v);
     islands.push({ points: pts, cx: islandCenters[i].x, cy: islandCenters[i].y });
   }
 
-  // Connect islands with bridges
+  // Connect every island to the next with an L-shaped bridge anchored at centers.
   for (var i = 1; i < numIslands; i++) {
-    var c0 = islandCenters[i - 1];
-    var c1 = islandCenters[i];
-    var mx = (c0.x + c1.x) / 2;
-    var my = (c0.y + c1.y) / 2;
-    var dx = c1.x - c0.x, dy = c1.y - c0.y;
-    var len = Math.hypot(dx, dy);
-    // Place bridge rect along the line
-    bridges.push({
-      x: Math.min(c0.x, c1.x) + Math.abs(dx) * 0.3,
-      y: Math.min(c0.y, c1.y) + Math.abs(dy) * 0.3,
-      w: Math.max(38, Math.abs(dx) * 0.4),
-      h: Math.max(38, Math.abs(dy) * 0.4)
-    });
+    addLShapedBridge(islandCenters[i - 1], islandCenters[i]);
   }
 
-  // Walls
-  var numWalls = randInt(1, 3);
+  // Walls — keep them away from bridge rectangles so they don't block the only path.
+  var numWalls = randInt(1, 2);
   for (var i = 0; i < numWalls; i++) {
     var isle = islands[randInt(0, islands.length - 1)];
-    walls.push({
-      x: isle.cx + rand(-40, 40),
-      y: isle.cy + rand(-40, 40),
-      w: rand(30, 60), h: 12
-    });
+    var tries = 20;
+    while (tries-- > 0) {
+      var wx = isle.cx + rand(-40, 40);
+      var wy = isle.cy + rand(-40, 40);
+      var ww = rand(30, 55);
+      var rect = { x: wx, y: wy, w: ww, h: 12 };
+      var collides = false;
+      for (var b = 0; b < bridges.length; b++) {
+        if (rectsOverlap(rect, bridges[b])) { collides = true; break; }
+      }
+      if (!collides) {
+        walls.push(rect);
+        break;
+      }
+    }
   }
 
-  // Place penguins
+  // Place penguins near island centers.
   var blueIsle = islands[0];
   var pinkIsle = islands[islands.length - 1];
+  var BLUE_DIRS = [{dx:-40,dy:20},{dx:0,dy:40},{dx:40,dy:20}];
+  var PINK_DIRS = [{dx:-40,dy:-20},{dx:0,dy:-40},{dx:40,dy:-20}];
   for (var i = 0; i < 3; i++) {
-    penguins.push(makePenguin(
-      blueIsle.cx + rand(-50, 50),
-      blueIsle.cy + rand(20, 60),
-      'blue'
-    ));
-    penguins.push(makePenguin(
-      pinkIsle.cx + rand(-50, 50),
-      pinkIsle.cy + rand(-60, -20),
-      'pink'
-    ));
+    penguins.push(makePenguin(blueIsle.cx + BLUE_DIRS[i].dx, blueIsle.cy + BLUE_DIRS[i].dy, 'blue'));
+    penguins.push(makePenguin(pinkIsle.cx + PINK_DIRS[i].dx, pinkIsle.cy + PINK_DIRS[i].dy, 'pink'));
   }
 
   // Initial fish
   spawnFishRandom();
+}
 
+function rectsOverlap(a, b) {
+  return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+}
+
+function buildOpenPlay() {
+  var attempts = 0;
+  while (attempts < 30) {
+    attemptOpenPlay();
+    if (validateBeatable()) break;
+    attempts++;
+  }
   updateCamera();
   updateHud();
   selectNextBluePenguin();
