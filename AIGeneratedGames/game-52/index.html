@@ -10,7 +10,8 @@
     background: #0f0f1a;
     color: #e0e0ff;
     font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
-    min-height: 100vh;
+    height: 100%;
+    overflow: hidden;
     overscroll-behavior: none;
     touch-action: manipulation;
   }
@@ -18,7 +19,9 @@
     max-width: 640px;
     margin: 0 auto;
     padding: 10px;
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }
@@ -68,16 +71,16 @@
   /* Board */
   #board-wrap {
     flex: 1;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
     padding: 4px 0;
   }
   #board {
     display: grid;
     gap: 6px;
-    width: 100%;
-    max-width: 100%;
   }
 
   /* Card */
@@ -373,6 +376,7 @@
     busy: false,
     matchedCount: 0,
     totalPairs: 0,
+    currentLayout: null,
   };
 
   // ---------- DOM ----------
@@ -387,6 +391,15 @@
   const hudCoins  = document.getElementById('hud-coins');
 
   document.getElementById('start-btn').addEventListener('click', startRun);
+
+  // Re-layout board on orientation change / window resize
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (state.currentLayout) renderBoard(state.currentLayout);
+    }, 150);
+  });
 
   // ---------- Helpers ----------
   function shuffle(arr) {
@@ -472,8 +485,36 @@
 
   // ---------- Rendering ----------
   function renderBoard(layout) {
+    state.currentLayout = layout;
     boardEl.innerHTML = '';
-    boardEl.style.gridTemplateColumns = `repeat(${layout.cols}, 1fr)`;
+
+    const gap = 6;
+    const cols = layout.cols;
+    const rows = layout.rows;
+
+    // Calculate card dimensions so the grid fits both width and height without scrolling
+    const CARD_ASPECT = 3 / 2; // card height : width ratio (2:3 portrait cards)
+    const wrap = document.getElementById('board-wrap');
+    const wrapRect = wrap.getBoundingClientRect();
+    const availW = Math.floor(wrapRect.width)  - 8;  // 8px safety margin (no horizontal padding on wrap)
+    const availH = Math.floor(wrapRect.height) - 8;  // accounts for wrap's padding: 4px top + 4px bottom
+
+    const maxCardW = (availW - (cols - 1) * gap) / cols;
+    const maxCardH = (availH - (rows - 1) * gap) / rows;
+
+    let cardW, cardH;
+    if (maxCardW * CARD_ASPECT <= maxCardH) {
+      // width-constrained: use full available column width
+      cardW = Math.floor(maxCardW);
+      cardH = Math.floor(cardW * CARD_ASPECT);
+    } else {
+      // height-constrained: fit rows within available height
+      cardH = Math.floor(maxCardH);
+      cardW = Math.floor(cardH / CARD_ASPECT);
+    }
+
+    boardEl.style.gridTemplateColumns = `repeat(${cols}, ${cardW}px)`;
+    boardEl.style.gridTemplateRows    = `repeat(${rows}, ${cardH}px)`;
 
     state.board.forEach((card, i) => {
       const el = document.createElement('div');
