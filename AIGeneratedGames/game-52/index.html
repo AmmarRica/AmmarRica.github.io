@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Deck Delver</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    background: #0f0f1a;
+    color: #e0e0ff;
+    font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+    min-height: 100vh;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+  }
+  #app {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 10px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* HUD */
+  #hud {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    background: linear-gradient(180deg, #1a1a2e, #141428);
+    border: 1px solid #3b3b5c;
+    border-radius: 12px;
+    padding: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .stat {
+    background: #0f0f1a;
+    border-radius: 8px;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+    border: 1px solid #2a2a44;
+  }
+  .stat .label { color: #8a8aa8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .stat .val { color: #fbbf24; font-weight: 700; font-size: 16px; line-height: 1; }
+  .stat.hp .val { color: #ef4444; }
+  .stat.weapon .val { color: #a78bfa; }
+  .stat.coin .val { color: #fbbf24; }
+  .stat.level .val { color: #22c55e; }
+  .hp-bar {
+    width: 100%;
+    height: 4px;
+    background: #2a1a1a;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .hp-bar > div {
+    height: 100%;
+    background: linear-gradient(90deg, #ef4444, #f87171);
+    transition: width 0.3s;
+  }
+
+  /* Board */
+  #board-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 0;
+  }
+  #board {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Card */
+  .card {
+    position: relative;
+    aspect-ratio: 2 / 3;
+    perspective: 800px;
+    cursor: pointer;
+    min-height: 44px;
+  }
+  .card-inner {
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
+    transition: transform 0.45s cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+  .card.flipped .card-inner { transform: rotateY(180deg); }
+  .card.matched .card-inner {
+    transform: rotateY(180deg) scale(1);
+    animation: matchPop 0.5s ease-out forwards;
+  }
+  @keyframes matchPop {
+    0%   { transform: rotateY(180deg) scale(1); opacity: 1; }
+    40%  { transform: rotateY(180deg) scale(1.12); opacity: 1; }
+    100% { transform: rotateY(180deg) scale(0.4); opacity: 0; }
+  }
+  .card-face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .card-back {
+    background:
+      repeating-linear-gradient(45deg, #4c2e8a 0 6px, #3b2570 6px 12px),
+      #3b2570;
+    border: 2px solid #a78bfa;
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card-back::after {
+    content: '';
+    width: 60%;
+    height: 60%;
+    border-radius: 50%;
+    border: 2px solid #fbbf24;
+    box-shadow: inset 0 0 10px rgba(251,191,36,0.4);
+    background: radial-gradient(circle, rgba(251,191,36,0.2), transparent 70%);
+  }
+  .card-front {
+    transform: rotateY(180deg);
+    background: linear-gradient(180deg, #fefefe, #ededed);
+    color: #1a1a2e;
+    border: 2px solid #1a1a2e;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    padding: 4px;
+  }
+  .card-front.red  { color: #c81e1e; }
+  .card-front.black { color: #0a0a1a; }
+
+  /* Playing-card face */
+  .pip-tl, .pip-br {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1;
+    font-weight: 800;
+  }
+  .pip-tl { top: 4px; left: 5px; }
+  .pip-br { bottom: 4px; right: 5px; transform: rotate(180deg); }
+  .pip-rank { font-size: clamp(10px, 3.2vw, 16px); }
+  .pip-suit { font-size: clamp(9px, 2.8vw, 14px); }
+  .pip-center {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(18px, 7vw, 34px);
+  }
+
+  /* Special-card face (coin, weapon, heart, enemy) */
+  .card-front.special {
+    background: linear-gradient(180deg, #1a1a2e, #2a1a3e);
+    color: #fbbf24;
+    border-color: #a78bfa;
+  }
+  .special-icon {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(22px, 9vw, 42px);
+    filter: drop-shadow(0 0 6px currentColor);
+  }
+  .special-label {
+    text-align: center;
+    font-size: clamp(8px, 2.2vw, 11px);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 0;
+    background: rgba(0,0,0,0.3);
+  }
+  .card-front.coin   { color: #fbbf24; border-color: #fbbf24; }
+  .card-front.weapon { color: #a78bfa; border-color: #a78bfa; }
+  .card-front.heart  { color: #ef4444; border-color: #ef4444; }
+  .card-front.enemy  { color: #22c55e; border-color: #22c55e; }
+
+  /* Toast messages */
+  #toasts {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 6px;
+    pointer-events: none;
+    z-index: 500;
+  }
+  .toast {
+    background: rgba(26, 26, 46, 0.95);
+    border: 1px solid #a78bfa;
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    animation: toastLife 1.8s ease-out forwards;
+    white-space: nowrap;
+  }
+  .toast.good { border-color: #22c55e; color: #22c55e; }
+  .toast.bad  { border-color: #ef4444; color: #ef4444; }
+  .toast.gold { border-color: #fbbf24; color: #fbbf24; }
+  .toast.purple { border-color: #a78bfa; color: #a78bfa; }
+  @keyframes toastLife {
+    0%   { opacity: 0; transform: translateY(10px); }
+    15%  { opacity: 1; transform: translateY(0); }
+    75%  { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-20px); }
+  }
+
+  /* Overlay (start / level-complete / game-over) */
+  #overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 15, 26, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 400;
+    padding: 20px;
+  }
+  #overlay.hidden { display: none; }
+  .panel {
+    background: linear-gradient(180deg, #1a1a2e, #14142a);
+    border: 1px solid #3b3b5c;
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .panel h1 {
+    font-size: 28px;
+    color: #fbbf24;
+    text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+    margin-bottom: 8px;
+  }
+  .panel h2 {
+    font-size: 20px;
+    color: #a78bfa;
+    margin-bottom: 14px;
+  }
+  .panel p {
+    color: #c0c0e0;
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 14px;
+  }
+  .panel ul {
+    text-align: left;
+    color: #c0c0e0;
+    font-size: 13px;
+    line-height: 1.7;
+    margin: 0 auto 16px;
+    padding-left: 20px;
+    max-width: 300px;
+  }
+  .panel button {
+    background: #a78bfa;
+    color: #0f0f1a;
+    border: none;
+    padding: 12px 28px;
+    font-size: 16px;
+    font-weight: 800;
+    border-radius: 10px;
+    cursor: pointer;
+    min-height: 48px;
+    min-width: 140px;
+    transition: transform 0.1s, background 0.2s;
+  }
+  .panel button:hover, .panel button:active { background: #c4b5fd; transform: scale(1.03); }
+  .stats-line {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin: 10px 0 16px;
+    font-size: 14px;
+  }
+  .stats-line span { color: #fbbf24; font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="stat level"><span class="label">Level</span><span class="val" id="hud-level">1</span></div>
+    <div class="stat hp">
+      <span class="label">HP</span>
+      <span class="val" id="hud-hp">10/10</span>
+      <div class="hp-bar"><div id="hud-hp-bar" style="width:100%"></div></div>
+    </div>
+    <div class="stat weapon"><span class="label">🗡️ Wpns</span><span class="val" id="hud-weapons">0</span></div>
+    <div class="stat coin"><span class="label">🪙 Coins</span><span class="val" id="hud-coins">0</span></div>
+  </div>
+
+  <div id="board-wrap">
+    <div id="board"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<div id="overlay">
+  <div class="panel" id="panel">
+    <h1>Deck Delver</h1>
+    <h2>Memory Match Dungeon</h2>
+    <p>Flip two cards at a time to find matching pairs — but watch out: the deck is full of <b>enemies</b>, <b>weapons</b>, <b>coins</b>, and <b>potions</b>.</p>
+    <ul>
+      <li>🗡️ <b>Weapon pairs</b> stack in your arsenal</li>
+      <li>👹 <b>Enemy pairs</b> spend a weapon — or cost HP</li>
+      <li>❤️ <b>Potion pairs</b> restore health</li>
+      <li>🪙 <b>Coin pairs</b> and playing-card pairs earn gold</li>
+      <li>Clear the board to descend to the next level</li>
+    </ul>
+    <button id="start-btn">Begin the Descent</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- Config ----------
+  const MAX_HP = 10;
+  const SUITS = [
+    { s: '♠', c: 'black' },
+    { s: '♥', c: 'red' },
+    { s: '♦', c: 'red' },
+    { s: '♣', c: 'black' },
+  ];
+  const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+
+  // Level layouts (cols x rows — rows * cols must be even)
+  const LEVELS = [
+    { cols: 3, rows: 4 },  // L1  — 12 cards
+    { cols: 4, rows: 4 },  // L2  — 16
+    { cols: 4, rows: 5 },  // L3  — 20
+    { cols: 4, rows: 6 },  // L4  — 24
+    { cols: 5, rows: 6 },  // L5  — 30
+    { cols: 5, rows: 6 },  // L6+ — 30 (harder composition)
+  ];
+
+  // ---------- State ----------
+  const state = {
+    level: 1,
+    hp: MAX_HP,
+    maxHp: MAX_HP,
+    weapons: 0,
+    coins: 0,
+    board: [],         // array of card objects
+    flipped: [],       // indices of currently flipped (unmatched) cards
+    busy: false,
+    matchedCount: 0,
+    totalPairs: 0,
+  };
+
+  // ---------- DOM ----------
+  const boardEl   = document.getElementById('board');
+  const overlayEl = document.getElementById('overlay');
+  const panelEl   = document.getElementById('panel');
+  const toastsEl  = document.getElementById('toasts');
+  const hudLevel  = document.getElementById('hud-level');
+  const hudHp     = document.getElementById('hud-hp');
+  const hudHpBar  = document.getElementById('hud-hp-bar');
+  const hudWeap   = document.getElementById('hud-weapons');
+  const hudCoins  = document.getElementById('hud-coins');
+
+  document.getElementById('start-btn').addEventListener('click', startRun);
+
+  // ---------- Helpers ----------
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function toast(msg, kind) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (kind || '');
+    el.textContent = msg;
+    toastsEl.appendChild(el);
+    setTimeout(() => el.remove(), 1900);
+  }
+
+  function updateHud() {
+    hudLevel.textContent = state.level;
+    hudHp.textContent = state.hp + '/' + state.maxHp;
+    hudHpBar.style.width = Math.max(0, (state.hp / state.maxHp) * 100) + '%';
+    hudWeap.textContent = state.weapons;
+    hudCoins.textContent = state.coins;
+  }
+
+  // ---------- Level composition ----------
+  // Returns array of pair specs for this level. Each entry describes one PAIR
+  // (two cards with the same `matchId`).
+  function buildPairs(level) {
+    const layout = LEVELS[Math.min(level - 1, LEVELS.length - 1)];
+    const totalPairs = (layout.cols * layout.rows) / 2;
+
+    // Scale specials with level
+    const enemyPairs  = Math.min(totalPairs - 3, Math.max(1, level));
+    const weaponPairs = Math.min(totalPairs - enemyPairs - 2, Math.max(1, Math.ceil(level * 0.8)));
+    const heartPairs  = totalPairs >= 6 ? 1 : 0;
+    const coinPairs   = Math.max(1, Math.floor(level / 2));
+
+    let remaining = totalPairs - enemyPairs - weaponPairs - heartPairs - coinPairs;
+    if (remaining < 0) remaining = 0;
+    const pipPairs = remaining;
+
+    const pairs = [];
+    let id = 0;
+
+    for (let i = 0; i < enemyPairs; i++)  pairs.push({ kind: 'enemy',  matchId: 'E' + id++, power: level });
+    for (let i = 0; i < weaponPairs; i++) pairs.push({ kind: 'weapon', matchId: 'W' + id++ });
+    for (let i = 0; i < heartPairs; i++)  pairs.push({ kind: 'heart',  matchId: 'H' + id++ });
+    for (let i = 0; i < coinPairs; i++)   pairs.push({ kind: 'coin',   matchId: 'C' + id++ });
+
+    // Pip pairs: pick distinct (rank, suit) combos
+    const pipPool = [];
+    for (const r of RANKS) for (const s of SUITS) pipPool.push({ rank: r, suit: s });
+    shuffle(pipPool);
+    for (let i = 0; i < pipPairs; i++) {
+      const p = pipPool[i];
+      pairs.push({ kind: 'pip', matchId: 'P' + id++, rank: p.rank, suit: p.suit });
+    }
+
+    return { pairs, layout, totalPairs };
+  }
+
+  function buildBoard(level) {
+    const { pairs, layout, totalPairs } = buildPairs(level);
+    // Duplicate each pair into 2 cards
+    const cards = [];
+    for (const p of pairs) {
+      cards.push({ ...p });
+      cards.push({ ...p });
+    }
+    shuffle(cards);
+
+    state.board = cards;
+    state.flipped = [];
+    state.matchedCount = 0;
+    state.totalPairs = totalPairs;
+    state.busy = false;
+
+    renderBoard(layout);
+    updateHud();
+  }
+
+  // ---------- Rendering ----------
+  function renderBoard(layout) {
+    boardEl.innerHTML = '';
+    boardEl.style.gridTemplateColumns = `repeat(${layout.cols}, 1fr)`;
+
+    state.board.forEach((card, i) => {
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.dataset.index = i;
+      el.innerHTML = `
+        <div class="card-inner">
+          <div class="card-face card-back"></div>
+          <div class="card-face card-front ${frontClass(card)}">${frontInner(card)}</div>
+        </div>`;
+      const onTap = (ev) => { ev.preventDefault(); onCardTap(i); };
+      el.addEventListener('click', onTap);
+      el.addEventListener('touchstart', onTap, { passive: false });
+      boardEl.appendChild(el);
+    });
+  }
+
+  function frontClass(card) {
+    if (card.kind === 'pip') return card.suit.c;
+    return 'special ' + card.kind;
+  }
+
+  function frontInner(card) {
+    if (card.kind === 'pip') {
+      const r = card.rank, s = card.suit.s;
+      return `
+        <div class="pip-tl"><span class="pip-rank">${r}</span><span class="pip-suit">${s}</span></div>
+        <div class="pip-center">${s}</div>
+        <div class="pip-br"><span class="pip-rank">${r}</span><span class="pip-suit">${s}</span></div>`;
+    }
+    if (card.kind === 'coin')   return `<div class="special-icon">🪙</div><div class="special-label">Coin</div>`;
+    if (card.kind === 'weapon') return `<div class="special-icon">🗡️</div><div class="special-label">Weapon</div>`;
+    if (card.kind === 'heart')  return `<div class="special-icon">🧪</div><div class="special-label">Potion</div>`;
+    if (card.kind === 'enemy')  return `<div class="special-icon">👹</div><div class="special-label">Enemy ${card.power}</div>`;
+    return '';
+  }
+
+  // ---------- Card interaction ----------
+  function onCardTap(i) {
+    if (state.busy) return;
+    const cardEl = boardEl.children[i];
+    if (!cardEl) return;
+    if (cardEl.classList.contains('flipped') || cardEl.classList.contains('matched')) return;
+
+    cardEl.classList.add('flipped');
+    state.flipped.push(i);
+
+    if (state.flipped.length === 2) {
+      state.busy = true;
+      const [a, b] = state.flipped;
+      const cardA = state.board[a], cardB = state.board[b];
+
+      if (cardA.matchId === cardB.matchId) {
+        // Match!
+        setTimeout(() => {
+          boardEl.children[a].classList.add('matched');
+          boardEl.children[b].classList.add('matched');
+          resolveMatch(cardA);
+          state.matchedCount += 1;
+          state.flipped = [];
+          state.busy = false;
+
+          if (state.matchedCount >= state.totalPairs) {
+            setTimeout(onLevelComplete, 600);
+          }
+        }, 450);
+      } else {
+        setTimeout(() => {
+          boardEl.children[a].classList.remove('flipped');
+          boardEl.children[b].classList.remove('flipped');
+          state.flipped = [];
+          state.busy = false;
+        }, 850);
+      }
+    }
+  }
+
+  // ---------- Match effects ----------
+  function resolveMatch(card) {
+    if (card.kind === 'pip') {
+      const gain = 10 * state.level;
+      state.coins += gain;
+      toast('+' + gain + ' 🪙 lucky card', 'gold');
+    } else if (card.kind === 'coin') {
+      const gain = 25 * state.level;
+      state.coins += gain;
+      toast('+' + gain + ' 🪙 coins!', 'gold');
+    } else if (card.kind === 'weapon') {
+      state.weapons += 1;
+      toast('+1 🗡️ weapon acquired', 'purple');
+    } else if (card.kind === 'heart') {
+      const heal = Math.min(3, state.maxHp - state.hp);
+      state.hp = Math.min(state.maxHp, state.hp + 3);
+      toast(heal > 0 ? '+' + heal + ' ❤️ potion' : '🧪 potion (full HP)', 'good');
+    } else if (card.kind === 'enemy') {
+      if (state.weapons > 0) {
+        state.weapons -= 1;
+        const reward = 15 * state.level;
+        state.coins += reward;
+        toast('🗡️ slain enemy  +' + reward + ' 🪙', 'good');
+      } else {
+        const dmg = card.power;
+        state.hp = Math.max(0, state.hp - dmg);
+        toast('💥 ambushed! −' + dmg + ' HP', 'bad');
+        if (state.hp <= 0) {
+          setTimeout(onGameOver, 700);
+        }
+      }
+    }
+    updateHud();
+  }
+
+  // ---------- Level / game flow ----------
+  function onLevelComplete() {
+    const bonus = 20 + state.level * 10;
+    const heal = Math.min(2, state.maxHp - state.hp);
+    state.coins += bonus;
+    state.hp = Math.min(state.maxHp, state.hp + 2);
+
+    overlayEl.classList.remove('hidden');
+    panelEl.innerHTML = `
+      <h1>Level ${state.level} Cleared!</h1>
+      <h2>You descend deeper…</h2>
+      <div class="stats-line">
+        <div>❤️ <span>${state.hp}/${state.maxHp}</span></div>
+        <div>🗡️ <span>${state.weapons}</span></div>
+        <div>🪙 <span>${state.coins}</span></div>
+      </div>
+      <p>Level bonus: <b>+${bonus} 🪙</b> and <b>+${heal} ❤️</b> recovered.</p>
+      <button id="next-btn">Enter Level ${state.level + 1}</button>
+    `;
+    document.getElementById('next-btn').addEventListener('click', () => {
+      state.level += 1;
+      overlayEl.classList.add('hidden');
+      buildBoard(state.level);
+    });
+  }
+
+  function onGameOver() {
+    const best = Math.max(state.level, parseInt(localStorage.getItem('deckDelver.best') || '0', 10));
+    localStorage.setItem('deckDelver.best', best);
+
+    overlayEl.classList.remove('hidden');
+    panelEl.innerHTML = `
+      <h1>💀 You Fell</h1>
+      <h2>The deck claimed you on Level ${state.level}</h2>
+      <div class="stats-line">
+        <div>Deepest: <span>L${best}</span></div>
+        <div>🪙 <span>${state.coins}</span></div>
+      </div>
+      <p>The dungeon reshuffles. Try again — and remember which cards hid the weapons.</p>
+      <button id="retry-btn">New Run</button>
+    `;
+    document.getElementById('retry-btn').addEventListener('click', startRun);
+  }
+
+  function startRun() {
+    state.level   = 1;
+    state.hp      = MAX_HP;
+    state.maxHp   = MAX_HP;
+    state.weapons = 0;
+    state.coins   = 0;
+    overlayEl.classList.add('hidden');
+    buildBoard(state.level);
+  }
+
+  // Initial HUD
+  updateHud();
+})();
+</script>
+<script src="../header.js"></script>
+</body>
+</html>
