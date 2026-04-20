@@ -687,9 +687,13 @@
     });
 
     if (animate) {
-      // Disable input until last card lands
+      // Disable input until last card lands, then strip the dealing class so
+      // the dealIn animation can never restart (e.g. when shaking is toggled)
       const done = state.board.length * 55 + 450;
-      setTimeout(() => { state.dealing = false; }, done);
+      setTimeout(() => {
+        state.dealing = false;
+        Array.from(boardEl.children).forEach(el => el.classList.remove('dealing'));
+      }, done);
     }
   }
 
@@ -846,13 +850,19 @@
     toast('🃏 Joker reshuffles the dungeon!', 'orange');
 
     if (targets.length === 0) {
-      setTimeout(() => { state.busy = false; }, 580);
+      setTimeout(() => {
+        if (jokerEl) jokerEl.classList.remove('joker-acting');
+        state.busy = false;
+      }, 580);
       return;
     }
 
     const targetIdx = targets[Math.floor(Math.random() * targets.length)];
 
     setTimeout(() => {
+      // Remove joker-acting so it never overrides matchPop if this joker is later matched
+      if (jokerEl) jokerEl.classList.remove('joker-acting');
+
       // Swap in state arrays
       [state.board[jokerIdx], state.board[targetIdx]] = [state.board[targetIdx], state.board[jokerIdx]];
       [state.matched[jokerIdx], state.matched[targetIdx]] = [state.matched[targetIdx], state.matched[jokerIdx]];
