@@ -121,8 +121,15 @@
       'box-shadow:0 4px 14px rgba(0,0,0,0.4);-webkit-tap-highlight-color:transparent;',
       'user-select:none;display:flex;align-items:center;gap:6px;min-height:44px;}',
       '.aigg-notes-fab:hover,.aigg-notes-fab:active{border-color:#a78bfa;background:#2a2a3e;}',
-      '.aigg-notes-fab .aigg-badge{background:#a78bfa;color:#0f0f1a;border-radius:999px;',
-      'font-size:11px;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;}',
+      '.aigg-notes-btn-inbar{display:flex;align-items:center;gap:4px;position:relative;}',
+      '.aigg-notes-btn-nav{display:inline-flex;align-items:center;gap:6px;',
+      'background:#1e1e2e;color:#a78bfa;border:1px solid #3b3b5c;border-radius:8px;',
+      'padding:4px 10px;font:600 0.85rem system-ui,-apple-system,sans-serif;cursor:pointer;',
+      'margin-left:0.5rem;position:relative;-webkit-tap-highlight-color:transparent;min-height:32px;}',
+      '.aigg-notes-btn-nav:hover{border-color:#a78bfa;background:#2a2a3e;}',
+      '.aigg-badge{background:#a78bfa;color:#0f0f1a;border-radius:999px;',
+      'font-size:11px;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;',
+      'line-height:1.2;display:inline-block;}',
       '.aigg-notes-overlay{position:fixed;inset:0;z-index:2147483647;',
       'background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;',
       'padding:16px;font-family:system-ui,-apple-system,sans-serif;}',
@@ -252,12 +259,13 @@
   }
 
   function updateBadge() {
-    const fab = document.getElementById('aigg-notes-fab');
-    if (!fab) return;
+    const trigger = document.getElementById('aigg-notes-btn');
+    if (!trigger) return;
     const all = loadAll();
     const ctxId = getContextId();
     const count = all[ctxId] && all[ctxId].notes ? all[ctxId].notes.length : 0;
-    const badge = fab.querySelector('.aigg-badge');
+    const badge = trigger.querySelector('.aigg-badge');
+    if (!badge) return;
     if (count > 0) {
       badge.textContent = count;
       badge.style.display = '';
@@ -400,21 +408,71 @@
     }
   }
 
-  function injectFab() {
-    if (document.getElementById('aigg-notes-fab')) return;
+  function onTriggerClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    openOverlay();
+  }
+
+  function makeBtn(className, label) {
     const btn = document.createElement('button');
-    btn.id = 'aigg-notes-fab';
-    btn.className = 'aigg-notes-fab';
+    btn.id = 'aigg-notes-btn';
     btn.type = 'button';
+    btn.className = className;
     btn.setAttribute('aria-label', 'Open notes');
-    btn.innerHTML = '<span aria-hidden="true">&#128221;</span><span>Notes</span><span class="aigg-badge" style="display:none;">0</span>';
-    btn.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      openOverlay();
-    });
+    btn.innerHTML = '<span aria-hidden="true">&#128221;</span>' +
+      (label ? '<span>' + label + '</span>' : '') +
+      '<span class="aigg-badge" style="display:none;">0</span>';
+    btn.addEventListener('click', onTriggerClick);
+    return btn;
+  }
+
+  function mountInGadBar(bar) {
+    const btn = makeBtn('gad-btn aigg-notes-btn-inbar', '');
+    const helpBtn = bar.querySelector('.gad-help-toggle');
+    const fsBtn = bar.querySelector('.gad-fullscreen');
+    const anchor = helpBtn || fsBtn || bar.querySelector('.gad-next');
+    if (anchor) bar.insertBefore(btn, anchor);
+    else bar.appendChild(btn);
+    updateBadge();
+  }
+
+  function mountInNav(nav) {
+    const btn = makeBtn('aigg-notes-btn-nav', 'Notes');
+    nav.appendChild(btn);
+    updateBadge();
+  }
+
+  function mountFab() {
+    const btn = makeBtn('aigg-notes-fab', 'Notes');
     document.body.appendChild(btn);
     updateBadge();
+  }
+
+  function tryMount() {
+    if (document.getElementById('aigg-notes-btn')) return true;
+    const bar = document.querySelector('.gad-bar');
+    if (bar) { mountInGadBar(bar); return true; }
+    // Only use nav as host if there's no gad-header on this page
+    if (!document.querySelector('.gad-header')) {
+      const nav = document.querySelector('nav');
+      if (nav) { mountInNav(nav); return true; }
+    }
+    return false;
+  }
+
+  function waitForHeaderThenMount() {
+    if (tryMount()) return;
+    const obs = new MutationObserver(function () {
+      if (tryMount()) obs.disconnect();
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    setTimeout(function () {
+      if (!document.getElementById('aigg-notes-btn')) {
+        obs.disconnect();
+        mountFab();
+      }
+    }, 3000);
   }
 
   function findGamesJsonUrl() {
@@ -443,7 +501,7 @@
       return;
     }
     injectStyles();
-    injectFab();
+    waitForHeaderThenMount();
     loadGamesIndex();
     window.addEventListener('storage', function (e) {
       if (e.key === STORAGE_KEY) {
