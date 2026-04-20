@@ -464,6 +464,8 @@
   // Only face-card ranks — no numbers
   const RANKS = ['A', 'K', 'Q', 'J'];
   const RANK_CENTER = { 'A': '⭐', 'K': '👑', 'Q': '💎', 'J': '⚡' };
+  // Color per rank (no suits on pip cards — prevents confusion matching same-rank different-suit cards)
+  const RANK_COLOR  = { 'A': 'black', 'K': 'black', 'Q': 'red', 'J': 'red' };
 
   // Unique enemy & weapon identity tables — index by typeIndex
   const ENEMY_DATA = [
@@ -588,13 +590,12 @@
     for (let i = 0; i < coinPairs; i++)
       pairs.push({ kind: 'coin', matchId: 'C' + id++ });
 
-    // Fill remaining slots with playing-card pip pairs
-    const pipPool = [];
-    for (const r of RANKS) for (const s of SUITS) pipPool.push({ rank: r, suit: s });
+    // Fill remaining slots with playing-card pip pairs (rank-only — no suits to avoid
+    // confusion where two same-rank different-suit cards look like a match but aren't)
+    const pipPool = [...RANKS];
     shuffle(pipPool);
     for (let i = 0; i < pipPairs; i++) {
-      const p = pipPool[i];
-      pairs.push({ kind: 'pip', matchId: 'P' + id++, rank: p.rank, suit: p.suit });
+      pairs.push({ kind: 'pip', matchId: 'P' + id++, rank: pipPool[i] });
     }
 
     return pairs;
@@ -693,18 +694,18 @@
   }
 
   function frontClass(card) {
-    if (card.kind === 'pip') return card.suit.c;
+    if (card.kind === 'pip') return RANK_COLOR[card.rank] || 'black';
     return 'special ' + card.kind;
   }
 
   function frontInner(card) {
     if (card.kind === 'pip') {
-      const r = card.rank, s = card.suit.s;
-      const center = RANK_CENTER[r] || s;
+      const r = card.rank;
+      const center = RANK_CENTER[r] || r;
       return `
-        <div class="pip-tl"><span class="pip-rank">${r}</span><span class="pip-suit">${s}</span></div>
+        <div class="pip-tl"><span class="pip-rank">${r}</span></div>
         <div class="pip-center">${center}</div>
-        <div class="pip-br"><span class="pip-rank">${r}</span><span class="pip-suit">${s}</span></div>`;
+        <div class="pip-br"><span class="pip-rank">${r}</span></div>`;
     }
     if (card.kind === 'coin')   return `<div class="special-icon">🪙</div><div class="special-label">Coin</div>`;
     if (card.kind === 'heart')  return `<div class="special-icon">🧪</div><div class="special-label">Potion</div>`;
