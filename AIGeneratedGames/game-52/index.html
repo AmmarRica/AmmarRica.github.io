@@ -120,6 +120,27 @@
     animation: dealIn 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
   }
 
+  /* Damage shake — card element (doesn't conflict with flip transform on card-inner) */
+  @keyframes cardShake {
+    0%,100% { transform: translateX(0)    translateY(0); }
+    15%     { transform: translateX(-8px) translateY(-2px); }
+    30%     { transform: translateX(7px)  translateY(2px); }
+    50%     { transform: translateX(-6px) translateY(-1px); }
+    70%     { transform: translateX(6px)  translateY(1px); }
+    88%     { transform: translateX(-3px); }
+  }
+  .card.shaking { animation: cardShake 0.46s ease-in-out; }
+
+  /* HP stat shake */
+  @keyframes hpShake {
+    0%,100% { transform: translateX(0); }
+    20%     { transform: translateX(-5px); }
+    45%     { transform: translateX(5px); }
+    65%     { transform: translateX(-4px); }
+    85%     { transform: translateX(4px); }
+  }
+  .stat.hp.shaking { animation: hpShake 0.35s ease-in-out; }
+
   /* Joker shuffle wiggle */
   @keyframes jokerWiggle {
     0%   { transform: scale(1) rotate(0deg); }
@@ -446,6 +467,7 @@
     totalMoves:   0,
     board:        [],   // card objects
     matched:      [],   // boolean per index
+    seenCount:    [],   // how many times each position has been flipped (resets per level)
     flipped:      [],   // [a] or [a, b] — currently revealed indices
     busy:         false,
     dealing:      false,
@@ -566,6 +588,7 @@
 
     state.board        = cards;
     state.matched      = new Array(cards.length).fill(false);
+    state.seenCount    = new Array(cards.length).fill(0);
     state.flipped      = [];
     state.matchedCount = 0;
     state.busy         = false;
@@ -674,6 +697,7 @@
     if (state.matched[i] || state.flipped.includes(i)) return;
 
     cardEl.classList.add('flipped');
+    state.seenCount[i]++;          // track this exposure
     state.flipped.push(i);
 
     if (state.flipped.length === 2) {
@@ -704,17 +728,30 @@
         }, 450);
 
       } else {
-        // ── No match: enemy damage rule ───────────────────────────────────────
-        const enemyCount = (cardA.kind === 'enemy' ? 1 : 0) + (cardB.kind === 'enemy' ? 1 : 0);
-        if (enemyCount > 0) {
-          state.hp = Math.max(0, state.hp - enemyCount);
-          toast(enemyCount === 2
-            ? '👹👹 Two enemies lurk! −' + enemyCount + ' HP'
-            : '👹 Enemy lurks! −1 HP', 'bad');
+        // ── No match: penalty for cards seen before (memory tax) ─────────────
+        // seenCount was already incremented on tap, so >1 means previously seen
+        const aPrev = state.seenCount[a] > 1;
+        const bPrev = state.seenCount[b] > 1;
+        const aDmg  = aPrev ? (cardA.kind === 'enemy' ? 3 : 1) : 0;
+        const bDmg  = bPrev ? (cardB.kind === 'enemy' ? 3 : 1) : 0;
+        const totalDmg = aDmg + bDmg;
+
+        if (totalDmg > 0) {
+          state.hp = Math.max(0, state.hp - totalDmg);
+          if (aPrev) shakeCard(a);
+          if (bPrev) shakeCard(b);
+          shakeHp();
+          let msg;
+          const hasEnemy = (aPrev && cardA.kind === 'enemy') || (bPrev && cardB.kind === 'enemy');
+          if (hasEnemy && totalDmg >= 6)  msg = '👹👹 Double enemy recall! −' + totalDmg + ' HP';
+          else if (hasEnemy)              msg = '👹 You knew that enemy! −' + totalDmg + ' HP';
+          else if (totalDmg >= 2)         msg = '🧠 Both seen before! −' + totalDmg + ' HP';
+          else                            msg = '🧠 You\'ve seen that card! −1 HP';
+          toast(msg, 'bad');
           updateHud();
         }
 
-        // ── Check if game over from enemy damage ──────────────────────────────
+        // ── Check if game over ────────────────────────────────────────────────
         if (state.hp <= 0) {
           setTimeout(() => {
             flipBackBoth(a, b);
@@ -744,6 +781,24 @@
     if (elA) elA.classList.remove('flipped');
     if (elB) elB.classList.remove('flipped');
     state.flipped = [];
+  }
+
+  function shakeCard(i) {
+    const el = boardEl.children[i];
+    if (!el) return;
+    el.classList.remove('shaking');
+    void el.offsetWidth; // reflow to restart animation
+    el.classList.add('shaking');
+    setTimeout(() => el.classList.remove('shaking'), 500);
+  }
+
+  function shakeHp() {
+    const el = document.getElementById('hud-hp').closest('.stat');
+    if (!el) return;
+    el.classList.remove('shaking');
+    void el.offsetWidth;
+    el.classList.add('shaking');
+    setTimeout(() => el.classList.remove('shaking'), 400);
   }
 
   // ─── Joker effect ────────────────────────────────────────────────────────────
@@ -941,7 +996,8 @@
       </div>` : ''}
       <ul>
         <li>🔲 Flip two cards to find matching pairs</li>
-        <li>👹 <b>Enemy flipped without a match</b> costs 1 HP</li>
+        <li>🧠 Flip a card you've already seen without matching it → <b>−1 HP</b></li>
+        <li>👹 Doing the same with an enemy card → <b>−3 HP</b></li>
         <li>🃏 <b>Joker flipped without a match</b> secretly moves a card</li>
         <li>🗡️ <b>Weapon pairs</b> arm you vs. matched enemies</li>
         <li>❤️ <b>Potion pairs</b> restore health</li>
