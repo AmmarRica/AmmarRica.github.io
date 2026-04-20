@@ -103,5 +103,6 @@
   { "dir": "game-49", "title": "Kaiju Bowl", "input": "keyboard", "series": "football", "genre": "Kaiju" },
   { "dir": "game-50", "title": "The Waterboy", "input": "keyboard", "series": "football", "genre": "Simulation" },
   { "dir": "game-51", "title": "Uptown Charlotte 3D", "input": "keyboard", "series": "charlotte" },
-  { "dir": "game-52", "title": "Memory Dungeon", "input": "touch", "series": "specials", "genre": "Memory / Roguelite" }
+  { "dir": "game-52", "title": "Memory Dungeon", "input": "touch", "series": "specials", "genre": "Memory / Roguelite" },
+  { "dir": "game-53", "title": "Times Table Trainer", "input": "both", "series": "specials", "genre": "Educational" }
 ]
