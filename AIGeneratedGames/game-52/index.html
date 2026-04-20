@@ -141,15 +141,13 @@
   }
   .stat.hp.shaking { animation: hpShake 0.35s ease-in-out; }
 
-  /* Joker shuffle wiggle */
-  @keyframes jokerWiggle {
-    0%   { transform: scale(1) rotate(0deg); }
-    20%  { transform: scale(1.15) rotate(8deg); }
-    45%  { transform: scale(1.15) rotate(-8deg); }
-    70%  { transform: scale(1.05) rotate(4deg); }
-    100% { transform: scale(1) rotate(0deg); }
+  /* Joker swap pulse */
+  @keyframes jokerPulse {
+    0%   { transform: rotateY(180deg) scale(1); }
+    50%  { transform: rotateY(180deg) scale(1.08); filter: drop-shadow(0 0 12px #ec4899); }
+    100% { transform: rotateY(180deg) scale(1); }
   }
-  .card.joker-acting .card-inner { animation: jokerWiggle 0.55s ease-in-out; }
+  .card.jokering .card-inner { animation: jokerPulse 0.7s ease-in-out; }
 
   .card-face {
     position: absolute;
@@ -243,12 +241,8 @@
   .card-front.coin   { color: #fbbf24; border-color: #fbbf24; }
   .card-front.weapon { color: #a78bfa; border-color: #a78bfa; }
   .card-front.heart  { color: #ef4444; border-color: #ef4444; }
-  .card-front.enemy  { color: #22c55e; border-color: #22c55e; }
-  .card-front.joker  {
-    color: #f97316;
-    border-color: #f97316;
-    background: linear-gradient(160deg, #1a1208, #2a1a0e);
-  }
+  .card-front.goblin { color: #22c55e; border-color: #22c55e; }
+  .card-front.joker  { color: #ec4899; border-color: #ec4899; }
 
   /* Toast messages */
   #toasts {
@@ -467,15 +461,7 @@
   // Color per rank (no suits on pip cards — prevents confusion matching same-rank different-suit cards)
   const RANK_COLOR  = { 'A': 'black', 'K': 'black', 'Q': 'red', 'J': 'red' };
 
-  // Unique enemy & weapon identity tables — index by typeIndex
-  const ENEMY_DATA = [
-    { icon: '👺', name: 'Goblin'   },
-    { icon: '🧟', name: 'Zombie'   },
-    { icon: '🐺', name: 'Werewolf' },
-    { icon: '💀', name: 'Skeleton' },
-    { icon: '🦇', name: 'Vampire'  },
-    { icon: '🕷️', name: 'Spider'   },
-  ];
+  // Weapon identity table — index by typeIndex
   const WEAPON_DATA = [
     { icon: '🗡️', name: 'Dagger'  },
     { icon: '🏹', name: 'Bow'     },
@@ -570,19 +556,19 @@
   function buildPairs(level) {
     // Fixed 8 pairs for the 4×4 grid; composition scales with depth
     const jokerPairs  = 1;
-    const enemyPairs  = Math.min(3, Math.max(1, Math.floor(level * 0.6)));
+    const goblinPairs = Math.min(3, Math.max(1, Math.floor(level * 0.6)));
     const weaponPairs = Math.min(2, Math.max(1, Math.ceil(level * 0.4)));
     const heartPairs  = 1;
     const coinPairs   = 1;
-    let   pipPairs    = PAIRS - jokerPairs - enemyPairs - weaponPairs - heartPairs - coinPairs;
+    let   pipPairs    = PAIRS - jokerPairs - goblinPairs - weaponPairs - heartPairs - coinPairs;
     if (pipPairs < 0) pipPairs = 0;
 
     const pairs = [];
     let id = 0;
 
     pairs.push({ kind: 'joker', matchId: 'J' + id++ });
-    for (let i = 0; i < enemyPairs; i++)
-      pairs.push({ kind: 'enemy', matchId: 'E' + id++, power: Math.max(1, level), typeIndex: i });
+    for (let i = 0; i < goblinPairs; i++)
+      pairs.push({ kind: 'goblin', matchId: 'G' + id++, power: Math.max(1, level) });
     for (let i = 0; i < weaponPairs; i++)
       pairs.push({ kind: 'weapon', matchId: 'W' + id++, typeIndex: i });
     for (let i = 0; i < heartPairs; i++)
@@ -713,16 +699,23 @@
     }
     if (card.kind === 'coin')   return `<div class="special-icon">🪙</div><div class="special-label">Coin</div>`;
     if (card.kind === 'heart')  return `<div class="special-icon">🧪</div><div class="special-label">Potion</div>`;
+    if (card.kind === 'goblin') return `<div class="special-icon">👹</div><div class="special-label">Goblin ${card.power}</div>`;
     if (card.kind === 'joker')  return `<div class="special-icon">🃏</div><div class="special-label">Joker</div>`;
     if (card.kind === 'weapon') {
       const w = WEAPON_DATA[card.typeIndex % WEAPON_DATA.length];
       return `<div class="special-icon">${w.icon}</div><div class="special-label">${w.name}</div>`;
     }
-    if (card.kind === 'enemy') {
-      const e = ENEMY_DATA[card.typeIndex % ENEMY_DATA.length];
-      return `<div class="special-icon">${e.icon}</div><div class="special-label">${e.name}</div>`;
-    }
     return '';
+  }
+
+  function updateCardFront(i) {
+    const cardEl = boardEl.children[i];
+    if (!cardEl) return;
+    const front = cardEl.querySelector('.card-front');
+    if (!front) return;
+    const card = state.board[i];
+    front.className = 'card-face card-front ' + frontClass(card);
+    front.innerHTML = frontInner(card);
   }
 
   // ─── Card tap ────────────────────────────────────────────────────────────────
@@ -745,6 +738,7 @@
       const cardA     = state.board[a];
       const cardB     = state.board[b];
       const isMatch   = cardA.matchId === cardB.matchId;
+      const jokerInvolved = (cardA.kind === 'joker') !== (cardB.kind === 'joker');
 
       if (isMatch) {
         setTimeout(() => {
@@ -763,17 +757,32 @@
           }
         }, 450);
 
+      } else if (jokerInvolved) {
+        // Joker swap: swap positions on the board, then flip both back face-down.
+        boardEl.children[a].classList.add('jokering');
+        boardEl.children[b].classList.add('jokering');
+        toast('🃏 Joker swap!', 'purple');
+        setTimeout(() => {
+          [state.board[a], state.board[b]] = [state.board[b], state.board[a]];
+          updateCardFront(a);
+          updateCardFront(b);
+          boardEl.children[a].classList.remove('flipped', 'jokering');
+          boardEl.children[b].classList.remove('flipped', 'jokering');
+          state.flipped = [];
+          state.busy = false;
+        }, 900);
+
       } else {
         // ── No match: penalty for cards seen before (memory tax) ─────────────
         // seenCount was already incremented on tap, so >1 means previously seen
         const aPrev = state.seenCount[a] > 1;
         const bPrev = state.seenCount[b] > 1;
-        // Jokers never deal memory-tax damage (they only reshuffle).
-        // Enemy cards deal no damage when the player is armed.
-        const aEnemyDmg = (cardA.kind === 'enemy' && state.weapons > 0) ? 0 : 3;
-        const bEnemyDmg = (cardB.kind === 'enemy' && state.weapons > 0) ? 0 : 3;
-        const aDmg  = (aPrev && cardA.kind !== 'joker') ? (cardA.kind === 'enemy' ? aEnemyDmg : 1) : 0;
-        const bDmg  = (bPrev && cardB.kind !== 'joker') ? (cardB.kind === 'enemy' ? bEnemyDmg : 1) : 0;
+        // Jokers never deal memory-tax damage (they only swap).
+        // Goblin cards deal no damage when the player is armed.
+        const aGoblinDmg = (cardA.kind === 'goblin' && state.weapons > 0) ? 0 : 3;
+        const bGoblinDmg = (cardB.kind === 'goblin' && state.weapons > 0) ? 0 : 3;
+        const aDmg  = (aPrev && cardA.kind !== 'joker') ? (cardA.kind === 'goblin' ? aGoblinDmg : 1) : 0;
+        const bDmg  = (bPrev && cardB.kind !== 'joker') ? (cardB.kind === 'goblin' ? bGoblinDmg : 1) : 0;
         const totalDmg = aDmg + bDmg;
 
         if (totalDmg > 0) {
@@ -782,11 +791,11 @@
           if (bPrev && cardB.kind !== 'joker') shakeCard(b);
           shakeHp();
           let msg;
-          const hasEnemy = (aPrev && cardA.kind === 'enemy') || (bPrev && cardB.kind === 'enemy');
-          if (hasEnemy && totalDmg >= 6)  msg = '👹👹 Double enemy recall! −' + totalDmg + ' HP';
-          else if (hasEnemy)              msg = '👹 You knew that enemy! −' + totalDmg + ' HP';
-          else if (totalDmg >= 2)         msg = '🧠 Both seen before! −' + totalDmg + ' HP';
-          else                            msg = '🧠 You\'ve seen that card! −1 HP';
+          const hasGoblin = (aPrev && cardA.kind === 'goblin') || (bPrev && cardB.kind === 'goblin');
+          if (hasGoblin && totalDmg >= 6)  msg = '👹👹 Double goblin recall! −' + totalDmg + ' HP';
+          else if (hasGoblin)              msg = '👹 You knew that goblin! −' + totalDmg + ' HP';
+          else if (totalDmg >= 2)          msg = '🧠 Both seen before! −' + totalDmg + ' HP';
+          else                             msg = '🧠 You\'ve seen that card! −1 HP';
           toast(msg, 'bad');
           updateHud();
         }
@@ -800,16 +809,9 @@
           return;
         }
 
-        // ── Joker check ───────────────────────────────────────────────────────
-        const jokerIdx = cardA.kind === 'joker' ? a : (cardB.kind === 'joker' ? b : -1);
-
         setTimeout(() => {
           flipBackBoth(a, b);
-          if (jokerIdx !== -1) {
-            triggerJoker(jokerIdx);
-          } else {
-            state.busy = false;
-          }
+          state.busy = false;
         }, 850);
       }
     }
@@ -841,51 +843,6 @@
     setTimeout(() => el.classList.remove('shaking'), 400);
   }
 
-  // ─── Joker effect ────────────────────────────────────────────────────────────
-  function triggerJoker(jokerIdx) {
-    // Find random face-down unmatched card (not the joker itself)
-    const targets = [];
-    state.board.forEach((_, i) => {
-      if (i !== jokerIdx && !state.matched[i]) targets.push(i);
-    });
-
-    const jokerEl = boardEl.children[jokerIdx];
-    if (jokerEl) jokerEl.classList.add('joker-acting');
-    toast('🃏 Joker reshuffles the dungeon!', 'orange');
-
-    if (targets.length === 0) {
-      setTimeout(() => {
-        if (jokerEl) jokerEl.classList.remove('joker-acting');
-        state.busy = false;
-      }, 580);
-      return;
-    }
-
-    const targetIdx = targets[Math.floor(Math.random() * targets.length)];
-
-    setTimeout(() => {
-      // Remove joker-acting so it never overrides matchPop if this joker is later matched
-      if (jokerEl) jokerEl.classList.remove('joker-acting');
-
-      // Swap in state arrays
-      [state.board[jokerIdx], state.board[targetIdx]] = [state.board[targetIdx], state.board[jokerIdx]];
-      [state.matched[jokerIdx], state.matched[targetIdx]] = [state.matched[targetIdx], state.matched[jokerIdx]];
-
-      // Swap front-face HTML+class in DOM (backs stay the same; player can't see fronts)
-      const elJ = boardEl.children[jokerIdx];
-      const elT = boardEl.children[targetIdx];
-      if (elJ && elT) {
-        const fJ = elJ.querySelector('.card-front');
-        const fT = elT.querySelector('.card-front');
-        if (fJ && fT) {
-          const tmpClass = fJ.className, tmpHTML = fJ.innerHTML;
-          fJ.className = fT.className; fJ.innerHTML = fT.innerHTML;
-          fT.className = tmpClass;     fT.innerHTML = tmpHTML;
-        }
-      }
-      state.busy = false;
-    }, 580);
-  }
 
   // ─── Match effects ───────────────────────────────────────────────────────────
   function resolveMatch(card) {
@@ -914,16 +871,15 @@
         toast(heal > 0 ? '+' + heal + ' ❤️ potion quaffed' : '🧪 already full HP', 'good');
         break;
       }
-      case 'enemy': {
-        const e = ENEMY_DATA[card.typeIndex % ENEMY_DATA.length];
+      case 'goblin': {
         if (state.weapons > 0) {
           state.weapons--;
           const r = 15 * state.level;
           state.coins += r;
-          toast(e.icon + ' ' + e.name + ' slain! +' + r + ' 🪙', 'good');
+          toast('🗡️ Goblin slain! +' + r + ' 🪙', 'good');
         } else {
           state.hp = Math.max(0, state.hp - card.power);
-          toast('💥 ' + e.name + ' ambush! −' + card.power + ' HP', 'bad');
+          toast('💥 Goblin ambush! −' + card.power + ' HP', 'bad');
           if (state.hp <= 0) {
             updateHud();
             setTimeout(onGameOver, 700);
@@ -1047,9 +1003,9 @@
       <ul>
         <li>🔲 Flip two cards to find matching pairs</li>
         <li>🧠 Flip a card you've already seen without matching it → <b>−1 HP</b></li>
-        <li>👹 Doing the same with an enemy card → <b>−3 HP</b> (blocked by a weapon)</li>
-        <li>🃏 <b>Joker flipped without a match</b> secretly moves a card — no damage</li>
-        <li>🗡️ <b>Weapon pairs</b> arm you vs. matched enemies and protect against enemy recall</li>
+        <li>👹 Doing the same with a goblin card → <b>−3 HP</b> (blocked by a weapon)</li>
+        <li>🃏 <b>Flip a Joker with any non-joker</b> → they swap positions (no damage)</li>
+        <li>🗡️ <b>Weapon pairs</b> arm you vs. matched goblins and protect against goblin recall</li>
         <li>❤️ <b>Potion pairs</b> restore health</li>
         <li>🪙 Clear all pairs to descend to the next dungeon</li>
       </ul>
