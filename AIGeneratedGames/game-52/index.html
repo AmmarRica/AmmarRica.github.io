@@ -768,14 +768,18 @@
         // seenCount was already incremented on tap, so >1 means previously seen
         const aPrev = state.seenCount[a] > 1;
         const bPrev = state.seenCount[b] > 1;
-        const aDmg  = aPrev ? (cardA.kind === 'enemy' ? 3 : 1) : 0;
-        const bDmg  = bPrev ? (cardB.kind === 'enemy' ? 3 : 1) : 0;
+        // Jokers never deal memory-tax damage (they only reshuffle).
+        // Enemy cards deal no damage when the player is armed.
+        const aEnemyDmg = (cardA.kind === 'enemy' && state.weapons > 0) ? 0 : 3;
+        const bEnemyDmg = (cardB.kind === 'enemy' && state.weapons > 0) ? 0 : 3;
+        const aDmg  = (aPrev && cardA.kind !== 'joker') ? (cardA.kind === 'enemy' ? aEnemyDmg : 1) : 0;
+        const bDmg  = (bPrev && cardB.kind !== 'joker') ? (cardB.kind === 'enemy' ? bEnemyDmg : 1) : 0;
         const totalDmg = aDmg + bDmg;
 
         if (totalDmg > 0) {
           state.hp = Math.max(0, state.hp - totalDmg);
-          if (aPrev) shakeCard(a);
-          if (bPrev) shakeCard(b);
+          if (aPrev && cardA.kind !== 'joker') shakeCard(a);
+          if (bPrev && cardB.kind !== 'joker') shakeCard(b);
           shakeHp();
           let msg;
           const hasEnemy = (aPrev && cardA.kind === 'enemy') || (bPrev && cardB.kind === 'enemy');
@@ -1043,9 +1047,9 @@
       <ul>
         <li>🔲 Flip two cards to find matching pairs</li>
         <li>🧠 Flip a card you've already seen without matching it → <b>−1 HP</b></li>
-        <li>👹 Doing the same with an enemy card → <b>−3 HP</b></li>
-        <li>🃏 <b>Joker flipped without a match</b> secretly moves a card</li>
-        <li>🗡️ <b>Weapon pairs</b> arm you vs. matched enemies</li>
+        <li>👹 Doing the same with an enemy card → <b>−3 HP</b> (blocked by a weapon)</li>
+        <li>🃏 <b>Joker flipped without a match</b> secretly moves a card — no damage</li>
+        <li>🗡️ <b>Weapon pairs</b> arm you vs. matched enemies and protect against enemy recall</li>
         <li>❤️ <b>Potion pairs</b> restore health</li>
         <li>🪙 Clear all pairs to descend to the next dungeon</li>
       </ul>
