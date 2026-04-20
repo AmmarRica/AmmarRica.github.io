@@ -159,6 +159,16 @@
       .catch(() => {
         // Silently fail if files not available
       });
+    loadNotesScript();
+  }
+
+  function loadNotesScript() {
+    if (document.getElementById('aigg-notes-script')) return;
+    const s = document.createElement('script');
+    s.id = 'aigg-notes-script';
+    s.src = BASE + 'notes.js';
+    s.async = true;
+    document.head.appendChild(s);
   }
 
   init();
