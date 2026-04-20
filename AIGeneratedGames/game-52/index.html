@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Deck Delver</title>
+<title>Memory Dungeon</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -18,7 +18,7 @@
   #app {
     max-width: 640px;
     margin: 0 auto;
-    padding: 10px;
+    padding: 8px 10px 10px;
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
@@ -29,31 +29,33 @@
   /* HUD */
   #hud {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 5px;
     background: linear-gradient(180deg, #1a1a2e, #141428);
     border: 1px solid #3b3b5c;
     border-radius: 12px;
-    padding: 8px;
-    margin-bottom: 10px;
-    font-size: 13px;
+    padding: 7px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    flex-shrink: 0;
   }
   .stat {
     background: #0f0f1a;
     border-radius: 8px;
-    padding: 6px 8px;
+    padding: 5px 4px;
     display: flex;
     flex-direction: column;
     gap: 2px;
     align-items: center;
     border: 1px solid #2a2a44;
   }
-  .stat .label { color: #8a8aa8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
-  .stat .val { color: #fbbf24; font-weight: 700; font-size: 16px; line-height: 1; }
+  .stat .label { color: #8a8aa8; font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em; white-space: nowrap; }
+  .stat .val { color: #fbbf24; font-weight: 700; font-size: 15px; line-height: 1; }
   .stat.hp .val { color: #ef4444; }
   .stat.weapon .val { color: #a78bfa; }
   .stat.coin .val { color: #fbbf24; }
   .stat.level .val { color: #22c55e; }
+  .stat.moves .val { color: #60a5fa; }
   .hp-bar {
     width: 100%;
     height: 4px;
@@ -68,7 +70,7 @@
     transition: width 0.3s;
   }
 
-  /* Board */
+  /* Board wrapper — padding gives the "smaller cards" breathing room */
   #board-wrap {
     flex: 1;
     min-height: 0;
@@ -76,7 +78,7 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    padding: 4px 0;
+    padding: 16px;
   }
   #board {
     display: grid;
@@ -89,7 +91,7 @@
     aspect-ratio: 2 / 3;
     perspective: 800px;
     cursor: pointer;
-    min-height: 44px;
+    min-height: 40px;
   }
   .card-inner {
     position: absolute;
@@ -107,6 +109,27 @@
     40%  { transform: rotateY(180deg) scale(1.12); opacity: 1; }
     100% { transform: rotateY(180deg) scale(0.4); opacity: 0; }
   }
+
+  /* Deal animation — cards fly in from above one at a time */
+  @keyframes dealIn {
+    0%   { transform: translateY(-180px) scale(0.65); opacity: 0; }
+    55%  { opacity: 1; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .card.dealing {
+    animation: dealIn 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+
+  /* Joker shuffle wiggle */
+  @keyframes jokerWiggle {
+    0%   { transform: scale(1) rotate(0deg); }
+    20%  { transform: scale(1.15) rotate(8deg); }
+    45%  { transform: scale(1.15) rotate(-8deg); }
+    70%  { transform: scale(1.05) rotate(4deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  .card.joker-acting .card-inner { animation: jokerWiggle 0.55s ease-in-out; }
+
   .card-face {
     position: absolute;
     inset: 0;
@@ -146,10 +169,10 @@
     box-shadow: 0 2px 6px rgba(0,0,0,0.4);
     padding: 4px;
   }
-  .card-front.red  { color: #c81e1e; }
+  .card-front.red   { color: #c81e1e; }
   .card-front.black { color: #0a0a1a; }
 
-  /* Playing-card face */
+  /* Playing-card pip layout */
   .pip-tl, .pip-br {
     position: absolute;
     display: flex;
@@ -158,19 +181,19 @@
     line-height: 1;
     font-weight: 800;
   }
-  .pip-tl { top: 4px; left: 5px; }
-  .pip-br { bottom: 4px; right: 5px; transform: rotate(180deg); }
-  .pip-rank { font-size: clamp(10px, 3.2vw, 16px); }
-  .pip-suit { font-size: clamp(9px, 2.8vw, 14px); }
+  .pip-tl { top: 3px; left: 4px; }
+  .pip-br { bottom: 3px; right: 4px; transform: rotate(180deg); }
+  .pip-rank { font-size: clamp(9px, 2.8vw, 15px); }
+  .pip-suit { font-size: clamp(8px, 2.4vw, 13px); }
   .pip-center {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: clamp(18px, 7vw, 34px);
+    font-size: clamp(16px, 6vw, 30px);
   }
 
-  /* Special-card face (coin, weapon, heart, enemy) */
+  /* Special cards */
   .card-front.special {
     background: linear-gradient(180deg, #1a1a2e, #2a1a3e);
     color: #fbbf24;
@@ -181,12 +204,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: clamp(22px, 9vw, 42px);
+    font-size: clamp(20px, 8vw, 38px);
     filter: drop-shadow(0 0 6px currentColor);
   }
   .special-label {
     text-align: center;
-    font-size: clamp(8px, 2.2vw, 11px);
+    font-size: clamp(7px, 1.9vw, 10px);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -197,6 +220,11 @@
   .card-front.weapon { color: #a78bfa; border-color: #a78bfa; }
   .card-front.heart  { color: #ef4444; border-color: #ef4444; }
   .card-front.enemy  { color: #22c55e; border-color: #22c55e; }
+  .card-front.joker  {
+    color: #f97316;
+    border-color: #f97316;
+    background: linear-gradient(160deg, #1a1208, #2a1a0e);
+  }
 
   /* Toast messages */
   #toasts {
@@ -217,104 +245,163 @@
     border-radius: 20px;
     font-size: 14px;
     font-weight: 600;
-    animation: toastLife 1.8s ease-out forwards;
+    animation: toastLife 1.9s ease-out forwards;
     white-space: nowrap;
   }
-  .toast.good { border-color: #22c55e; color: #22c55e; }
-  .toast.bad  { border-color: #ef4444; color: #ef4444; }
-  .toast.gold { border-color: #fbbf24; color: #fbbf24; }
+  .toast.good   { border-color: #22c55e; color: #22c55e; }
+  .toast.bad    { border-color: #ef4444; color: #ef4444; }
+  .toast.gold   { border-color: #fbbf24; color: #fbbf24; }
   .toast.purple { border-color: #a78bfa; color: #a78bfa; }
+  .toast.orange { border-color: #f97316; color: #f97316; }
   @keyframes toastLife {
     0%   { opacity: 0; transform: translateY(10px); }
-    15%  { opacity: 1; transform: translateY(0); }
+    12%  { opacity: 1; transform: translateY(0); }
     75%  { opacity: 1; transform: translateY(0); }
-    100% { opacity: 0; transform: translateY(-20px); }
+    100% { opacity: 0; transform: translateY(-18px); }
   }
 
-  /* Overlay (start / level-complete / game-over) */
+  /* Overlay */
   #overlay {
     position: fixed;
     inset: 0;
-    background: rgba(15, 15, 26, 0.92);
+    background: rgba(15, 15, 26, 0.93);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 400;
-    padding: 20px;
+    padding: 16px;
   }
   #overlay.hidden { display: none; }
   .panel {
     background: linear-gradient(180deg, #1a1a2e, #14142a);
     border: 1px solid #3b3b5c;
     border-radius: 16px;
-    padding: 24px;
+    padding: 22px 20px 20px;
     max-width: 420px;
     width: 100%;
     text-align: center;
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    max-height: 88vh;
+    overflow-y: auto;
   }
   .panel h1 {
-    font-size: 28px;
+    font-size: clamp(22px, 6vw, 28px);
     color: #fbbf24;
-    text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
-    margin-bottom: 8px;
+    text-shadow: 0 0 20px rgba(251,191,36,0.5);
+    margin-bottom: 6px;
   }
   .panel h2 {
-    font-size: 20px;
+    font-size: clamp(15px, 4vw, 20px);
     color: #a78bfa;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
   }
   .panel p {
     color: #c0c0e0;
-    font-size: 14px;
+    font-size: 13px;
     line-height: 1.6;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
   }
   .panel ul {
     text-align: left;
     color: #c0c0e0;
     font-size: 13px;
-    line-height: 1.7;
-    margin: 0 auto 16px;
+    line-height: 1.8;
+    margin: 0 auto 14px;
     padding-left: 20px;
     max-width: 300px;
+  }
+  .btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 4px;
   }
   .panel button {
     background: #a78bfa;
     color: #0f0f1a;
     border: none;
-    padding: 12px 28px;
-    font-size: 16px;
+    padding: 11px 24px;
+    font-size: 15px;
     font-weight: 800;
     border-radius: 10px;
     cursor: pointer;
-    min-height: 48px;
-    min-width: 140px;
+    min-height: 46px;
+    min-width: 130px;
     transition: transform 0.1s, background 0.2s;
   }
   .panel button:hover, .panel button:active { background: #c4b5fd; transform: scale(1.03); }
+  .panel button.secondary {
+    background: #23233a;
+    color: #c0c0e0;
+    border: 1px solid #3b3b5c;
+  }
+  .panel button.secondary:hover { background: #2e2e50; color: #fff; }
+
   .stats-line {
     display: flex;
     justify-content: center;
-    gap: 14px;
+    gap: 12px;
     flex-wrap: wrap;
-    margin: 10px 0 16px;
-    font-size: 14px;
+    margin: 8px 0 14px;
+    font-size: 13px;
   }
   .stats-line span { color: #fbbf24; font-weight: 700; }
+
+  /* Best score banner on main menu */
+  .best-banner {
+    background: linear-gradient(90deg, #1a1a2e, #2a1832, #1a1a2e);
+    border: 1px solid #a78bfa;
+    border-radius: 8px;
+    padding: 8px 14px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: #c0c0e0;
+  }
+  .best-banner .bv { color: #fbbf24; font-weight: 700; font-size: 17px; }
+
+  /* High scores table */
+  .score-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 14px;
+    font-size: 13px;
+  }
+  .score-table th {
+    color: #8a8aa8;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 4px 6px;
+    border-bottom: 1px solid #3b3b5c;
+  }
+  .score-table td {
+    padding: 6px 6px;
+    border-bottom: 1px solid #1e1e38;
+    color: #c0c0e0;
+  }
+  .score-table tbody tr:first-child td { color: #fbbf24; font-weight: 700; }
+  .score-table .rank  { color: #8a8aa8; text-align: center; width: 28px; }
+  .score-table .lvls  { color: #22c55e; font-weight: 700; text-align: center; }
+  .score-table .mvs   { color: #60a5fa; text-align: center; }
+  .score-table .dt    { color: #8a8aa8; font-size: 11px; text-align: right; }
+  .score-table tbody tr:first-child .rank { color: #fbbf24; }
+  .score-table tbody tr:first-child .lvls { color: #fbbf24; }
+  .score-table tbody tr:first-child .mvs  { color: #fbbf24; }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="hud">
-    <div class="stat level"><span class="label">Level</span><span class="val" id="hud-level">1</span></div>
+    <div class="stat level"><span class="label">Dungeon</span><span class="val" id="hud-level">1</span></div>
     <div class="stat hp">
       <span class="label">HP</span>
       <span class="val" id="hud-hp">10/10</span>
       <div class="hp-bar"><div id="hud-hp-bar" style="width:100%"></div></div>
     </div>
-    <div class="stat weapon"><span class="label">🗡️ Wpns</span><span class="val" id="hud-weapons">0</span></div>
-    <div class="stat coin"><span class="label">🪙 Coins</span><span class="val" id="hud-coins">0</span></div>
+    <div class="stat weapon"><span class="label">🗡️ Arms</span><span class="val" id="hud-weapons">0</span></div>
+    <div class="stat coin"><span class="label">🪙 Gold</span><span class="val" id="hud-coins">0</span></div>
+    <div class="stat moves"><span class="label">Moves</span><span class="val" id="hud-moves">0</span></div>
   </div>
 
   <div id="board-wrap">
@@ -325,61 +412,47 @@
 <div id="toasts"></div>
 
 <div id="overlay">
-  <div class="panel" id="panel">
-    <h1>Deck Delver</h1>
-    <h2>Memory Match Dungeon</h2>
-    <p>Flip two cards at a time to find matching pairs — but watch out: the deck is full of <b>enemies</b>, <b>weapons</b>, <b>coins</b>, and <b>potions</b>.</p>
-    <ul>
-      <li>🗡️ <b>Weapon pairs</b> stack in your arsenal</li>
-      <li>👹 <b>Enemy pairs</b> spend a weapon — or cost HP</li>
-      <li>❤️ <b>Potion pairs</b> restore health</li>
-      <li>🪙 <b>Coin pairs</b> and playing-card pairs earn gold</li>
-      <li>Clear the board to descend to the next level</li>
-    </ul>
-    <button id="start-btn">Begin the Descent</button>
-  </div>
+  <div class="panel" id="panel"></div>
 </div>
 
 <script>
 (function () {
   'use strict';
 
-  // ---------- Config ----------
-  const MAX_HP = 10;
+  // ─── Constants ───────────────────────────────────────────────────────────────
+  const COLS      = 4;
+  const ROWS      = 4;
+  const PAIRS     = (COLS * ROWS) / 2;   // 8 pairs = 16 cards
+  const MAX_HP    = 10;
+  // Cards are rendered at 2/3 of the available wrap space so padding shows
+  const CARD_SCALE = 2 / 3;
+  const HS_KEY    = 'memoryDungeon.scores.v1';
+
   const SUITS = [
     { s: '♠', c: 'black' },
-    { s: '♥', c: 'red' },
-    { s: '♦', c: 'red' },
+    { s: '♥', c: 'red'   },
+    { s: '♦', c: 'red'   },
     { s: '♣', c: 'black' },
   ];
   const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 
-  // Level layouts (cols x rows — rows * cols must be even)
-  const LEVELS = [
-    { cols: 3, rows: 4 },  // L1  — 12 cards
-    { cols: 4, rows: 4 },  // L2  — 16
-    { cols: 4, rows: 5 },  // L3  — 20
-    { cols: 4, rows: 6 },  // L4  — 24
-    { cols: 5, rows: 6 },  // L5  — 30
-    { cols: 5, rows: 6 },  // L6+ — 30 (harder composition)
-  ];
-
-  // ---------- State ----------
+  // ─── State ───────────────────────────────────────────────────────────────────
   const state = {
-    level: 1,
-    hp: MAX_HP,
-    maxHp: MAX_HP,
-    weapons: 0,
-    coins: 0,
-    board: [],         // array of card objects
-    flipped: [],       // indices of currently flipped (unmatched) cards
-    busy: false,
+    level:        1,
+    hp:           MAX_HP,
+    maxHp:        MAX_HP,
+    weapons:      0,
+    coins:        0,
+    totalMoves:   0,
+    board:        [],   // card objects
+    matched:      [],   // boolean per index
+    flipped:      [],   // [a] or [a, b] — currently revealed indices
+    busy:         false,
+    dealing:      false,
     matchedCount: 0,
-    totalPairs: 0,
-    currentLayout: null,
   };
 
-  // ---------- DOM ----------
+  // ─── DOM ─────────────────────────────────────────────────────────────────────
   const boardEl   = document.getElementById('board');
   const overlayEl = document.getElementById('overlay');
   const panelEl   = document.getElementById('panel');
@@ -389,19 +462,20 @@
   const hudHpBar  = document.getElementById('hud-hp-bar');
   const hudWeap   = document.getElementById('hud-weapons');
   const hudCoins  = document.getElementById('hud-coins');
+  const hudMoves  = document.getElementById('hud-moves');
 
-  document.getElementById('start-btn').addEventListener('click', startRun);
-
-  // Re-layout board on orientation change / window resize
+  // ─── Resize ──────────────────────────────────────────────────────────────────
   let resizeTimer;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (state.currentLayout) renderBoard(state.currentLayout);
-    }, 150);
+      if (overlayEl.classList.contains('hidden') && state.board.length) {
+        applyGridSize();
+      }
+    }, 120);
   });
 
-  // ---------- Helpers ----------
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
   function shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -415,43 +489,60 @@
     el.className = 'toast ' + (kind || '');
     el.textContent = msg;
     toastsEl.appendChild(el);
-    setTimeout(() => el.remove(), 1900);
+    setTimeout(() => el.remove(), 2000);
   }
 
   function updateHud() {
-    hudLevel.textContent = state.level;
-    hudHp.textContent = state.hp + '/' + state.maxHp;
-    hudHpBar.style.width = Math.max(0, (state.hp / state.maxHp) * 100) + '%';
-    hudWeap.textContent = state.weapons;
-    hudCoins.textContent = state.coins;
+    hudLevel.textContent  = state.level;
+    hudHp.textContent     = state.hp + '/' + state.maxHp;
+    hudHpBar.style.width  = Math.max(0, (state.hp / state.maxHp) * 100) + '%';
+    hudWeap.textContent   = state.weapons;
+    hudCoins.textContent  = state.coins;
+    hudMoves.textContent  = state.totalMoves;
   }
 
-  // ---------- Level composition ----------
-  // Returns array of pair specs for this level. Each entry describes one PAIR
-  // (two cards with the same `matchId`).
+  // ─── High Scores ─────────────────────────────────────────────────────────────
+  function loadScores() {
+    try { return JSON.parse(localStorage.getItem(HS_KEY)) || []; }
+    catch (e) { return []; }
+  }
+
+  function saveScore(levels, moves) {
+    const list = loadScores();
+    list.push({ levels, moves, date: new Date().toLocaleDateString() });
+    list.sort((a, b) => b.levels - a.levels || a.moves - b.moves);
+    list.splice(10);
+    localStorage.setItem(HS_KEY, JSON.stringify(list));
+    return list;
+  }
+
+  function getBest() { return loadScores()[0] || null; }
+
+  // ─── Level composition ───────────────────────────────────────────────────────
   function buildPairs(level) {
-    const layout = LEVELS[Math.min(level - 1, LEVELS.length - 1)];
-    const totalPairs = (layout.cols * layout.rows) / 2;
-
-    // Scale specials with level
-    const enemyPairs  = Math.min(totalPairs - 3, Math.max(1, level));
-    const weaponPairs = Math.min(totalPairs - enemyPairs - 2, Math.max(1, Math.ceil(level * 0.8)));
-    const heartPairs  = totalPairs >= 6 ? 1 : 0;
-    const coinPairs   = Math.max(1, Math.floor(level / 2));
-
-    let remaining = totalPairs - enemyPairs - weaponPairs - heartPairs - coinPairs;
-    if (remaining < 0) remaining = 0;
-    const pipPairs = remaining;
+    // Fixed 8 pairs for the 4×4 grid; composition scales with depth
+    const jokerPairs  = 1;
+    const enemyPairs  = Math.min(3, Math.max(1, Math.floor(level * 0.6)));
+    const weaponPairs = Math.min(2, Math.max(1, Math.ceil(level * 0.4)));
+    const heartPairs  = 1;
+    const coinPairs   = 1;
+    let   pipPairs    = PAIRS - jokerPairs - enemyPairs - weaponPairs - heartPairs - coinPairs;
+    if (pipPairs < 0) pipPairs = 0;
 
     const pairs = [];
     let id = 0;
 
-    for (let i = 0; i < enemyPairs; i++)  pairs.push({ kind: 'enemy',  matchId: 'E' + id++, power: level });
-    for (let i = 0; i < weaponPairs; i++) pairs.push({ kind: 'weapon', matchId: 'W' + id++ });
-    for (let i = 0; i < heartPairs; i++)  pairs.push({ kind: 'heart',  matchId: 'H' + id++ });
-    for (let i = 0; i < coinPairs; i++)   pairs.push({ kind: 'coin',   matchId: 'C' + id++ });
+    pairs.push({ kind: 'joker', matchId: 'J' + id++ });
+    for (let i = 0; i < enemyPairs; i++)
+      pairs.push({ kind: 'enemy', matchId: 'E' + id++, power: Math.max(1, level) });
+    for (let i = 0; i < weaponPairs; i++)
+      pairs.push({ kind: 'weapon', matchId: 'W' + id++ });
+    for (let i = 0; i < heartPairs; i++)
+      pairs.push({ kind: 'heart', matchId: 'H' + id++ });
+    for (let i = 0; i < coinPairs; i++)
+      pairs.push({ kind: 'coin', matchId: 'C' + id++ });
 
-    // Pip pairs: pick distinct (rank, suit) combos
+    // Fill remaining slots with playing-card pip pairs
     const pipPool = [];
     for (const r of RANKS) for (const s of SUITS) pipPool.push({ rank: r, suit: s });
     shuffle(pipPool);
@@ -460,12 +551,12 @@
       pairs.push({ kind: 'pip', matchId: 'P' + id++, rank: p.rank, suit: p.suit });
     }
 
-    return { pairs, layout, totalPairs };
+    return pairs;
   }
 
+  // ─── Build board ─────────────────────────────────────────────────────────────
   function buildBoard(level) {
-    const { pairs, layout, totalPairs } = buildPairs(level);
-    // Duplicate each pair into 2 cards
+    const pairs = buildPairs(level);
     const cards = [];
     for (const p of pairs) {
       cards.push({ ...p });
@@ -473,63 +564,85 @@
     }
     shuffle(cards);
 
-    state.board = cards;
-    state.flipped = [];
+    state.board        = cards;
+    state.matched      = new Array(cards.length).fill(false);
+    state.flipped      = [];
     state.matchedCount = 0;
-    state.totalPairs = totalPairs;
-    state.busy = false;
+    state.busy         = false;
+    state.dealing      = true;
 
-    renderBoard(layout);
+    renderBoard(true);
     updateHud();
   }
 
-  // ---------- Rendering ----------
-  function renderBoard(layout) {
-    state.currentLayout = layout;
-    boardEl.innerHTML = '';
-
-    const gap = 6;
-    const cols = layout.cols;
-    const rows = layout.rows;
-
-    // Calculate card dimensions so the grid fits both width and height without scrolling
-    const CARD_ASPECT = 3 / 2; // card height : width ratio (2:3 portrait cards)
+  // ─── Card size calculation ────────────────────────────────────────────────────
+  function calcCardSize() {
+    const gap  = 6;
     const wrap = document.getElementById('board-wrap');
-    const wrapRect = wrap.getBoundingClientRect();
-    const availW = Math.floor(wrapRect.width)  - 8;  // 8px safety margin (no horizontal padding on wrap)
-    const availH = Math.floor(wrapRect.height) - 8;  // accounts for wrap's padding: 4px top + 4px bottom
-
-    const maxCardW = (availW - (cols - 1) * gap) / cols;
-    const maxCardH = (availH - (rows - 1) * gap) / rows;
-
+    const r    = wrap.getBoundingClientRect();
+    // Apply scale so cards occupy 2/3 of available space, leaving padding
+    const availW = Math.floor(r.width  * CARD_SCALE);
+    const availH = Math.floor(r.height * CARD_SCALE);
+    const maxW   = (availW - (COLS - 1) * gap) / COLS;
+    const maxH   = (availH - (ROWS - 1) * gap) / ROWS;
+    // portrait aspect 2:3
     let cardW, cardH;
-    if (maxCardW * CARD_ASPECT <= maxCardH) {
-      // width-constrained: use full available column width
-      cardW = Math.floor(maxCardW);
-      cardH = Math.floor(cardW * CARD_ASPECT);
+    if (maxW * 1.5 <= maxH) {
+      cardW = Math.floor(maxW);
+      cardH = Math.floor(cardW * 1.5);
     } else {
-      // height-constrained: fit rows within available height
-      cardH = Math.floor(maxCardH);
-      cardW = Math.floor(cardH / CARD_ASPECT);
+      cardH = Math.floor(maxH);
+      cardW = Math.floor(cardH / 1.5);
     }
+    return { cardW, cardH };
+  }
 
-    boardEl.style.gridTemplateColumns = `repeat(${cols}, ${cardW}px)`;
-    boardEl.style.gridTemplateRows    = `repeat(${rows}, ${cardH}px)`;
+  function applyGridSize() {
+    const gap = 6;
+    const { cardW, cardH } = calcCardSize();
+    boardEl.style.gridTemplateColumns = `repeat(${COLS}, ${cardW}px)`;
+    boardEl.style.gridTemplateRows    = `repeat(${ROWS}, ${cardH}px)`;
+    boardEl.style.gap = gap + 'px';
+  }
+
+  // ─── Render board ─────────────────────────────────────────────────────────────
+  function renderBoard(animate) {
+    boardEl.innerHTML = '';
+    applyGridSize();
 
     state.board.forEach((card, i) => {
       const el = document.createElement('div');
       el.className = 'card';
       el.dataset.index = i;
+
+      if (state.matched[i]) {
+        el.classList.add('matched', 'flipped');
+      } else if (state.flipped.includes(i)) {
+        el.classList.add('flipped');
+      }
+
+      if (animate) {
+        el.classList.add('dealing');
+        el.style.animationDelay = (i * 55) + 'ms';
+      }
+
       el.innerHTML = `
         <div class="card-inner">
           <div class="card-face card-back"></div>
           <div class="card-face card-front ${frontClass(card)}">${frontInner(card)}</div>
         </div>`;
+
       const onTap = (ev) => { ev.preventDefault(); onCardTap(i); };
       el.addEventListener('click', onTap);
       el.addEventListener('touchstart', onTap, { passive: false });
       boardEl.appendChild(el);
     });
+
+    if (animate) {
+      // Disable input until last card lands
+      const done = state.board.length * 55 + 450;
+      setTimeout(() => { state.dealing = false; }, done);
+    }
   }
 
   function frontClass(card) {
@@ -548,141 +661,315 @@
     if (card.kind === 'coin')   return `<div class="special-icon">🪙</div><div class="special-label">Coin</div>`;
     if (card.kind === 'weapon') return `<div class="special-icon">🗡️</div><div class="special-label">Weapon</div>`;
     if (card.kind === 'heart')  return `<div class="special-icon">🧪</div><div class="special-label">Potion</div>`;
-    if (card.kind === 'enemy')  return `<div class="special-icon">👹</div><div class="special-label">Enemy ${card.power}</div>`;
+    if (card.kind === 'enemy')  return `<div class="special-icon">👹</div><div class="special-label">Enemy Lv${card.power}</div>`;
+    if (card.kind === 'joker')  return `<div class="special-icon">🃏</div><div class="special-label">Joker</div>`;
     return '';
   }
 
-  // ---------- Card interaction ----------
+  // ─── Card tap ────────────────────────────────────────────────────────────────
   function onCardTap(i) {
-    if (state.busy) return;
+    if (state.busy || state.dealing) return;
     const cardEl = boardEl.children[i];
     if (!cardEl) return;
-    if (cardEl.classList.contains('flipped') || cardEl.classList.contains('matched')) return;
+    if (state.matched[i] || state.flipped.includes(i)) return;
 
     cardEl.classList.add('flipped');
     state.flipped.push(i);
 
     if (state.flipped.length === 2) {
       state.busy = true;
-      const [a, b] = state.flipped;
-      const cardA = state.board[a], cardB = state.board[b];
+      state.totalMoves++;
+      updateHud();
 
-      if (cardA.matchId === cardB.matchId) {
-        // Match!
+      const [a, b]    = state.flipped;
+      const cardA     = state.board[a];
+      const cardB     = state.board[b];
+      const isMatch   = cardA.matchId === cardB.matchId;
+
+      if (isMatch) {
         setTimeout(() => {
-          boardEl.children[a].classList.add('matched');
-          boardEl.children[b].classList.add('matched');
+          const elA = boardEl.children[a];
+          const elB = boardEl.children[b];
+          if (elA) elA.classList.add('matched');
+          if (elB) elB.classList.add('matched');
+          state.matched[a] = true;
+          state.matched[b] = true;
           resolveMatch(cardA);
-          state.matchedCount += 1;
+          state.matchedCount++;
           state.flipped = [];
-          state.busy = false;
-
-          if (state.matchedCount >= state.totalPairs) {
+          state.busy    = false;
+          if (state.matchedCount >= PAIRS) {
             setTimeout(onLevelComplete, 600);
           }
         }, 450);
+
       } else {
+        // ── No match: enemy damage rule ───────────────────────────────────────
+        const enemyCount = (cardA.kind === 'enemy' ? 1 : 0) + (cardB.kind === 'enemy' ? 1 : 0);
+        if (enemyCount > 0) {
+          state.hp = Math.max(0, state.hp - enemyCount);
+          toast(enemyCount === 2
+            ? '👹👹 Two enemies lurk! −' + enemyCount + ' HP'
+            : '👹 Enemy lurks! −1 HP', 'bad');
+          updateHud();
+        }
+
+        // ── Check if game over from enemy damage ──────────────────────────────
+        if (state.hp <= 0) {
+          setTimeout(() => {
+            flipBackBoth(a, b);
+            onGameOver();
+          }, 850);
+          return;
+        }
+
+        // ── Joker check ───────────────────────────────────────────────────────
+        const jokerIdx = cardA.kind === 'joker' ? a : (cardB.kind === 'joker' ? b : -1);
+
         setTimeout(() => {
-          boardEl.children[a].classList.remove('flipped');
-          boardEl.children[b].classList.remove('flipped');
-          state.flipped = [];
-          state.busy = false;
+          flipBackBoth(a, b);
+          if (jokerIdx !== -1) {
+            triggerJoker(jokerIdx);
+          } else {
+            state.busy = false;
+          }
         }, 850);
       }
     }
   }
 
-  // ---------- Match effects ----------
-  function resolveMatch(card) {
-    if (card.kind === 'pip') {
-      const gain = 10 * state.level;
-      state.coins += gain;
-      toast('+' + gain + ' 🪙 lucky card', 'gold');
-    } else if (card.kind === 'coin') {
-      const gain = 25 * state.level;
-      state.coins += gain;
-      toast('+' + gain + ' 🪙 coins!', 'gold');
-    } else if (card.kind === 'weapon') {
-      state.weapons += 1;
-      toast('+1 🗡️ weapon acquired', 'purple');
-    } else if (card.kind === 'heart') {
-      const heal = Math.min(3, state.maxHp - state.hp);
-      state.hp = Math.min(state.maxHp, state.hp + 3);
-      toast(heal > 0 ? '+' + heal + ' ❤️ potion' : '🧪 potion (full HP)', 'good');
-    } else if (card.kind === 'enemy') {
-      if (state.weapons > 0) {
-        state.weapons -= 1;
-        const reward = 15 * state.level;
-        state.coins += reward;
-        toast('🗡️ slain enemy  +' + reward + ' 🪙', 'good');
-      } else {
-        const dmg = card.power;
-        state.hp = Math.max(0, state.hp - dmg);
-        toast('💥 ambushed! −' + dmg + ' HP', 'bad');
-        if (state.hp <= 0) {
-          setTimeout(onGameOver, 700);
+  function flipBackBoth(a, b) {
+    const elA = boardEl.children[a];
+    const elB = boardEl.children[b];
+    if (elA) elA.classList.remove('flipped');
+    if (elB) elB.classList.remove('flipped');
+    state.flipped = [];
+  }
+
+  // ─── Joker effect ────────────────────────────────────────────────────────────
+  function triggerJoker(jokerIdx) {
+    // Find random face-down unmatched card (not the joker itself)
+    const targets = [];
+    state.board.forEach((_, i) => {
+      if (i !== jokerIdx && !state.matched[i]) targets.push(i);
+    });
+
+    const jokerEl = boardEl.children[jokerIdx];
+    if (jokerEl) jokerEl.classList.add('joker-acting');
+    toast('🃏 Joker reshuffles the dungeon!', 'orange');
+
+    if (targets.length === 0) {
+      setTimeout(() => { state.busy = false; }, 580);
+      return;
+    }
+
+    const targetIdx = targets[Math.floor(Math.random() * targets.length)];
+
+    setTimeout(() => {
+      // Swap in state arrays
+      [state.board[jokerIdx],  state.board[targetIdx]]  = [state.board[targetIdx],  state.board[jokerIdx]];
+      [state.matched[jokerIdx], state.matched[targetIdx]] = [state.matched[targetIdx], state.matched[jokerIdx]];
+
+      // Swap front-face HTML+class in DOM (backs stay the same; player can't see fronts)
+      const elJ = boardEl.children[jokerIdx];
+      const elT = boardEl.children[targetIdx];
+      if (elJ && elT) {
+        const fJ = elJ.querySelector('.card-front');
+        const fT = elT.querySelector('.card-front');
+        if (fJ && fT) {
+          const tmpClass = fJ.className, tmpHTML = fJ.innerHTML;
+          fJ.className = fT.className; fJ.innerHTML = fT.innerHTML;
+          fT.className = tmpClass;     fT.innerHTML = tmpHTML;
         }
+      }
+      state.busy = false;
+    }, 580);
+  }
+
+  // ─── Match effects ───────────────────────────────────────────────────────────
+  function resolveMatch(card) {
+    switch (card.kind) {
+      case 'pip': {
+        const g = 10 * state.level;
+        state.coins += g;
+        toast('+' + g + ' 🪙 lucky pair', 'gold');
+        break;
+      }
+      case 'coin': {
+        const g = 25 * state.level;
+        state.coins += g;
+        toast('+' + g + ' 🪙 treasure!', 'gold');
+        break;
+      }
+      case 'weapon':
+        state.weapons++;
+        toast('+1 🗡️ weapon found', 'purple');
+        break;
+      case 'heart': {
+        const heal = Math.min(3, state.maxHp - state.hp);
+        state.hp = Math.min(state.maxHp, state.hp + 3);
+        toast(heal > 0 ? '+' + heal + ' ❤️ potion quaffed' : '🧪 already full HP', 'good');
+        break;
+      }
+      case 'enemy':
+        if (state.weapons > 0) {
+          state.weapons--;
+          const r = 15 * state.level;
+          state.coins += r;
+          toast('🗡️ Enemy slain! +' + r + ' 🪙', 'good');
+        } else {
+          state.hp = Math.max(0, state.hp - card.power);
+          toast('💥 Ambushed! −' + card.power + ' HP', 'bad');
+          if (state.hp <= 0) {
+            updateHud();
+            setTimeout(onGameOver, 700);
+            return;
+          }
+        }
+        break;
+      case 'joker': {
+        const g = 20 * state.level;
+        state.coins += g;
+        toast('🃏 Joker tamed! +' + g + ' 🪙', 'gold');
+        break;
       }
     }
     updateHud();
   }
 
-  // ---------- Level / game flow ----------
+  // ─── Level flow ──────────────────────────────────────────────────────────────
   function onLevelComplete() {
     const bonus = 20 + state.level * 10;
-    const heal = Math.min(2, state.maxHp - state.hp);
+    const heal  = Math.min(2, state.maxHp - state.hp);
     state.coins += bonus;
-    state.hp = Math.min(state.maxHp, state.hp + 2);
+    state.hp     = Math.min(state.maxHp, state.hp + heal);
+    updateHud();
 
     overlayEl.classList.remove('hidden');
     panelEl.innerHTML = `
-      <h1>Level ${state.level} Cleared!</h1>
+      <h1>🏰 Dungeon ${state.level} Cleared!</h1>
       <h2>You descend deeper…</h2>
       <div class="stats-line">
         <div>❤️ <span>${state.hp}/${state.maxHp}</span></div>
         <div>🗡️ <span>${state.weapons}</span></div>
         <div>🪙 <span>${state.coins}</span></div>
+        <div>👣 <span>${state.totalMoves} moves</span></div>
       </div>
-      <p>Level bonus: <b>+${bonus} 🪙</b> and <b>+${heal} ❤️</b> recovered.</p>
-      <button id="next-btn">Enter Level ${state.level + 1}</button>
-    `;
+      <p>Level bonus: <b>+${bonus} 🪙</b>${heal > 0 ? ` and <b>+${heal} ❤️</b> recovered` : ''}.</p>
+      <div class="btn-row">
+        <button id="next-btn">Enter Dungeon ${state.level + 1}</button>
+      </div>`;
     document.getElementById('next-btn').addEventListener('click', () => {
-      state.level += 1;
+      state.level++;
       overlayEl.classList.add('hidden');
       buildBoard(state.level);
     });
   }
 
   function onGameOver() {
-    const best = Math.max(state.level, parseInt(localStorage.getItem('deckDelver.best') || '0', 10));
-    localStorage.setItem('deckDelver.best', best);
+    const cleared = Math.max(0, state.level - 1);
+    saveScore(cleared, state.totalMoves);
+    const best = getBest();
 
     overlayEl.classList.remove('hidden');
     panelEl.innerHTML = `
       <h1>💀 You Fell</h1>
-      <h2>The deck claimed you on Level ${state.level}</h2>
+      <h2>The dungeon claimed you on Level ${state.level}</h2>
       <div class="stats-line">
-        <div>Deepest: <span>L${best}</span></div>
+        <div>Dungeons Cleared: <span>${cleared}</span></div>
+        <div>Total Moves: <span>${state.totalMoves}</span></div>
         <div>🪙 <span>${state.coins}</span></div>
       </div>
-      <p>The dungeon reshuffles. Try again — and remember which cards hid the weapons.</p>
-      <button id="retry-btn">New Run</button>
-    `;
+      ${best ? `<p>🏆 Best run: <b>${best.levels}</b> dungeons in <b>${best.moves}</b> moves.</p>` : ''}
+      <p>Remember which cards hid the weapons and try again.</p>
+      <div class="btn-row">
+        <button id="retry-btn">New Run</button>
+        <button id="hs-btn" class="secondary">High Scores</button>
+      </div>`;
     document.getElementById('retry-btn').addEventListener('click', startRun);
+    document.getElementById('hs-btn').addEventListener('click', () => showHighScores(false));
+  }
+
+  // ─── Screens ─────────────────────────────────────────────────────────────────
+  function showHighScores(fromMenu) {
+    const list = loadScores();
+    let rows = list.length === 0
+      ? `<tr><td colspan="4" style="text-align:center;color:#8a8aa8;padding:16px 0">
+           No scores yet — start playing!
+         </td></tr>`
+      : list.map((s, idx) => `
+          <tr>
+            <td class="rank">${idx === 0 ? '🥇' : idx + 1}</td>
+            <td class="lvls">${s.levels}</td>
+            <td class="mvs">${s.moves}</td>
+            <td class="dt">${s.date}</td>
+          </tr>`).join('');
+
+    overlayEl.classList.remove('hidden');
+    panelEl.innerHTML = `
+      <h1>🏆 High Scores</h1>
+      <h2>Top 10 Runs</h2>
+      <table class="score-table">
+        <thead><tr>
+          <th class="rank">#</th>
+          <th>Dungeons</th>
+          <th>Moves</th>
+          <th style="text-align:right">Date</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="font-size:12px;color:#8a8aa8;margin-bottom:12px">
+        Best score = most dungeons cleared with fewest moves.
+      </p>
+      <div class="btn-row">
+        <button id="hs-back-btn" class="secondary">Back</button>
+      </div>`;
+    document.getElementById('hs-back-btn').addEventListener('click', () => {
+      showMainMenu();
+    });
+  }
+
+  function showMainMenu() {
+    const best = getBest();
+    overlayEl.classList.remove('hidden');
+    panelEl.innerHTML = `
+      <h1>⚔️ Memory Dungeon</h1>
+      <h2>The Card Crawl</h2>
+      ${best ? `<div class="best-banner">
+        🏆 Best Run: <span class="bv">${best.levels}</span> dungeon${best.levels !== 1 ? 's' : ''}
+        in <span class="bv">${best.moves}</span> moves
+      </div>` : ''}
+      <ul>
+        <li>🔲 Flip two cards to find matching pairs</li>
+        <li>👹 <b>Enemy flipped without a match</b> costs 1 HP</li>
+        <li>🃏 <b>Joker flipped without a match</b> secretly moves a card</li>
+        <li>🗡️ <b>Weapon pairs</b> arm you vs. matched enemies</li>
+        <li>❤️ <b>Potion pairs</b> restore health</li>
+        <li>🪙 Clear all pairs to descend to the next dungeon</li>
+      </ul>
+      <div class="btn-row">
+        <button id="start-btn">Begin the Descent</button>
+        <button id="scores-btn" class="secondary">High Scores</button>
+      </div>`;
+    document.getElementById('start-btn').addEventListener('click', startRun);
+    document.getElementById('scores-btn').addEventListener('click', () => showHighScores(true));
   }
 
   function startRun() {
-    state.level   = 1;
-    state.hp      = MAX_HP;
-    state.maxHp   = MAX_HP;
-    state.weapons = 0;
-    state.coins   = 0;
+    state.level        = 1;
+    state.hp           = MAX_HP;
+    state.maxHp        = MAX_HP;
+    state.weapons      = 0;
+    state.coins        = 0;
+    state.totalMoves   = 0;
     overlayEl.classList.add('hidden');
     buildBoard(state.level);
   }
 
-  // Initial HUD
+  // ─── Boot ────────────────────────────────────────────────────────────────────
   updateHud();
+  showMainMenu();
+
 })();
 </script>
 <script src="../header.js"></script>
