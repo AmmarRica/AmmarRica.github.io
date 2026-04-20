@@ -190,8 +190,11 @@
     box-shadow: 0 2px 6px rgba(0,0,0,0.4);
     padding: 4px;
   }
-  .card-front.red   { color: #c81e1e; }
-  .card-front.black { color: #0a0a1a; }
+  .card-front.red     { color: #c81e1e; }
+  .card-front.black   { color: #0a0a1a; }
+  .card-front.rose    { color: #be185d; background: linear-gradient(180deg, #fff0f6, #fce7f3); border-color: #be185d; }
+  .card-front.crimson { color: #991b1b; background: linear-gradient(180deg, #fff5f5, #fee2e2); border-color: #991b1b; }
+  .card-front.slate   { color: #334155; background: linear-gradient(180deg, #f8fafc, #e2e8f0); border-color: #334155; }
 
   /* Playing-card pip layout */
   .pip-tl, .pip-br {
@@ -450,12 +453,33 @@
   const HS_KEY    = 'memoryDungeon.scores.v1';
 
   const SUITS = [
-    { s: '♠', c: 'black' },
-    { s: '♥', c: 'red'   },
-    { s: '♦', c: 'red'   },
-    { s: '♣', c: 'black' },
+    { s: '♠',  c: 'black'   },
+    { s: '♥',  c: 'red'     },
+    { s: '♦',  c: 'red'     },
+    { s: '♣',  c: 'black'   },
+    { s: '🌸', c: 'rose'    },
+    { s: '🀄', c: 'crimson' },
+    { s: '♟',  c: 'slate'   },
   ];
-  const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+  // Only face-card ranks — no numbers
+  const RANKS = ['A', 'K', 'Q', 'J'];
+  const RANK_CENTER = { 'A': '⭐', 'K': '👑', 'Q': '💎', 'J': '⚡' };
+
+  // Unique enemy & weapon identity tables — index by typeIndex
+  const ENEMY_DATA = [
+    { icon: '👺', name: 'Goblin'   },
+    { icon: '🧟', name: 'Zombie'   },
+    { icon: '🐺', name: 'Werewolf' },
+    { icon: '💀', name: 'Skeleton' },
+    { icon: '🦇', name: 'Vampire'  },
+    { icon: '🕷️', name: 'Spider'   },
+  ];
+  const WEAPON_DATA = [
+    { icon: '🗡️', name: 'Dagger'  },
+    { icon: '🏹', name: 'Bow'     },
+    { icon: '⚔️', name: 'Sword'   },
+    { icon: '🔱', name: 'Trident' },
+  ];
 
   // ─── State ───────────────────────────────────────────────────────────────────
   const state = {
@@ -556,9 +580,9 @@
 
     pairs.push({ kind: 'joker', matchId: 'J' + id++ });
     for (let i = 0; i < enemyPairs; i++)
-      pairs.push({ kind: 'enemy', matchId: 'E' + id++, power: Math.max(1, level) });
+      pairs.push({ kind: 'enemy', matchId: 'E' + id++, power: Math.max(1, level), typeIndex: i });
     for (let i = 0; i < weaponPairs; i++)
-      pairs.push({ kind: 'weapon', matchId: 'W' + id++ });
+      pairs.push({ kind: 'weapon', matchId: 'W' + id++, typeIndex: i });
     for (let i = 0; i < heartPairs; i++)
       pairs.push({ kind: 'heart', matchId: 'H' + id++ });
     for (let i = 0; i < coinPairs; i++)
@@ -676,16 +700,23 @@
   function frontInner(card) {
     if (card.kind === 'pip') {
       const r = card.rank, s = card.suit.s;
+      const center = RANK_CENTER[r] || s;
       return `
         <div class="pip-tl"><span class="pip-rank">${r}</span><span class="pip-suit">${s}</span></div>
-        <div class="pip-center">${s}</div>
+        <div class="pip-center">${center}</div>
         <div class="pip-br"><span class="pip-rank">${r}</span><span class="pip-suit">${s}</span></div>`;
     }
     if (card.kind === 'coin')   return `<div class="special-icon">🪙</div><div class="special-label">Coin</div>`;
-    if (card.kind === 'weapon') return `<div class="special-icon">🗡️</div><div class="special-label">Weapon</div>`;
     if (card.kind === 'heart')  return `<div class="special-icon">🧪</div><div class="special-label">Potion</div>`;
-    if (card.kind === 'enemy')  return `<div class="special-icon">👹</div><div class="special-label">Enemy Lv${card.power}</div>`;
     if (card.kind === 'joker')  return `<div class="special-icon">🃏</div><div class="special-label">Joker</div>`;
+    if (card.kind === 'weapon') {
+      const w = WEAPON_DATA[card.typeIndex % WEAPON_DATA.length];
+      return `<div class="special-icon">${w.icon}</div><div class="special-label">${w.name}</div>`;
+    }
+    if (card.kind === 'enemy') {
+      const e = ENEMY_DATA[card.typeIndex % ENEMY_DATA.length];
+      return `<div class="special-icon">${e.icon}</div><div class="special-label">${e.name}</div>`;
+    }
     return '';
   }
 
@@ -856,25 +887,28 @@
         toast('+' + g + ' 🪙 treasure!', 'gold');
         break;
       }
-      case 'weapon':
+      case 'weapon': {
+        const w = WEAPON_DATA[card.typeIndex % WEAPON_DATA.length];
         state.weapons++;
-        toast('+1 🗡️ weapon found', 'purple');
+        toast('+1 ' + w.icon + ' ' + w.name + ' found', 'purple');
         break;
+      }
       case 'heart': {
         const heal = Math.min(3, state.maxHp - state.hp);
         state.hp = Math.min(state.maxHp, state.hp + 3);
         toast(heal > 0 ? '+' + heal + ' ❤️ potion quaffed' : '🧪 already full HP', 'good');
         break;
       }
-      case 'enemy':
+      case 'enemy': {
+        const e = ENEMY_DATA[card.typeIndex % ENEMY_DATA.length];
         if (state.weapons > 0) {
           state.weapons--;
           const r = 15 * state.level;
           state.coins += r;
-          toast('🗡️ Enemy slain! +' + r + ' 🪙', 'good');
+          toast(e.icon + ' ' + e.name + ' slain! +' + r + ' 🪙', 'good');
         } else {
           state.hp = Math.max(0, state.hp - card.power);
-          toast('💥 Ambushed! −' + card.power + ' HP', 'bad');
+          toast('💥 ' + e.name + ' ambush! −' + card.power + ' HP', 'bad');
           if (state.hp <= 0) {
             updateHud();
             setTimeout(onGameOver, 700);
@@ -882,6 +916,7 @@
           }
         }
         break;
+      }
       case 'joker': {
         const g = 20 * state.level;
         state.coins += g;
