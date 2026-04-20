@@ -193,7 +193,17 @@
   .card-front.coin   { color: #fbbf24; border-color: #fbbf24; }
   .card-front.weapon { color: #a78bfa; border-color: #a78bfa; }
   .card-front.heart  { color: #ef4444; border-color: #ef4444; }
-  .card-front.enemy  { color: #22c55e; border-color: #22c55e; }
+  .card-front.goblin { color: #22c55e; border-color: #22c55e; }
+  .card-front.joker  { color: #ec4899; border-color: #ec4899; }
+
+  .card.jokering .card-inner {
+    animation: jokerPulse 0.7s ease-in-out;
+  }
+  @keyframes jokerPulse {
+    0%   { transform: rotateY(180deg) scale(1); }
+    50%  { transform: rotateY(180deg) scale(1.08); filter: drop-shadow(0 0 12px #ec4899); }
+    100% { transform: rotateY(180deg) scale(1); }
+  }
 
   /* Toast messages */
   #toasts {
@@ -325,12 +335,13 @@
   <div class="panel" id="panel">
     <h1>Deck Delver</h1>
     <h2>Memory Match Dungeon</h2>
-    <p>Flip two cards at a time to find matching pairs — but watch out: the deck is full of <b>enemies</b>, <b>weapons</b>, <b>coins</b>, and <b>potions</b>.</p>
+    <p>Flip two cards at a time to find matching pairs — but watch out: the deck is full of <b>goblins</b>, <b>weapons</b>, <b>jokers</b>, <b>coins</b>, and <b>potions</b>.</p>
     <ul>
       <li>🗡️ <b>Weapon pairs</b> stack in your arsenal</li>
-      <li>👹 <b>Enemy pairs</b> spend a weapon — or cost HP</li>
-      <li>❤️ <b>Potion pairs</b> restore health</li>
+      <li>👹 <b>Goblin pairs</b> spend a weapon — or cost HP (the <i>only</i> thing that hurts you)</li>
+      <li>🧪 <b>Potion pairs</b> restore health</li>
       <li>🪙 <b>Coin pairs</b> and playing-card pairs earn gold</li>
+      <li>🃏 <b>Jokers</b> swap positions with whatever you flip them with</li>
       <li>Clear the board to descend to the next level</li>
     </ul>
     <button id="start-btn">Begin the Descent</button>
@@ -421,22 +432,24 @@
     const totalPairs = (layout.cols * layout.rows) / 2;
 
     // Scale specials with level
-    const enemyPairs  = Math.min(totalPairs - 3, Math.max(1, level));
-    const weaponPairs = Math.min(totalPairs - enemyPairs - 2, Math.max(1, Math.ceil(level * 0.8)));
+    const goblinPairs = Math.min(totalPairs - 3, Math.max(1, level));
+    const weaponPairs = Math.min(totalPairs - goblinPairs - 2, Math.max(1, Math.ceil(level * 0.8)));
     const heartPairs  = totalPairs >= 6 ? 1 : 0;
     const coinPairs   = Math.max(1, Math.floor(level / 2));
+    const jokerPairs  = totalPairs >= 8 ? 1 : 0;
 
-    let remaining = totalPairs - enemyPairs - weaponPairs - heartPairs - coinPairs;
+    let remaining = totalPairs - goblinPairs - weaponPairs - heartPairs - coinPairs - jokerPairs;
     if (remaining < 0) remaining = 0;
     const pipPairs = remaining;
 
     const pairs = [];
     let id = 0;
 
-    for (let i = 0; i < enemyPairs; i++)  pairs.push({ kind: 'enemy',  matchId: 'E' + id++, power: level });
+    for (let i = 0; i < goblinPairs; i++) pairs.push({ kind: 'goblin', matchId: 'G' + id++, power: level });
     for (let i = 0; i < weaponPairs; i++) pairs.push({ kind: 'weapon', matchId: 'W' + id++ });
     for (let i = 0; i < heartPairs; i++)  pairs.push({ kind: 'heart',  matchId: 'H' + id++ });
     for (let i = 0; i < coinPairs; i++)   pairs.push({ kind: 'coin',   matchId: 'C' + id++ });
+    for (let i = 0; i < jokerPairs; i++)  pairs.push({ kind: 'joker',  matchId: 'J' + id++ });
 
     // Pip pairs: pick distinct (rank, suit) combos
     const pipPool = [];
@@ -507,8 +520,19 @@
     if (card.kind === 'coin')   return `<div class="special-icon">🪙</div><div class="special-label">Coin</div>`;
     if (card.kind === 'weapon') return `<div class="special-icon">🗡️</div><div class="special-label">Weapon</div>`;
     if (card.kind === 'heart')  return `<div class="special-icon">🧪</div><div class="special-label">Potion</div>`;
-    if (card.kind === 'enemy')  return `<div class="special-icon">👹</div><div class="special-label">Enemy ${card.power}</div>`;
+    if (card.kind === 'goblin') return `<div class="special-icon">👹</div><div class="special-label">Goblin ${card.power}</div>`;
+    if (card.kind === 'joker')  return `<div class="special-icon">🃏</div><div class="special-label">Joker</div>`;
     return '';
+  }
+
+  function updateCardFront(i) {
+    const cardEl = boardEl.children[i];
+    if (!cardEl) return;
+    const front = cardEl.querySelector('.card-front');
+    if (!front) return;
+    const card = state.board[i];
+    front.className = 'card-front ' + frontClass(card);
+    front.innerHTML = frontInner(card);
   }
 
   // ---------- Card interaction ----------
@@ -526,6 +550,8 @@
       const [a, b] = state.flipped;
       const cardA = state.board[a], cardB = state.board[b];
 
+      const jokerInvolved = (cardA.kind === 'joker') !== (cardB.kind === 'joker');
+
       if (cardA.matchId === cardB.matchId) {
         // Match!
         setTimeout(() => {
@@ -540,6 +566,20 @@
             setTimeout(onLevelComplete, 600);
           }
         }, 450);
+      } else if (jokerInvolved) {
+        // Joker swap: swap positions on the board, then flip both back face-down.
+        boardEl.children[a].classList.add('jokering');
+        boardEl.children[b].classList.add('jokering');
+        toast('🃏 Joker swap!', 'purple');
+        setTimeout(() => {
+          [state.board[a], state.board[b]] = [state.board[b], state.board[a]];
+          updateCardFront(a);
+          updateCardFront(b);
+          boardEl.children[a].classList.remove('flipped', 'jokering');
+          boardEl.children[b].classList.remove('flipped', 'jokering');
+          state.flipped = [];
+          state.busy = false;
+        }, 900);
       } else {
         setTimeout(() => {
           boardEl.children[a].classList.remove('flipped');
@@ -568,20 +608,25 @@
       const heal = Math.min(3, state.maxHp - state.hp);
       state.hp = Math.min(state.maxHp, state.hp + 3);
       toast(heal > 0 ? '+' + heal + ' ❤️ potion' : '🧪 potion (full HP)', 'good');
-    } else if (card.kind === 'enemy') {
+    } else if (card.kind === 'goblin') {
       if (state.weapons > 0) {
         state.weapons -= 1;
         const reward = 15 * state.level;
         state.coins += reward;
-        toast('🗡️ slain enemy  +' + reward + ' 🪙', 'good');
+        toast('🗡️ slain goblin  +' + reward + ' 🪙', 'good');
       } else {
         const dmg = card.power;
         state.hp = Math.max(0, state.hp - dmg);
-        toast('💥 ambushed! −' + dmg + ' HP', 'bad');
+        toast('💥 goblins bite! −' + dmg + ' HP', 'bad');
         if (state.hp <= 0) {
           setTimeout(onGameOver, 700);
         }
       }
+    } else if (card.kind === 'joker') {
+      // Matching jokers: small coin bonus, mostly flavor
+      const gain = 20;
+      state.coins += gain;
+      toast('🃏 double joker  +' + gain + ' 🪙', 'purple');
     }
     updateHud();
   }
