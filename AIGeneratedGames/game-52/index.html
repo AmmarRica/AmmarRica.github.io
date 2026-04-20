@@ -767,7 +767,7 @@
 
     setTimeout(() => {
       // Swap in state arrays
-      [state.board[jokerIdx],  state.board[targetIdx]]  = [state.board[targetIdx],  state.board[jokerIdx]];
+      [state.board[jokerIdx], state.board[targetIdx]] = [state.board[targetIdx], state.board[jokerIdx]];
       [state.matched[jokerIdx], state.matched[targetIdx]] = [state.matched[targetIdx], state.matched[jokerIdx]];
 
       // Swap front-face HTML+class in DOM (backs stay the same; player can't see fronts)
