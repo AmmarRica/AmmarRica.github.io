@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Times Table Trainer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    background: #0f0f1a;
+    color: #e0e0ff;
+    font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+    min-height: 100%;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+  }
+  body {
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+  }
+  #app {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* HUD */
+  #hud {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    background: linear-gradient(180deg, #1a1a2e, #141428);
+    border: 1px solid #3b3b5c;
+    border-radius: 12px;
+    padding: 8px;
+  }
+  .stat {
+    background: #0f0f1a;
+    border-radius: 8px;
+    padding: 6px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+    border: 1px solid #2a2a44;
+  }
+  .stat .label {
+    color: #8a8aa8;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+  }
+  .stat .val { font-weight: 700; font-size: 18px; line-height: 1; }
+  .stat.score .val { color: #fbbf24; }
+  .stat.streak .val { color: #22c55e; }
+  .stat.level .val { color: #a78bfa; }
+
+  /* Mode selection */
+  .mode-bar {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .mode-btn {
+    background: #1e1e2e;
+    color: #a78bfa;
+    border: 1px solid #3b3b5c;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .mode-btn.active {
+    background: #a78bfa;
+    color: #0f0f1a;
+    border-color: #a78bfa;
+    font-weight: 700;
+  }
+
+  /* Problem display */
+  .problem-box {
+    background: linear-gradient(180deg, #1a1a2e, #141428);
+    border: 1px solid #3b3b5c;
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .problem {
+    font-size: 36px;
+    font-weight: 800;
+    color: #e0e0ff;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    min-height: 44px;
+  }
+  .problem .op { color: #a78bfa; margin: 0 8px; }
+  .problem .eq { color: #8a8aa8; margin: 0 8px; }
+  .problem .ans {
+    display: inline-block;
+    min-width: 60px;
+    padding: 2px 10px;
+    border-bottom: 3px solid #fbbf24;
+    color: #fbbf24;
+  }
+
+  /* Visual grid */
+  .visual {
+    display: grid;
+    gap: 3px;
+    margin: 10px auto;
+    justify-content: center;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #c4b5fd, #7c3aed);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
+  .dot.row-a { background: radial-gradient(circle at 30% 30%, #fde68a, #f59e0b); }
+  .dot.row-b { background: radial-gradient(circle at 30% 30%, #bbf7d0, #16a34a); }
+  .dot.row-c { background: radial-gradient(circle at 30% 30%, #bfdbfe, #2563eb); }
+  .dot.row-d { background: radial-gradient(circle at 30% 30%, #fecaca, #dc2626); }
+  .visual.small .dot { width: 14px; height: 14px; }
+  .visual.tiny .dot { width: 10px; height: 10px; }
+
+  .hint {
+    color: #8a8aa8;
+    font-size: 12px;
+    margin-top: 6px;
+    min-height: 16px;
+  }
+  .hint.correct { color: #22c55e; }
+  .hint.wrong { color: #ef4444; }
+
+  /* Keypad */
+  .keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .key {
+    background: #1e1e2e;
+    color: #e0e0ff;
+    border: 1px solid #3b3b5c;
+    border-radius: 10px;
+    padding: 16px 0;
+    font-size: 22px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.05s, background 0.1s;
+  }
+  .key:active { transform: scale(0.95); background: #2a2a3e; }
+  .key.action { background: #2a2a44; color: #a78bfa; font-size: 16px; }
+  .key.submit { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+  .key.submit:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .table-select {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 5px;
+    background: #141428;
+    border: 1px solid #3b3b5c;
+    border-radius: 10px;
+    padding: 8px;
+  }
+  .table-btn {
+    background: #1e1e2e;
+    color: #c0c0e0;
+    border: 1px solid #3b3b5c;
+    border-radius: 6px;
+    padding: 8px 0;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .table-btn.active {
+    background: #a78bfa;
+    color: #0f0f1a;
+    border-color: #a78bfa;
+  }
+
+  .section-title {
+    color: #8a8aa8;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+
+  .feedback-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.5);
+    z-index: 10;
+    padding: 20px;
+  }
+  .feedback-overlay.show { display: flex; }
+  .feedback-card {
+    background: #1a1a2e;
+    border: 2px solid #a78bfa;
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+    max-width: 320px;
+    width: 100%;
+  }
+  .feedback-card h2 {
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+  .feedback-card.good h2 { color: #22c55e; }
+  .feedback-card.bad h2 { color: #ef4444; }
+  .feedback-card p {
+    color: #c0c0e0;
+    margin-bottom: 14px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .feedback-card .big-eq {
+    font-size: 20px;
+    color: #fbbf24;
+    font-weight: 700;
+    margin: 8px 0;
+  }
+  .feedback-card button {
+    background: #7c3aed;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 22px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  @keyframes pop {
+    0% { transform: scale(0.6); opacity: 0; }
+    60% { transform: scale(1.08); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .feedback-card { animation: pop 0.25s ease-out; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="stat score"><div class="label">Score</div><div class="val" id="score">0</div></div>
+    <div class="stat streak"><div class="label">Streak</div><div class="val" id="streak">0</div></div>
+    <div class="stat level"><div class="label">Solved</div><div class="val" id="solved">0</div></div>
+  </div>
+
+  <div class="mode-bar">
+    <button class="mode-btn active" data-mode="learn">Learn</button>
+    <button class="mode-btn" data-mode="practice">Practice</button>
+  </div>
+
+  <div>
+    <div class="section-title">Focus Table</div>
+    <div class="table-select" id="tableSelect"></div>
+  </div>
+
+  <div class="problem-box">
+    <div class="problem" id="problem"></div>
+    <div class="visual" id="visual"></div>
+    <div class="hint" id="hint">Tap numbers, then ✓ to check.</div>
+  </div>
+
+  <div class="keypad">
+    <button class="key" data-k="1">1</button>
+    <button class="key" data-k="2">2</button>
+    <button class="key" data-k="3">3</button>
+    <button class="key" data-k="4">4</button>
+    <button class="key" data-k="5">5</button>
+    <button class="key" data-k="6">6</button>
+    <button class="key" data-k="7">7</button>
+    <button class="key" data-k="8">8</button>
+    <button class="key" data-k="9">9</button>
+    <button class="key action" data-k="clear">Clr</button>
+    <button class="key" data-k="0">0</button>
+    <button class="key submit" data-k="ok">✓</button>
+  </div>
+</div>
+
+<div class="feedback-overlay" id="overlay">
+  <div class="feedback-card" id="card">
+    <h2 id="cardTitle"></h2>
+    <div class="big-eq" id="cardEq"></div>
+    <p id="cardMsg"></p>
+    <button id="cardBtn">Next</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var state = {
+    mode: 'learn',
+    focus: 'all',
+    score: 0,
+    streak: 0,
+    solved: 0,
+    a: 0,
+    b: 0,
+    answer: ''
+  };
+
+  var els = {
+    score: document.getElementById('score'),
+    streak: document.getElementById('streak'),
+    solved: document.getElementById('solved'),
+    problem: document.getElementById('problem'),
+    visual: document.getElementById('visual'),
+    hint: document.getElementById('hint'),
+    tableSelect: document.getElementById('tableSelect'),
+    overlay: document.getElementById('overlay'),
+    card: document.getElementById('card'),
+    cardTitle: document.getElementById('cardTitle'),
+    cardEq: document.getElementById('cardEq'),
+    cardMsg: document.getElementById('cardMsg'),
+    cardBtn: document.getElementById('cardBtn')
+  };
+
+  // Build table selector: All + 1..9
+  var tbl = els.tableSelect;
+  var allBtn = document.createElement('button');
+  allBtn.className = 'table-btn active';
+  allBtn.textContent = 'All';
+  allBtn.setAttribute('data-t', 'all');
+  tbl.appendChild(allBtn);
+  for (var i = 1; i <= 9; i++) {
+    var b = document.createElement('button');
+    b.className = 'table-btn';
+    b.textContent = '×' + i;
+    b.setAttribute('data-t', String(i));
+    tbl.appendChild(b);
+  }
+
+  function rand(n) { return Math.floor(Math.random() * n); }
+
+  function newProblem() {
+    var a, b;
+    if (state.focus === 'all') {
+      a = 1 + rand(9);
+      b = 1 + rand(9);
+    } else {
+      var f = parseInt(state.focus, 10);
+      a = f;
+      b = 1 + rand(9);
+      if (Math.random() < 0.5) { var t = a; a = b; b = t; }
+    }
+    state.a = a;
+    state.b = b;
+    state.answer = '';
+    render();
+  }
+
+  function render() {
+    var a = state.a, b = state.b;
+    var ansText = state.answer === '' ? '?' : state.answer;
+    els.problem.innerHTML =
+      '<span class="num">' + a + '</span>' +
+      '<span class="op">×</span>' +
+      '<span class="num">' + b + '</span>' +
+      '<span class="eq">=</span>' +
+      '<span class="ans">' + ansText + '</span>';
+
+    // Visual grid (shown always in Learn, only on wrong in Practice)
+    els.visual.innerHTML = '';
+    var showVisual = state.mode === 'learn';
+    if (showVisual) {
+      var rows = a, cols = b;
+      els.visual.style.gridTemplateColumns = 'repeat(' + cols + ', auto)';
+      els.visual.className = 'visual' + (cols > 7 ? ' small' : '') + (cols > 8 && rows > 8 ? ' tiny' : '');
+      for (var r = 0; r < rows; r++) {
+        var cls = 'dot row-' + 'abcd'[r % 4];
+        for (var c = 0; c < cols; c++) {
+          var d = document.createElement('div');
+          d.className = cls;
+          els.visual.appendChild(d);
+        }
+      }
+    }
+
+    if (state.mode === 'learn') {
+      els.hint.textContent = a + ' rows of ' + b + ' = ' + (a * b) + ' dots.';
+      els.hint.className = 'hint';
+    } else {
+      els.hint.textContent = 'Type the product, then press ✓';
+      els.hint.className = 'hint';
+    }
+  }
+
+  function updateHud() {
+    els.score.textContent = state.score;
+    els.streak.textContent = state.streak;
+    els.solved.textContent = state.solved;
+  }
+
+  function check() {
+    if (state.answer === '') return;
+    var guess = parseInt(state.answer, 10);
+    var truth = state.a * state.b;
+    if (guess === truth) {
+      state.streak++;
+      state.solved++;
+      var pts = 10 + Math.min(state.streak, 10) * 2;
+      state.score += pts;
+      updateHud();
+      showFeedback(true, '+' + pts + ' points. Streak: ' + state.streak);
+    } else {
+      state.streak = 0;
+      updateHud();
+      showFeedback(false, 'The answer is ' + truth + '. Try a new one!');
+    }
+  }
+
+  function showFeedback(good, msg) {
+    els.card.className = 'feedback-card ' + (good ? 'good' : 'bad');
+    els.cardTitle.textContent = good ? 'Correct!' : 'Not quite';
+    els.cardEq.textContent = state.a + ' × ' + state.b + ' = ' + (state.a * state.b);
+    els.cardMsg.textContent = msg;
+    els.overlay.classList.add('show');
+  }
+
+  els.cardBtn.addEventListener('click', function () {
+    els.overlay.classList.remove('show');
+    newProblem();
+  });
+
+  // Keypad
+  document.querySelectorAll('.key').forEach(function (k) {
+    k.addEventListener('click', function () {
+      var v = k.getAttribute('data-k');
+      if (v === 'clear') {
+        state.answer = '';
+        render();
+      } else if (v === 'ok') {
+        check();
+      } else {
+        if (state.answer.length < 3) {
+          state.answer += v;
+          render();
+        }
+      }
+    });
+  });
+
+  // Physical keyboard
+  document.addEventListener('keydown', function (e) {
+    if (e.key >= '0' && e.key <= '9') {
+      if (state.answer.length < 3) {
+        state.answer += e.key;
+        render();
+      }
+    } else if (e.key === 'Enter') {
+      if (els.overlay.classList.contains('show')) {
+        els.overlay.classList.remove('show');
+        newProblem();
+      } else {
+        check();
+      }
+    } else if (e.key === 'Backspace') {
+      state.answer = state.answer.slice(0, -1);
+      render();
+    }
+  });
+
+  // Mode buttons
+  document.querySelectorAll('.mode-btn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.mode-btn').forEach(function (x) { x.classList.remove('active'); });
+      b.classList.add('active');
+      state.mode = b.getAttribute('data-mode');
+      render();
+    });
+  });
+
+  // Table select
+  tbl.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t.matches('.table-btn')) return;
+    tbl.querySelectorAll('.table-btn').forEach(function (x) { x.classList.remove('active'); });
+    t.classList.add('active');
+    state.focus = t.getAttribute('data-t');
+    newProblem();
+  });
+
+  updateHud();
+  newProblem();
+})();
+</script>
+<script src="../notes.js"></script>
+</body>
+</html>
