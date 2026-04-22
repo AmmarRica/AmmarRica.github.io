@@ -30,7 +30,7 @@
   /* HUD */
   #hud {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 6px;
     background: linear-gradient(180deg, #1a1a2e, #141428);
     border: 1px solid #3b3b5c;
@@ -57,6 +57,48 @@
   .stat.score .val { color: #fbbf24; }
   .stat.streak .val { color: #22c55e; }
   .stat.level .val { color: #a78bfa; }
+  .stat.time .val { color: #38bdf8; font-variant-numeric: tabular-nums; }
+
+  /* Mastery controls */
+  .mastery-bar {
+    display: none;
+    gap: 6px;
+    align-items: center;
+    justify-content: space-between;
+    background: #141428;
+    border: 1px solid #3b3b5c;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #c0c0e0;
+  }
+  .mastery-bar.show { display: flex; }
+  .mastery-bar .progress-wrap {
+    flex: 1;
+    height: 8px;
+    background: #0f0f1a;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0 10px;
+    border: 1px solid #2a2a44;
+  }
+  .mastery-bar .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7c3aed, #22c55e);
+    width: 0%;
+    transition: width 0.2s;
+  }
+  .mastery-bar button {
+    background: #2a2a44;
+    color: #a78bfa;
+    border: 1px solid #3b3b5c;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+  }
 
   /* Mode selection */
   .mode-bar {
@@ -261,12 +303,20 @@
   <div id="hud">
     <div class="stat score"><div class="label">Score</div><div class="val" id="score">0</div></div>
     <div class="stat streak"><div class="label">Streak</div><div class="val" id="streak">0</div></div>
-    <div class="stat level"><div class="label">Solved</div><div class="val" id="solved">0</div></div>
+    <div class="stat level"><div class="label" id="solvedLabel">Solved</div><div class="val" id="solved">0</div></div>
+    <div class="stat time"><div class="label">Time</div><div class="val" id="timer">0:00</div></div>
   </div>
 
   <div class="mode-bar">
     <button class="mode-btn active" data-mode="learn">Learn</button>
     <button class="mode-btn" data-mode="practice">Practice</button>
+    <button class="mode-btn" data-mode="mastery">Mastery</button>
+  </div>
+
+  <div class="mastery-bar" id="masteryBar">
+    <span id="masteryLeft">0 left</span>
+    <div class="progress-wrap"><div class="progress-fill" id="masteryFill"></div></div>
+    <button id="masteryRestart">Restart</button>
   </div>
 
   <div>
@@ -307,6 +357,26 @@
 
 <script>
 (function () {
+  var STORAGE_KEY = 'ttt_failed_v1';
+  var CORRECTS_TO_CLEAR = 3; // after a failure, must get it right this many times
+
+  function loadFailed() {
+    try {
+      var v = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      return (v && typeof v === 'object') ? v : {};
+    } catch (e) { return {}; }
+  }
+  function saveFailed() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.failed)); } catch (e) {}
+  }
+  function keyOf(a, b) {
+    return Math.min(a, b) + 'x' + Math.max(a, b);
+  }
+  function parseKey(k) {
+    var p = k.split('x');
+    return [parseInt(p[0], 10), parseInt(p[1], 10)];
+  }
+
   var state = {
     mode: 'learn',
     focus: 'all',
@@ -315,13 +385,20 @@
     solved: 0,
     a: 0,
     b: 0,
-    answer: ''
+    answer: '',
+    lastKey: null,
+    failed: loadFailed(),
+    // Mastery:
+    mastery: null,       // { queue: {key: remaining}, total, passed, errors, startedAt, elapsedMs, running }
+    timerId: null
   };
 
   var els = {
     score: document.getElementById('score'),
     streak: document.getElementById('streak'),
     solved: document.getElementById('solved'),
+    solvedLabel: document.getElementById('solvedLabel'),
+    timer: document.getElementById('timer'),
     problem: document.getElementById('problem'),
     visual: document.getElementById('visual'),
     hint: document.getElementById('hint'),
@@ -331,7 +408,11 @@
     cardTitle: document.getElementById('cardTitle'),
     cardEq: document.getElementById('cardEq'),
     cardMsg: document.getElementById('cardMsg'),
-    cardBtn: document.getElementById('cardBtn')
+    cardBtn: document.getElementById('cardBtn'),
+    masteryBar: document.getElementById('masteryBar'),
+    masteryLeft: document.getElementById('masteryLeft'),
+    masteryFill: document.getElementById('masteryFill'),
+    masteryRestart: document.getElementById('masteryRestart')
   };
 
   // Build table selector: All + 1..9
@@ -350,24 +431,145 @@
   }
 
   function rand(n) { return Math.floor(Math.random() * n); }
+  function pick(arr) { return arr[rand(arr.length)]; }
+
+  function matchesFocus(a, b) {
+    if (state.focus === 'all') return true;
+    var f = parseInt(state.focus, 10);
+    return a === f || b === f;
+  }
+
+  // ---------- Timer ----------
+  function fmtTime(ms) {
+    var s = Math.floor(ms / 1000);
+    var m = Math.floor(s / 60);
+    s = s % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function tickTimer() {
+    if (state.mastery && state.mastery.running) {
+      var now = Date.now();
+      state.mastery.elapsedMs = now - state.mastery.startedAt;
+      els.timer.textContent = fmtTime(state.mastery.elapsedMs);
+    }
+  }
+  function startTimer() {
+    stopTimer();
+    state.timerId = setInterval(tickTimer, 250);
+  }
+  function stopTimer() {
+    if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
+  }
+
+  // ---------- Mastery ----------
+  function buildMasteryQueue() {
+    var q = {};
+    for (var a = 1; a <= 9; a++) {
+      for (var b = a; b <= 9; b++) {
+        if (matchesFocus(a, b)) {
+          q[keyOf(a, b)] = 1; // each problem needs 1 correct to pass initially
+        }
+      }
+    }
+    return q;
+  }
+  function startMastery() {
+    var queue = buildMasteryQueue();
+    state.mastery = {
+      queue: queue,
+      total: Object.keys(queue).length,
+      passed: 0,
+      errors: 0,
+      startedAt: Date.now(),
+      elapsedMs: 0,
+      running: true
+    };
+    els.timer.textContent = '0:00';
+    startTimer();
+    updateMasteryBar();
+    newProblem();
+  }
+  function updateMasteryBar() {
+    if (state.mode !== 'mastery' || !state.mastery) {
+      els.masteryBar.classList.remove('show');
+      return;
+    }
+    els.masteryBar.classList.add('show');
+    var left = Object.keys(state.mastery.queue).length;
+    els.masteryLeft.textContent = left + ' left';
+    var pct = state.mastery.total > 0
+      ? Math.max(0, Math.min(100, 100 * (state.mastery.total - left) / state.mastery.total))
+      : 0;
+    els.masteryFill.style.width = pct + '%';
+  }
+  function finishMastery() {
+    state.mastery.running = false;
+    stopTimer();
+    var t = fmtTime(state.mastery.elapsedMs);
+    var errs = state.mastery.errors;
+    els.card.className = 'feedback-card good';
+    els.cardTitle.textContent = '🏆 Mastered!';
+    els.cardEq.textContent = 'Time: ' + t;
+    els.cardMsg.textContent = errs === 0
+      ? 'Flawless — every answer correct on the first try!'
+      : 'Mistakes: ' + errs + '. Start again to beat your time.';
+    els.cardBtn.textContent = 'Play again';
+    els.overlay.classList.add('show');
+  }
+
+  // ---------- Problem picking ----------
+  function candidatesFromFocus() {
+    var list = [];
+    for (var a = 1; a <= 9; a++) {
+      for (var b = a; b <= 9; b++) {
+        if (matchesFocus(a, b)) list.push(keyOf(a, b));
+      }
+    }
+    return list;
+  }
 
   function newProblem() {
-    var a, b;
-    if (state.focus === 'all') {
-      a = 1 + rand(9);
-      b = 1 + rand(9);
+    var key = null;
+
+    if (state.mode === 'mastery') {
+      if (!state.mastery || !state.mastery.running) { return; }
+      var keys = Object.keys(state.mastery.queue);
+      if (keys.length === 0) { finishMastery(); return; }
+      var avail = keys.filter(function (k) { return k !== state.lastKey; });
+      if (avail.length === 0) avail = keys;
+      // Prefer keys with higher remaining count (harder ones) weighted lightly
+      var weighted = [];
+      avail.forEach(function (k) {
+        var n = state.mastery.queue[k];
+        for (var i = 0; i < n; i++) weighted.push(k);
+      });
+      key = pick(weighted.length ? weighted : avail);
     } else {
-      var f = parseInt(state.focus, 10);
-      a = f;
-      b = 1 + rand(9);
-      if (Math.random() < 0.5) { var t = a; a = b; b = t; }
+      // Learn / Practice: 40% bias toward failed set if any match the focus
+      var focusCandidates = candidatesFromFocus();
+      var failedInFocus = Object.keys(state.failed).filter(function (k) {
+        var p = parseKey(k);
+        return matchesFocus(p[0], p[1]);
+      });
+      var useFailed = failedInFocus.length > 0 && Math.random() < 0.4;
+      var pool = useFailed ? failedInFocus : focusCandidates;
+      var avail = pool.filter(function (k) { return k !== state.lastKey; });
+      if (avail.length === 0) avail = pool;
+      key = pick(avail);
     }
+
+    var parts = parseKey(key);
+    var a = parts[0], b = parts[1];
+    // Randomize order so "3 x 7" and "7 x 3" both appear
+    if (Math.random() < 0.5) { var t = a; a = b; b = t; }
     state.a = a;
     state.b = b;
+    state.lastKey = key;
     state.answer = '';
     render();
   }
 
+  // ---------- Render ----------
   function render() {
     var a = state.a, b = state.b;
     var ansText = state.answer === '' ? '?' : state.answer;
@@ -378,10 +580,9 @@
       '<span class="eq">=</span>' +
       '<span class="ans">' + ansText + '</span>';
 
-    // Visual grid (shown always in Learn, only on wrong in Practice)
+    // Visual grid only in Learn mode
     els.visual.innerHTML = '';
-    var showVisual = state.mode === 'learn';
-    if (showVisual) {
+    if (state.mode === 'learn') {
       var rows = a, cols = b;
       els.visual.style.gridTemplateColumns = 'repeat(' + cols + ', auto)';
       els.visual.className = 'visual' + (cols > 7 ? ' small' : '') + (cols > 8 && rows > 8 ? ' tiny' : '');
@@ -395,11 +596,21 @@
       }
     }
 
+    var k = keyOf(a, b);
     if (state.mode === 'learn') {
       els.hint.textContent = a + ' rows of ' + b + ' = ' + (a * b) + ' dots.';
       els.hint.className = 'hint';
+    } else if (state.mode === 'mastery') {
+      var needed = state.mastery && state.mastery.queue[k] ? state.mastery.queue[k] : 1;
+      els.hint.textContent = needed > 1
+        ? needed + ' more correct needed for this one.'
+        : 'Type the product, then press ✓';
+      els.hint.className = 'hint';
     } else {
-      els.hint.textContent = 'Type the product, then press ✓';
+      var owed = state.failed[k] || 0;
+      els.hint.textContent = owed > 0
+        ? 'Review: ' + owed + ' more correct to clear this one.'
+        : 'Type the product, then press ✓';
       els.hint.className = 'hint';
     }
   }
@@ -407,24 +618,68 @@
   function updateHud() {
     els.score.textContent = state.score;
     els.streak.textContent = state.streak;
-    els.solved.textContent = state.solved;
+    if (state.mode === 'mastery' && state.mastery) {
+      els.solvedLabel.textContent = 'Left';
+      els.solved.textContent = Object.keys(state.mastery.queue).length;
+    } else {
+      els.solvedLabel.textContent = 'Solved';
+      els.solved.textContent = state.solved;
+    }
   }
 
+  // ---------- Answer check ----------
   function check() {
     if (state.answer === '') return;
+    // In Mastery, don't accept input after completion
+    if (state.mode === 'mastery' && (!state.mastery || !state.mastery.running)) return;
+
     var guess = parseInt(state.answer, 10);
     var truth = state.a * state.b;
+    var k = keyOf(state.a, state.b);
+
     if (guess === truth) {
       state.streak++;
       state.solved++;
       var pts = 10 + Math.min(state.streak, 10) * 2;
       state.score += pts;
+
+      // Decrement the persistent "failed" counter
+      if (state.failed[k]) {
+        state.failed[k]--;
+        if (state.failed[k] <= 0) delete state.failed[k];
+        saveFailed();
+      }
+
+      // Mastery bookkeeping
+      if (state.mode === 'mastery' && state.mastery) {
+        if (state.mastery.queue[k] != null) {
+          state.mastery.queue[k]--;
+          if (state.mastery.queue[k] <= 0) {
+            delete state.mastery.queue[k];
+            state.mastery.passed++;
+          }
+        }
+        updateMasteryBar();
+      }
+
       updateHud();
       showFeedback(true, '+' + pts + ' points. Streak: ' + state.streak);
     } else {
       state.streak = 0;
+
+      // Persistent: a failure makes this problem require CORRECTS_TO_CLEAR correct answers
+      state.failed[k] = CORRECTS_TO_CLEAR;
+      saveFailed();
+
+      if (state.mode === 'mastery' && state.mastery) {
+        state.mastery.errors++;
+        // Problem must be answered correctly 3 times to clear it
+        state.mastery.queue[k] = CORRECTS_TO_CLEAR;
+        updateMasteryBar();
+      }
+
       updateHud();
-      showFeedback(false, 'The answer is ' + truth + '. Try a new one!');
+      showFeedback(false, 'The answer is ' + truth + '. You will see this one again.');
     }
   }
 
@@ -433,13 +688,23 @@
     els.cardTitle.textContent = good ? 'Correct!' : 'Not quite';
     els.cardEq.textContent = state.a + ' × ' + state.b + ' = ' + (state.a * state.b);
     els.cardMsg.textContent = msg;
+    els.cardBtn.textContent = 'Next';
     els.overlay.classList.add('show');
   }
 
-  els.cardBtn.addEventListener('click', function () {
+  function dismissOverlay() {
     els.overlay.classList.remove('show');
-    newProblem();
-  });
+    // If mastery finished, a click on "Play again" restarts
+    if (state.mode === 'mastery' && state.mastery && !state.mastery.running) {
+      startMastery();
+    } else if (state.mode === 'mastery' && state.mastery && Object.keys(state.mastery.queue).length === 0) {
+      finishMastery();
+    } else {
+      newProblem();
+    }
+  }
+
+  els.cardBtn.addEventListener('click', dismissOverlay);
 
   // Keypad
   document.querySelectorAll('.key').forEach(function (k) {
@@ -468,8 +733,7 @@
       }
     } else if (e.key === 'Enter') {
       if (els.overlay.classList.contains('show')) {
-        els.overlay.classList.remove('show');
-        newProblem();
+        dismissOverlay();
       } else {
         check();
       }
@@ -479,14 +743,33 @@
     }
   });
 
+  function setMode(mode) {
+    document.querySelectorAll('.mode-btn').forEach(function (x) {
+      x.classList.toggle('active', x.getAttribute('data-mode') === mode);
+    });
+    els.overlay.classList.remove('show');
+    state.mode = mode;
+    state.streak = 0;
+    if (mode === 'mastery') {
+      startMastery();
+    } else {
+      if (state.mastery) state.mastery.running = false;
+      stopTimer();
+      els.masteryBar.classList.remove('show');
+      els.timer.textContent = '0:00';
+      newProblem();
+    }
+    updateHud();
+  }
+
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(function (b) {
-    b.addEventListener('click', function () {
-      document.querySelectorAll('.mode-btn').forEach(function (x) { x.classList.remove('active'); });
-      b.classList.add('active');
-      state.mode = b.getAttribute('data-mode');
-      render();
-    });
+    b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
+  });
+
+  els.masteryRestart.addEventListener('click', function () {
+    els.overlay.classList.remove('show');
+    startMastery();
   });
 
   // Table select
@@ -496,7 +779,11 @@
     tbl.querySelectorAll('.table-btn').forEach(function (x) { x.classList.remove('active'); });
     t.classList.add('active');
     state.focus = t.getAttribute('data-t');
-    newProblem();
+    if (state.mode === 'mastery') {
+      startMastery();
+    } else {
+      newProblem();
+    }
   });
 
   updateHud();
