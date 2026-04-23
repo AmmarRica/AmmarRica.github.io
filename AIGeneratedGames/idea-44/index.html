@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Arm Wrestle</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:6px;padding:10px}.btn{flex:1;padding:24px;background:#7c3aed;color:#fff;border:0;border-radius:10px;font-family:monospace;font-size:18px;font-weight:700}
+.btn:active{background:#6b2dcc}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="400"></canvas>
+<div id="hud"><span>Round <b id="rd">1</b></span><span>Wins You: <b id="w1">0</b> vs AI: <b id="w2">0</b></span></div>
+<div class="c">
+<button class="btn" id="bM">MASH!</button>
+</div>
+<div class="msg" id="msg"><div id="mt">Arm Wrestle</div><div style="font-size:12px;margin:6px 10px">Mash the button (or SPACE) as fast as you can to beat the AI!</div><button id="start">Start Match</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let pos=0,w1=0,w2=0,round=1,running=false,aiRate=8;
+document.getElementById('bM').addEventListener('pointerdown',()=>{if(running)pos+=4;});
+document.addEventListener('keydown',e=>{if(e.key===' '&&running){e.preventDefault();pos+=4;}});
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');pos=0;running=true;aiRate=7+Math.random()*3+round*.3;};
+setInterval(()=>{if(running){pos-=aiRate/60;}},16);
+function loop(){
+  if(running){
+    if(pos>100){w1++;round++;running=false;end('You won!');}
+    else if(pos<-100){w2++;round++;running=false;end('AI won!');}
+  }
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  // table
+  ctx.fillStyle='#654321';ctx.fillRect(0,H/2+60,W,40);
+  // arms
+  const midX=W/2+pos*2;
+  ctx.strokeStyle='#d4a017';ctx.lineWidth=40;
+  ctx.beginPath();ctx.moveTo(80,H/2+40);ctx.lineTo(midX,H/2-40);ctx.stroke();
+  ctx.strokeStyle='#3d2817';ctx.beginPath();ctx.moveTo(W-80,H/2+40);ctx.lineTo(midX,H/2-40);ctx.stroke();
+  // fists
+  ctx.fillStyle='#d4a017';ctx.beginPath();ctx.arc(midX,H/2-40,24,0,6.28);ctx.fill();
+  // gauge
+  ctx.fillStyle='#444';ctx.fillRect(40,30,W-80,20);
+  ctx.fillStyle=pos>0?'#22c55e':'#ef4444';const gw=Math.abs(pos)/100*(W-80)/2;ctx.fillRect(W/2-(pos<0?gw:0),30,gw,20);
+  ctx.strokeStyle='#fff';ctx.strokeRect(40,30,W-80,20);
+  ctx.fillStyle='#fff';ctx.font='12px monospace';ctx.fillText('YOU ←',50,24);ctx.fillText('→ AI',W-80,24);
+  document.getElementById('rd').textContent=round;document.getElementById('w1').textContent=w1;document.getElementById('w2').textContent=w2;
+  requestAnimationFrame(loop);
+}
+function end(t){document.getElementById('mt').textContent=t;document.getElementById('msg').classList.remove('hide');document.getElementById('start').textContent='Round '+round;}
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

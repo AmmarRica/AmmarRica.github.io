@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Auto Pets Scout</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:18px;color:#a78bfa}
+.teams{display:grid;grid-template-columns:1fr;gap:8px}
+.team{background:#111;padding:8px;border-radius:6px}
+.team h3{font-size:13px;color:#22d3ee;margin-bottom:6px}
+.slots{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.slot{background:#2a2a44;border:1px solid #555;border-radius:6px;padding:6px 4px;text-align:center;font-size:11px;cursor:pointer;aspect-ratio:1;display:flex;flex-direction:column;justify-content:center}
+.slot .em{font-size:20px}
+.slot.empty{background:#1a1a2e;color:#555}
+.shop{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.shop .slot{background:#1a1a2e}
+.actions{display:flex;gap:6px}
+.actions button{flex:1;padding:10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace;font-size:13px}
+.log{background:#111;padding:8px;border-radius:6px;font-size:11px;max-height:140px;overflow-y:auto}
+.stat{display:flex;justify-content:space-between;font-size:12px}
+</style></head><body>
+<h1>🐾 Better Auto Pets</h1>
+<div class="stat"><span>Round: <b id="rd">1</b></span><span>Gold: <b id="g">10</b></span><span>W: <b id="w">0</b>/L: <b id="l">0</b></span></div>
+<div class="team" id="enemyTeam"><h3>🕵 Enemy (Scouted)</h3><div class="slots" id="eslots"></div></div>
+<div class="team"><h3>Your Team</h3><div class="slots" id="pslots"></div></div>
+<div class="team"><h3>Shop</h3><div class="slots shop" id="shop"></div></div>
+<div class="actions"><button id="reroll">Reroll (1g)</button><button id="fight">Fight!</button></div>
+<div class="log" id="log"></div>
+<script src="../notes.js"></script>
+<script>
+(function(){
+const pets=[
+  {n:'Ant',e:'🐜',atk:2,hp:1,cost:3,ab:'on death: give +1/+1 to rightmost'},
+  {n:'Mouse',e:'🐭',atk:2,hp:3,cost:3,ab:''},
+  {n:'Otter',e:'🦦',atk:1,hp:2,cost:3,ab:'buff: +1 atk to a random friend'},
+  {n:'Beaver',e:'🦫',atk:2,hp:2,cost:3,ab:''},
+  {n:'Fish',e:'🐟',atk:2,hp:3,cost:3,ab:''},
+  {n:'Horse',e:'🐴',atk:2,hp:1,cost:3,ab:'summon: +1 atk to next ally'},
+  {n:'Dog',e:'🐶',atk:3,hp:4,cost:4,ab:''},
+  {n:'Cat',e:'🐱',atk:3,hp:3,cost:4,ab:''},
+  {n:'Lion',e:'🦁',atk:5,hp:5,cost:5,ab:''},
+  {n:'Bear',e:'🐻',atk:6,hp:6,cost:5,ab:''}
+];
+let player=Array(5).fill(null),enemy=Array(5).fill(null),shop=[],gold=10,round=1,wins=0,losses=0;
+function rndPet(cap){const a=pets.filter(p=>p.cost<=cap);return {...a[Math.floor(Math.random()*a.length)]};}
+function genShop(){shop=[];for(let i=0;i<5;i++)shop.push(rndPet(Math.min(5,round+2)));}
+function genEnemy(){enemy=Array(5).fill(null);for(let i=0;i<Math.min(5,round+1);i++){let p=rndPet(Math.min(5,round+2));p.atk+=Math.floor(round/3);p.hp+=Math.floor(round/3);enemy[i]=p;}}
+function render(){
+  const ps=document.getElementById('pslots');ps.innerHTML='';
+  player.forEach((p,i)=>{const d=document.createElement('div');d.className='slot'+(p?'':' empty');if(p){d.innerHTML='<div class="em">'+p.e+'</div>'+p.atk+'/'+p.hp;}else{d.textContent='·';}d.onclick=()=>{if(p){player[i]=null;gold+=1;render();}};ps.appendChild(d);});
+  const es=document.getElementById('eslots');es.innerHTML='';
+  enemy.forEach(p=>{const d=document.createElement('div');d.className='slot'+(p?'':' empty');if(p){d.innerHTML='<div class="em">'+p.e+'</div>'+p.atk+'/'+p.hp;}else{d.textContent='·';}es.appendChild(d);});
+  const sh=document.getElementById('shop');sh.innerHTML='';
+  shop.forEach((p,i)=>{const d=document.createElement('div');d.className='slot';d.innerHTML='<div class="em">'+p.e+'</div>'+p.atk+'/'+p.hp+'<br>'+p.cost+'g';d.onclick=()=>buy(i);sh.appendChild(d);});
+  document.getElementById('rd').textContent=round;document.getElementById('g').textContent=gold;document.getElementById('w').textContent=wins;document.getElementById('l').textContent=losses;
+}
+function buy(i){const p=shop[i];if(!p||gold<p.cost)return;const slot=player.findIndex(s=>!s);if(slot<0)return;gold-=p.cost;player[slot]=p;shop[i]=null;render();}
+document.getElementById('reroll').onclick=()=>{if(gold>=1){gold-=1;genShop();render();}};
+function log(s){const l=document.getElementById('log');l.innerHTML=s+'<br>'+l.innerHTML;}
+document.getElementById('fight').onclick=()=>{
+  let A=player.filter(Boolean).map(x=>({...x})),B=enemy.filter(Boolean).map(x=>({...x}));
+  log('--- Round '+round+' ---');
+  while(A.length&&B.length){
+    const a=A[0],b=B[0];
+    const x=Math.max(0,a.hp-b.atk),y=Math.max(0,b.hp-a.atk);
+    a.hp=x;b.hp=y;
+    log(a.e+' vs '+b.e+' → '+(x<=0?a.n+' dies':a.n+' '+x+'hp')+', '+(y<=0?b.n+' dies':b.n+' '+y+'hp'));
+    if(x<=0)A.shift();if(y<=0)B.shift();
+  }
+  const won=A.length>0&&B.length===0, draw=A.length===0&&B.length===0;
+  if(won){wins++;log('You won!');}else if(draw){log('Draw.');}else{losses++;log('You lost.');}
+  round++;gold+=10;genShop();genEnemy();render();
+};
+genShop();genEnemy();render();
+})();
+</script>
+</body></html>

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Ant Colony</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#2a1f0b;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#3a2a14}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:4px;padding:6px;flex-wrap:wrap}.btn{flex:1;padding:10px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:11px;min-width:80px}
+.btn.sel{background:#7c3aed}.btn:disabled{opacity:.4}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="480"></canvas>
+<div id="hud"><span>🍬 Food: <b id="food">10</b></span><span>🐜 Ants: <b id="ants">3</b></span><span>Day: <b id="day">1</b></span></div>
+<div class="c">
+<button class="btn sel" id="bT">Tunnel</button>
+<button class="btn" id="bF">Forage</button>
+<button class="btn" id="bD">Defense</button>
+<button class="btn" id="bN">Next Day</button>
+</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+const GS=16;
+let grid={},food=10,ants=[],day=1,mode='T',queen={x:W/2,y:H/2};
+for(let i=0;i<3;i++)ants.push({x:W/2,y:H/2,t:'F',tx:W/2,ty:H/2,carry:0});
+// scatter food
+let foodDots=[];
+for(let i=0;i<15;i++)foodDots.push({x:40+Math.random()*(W-80),y:40+Math.random()*(H-80),amt:3});
+let enemies=[];
+['T','F','D'].forEach((k,i)=>{['bT','bF','bD'][i];});
+document.getElementById('bT').onclick=()=>setMode('T');
+document.getElementById('bF').onclick=()=>setMode('F');
+document.getElementById('bD').onclick=()=>setMode('D');
+document.getElementById('bN').onclick=()=>{day++;food+=3;if(food>=5){food-=5;ants.push({x:queen.x,y:queen.y,t:'F',tx:queen.x,ty:queen.y,carry:0});}
+  for(let i=0;i<day;i++){enemies.push({x:Math.random()<.5?-20:W+20,y:Math.random()*H,hp:2,spd:.3});}
+  updHud();};
+function setMode(m){mode=m;['bT','bF','bD'].forEach(id=>document.getElementById(id).classList.remove('sel'));document.getElementById('b'+m).classList.add('sel');}
+c.addEventListener('pointerdown',e=>{
+  const r=c.getBoundingClientRect();
+  const x=Math.floor((e.clientX-r.left)*W/r.width/GS)*GS;
+  const y=Math.floor((e.clientY-r.top)*H/r.height/GS)*GS;
+  const k=x+','+y;
+  if(food<1)return;
+  food--;
+  grid[k]={type:mode};
+  updHud();
+});
+function updHud(){document.getElementById('food').textContent=food;document.getElementById('ants').textContent=ants.length;document.getElementById('day').textContent=day;}
+function nearestFood(e){let best=null,bd=9999;foodDots.forEach(f=>{let d=Math.hypot(f.x-e.x,f.y-e.y);if(d<bd){bd=d;best=f;}});return best;}
+function nearestDefense(e){let best=null,bd=9999;Object.keys(grid).forEach(k=>{if(grid[k].type!=='D')return;let [x,y]=k.split(',').map(Number);let d=Math.hypot(x-e.x,y-e.y);if(d<bd){bd=d;best={x,y};}});return best;}
+function loop(){
+  ants.forEach(a=>{
+    if(a.carry>0){a.tx=queen.x;a.ty=queen.y;}
+    else{const f=nearestFood(a);if(f){a.tx=f.x;a.ty=f.y;}}
+    let dx=a.tx-a.x,dy=a.ty-a.y,d=Math.hypot(dx,dy)||1;
+    a.x+=dx/d*1.2;a.y+=dy/d*1.2;
+    if(a.carry>0&&Math.hypot(a.x-queen.x,a.y-queen.y)<12){food+=a.carry;a.carry=0;updHud();}
+    foodDots.forEach(f=>{if(a.carry===0&&Math.hypot(a.x-f.x,a.y-f.y)<8){a.carry=1;f.amt--;if(f.amt<=0)f.dead=true;}});
+  });
+  foodDots=foodDots.filter(f=>!f.dead);
+  if(foodDots.length<15&&Math.random()<.02)foodDots.push({x:40+Math.random()*(W-80),y:40+Math.random()*(H-80),amt:3});
+  enemies.forEach(e=>{
+    let dx=queen.x-e.x,dy=queen.y-e.y,d=Math.hypot(dx,dy)||1;
+    e.x+=dx/d*e.spd;e.y+=dy/d*e.spd;
+    // defense tile kills enemies
+    Object.keys(grid).forEach(k=>{if(grid[k].type!=='D')return;let [x,y]=k.split(',').map(Number);if(Math.hypot(x+GS/2-e.x,y+GS/2-e.y)<GS){e.hp-=.05;}});
+    if(Math.hypot(e.x-queen.x,e.y-queen.y)<14){food=Math.max(0,food-.05);}
+  });
+  enemies=enemies.filter(e=>e.hp>0);
+  ctx.fillStyle='#3a2a14';ctx.fillRect(0,0,W,H);
+  Object.keys(grid).forEach(k=>{const [x,y]=k.split(',').map(Number);const g=grid[k];ctx.fillStyle=g.type==='T'?'#654321':g.type==='F'?'#d4a017':'#7c3aed';ctx.fillRect(x,y,GS-1,GS-1);});
+  foodDots.forEach(f=>{ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(f.x,f.y,5,0,6.28);ctx.fill();});
+  ants.forEach(a=>{ctx.fillStyle=a.carry?'#fbbf24':'#000';ctx.beginPath();ctx.arc(a.x,a.y,4,0,6.28);ctx.fill();});
+  enemies.forEach(e=>{ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(e.x,e.y,6,0,6.28);ctx.fill();});
+  ctx.fillStyle='#a78bfa';ctx.beginPath();ctx.arc(queen.x,queen.y,10,0,6.28);ctx.fill();
+  requestAnimationFrame(loop);
+}
+updHud();loop();
+})();
+</script><script src="../notes.js"></script></body></html>

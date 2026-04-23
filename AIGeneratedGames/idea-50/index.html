@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Ship Merger</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#000;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#000515}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:6px;padding:6px}.btn{flex:1;padding:14px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:12px}
+.btn.act{background:#fbbf24;color:#000}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="520"></canvas>
+<div id="hud"><span>Scrap: <b id="sc">0</b></span><span>Level: <b id="lv">1</b></span><span>HP: <b id="hp">3</b></span></div>
+<div class="c">
+<button class="btn" id="bL">◀</button>
+<button class="btn" id="bM">🧲 Magnet</button>
+<button class="btn" id="bF">FIRE</button>
+<button class="btn" id="bR">▶</button>
+</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+const keys={};let magnetOn=false;
+let p,enemies,bullets,scraps,scrap=0,level=1,fireCool=0,running=true;
+function reset(){p={x:W/2,y:H-60,hp:3,w:24,h:24};enemies=[];bullets=[];scraps=[];scrap=0;level=1;}
+document.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+['bL','bR'].forEach(id=>{const el=document.getElementById(id);el.addEventListener('pointerdown',()=>keys[id]=true);el.addEventListener('pointerup',()=>keys[id]=false);});
+document.getElementById('bF').addEventListener('pointerdown',()=>keys['f']=true);
+document.getElementById('bF').addEventListener('pointerup',()=>keys['f']=false);
+document.getElementById('bM').addEventListener('pointerdown',()=>{magnetOn=!magnetOn;document.getElementById('bM').classList.toggle('act',magnetOn);});
+document.addEventListener('keydown',e=>{if(e.key===' '){keys['f']=true;e.preventDefault();}if(e.key==='m'){magnetOn=!magnetOn;document.getElementById('bM').classList.toggle('act',magnetOn);}});
+document.addEventListener('keyup',e=>{if(e.key===' ')keys['f']=false;});
+let spawnT=0;
+function loop(){
+  spawnT++;
+  if(spawnT>60-level*2){spawnT=0;enemies.push({x:Math.random()*(W-40)+20,y:-20,hp:1+Math.floor(level/3),w:20,h:20});}
+  if(keys['a']||keys['arrowleft']||keys['bL'])p.x-=3;
+  if(keys['d']||keys['arrowright']||keys['bR'])p.x+=3;
+  p.x=Math.max(12,Math.min(W-12,p.x));
+  fireCool--;
+  if(keys['f']&&!magnetOn&&fireCool<=0){bullets.push({x:p.x,y:p.y-10,vy:-8});fireCool=12;}
+  enemies.forEach(e=>{e.y+=1+level*.1;if(e.y>H){running=true;}});
+  enemies=enemies.filter(e=>e.y<H+20);
+  bullets.forEach(b=>b.y+=b.vy);bullets=bullets.filter(b=>b.y>0);
+  bullets.forEach(b=>{enemies.forEach(e=>{if(Math.abs(b.x-e.x)<e.w/2&&Math.abs(b.y-e.y)<e.h/2){e.hp--;b.dead=true;if(e.hp<=0){e.dead=true;scraps.push({x:e.x,y:e.y,vx:(Math.random()-.5)*2,vy:-1});}}});});
+  bullets=bullets.filter(b=>!b.dead);
+  enemies=enemies.filter(e=>!e.dead);
+  scraps.forEach(s=>{
+    if(magnetOn){const dx=p.x-s.x,dy=p.y-s.y,d=Math.hypot(dx,dy)||1;s.vx+=dx/d*.4;s.vy+=dy/d*.4;}
+    s.x+=s.vx;s.y+=s.vy;s.vy+=.1;
+    if(Math.hypot(s.x-p.x,s.y-p.y)<20){scrap++;s.dead=true;if(scrap%10===0)level++;}
+  });
+  scraps=scraps.filter(s=>!s.dead&&s.y<H+20);
+  enemies.forEach(e=>{if(Math.abs(e.x-p.x)<20&&Math.abs(e.y-p.y)<20){p.hp--;e.dead=true;}});
+  if(p.hp<=0){ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff';ctx.font='24px monospace';ctx.fillText('Destroyed! Scrap: '+scrap,W/2-100,H/2);return;}
+  ctx.fillStyle='#000515';ctx.fillRect(0,0,W,H);
+  for(let i=0;i<20;i++){ctx.fillStyle='#fff';ctx.fillRect((i*73+Date.now()/20)%W,(i*97)%H,1,1);}
+  enemies.forEach(e=>{ctx.fillStyle='#ef4444';ctx.fillRect(e.x-e.w/2,e.y-e.h/2,e.w,e.h);});
+  scraps.forEach(s=>{ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(s.x,s.y,5,0,6.28);ctx.fill();});
+  bullets.forEach(b=>{ctx.fillStyle='#22d3ee';ctx.fillRect(b.x-2,b.y-6,4,12);});
+  ctx.fillStyle='#22d3ee';ctx.beginPath();ctx.moveTo(p.x,p.y-12);ctx.lineTo(p.x-12,p.y+8);ctx.lineTo(p.x+12,p.y+8);ctx.closePath();ctx.fill();
+  if(magnetOn){ctx.strokeStyle='rgba(251,191,36,.5)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(p.x,p.y,80,0,6.28);ctx.stroke();}
+  document.getElementById('sc').textContent=scrap;document.getElementById('lv').textContent=level;document.getElementById('hp').textContent=p.hp;
+  requestAnimationFrame(loop);
+}
+reset();loop();
+})();
+</script><script src="../notes.js"></script></body></html>

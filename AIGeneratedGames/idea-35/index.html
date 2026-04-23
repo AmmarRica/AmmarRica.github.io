@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>GIF Captioning</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:18px;color:#a78bfa}
+.prompt{background:#1a1a2e;padding:10px;border-radius:8px;font-size:14px;text-align:center;min-height:60px;display:flex;align-items:center;justify-content:center}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.gif{aspect-ratio:4/3;background:#333;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer;border:2px solid transparent}
+.gif:hover{border-color:#fbbf24}
+.score{display:flex;justify-content:space-between;background:#111;padding:6px 10px;border-radius:6px;font-size:13px}
+.vote{background:#111;padding:6px 10px;border-radius:6px;font-size:11px;min-height:50px}
+button{padding:10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body>
+<h1>😂 GIF Caption</h1>
+<div class="score"><span>Round: <b id="rd">1</b>/5</span><span>Score: <b id="sc">0</b></span></div>
+<div class="prompt" id="prompt">—</div>
+<div class="choices" id="choices"></div>
+<div class="vote" id="vote">Select a GIF</div>
+<button id="next">Next Round</button>
+<script src="../notes.js"></script>
+<script>
+(function(){
+const prompts=[
+  {p:'When you open the fridge for the 7th time hoping it changed',gifs:['🐻','🤔','🤷','😴'],a:2},
+  {p:'My face when the code works on the first try',gifs:['😱','🎉','😒','🤯'],a:1},
+  {p:'Meeting your in-laws for the first time',gifs:['😬','💃','🫡','🛌'],a:0},
+  {p:'When someone says Monday is the best day',gifs:['😤','🙄','🥳','🫠'],a:1},
+  {p:'Watching your own plans unravel in slow motion',gifs:['🎬','🧘','🔥','👀'],a:2}
+];
+let round=0,score=0;
+function render(){
+  if(round>=prompts.length){document.getElementById('prompt').textContent='Game over!';document.getElementById('choices').innerHTML='';document.getElementById('vote').textContent='Final score: '+score+'/'+prompts.length;return;}
+  const r=prompts[round];
+  document.getElementById('prompt').textContent=r.p;
+  document.getElementById('rd').textContent=round+1;
+  document.getElementById('sc').textContent=score;
+  const ch=document.getElementById('choices');ch.innerHTML='';
+  r.gifs.forEach((g,i)=>{const d=document.createElement('div');d.className='gif';d.textContent=g;d.onclick=()=>pick(i);ch.appendChild(d);});
+  document.getElementById('vote').textContent='Pick the funniest!';
+}
+function pick(i){
+  const r=prompts[round];
+  if(i===r.a){score++;document.getElementById('vote').innerHTML='✅ Crowd favorite! Winner: '+r.gifs[r.a];}
+  else{document.getElementById('vote').innerHTML='Crowd went with: '+r.gifs[r.a];}
+}
+document.getElementById('next').onclick=()=>{round++;render();};
+render();
+})();
+</script>
+</body></html>

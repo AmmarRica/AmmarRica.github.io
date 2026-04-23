@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Mortar Fireteam</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+h1{font-size:16px;color:#a78bfa}
+.stat{display:flex;justify-content:space-between;background:#111;padding:6px 10px;border-radius:6px;font-size:12px;flex-wrap:wrap;gap:4px}
+#canv{width:100%;aspect-ratio:1;background:#3a4a3a;border-radius:4px}
+.order{background:#1a1a2e;padding:10px;border-radius:8px;font-size:14px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.controls input{padding:10px;background:#1a1a2e;color:#fff;border:1px solid #555;border-radius:4px;font-family:monospace;font-size:14px}
+button{padding:10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace;font-size:13px}
+</style></head><body>
+<h1>💣 Mortar Fireteam</h1>
+<div class="stat"><span>Hits: <b id="hits">0</b></span><span>Misses: <b id="miss">0</b></span><span>Target: <b id="tg">—</b></span></div>
+<canvas id="canv" width="400" height="400"></canvas>
+<div class="order" id="order">Awaiting order...</div>
+<div class="controls">
+<input id="iX" type="number" placeholder="Grid X (1-10)">
+<input id="iY" type="number" placeholder="Grid Y (1-10)">
+</div>
+<div class="controls">
+<input id="iA" type="number" placeholder="Azimuth (0-360)">
+<input id="iE" type="number" placeholder="Elevation (10-80)">
+</div>
+<button id="fire">🔥 FIRE</button>
+<div style="font-size:11px;color:#aaa;text-align:center">Plot target coordinates, then set azimuth + elevation to hit. Hit = within 40 units.</div>
+<script src="../notes.js"></script>
+<script>
+(function(){
+const c=document.getElementById('canv'),ctx=c.getContext('2d'),W=400,H=400;
+let target={x:0,y:0},mortar={x:W/2,y:H-40},hits=0,miss=0,shells=[];
+function newTarget(){target={x:40+Math.random()*(W-80),y:40+Math.random()*(H-160)};document.getElementById('tg').textContent='Grid ('+Math.floor(target.x/40+1)+','+Math.floor(target.y/40+1)+')';document.getElementById('order').textContent='TGT: grid ('+Math.floor(target.x/40+1)+','+Math.floor(target.y/40+1)+'). Calculate fire mission.';}
+function draw(){
+  ctx.fillStyle='#3a4a3a';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#2a3a2a';for(let i=0;i<=10;i++){ctx.beginPath();ctx.moveTo(i*40,0);ctx.lineTo(i*40,H);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i*40);ctx.lineTo(W,i*40);ctx.stroke();}
+  ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(target.x,target.y,12,0,6.28);ctx.fill();ctx.strokeStyle='#fff';ctx.stroke();
+  ctx.fillStyle='#22d3ee';ctx.fillRect(mortar.x-10,mortar.y-10,20,20);
+  shells.forEach(s=>{ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(s.x,s.y,4,0,6.28);ctx.fill();});
+  requestAnimationFrame(draw);
+}
+document.getElementById('fire').onclick=()=>{
+  const gx=+document.getElementById('iX').value,gy=+document.getElementById('iY').value;
+  const az=+document.getElementById('iA').value,el=+document.getElementById('iE').value;
+  // derive target approx
+  const tx=(gx-.5)*40,ty=(gy-.5)*40;
+  // azimuth: degrees from north (up). elevation: 10-80. Simulated range based on elevation.
+  const range=el*5;
+  const ax=mortar.x+Math.sin(az*Math.PI/180)*range;
+  const ay=mortar.y-Math.cos(az*Math.PI/180)*range;
+  shells.push({x:mortar.x,y:mortar.y,tx:ax,ty:ay,t:0});
+  const total=60;
+  let step=0;
+  const interval=setInterval(()=>{
+    step++;
+    shells[shells.length-1].x=mortar.x+(ax-mortar.x)*step/total;
+    shells[shells.length-1].y=mortar.y+(ay-mortar.y)*step/total-Math.sin(step/total*Math.PI)*80;
+    if(step>=total){
+      clearInterval(interval);
+      const dist=Math.hypot(ax-target.x,ay-target.y);
+      if(dist<40){hits++;document.getElementById('order').textContent='✅ HIT! ('+dist.toFixed(0)+' units)';newTarget();}
+      else{miss++;document.getElementById('order').textContent='❌ Miss. ('+dist.toFixed(0)+' units) Adjust and fire again.';}
+      document.getElementById('hits').textContent=hits;document.getElementById('miss').textContent=miss;
+      shells=[];
+    }
+  },30);
+};
+newTarget();draw();
+})();
+</script>
+</body></html>

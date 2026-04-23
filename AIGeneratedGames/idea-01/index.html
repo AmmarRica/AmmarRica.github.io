@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Dive Kick Platformer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#111;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}
+canvas{display:block;width:100%;background:#1b2735}
+#hud{position:absolute;top:4px;left:4px;right:4px;display:flex;justify-content:space-between;font-size:14px;pointer-events:none;text-shadow:1px 1px #000}
+#ctrl{display:flex;justify-content:space-between;padding:8px;gap:8px}
+.btn{flex:1;background:#2a2a44;border:1px solid #555;color:#fff;padding:14px;font-family:monospace;font-size:16px;border-radius:8px}
+.btn:active{background:#7c3aed}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.8);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:18px;text-align:center;padding:20px}
+.msg.hide{display:none}
+.msg button{margin-top:12px;padding:10px 20px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace;font-size:16px}
+</style></head>
+<body><div id="wrap">
+<canvas id="c" width="480" height="640"></canvas>
+<div id="hud"><span id="score">Score: 0</span><span id="best">Best: 0</span></div>
+<div id="ctrl">
+<button class="btn" id="bL">◀ Jump L</button>
+<button class="btn" id="bR">Jump R ▶</button>
+</div>
+<div class="msg" id="msg"><div id="mTitle">Dive Kick</div><div id="mText">Tap Jump L/R to leap. In air, tap the opposite side to dive kick. Reach the top!</div><button id="bStart">Start</button></div>
+</div>
+<script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const W=c.width,H=c.height;
+let best=+localStorage.idea01Best||0;
+let p={x:W/2,y:H-60,vx:0,vy:0,r:14,inAir:false,diving:false,face:1};
+let walls=[],enemies=[],cam=0,running=false,score=0;
+function reset(){
+  p={x:W/2,y:H-60,vx:0,vy:0,r:14,inAir:false,diving:false,face:1};
+  walls=[{x:0,y:H-20,w:W,h:20}];
+  for(let i=0;i<30;i++){
+    let side=i%2;
+    walls.push({x:side?W-40:0,y:H-120-i*80,w:40,h:40});
+  }
+  enemies=[];
+  for(let i=0;i<8;i++){
+    let side=Math.random()<.5;
+    enemies.push({x:side?40:W-54,y:H-200-i*260,w:14,h:14,dead:false});
+  }
+  cam=0;score=0;running=true;
+}
+function jump(dir){
+  if(!p.inAir){p.vx=dir*5;p.vy=-11;p.inAir=true;p.face=dir;}
+  else if(!p.diving && Math.sign(p.vx)!==dir){p.vx=dir*8;p.vy=8;p.diving=true;p.face=dir;}
+}
+document.getElementById('bL').addEventListener('pointerdown',e=>{e.preventDefault();jump(-1);});
+document.getElementById('bR').addEventListener('pointerdown',e=>{e.preventDefault();jump(1);});
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'||e.key==='a')jump(-1);
+  if(e.key==='ArrowRight'||e.key==='d')jump(1);
+});
+function rectHit(a,b){return a.x<b.x+b.w&&a.x+a.r*2>b.x&&a.y<b.y+b.h&&a.y+a.r*2>b.y;}
+function loop(){
+  if(running){
+    p.vy+=0.5;
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<p.r)p.x=p.r;
+    if(p.x>W-p.r)p.x=W-p.r;
+    let pb={x:p.x-p.r,y:p.y-p.r,w:p.r*2,h:p.r*2,r:p.r};
+    let landed=false;
+    walls.forEach(w=>{
+      if(rectHit(pb,w)){
+        if(p.vy>0&&p.y-p.vy<w.y){p.y=w.y-p.r;p.vy=0;p.vx=0;p.inAir=false;p.diving=false;landed=true;}
+        else if(p.vx>0){p.x=w.x-p.r;p.vx=-3;p.vy=-3;}
+        else if(p.vx<0){p.x=w.x+w.w+p.r;p.vx=3;p.vy=-3;}
+      }
+    });
+    enemies.forEach(en=>{
+      if(en.dead)return;
+      let eb={x:en.x,y:en.y,w:en.w,h:en.h};
+      if(pb.x<eb.x+eb.w&&pb.x+pb.w>eb.x&&pb.y<eb.y+eb.h&&pb.y+pb.w>eb.y){
+        if(p.diving){en.dead=true;score+=10;p.vy=-8;}
+        else{running=false;showMsg('Died!','Score: '+score);}
+      }
+    });
+    cam=Math.max(cam,H-p.y-H/2);
+    score=Math.max(score,Math.floor(cam/10));
+    document.getElementById('score').textContent='Score: '+score;
+    if(p.y>H-cam+100){running=false;showMsg('Fell!','Score: '+score);}
+    if(p.y<50-cam*0+walls[walls.length-1].y-50){running=false;showMsg('Reached top!','Score: '+score+' +500');score+=500;}
+  }
+  ctx.fillStyle='#1b2735';ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.translate(0,cam);
+  walls.forEach(w=>{ctx.fillStyle='#5b5b7a';ctx.fillRect(w.x,w.y,w.w,w.h);});
+  enemies.forEach(en=>{if(!en.dead){ctx.fillStyle='#ef4444';ctx.fillRect(en.x,en.y,en.w,en.h);}});
+  ctx.fillStyle=p.diving?'#fbbf24':'#22d3ee';
+  ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+  if(!running&&score>best){best=score;localStorage.idea01Best=best;}
+  document.getElementById('best').textContent='Best: '+best;
+  requestAnimationFrame(loop);
+}
+function showMsg(t,s){document.getElementById('mTitle').textContent=t;document.getElementById('mText').textContent=s+'. Tap Start.';document.getElementById('msg').classList.remove('hide');}
+document.getElementById('bStart').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script>
+<script src="../notes.js"></script>
+</body></html>

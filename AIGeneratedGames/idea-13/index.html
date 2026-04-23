@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Click Speed Tree</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:18px;color:#a78bfa}
+.stat{background:#111;padding:8px 10px;border-radius:6px;font-size:14px;display:flex;justify-content:space-between}
+#chop{width:100%;padding:40px 0;background:#4a2;color:#fff;border:0;border-radius:12px;font-size:20px;font-family:monospace;font-weight:700;cursor:pointer}
+#chop:active{background:#372}
+.tree{height:200px;background:#2a1f0b;border-radius:8px;position:relative;overflow:hidden}
+.trunk{position:absolute;left:50%;top:20px;transform:translateX(-50%);width:30px;height:160px;background:#6b3a1a;border-radius:4px}
+.leaves{position:absolute;left:50%;top:0;transform:translateX(-50%);width:120px;height:80px;background:#4a7c3a;border-radius:50%}
+.trunk .hp{position:absolute;top:0;left:0;right:0;bottom:0;background:#d43;height:0%}
+.sh{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.sh button{padding:10px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:12px;text-align:left}
+.sh button:disabled{opacity:.4}
+</style></head><body>
+<h1>🌳 Click Speed Competition</h1>
+<div class="stat"><span>Logs</span><b id="logs">0</b></div>
+<div class="stat"><span>Strength</span><b id="str">1</b></div>
+<div class="stat"><span>Crit %</span><b id="crit">0%</b></div>
+<div class="stat"><span>Trees Felled</span><b id="felled">0</b></div>
+<div class="tree"><div class="leaves"></div><div class="trunk"><div class="hp" id="hp"></div></div></div>
+<button id="chop">CHOP! (Space)</button>
+<div class="sh" id="shop"></div>
+<script src="../notes.js"></script>
+<script>
+(function(){
+let logs=0,str=1,crit=0,felled=0,treeHp=10,treeMax=10;
+const upgrades=[
+  {n:'+Axe Strength',c:5,cur:1,inc:c=>Math.floor(c*1.8+3),a:()=>str++},
+  {n:'+Crit Chance',c:20,cur:0,inc:c=>Math.floor(c*2.1+10),a:()=>crit+=5},
+  {n:'+Max Logs (bigger tree)',c:50,cur:0,inc:c=>Math.floor(c*2.4+30),a:()=>treeMax+=10},
+  {n:'Auto-Chop +1/s',c:100,cur:0,inc:c=>Math.floor(c*3+80),a:()=>{auto+=1;}}
+];
+let auto=0;
+function chop(){
+  let dmg=str;
+  if(Math.random()*100<crit)dmg*=3;
+  treeHp-=dmg;
+  if(treeHp<=0){felled++;logs+=treeMax;treeHp=treeMax+Math.floor(felled/5)*5;treeMax=treeHp;}
+  upd();
+}
+document.getElementById('chop').addEventListener('pointerdown',e=>{e.preventDefault();chop();});
+document.addEventListener('keydown',e=>{if(e.key===' '){e.preventDefault();chop();}});
+function upd(){
+  document.getElementById('logs').textContent=logs;
+  document.getElementById('str').textContent=str;
+  document.getElementById('crit').textContent=crit+'%';
+  document.getElementById('felled').textContent=felled;
+  document.getElementById('hp').style.height=(100-treeHp/treeMax*100)+'%';
+  const shop=document.getElementById('shop');shop.innerHTML='';
+  upgrades.forEach(u=>{const b=document.createElement('button');b.textContent=u.n+' (Lv '+u.cur+')\nCost: '+u.c+' logs';b.disabled=logs<u.c;b.onclick=()=>{if(logs>=u.c){logs-=u.c;u.cur++;u.a();u.c=u.inc(u.c);upd();}};shop.appendChild(b);});
+}
+setInterval(()=>{for(let i=0;i<auto;i++)chop();},1000);
+upd();
+})();
+</script>
+</body></html>

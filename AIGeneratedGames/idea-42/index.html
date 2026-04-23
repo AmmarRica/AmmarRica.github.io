@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Mines</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:18px;color:#a78bfa}
+.stat{display:flex;justify-content:space-between;background:#111;padding:8px;border-radius:6px}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.cell{background:#2a2a44;padding:0;border:1px solid #555;border-radius:6px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer}
+.cell.safe{background:#22c55e}
+.cell.bomb{background:#ef4444}
+.controls{display:flex;gap:6px}
+.controls button{flex:1;padding:10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body>
+<h1>💣 Musical Mines</h1>
+<div class="stat"><span>Round: <b id="rd">1</b></span><span>You: <b id="me">0</b></span><span>AI: <b id="ai">0</b></span></div>
+<div class="grid" id="g"></div>
+<div class="controls"><button id="newg">New Round</button></div>
+<div style="font-size:12px;text-align:center;color:#aaa">Pick safe spots. 3 of 25 cells hide bombs. You alternate with AI, last to avoid bombs wins.</div>
+<script src="../notes.js"></script>
+<script>
+(function(){
+let cells=[],turn='p',me=0,ai=0,round=1;
+function reset(){cells=Array.from({length:25},()=>({bomb:false,open:false}));const bombs=[];while(bombs.length<3){const i=Math.floor(Math.random()*25);if(!bombs.includes(i)){bombs.push(i);cells[i].bomb=true;}}turn='p';render();}
+function render(){
+  const g=document.getElementById('g');g.innerHTML='';
+  cells.forEach((cl,i)=>{const d=document.createElement('div');d.className='cell'+(cl.open?(cl.bomb?' bomb':' safe'):'');d.textContent=cl.open?(cl.bomb?'💣':'✓'):'?';d.onclick=()=>pick(i);g.appendChild(d);});
+  document.getElementById('rd').textContent=round;document.getElementById('me').textContent=me;document.getElementById('ai').textContent=ai;
+}
+function pick(i){
+  if(turn!=='p'||cells[i].open)return;
+  cells[i].open=true;
+  if(cells[i].bomb){ai++;setTimeout(()=>{alert('You hit a bomb! AI wins round.');round++;reset();},300);render();return;}
+  turn='a';render();
+  setTimeout(aiTurn,600);
+}
+function aiTurn(){
+  const unopened=cells.map((c,i)=>c.open?-1:i).filter(i=>i>=0);
+  if(!unopened.length)return;
+  const i=unopened[Math.floor(Math.random()*unopened.length)];
+  cells[i].open=true;
+  if(cells[i].bomb){me++;setTimeout(()=>{alert('AI hit a bomb! You win round.');round++;reset();},300);}
+  else{turn='p';}
+  render();
+}
+document.getElementById('newg').onclick=()=>{reset();};
+reset();
+})();
+</script>
+</body></html>

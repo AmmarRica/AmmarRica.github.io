@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Maze Maker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{padding:6px 10px;background:#111;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.c{display:flex;gap:4px;padding:6px;flex-wrap:wrap}.btn{flex:1;padding:8px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:11px;min-width:70px}
+.btn.sel{background:#7c3aed}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="480"></canvas>
+<div id="hud"><span>Algo: <b id="al">DFS</b></span><span>Moves: <b id="mv">0</b></span><span>Time: <b id="tm">0</b>s</span></div>
+<div class="c">
+<button class="btn sel" id="bDFS">DFS Maze</button>
+<button class="btn" id="bPrim">Prim's</button>
+<button class="btn" id="bRecursive">Recursive Div</button>
+<button class="btn" id="bRandom">Random</button>
+<button class="btn" id="bNew">Regenerate</button>
+</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+const CELL=24,COLS=Math.floor(W/CELL),ROWS=Math.floor(H/CELL);
+let grid=[],algo='DFS',p={x:0,y:0},moves=0,startT=Date.now(),keys={};
+function initGrid(){grid=Array.from({length:ROWS},()=>Array.from({length:COLS},()=>({n:true,e:true,s:true,w:true,vis:false})));}
+function genDFS(){
+  initGrid();const stack=[[0,0]];grid[0][0].vis=true;
+  while(stack.length){
+    const[r,col]=stack[stack.length-1];
+    const dirs=[['n',-1,0,'s'],['e',0,1,'w'],['s',1,0,'n'],['w',0,-1,'e']].filter(([d,dr,dc])=>{const nr=r+dr,nc=col+dc;return nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&!grid[nr][nc].vis;});
+    if(dirs.length===0){stack.pop();continue;}
+    const[d,dr,dc,od]=dirs[Math.floor(Math.random()*dirs.length)];
+    grid[r][col][d]=false;grid[r+dr][col+dc][od]=false;grid[r+dr][col+dc].vis=true;stack.push([r+dr,col+dc]);
+  }
+}
+function genPrim(){
+  initGrid();const walls=[];grid[0][0].vis=true;[['n',-1,0,'s'],['e',0,1,'w'],['s',1,0,'n'],['w',0,-1,'e']].forEach(([d,dr,dc,od])=>{if(dr>=0&&dc>=0)walls.push([0,0,d,dr,dc,od]);});
+  while(walls.length){
+    const i=Math.floor(Math.random()*walls.length);
+    const[r,col,d,dr,dc,od]=walls.splice(i,1)[0];
+    const nr=r+dr,nc=col+dc;
+    if(nr<0||nr>=ROWS||nc<0||nc>=COLS||grid[nr][nc].vis)continue;
+    grid[r][col][d]=false;grid[nr][nc][od]=false;grid[nr][nc].vis=true;
+    [['n',-1,0,'s'],['e',0,1,'w'],['s',1,0,'n'],['w',0,-1,'e']].forEach(([d2,dr2,dc2,od2])=>{walls.push([nr,nc,d2,dr2,dc2,od2]);});
+  }
+}
+function genRandom(){initGrid();for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){if(r<ROWS-1&&Math.random()<.6){grid[r][c].s=false;grid[r+1][c].n=false;}if(c<COLS-1&&Math.random()<.6){grid[r][c].e=false;grid[r][c+1].w=false;}}}
+function genRec(){initGrid();for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){if(r<ROWS-1)grid[r][c].s=false;if(c<COLS-1)grid[r][c].e=false;if(r<ROWS-1)grid[r+1][c].n=false;if(c<COLS-1)grid[r][c+1].w=false;}
+  function div(r0,r1,c0,c1){if(r1-r0<2&&c1-c0<2)return;const vert=Math.random()<.5&&c1-c0>=2||r1-r0<2;if(vert){const wc=c0+1+Math.floor(Math.random()*(c1-c0));for(let r=r0;r<=r1;r++){grid[r][wc-1].e=true;grid[r][wc].w=true;}const gap=r0+Math.floor(Math.random()*(r1-r0+1));grid[gap][wc-1].e=false;grid[gap][wc].w=false;div(r0,r1,c0,wc-1);div(r0,r1,wc,c1);}else{const wr=r0+1+Math.floor(Math.random()*(r1-r0));for(let c=c0;c<=c1;c++){grid[wr-1][c].s=true;grid[wr][c].n=true;}const gap=c0+Math.floor(Math.random()*(c1-c0+1));grid[wr-1][gap].s=false;grid[wr][gap].n=false;div(r0,wr-1,c0,c1);div(wr,r1,c0,c1);}}
+  div(0,ROWS-1,0,COLS-1);
+}
+function regen(){if(algo==='DFS')genDFS();else if(algo==='Prim')genPrim();else if(algo==='Recursive')genRec();else genRandom();p={x:0,y:0};moves=0;startT=Date.now();}
+document.addEventListener('keydown',e=>{const k=e.key.toLowerCase();const d=k==='arrowup'||k==='w'?'n':k==='arrowright'||k==='d'?'e':k==='arrowdown'||k==='s'?'s':k==='arrowleft'||k==='a'?'w':null;if(d)move(d);});
+c.addEventListener('pointerdown',e=>{
+  const r=c.getBoundingClientRect();
+  const tx=Math.floor((e.clientX-r.left)*W/r.width/CELL),ty=Math.floor((e.clientY-r.top)*H/r.height/CELL);
+  const dx=tx-p.x,dy=ty-p.y;
+  if(Math.abs(dx)>Math.abs(dy))move(dx>0?'e':'w');else move(dy>0?'s':'n');
+});
+function move(d){
+  const cell=grid[p.y][p.x];if(cell[d])return;
+  if(d==='n')p.y--;else if(d==='s')p.y++;else if(d==='e')p.x++;else p.x--;
+  moves++;
+  if(p.x===COLS-1&&p.y===ROWS-1){setTimeout(()=>{alert('Solved in '+moves+' moves, '+Math.floor((Date.now()-startT)/1000)+'s');regen();},100);}
+}
+function draw(){
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;
+  for(let r=0;r<ROWS;r++)for(let col=0;col<COLS;col++){
+    const x=col*CELL,y=r*CELL,cl=grid[r][col];
+    if(cl.n){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+CELL,y);ctx.stroke();}
+    if(cl.w){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+CELL);ctx.stroke();}
+    if(cl.e){ctx.beginPath();ctx.moveTo(x+CELL,y);ctx.lineTo(x+CELL,y+CELL);ctx.stroke();}
+    if(cl.s){ctx.beginPath();ctx.moveTo(x,y+CELL);ctx.lineTo(x+CELL,y+CELL);ctx.stroke();}
+  }
+  ctx.fillStyle='#22c55e';ctx.fillRect((COLS-1)*CELL+4,(ROWS-1)*CELL+4,CELL-8,CELL-8);
+  ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(p.x*CELL+CELL/2,p.y*CELL+CELL/2,CELL/3,0,6.28);ctx.fill();
+  document.getElementById('al').textContent=algo;
+  document.getElementById('mv').textContent=moves;
+  document.getElementById('tm').textContent=Math.floor((Date.now()-startT)/1000);
+  requestAnimationFrame(draw);
+}
+document.getElementById('bDFS').onclick=()=>{setAlgo('DFS');};
+document.getElementById('bPrim').onclick=()=>{setAlgo('Prim');};
+document.getElementById('bRecursive').onclick=()=>{setAlgo('Recursive');};
+document.getElementById('bRandom').onclick=()=>{setAlgo('Random');};
+document.getElementById('bNew').onclick=()=>regen();
+function setAlgo(a){algo=a;['bDFS','bPrim','bRecursive','bRandom'].forEach(id=>document.getElementById(id).classList.remove('sel'));document.getElementById('b'+a).classList.add('sel');regen();}
+regen();draw();
+})();
+</script><script src="../notes.js"></script></body></html>

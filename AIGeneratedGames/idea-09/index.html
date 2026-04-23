@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Tag Platformer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:6px;padding:6px}.btn{flex:1;padding:14px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:14px}
+.btn:active{background:#7c3aed}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="520"></canvas>
+<div id="hud"><span id="time">Time: 0</span><span id="role">You: Runner</span></div>
+<div class="c">
+<button class="btn" id="bL">◀</button>
+<button class="btn" id="bJ">Jump</button>
+<button class="btn" id="bR">▶</button>
+</div>
+<div class="msg" id="msg"><div>Tag Platformer</div><div style="font-size:12px;margin:6px 10px">Survive as a Runner against an AI "It" that moves slightly faster. Use platforms to evade!</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,ai,walls,running=false,keys={},t=0,best=+localStorage.idea09Best||0;
+function reset(){
+  p={x:60,y:H-60,w:16,h:24,vx:0,vy:0,onG:false};
+  ai={x:W-80,y:H-60,w:16,h:24,vx:0,vy:0,onG:false};
+  walls=[{x:0,y:H-20,w:W,h:20},
+    {x:60,y:H-120,w:80,h:12},{x:220,y:H-180,w:80,h:12},{x:360,y:H-120,w:80,h:12},
+    {x:140,y:H-260,w:80,h:12},{x:280,y:H-320,w:80,h:12},{x:40,y:H-380,w:80,h:12}];
+  t=0;running=true;
+}
+document.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key===' '){e.preventDefault();if(p&&p.onG){p.vy=-11;p.onG=false;}}});
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+['bL','bR'].forEach(id=>{const el=document.getElementById(id);el.addEventListener('pointerdown',()=>keys[id]=true);el.addEventListener('pointerup',()=>keys[id]=false);});
+document.getElementById('bJ').addEventListener('pointerdown',()=>{if(p&&p.onG){p.vy=-11;p.onG=false;}});
+function rectVs(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+function step(e,spd){
+  e.vy+=.5;if(e.vy>14)e.vy=14;
+  e.x+=e.vx;walls.forEach(w=>{if(rectVs(e,w)){if(e.vx>0)e.x=w.x-e.w;else if(e.vx<0)e.x=w.x+w.w;e.vx=0;}});
+  e.y+=e.vy;e.onG=false;
+  walls.forEach(w=>{if(rectVs(e,w)){if(e.vy>0){e.y=w.y-e.h;e.vy=0;e.onG=true;}else{e.y=w.y+w.h;e.vy=0;}}});
+  if(e.x<0)e.x=0;if(e.x>W-e.w)e.x=W-e.w;
+}
+function loop(){
+  if(running){
+    t++;
+    let ax=0;
+    if(keys['arrowleft']||keys['a']||keys['bL'])ax=-1;
+    if(keys['arrowright']||keys['d']||keys['bR'])ax=1;
+    p.vx=ax*3;
+    // AI moves toward player, slightly faster
+    let dx=p.x-ai.x;ai.vx=Math.sign(dx)*3.4;
+    if(ai.onG&&Math.random()<.02&&Math.abs(dx)<60){ai.vy=-11;ai.onG=false;}
+    if(ai.onG&&p.y<ai.y-20&&Math.random()<.05){ai.vy=-11;ai.onG=false;}
+    step(p,3);step(ai,3.4);
+    if(rectVs(p,ai)){running=false;let sec=Math.floor(t/60);if(sec>best){best=sec;localStorage.idea09Best=best;}showMsg('Tagged! Survived '+sec+'s');}
+    document.getElementById('time').textContent='Time: '+Math.floor(t/60)+'s';
+    document.getElementById('role').textContent='Best: '+best+'s';
+  }
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  walls.forEach(w=>{ctx.fillStyle='#555';ctx.fillRect(w.x,w.y,w.w,w.h);});
+  ctx.fillStyle='#ef4444';ctx.fillRect(ai.x,ai.y,ai.w,ai.h);
+  if(p){ctx.fillStyle='#22d3ee';ctx.fillRect(p.x,p.y,p.w,p.h);}
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

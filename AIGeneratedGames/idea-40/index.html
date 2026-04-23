@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Minigame Party</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.ti{position:absolute;top:40px;left:0;right:0;text-align:center;font-size:22px;font-weight:700;pointer-events:none;text-shadow:1px 1px #000}
+.desc{position:absolute;top:80px;left:10px;right:10px;text-align:center;font-size:13px;color:#fbbf24;pointer-events:none;text-shadow:1px 1px #000}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="520"></canvas>
+<div id="hud"><span>Round <b id="rd">1</b></span><span>Score <b id="sc">0</b></span><span>Time <b id="tm">10</b></span></div>
+<div class="ti" id="ti"></div>
+<div class="desc" id="desc"></div>
+<div class="msg" id="msg"><div id="mt">Minigame Party</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let score=0,round=0,time=10,running=false,state={};
+const games=[
+  {n:'Tap the DOT!',d:'Tap the moving dot 5 times',init:()=>{state.dot={x:W/2,y:H/2,vx:3,vy:2};state.hits=0;},step:(dt)=>{state.dot.x+=state.dot.vx;state.dot.y+=state.dot.vy;if(state.dot.x<20||state.dot.x>W-20)state.dot.vx*=-1;if(state.dot.y<140||state.dot.y>H-20)state.dot.vy*=-1;},draw:()=>{ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(state.dot.x,state.dot.y,24,0,6.28);ctx.fill();ctx.fillStyle='#fff';ctx.font='16px monospace';ctx.fillText(state.hits+'/5',W/2-15,130);},tap:(x,y)=>{if(Math.hypot(x-state.dot.x,y-state.dot.y)<24){state.hits++;state.dot.vx*=-1.1;state.dot.vy*=-1.1;if(state.hits>=5){score+=100;end();}}}},
+  {n:'DONT TAP RED!',d:'Tap only green circles',init:()=>{state.circles=[];state.safe=0;for(let i=0;i<8;i++)state.circles.push({x:Math.random()*(W-40)+20,y:Math.random()*(H-180)+140,r:24,safe:Math.random()<.5,got:false});},step:()=>{},draw:()=>{state.circles.forEach(c=>{if(c.got)return;ctx.fillStyle=c.safe?'#22c55e':'#ef4444';ctx.beginPath();ctx.arc(c.x,c.y,c.r,0,6.28);ctx.fill();});},tap:(x,y)=>{state.circles.forEach(cc=>{if(cc.got)return;if(Math.hypot(x-cc.x,y-cc.y)<cc.r){cc.got=true;if(cc.safe){state.safe++;score+=20;}else{score-=50;end();}}});}},
+  {n:'RAPID TAP',d:'Tap as fast as you can!',init:()=>{state.taps=0;},step:()=>{},draw:()=>{ctx.fillStyle='#7c3aed';ctx.fillRect(60,160,W-120,H-240);ctx.fillStyle='#fff';ctx.font='36px monospace';ctx.fillText(state.taps,W/2-20,H/2);ctx.font='14px monospace';ctx.fillText('TAPS',W/2-20,H/2+30);},tap:()=>{state.taps++;score+=1;}},
+  {n:'MATH QUIZ',d:'Tap the correct answer',init:()=>{const a=2+Math.floor(Math.random()*9),b=2+Math.floor(Math.random()*9);state.q=a+'+'+b+'=?';state.ans=a+b;state.opts=[state.ans];while(state.opts.length<4){const x=state.ans+Math.floor(Math.random()*10)-5;if(!state.opts.includes(x))state.opts.push(x);}state.opts.sort(()=>Math.random()-.5);},step:()=>{},draw:()=>{ctx.fillStyle='#fff';ctx.font='32px monospace';ctx.fillText(state.q,W/2-60,200);state.opts.forEach((o,i)=>{const x=100+(i%2)*180,y=260+Math.floor(i/2)*100;ctx.fillStyle='#7c3aed';ctx.fillRect(x,y,120,70);ctx.fillStyle='#fff';ctx.font='24px monospace';ctx.fillText(o,x+50,y+45);});},tap:(x,y)=>{state.opts.forEach((o,i)=>{const bx=100+(i%2)*180,by=260+Math.floor(i/2)*100;if(x>bx&&x<bx+120&&y>by&&y<by+70){if(o===state.ans){score+=100;}else{score-=30;}end();}});}},
+  {n:'CATCH FALLING',d:'Catch coins, avoid rocks',init:()=>{state.items=[];state.basket=W/2;state.caught=0;},step:()=>{state.basket+=(state._tx-state.basket)*.2;if(Math.random()<.08){state.items.push({x:Math.random()*(W-40)+20,y:140,vy:3,type:Math.random()<.6?'coin':'rock'});}state.items.forEach(i=>i.y+=i.vy);state.items.forEach(i=>{if(i.y>H-60&&Math.abs(i.x-state.basket)<40){if(i.type==='coin'){score+=10;state.caught++;}else{score-=20;}i.dead=true;}});state.items=state.items.filter(i=>!i.dead&&i.y<H);},draw:()=>{state.items.forEach(i=>{ctx.fillStyle=i.type==='coin'?'#fbbf24':'#888';ctx.beginPath();ctx.arc(i.x,i.y,12,0,6.28);ctx.fill();});ctx.fillStyle='#7c3aed';ctx.fillRect(state.basket-40,H-50,80,20);},tap:(x)=>{state._tx=x;}}
+];
+function pickGame(){const g=games[Math.floor(Math.random()*games.length)];state={};state._tx=W/2;g.init();state.cur=g;round++;time=10;}
+function end(){state.done=true;}
+c.addEventListener('pointerdown',e=>{if(!state.cur||state.done)return;const r=c.getBoundingClientRect();state.cur.tap((e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height);});
+c.addEventListener('pointermove',e=>{if(!state.cur)return;const r=c.getBoundingClientRect();if(state.cur.tap.length<2)state.cur.tap((e.clientX-r.left)*W/r.width);});
+let tL=Date.now();
+function loop(){
+  if(running){
+    const now=Date.now(),dt=(now-tL)/1000;tL=now;
+    time-=dt;
+    if(time<=0||state.done){if(round>=10){showMsg('Game over! Score: '+score);running=false;return;}pickGame();}
+    if(state.cur)state.cur.step(dt);
+    ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+    if(state.cur)state.cur.draw();
+    document.getElementById('ti').textContent=state.cur?state.cur.n:'';
+    document.getElementById('desc').textContent=state.cur?state.cur.d:'';
+  }
+  document.getElementById('rd').textContent=round;
+  document.getElementById('sc').textContent=score;
+  document.getElementById('tm').textContent=Math.ceil(Math.max(0,time));
+  requestAnimationFrame(loop);
+}
+function showMsg(t){document.getElementById('mt').textContent=t;document.getElementById('msg').classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');score=0;round=0;running=true;tL=Date.now();pickGame();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

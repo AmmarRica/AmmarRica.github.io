@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Ghost Sabotage</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:6px;padding:6px}.btn{flex:1;padding:12px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:13px}
+.btn:active{background:#7c3aed}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="540"></canvas>
+<div id="hud"><span id="state">Mode: Living</span><span id="info">Tap traps when ghost</span></div>
+<div class="c">
+<button class="btn" id="bL">◀</button>
+<button class="btn" id="bJ">Jump</button>
+<button class="btn" id="bR">▶</button>
+</div>
+<div class="msg" id="msg"><div>Ghost Sabotage Platformer</div><div style="font-size:12px;margin:6px 10px">Play as the living hero. If you die, you become a ghost who taps traps to hinder your AI teammate. Help them reach the flag!</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,ally,walls,traps,goal,running=false,keys={},mode='living';
+function reset(){
+  p={x:40,y:H-60,w:14,h:22,vx:0,vy:0,onG:false,alive:true};
+  ally={x:70,y:H-60,w:14,h:22,vx:0,vy:0,onG:false,alive:true,t:0};
+  walls=[{x:0,y:H-20,w:W,h:20},
+    {x:140,y:H-100,w:80,h:10},{x:280,y:H-160,w:80,h:10},{x:120,y:H-220,w:80,h:10},{x:260,y:H-280,w:100,h:10}];
+  traps=[{x:200,y:H-40,w:30,h:20,active:false,cool:0},{x:320,y:H-40,w:30,h:20,active:false,cool:0},{x:100,y:H-230,w:30,h:10,active:false,cool:0}];
+  goal={x:W-50,y:H-310};mode='living';running=true;
+}
+document.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key===' '){e.preventDefault();jump();}});
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+['bL','bR'].forEach(id=>{const el=document.getElementById(id);el.addEventListener('pointerdown',()=>keys[id]=true);el.addEventListener('pointerup',()=>keys[id]=false);});
+document.getElementById('bJ').addEventListener('pointerdown',jump);
+function jump(){if(p&&p.alive&&p.onG){p.vy=-11;p.onG=false;}}
+c.addEventListener('pointerdown',e=>{
+  if(mode!=='ghost')return;
+  const r=c.getBoundingClientRect();
+  const tx=(e.clientX-r.left)*W/r.width,ty=(e.clientY-r.top)*H/r.height;
+  traps.forEach(t=>{if(t.cool<=0&&tx>t.x-10&&tx<t.x+t.w+10&&ty>t.y-10&&ty<t.y+t.h+10){t.active=true;t.cool=90;}});
+});
+function rectVs(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+function physics(e,vx){
+  e.vx=vx;e.vy+=.5;if(e.vy>14)e.vy=14;
+  e.x+=e.vx;walls.forEach(w=>{if(rectVs(e,w)){if(e.vx>0)e.x=w.x-e.w;else if(e.vx<0)e.x=w.x+w.w;e.vx=0;}});
+  e.y+=e.vy;e.onG=false;
+  walls.forEach(w=>{if(rectVs(e,w)){if(e.vy>0){e.y=w.y-e.h;e.vy=0;e.onG=true;}else{e.y=w.y+w.h;e.vy=0;}}});
+}
+function loop(){
+  if(running){
+    if(p.alive){
+      let ax=0;
+      if(keys['arrowleft']||keys['a']||keys['bL'])ax=-1;
+      if(keys['arrowright']||keys['d']||keys['bR'])ax=1;
+      physics(p,ax*3);
+      traps.forEach(t=>{if(t.active&&rectVs(p,t)){p.alive=false;mode='ghost';}});
+      if(Math.abs(p.x-goal.x)<25&&Math.abs(p.y-goal.y)<30){running=false;showMsg('Hero won!');}
+    }
+    // AI ally
+    ally.t++;
+    let dx=goal.x-ally.x;let axA=Math.sign(dx)*1;
+    if(ally.onG&&Math.random()<.03)ally.vy=-10;
+    physics(ally,axA*2.5);
+    traps.forEach(t=>{if(t.active&&rectVs(ally,t)){ally.alive=false;}});
+    if(!ally.alive){running=false;showMsg('Ally died!');}
+    if(Math.abs(ally.x-goal.x)<25&&Math.abs(ally.y-goal.y)<30){running=false;showMsg('Team won!');}
+    traps.forEach(t=>{if(t.cool>0)t.cool--;if(t.cool<30)t.active=false;});
+    document.getElementById('state').textContent='Mode: '+(mode==='ghost'?'Ghost (tap traps)':'Living');
+  }
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  walls.forEach(w=>{ctx.fillStyle='#555';ctx.fillRect(w.x,w.y,w.w,w.h);});
+  traps.forEach(t=>{ctx.fillStyle=t.active?'#ef4444':'#6b3030';ctx.fillRect(t.x,t.y,t.w,t.h);});
+  ctx.fillStyle='#22c55e';ctx.fillRect(goal.x-10,goal.y,20,30);
+  if(ally.alive){ctx.fillStyle='#22d3ee';ctx.fillRect(ally.x,ally.y,ally.w,ally.h);}
+  if(p.alive){ctx.fillStyle='#fbbf24';ctx.fillRect(p.x,p.y,p.w,p.h);}
+  else{ctx.globalAlpha=.5;ctx.fillStyle='#fff';ctx.fillRect(p.x,p.y,p.w,p.h);ctx.globalAlpha=1;}
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Colorful Metroidvania</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#000;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#111}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:4px;padding:6px;flex-wrap:wrap}.btn{flex:1;padding:12px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:12px;min-width:50px}
+.btn.act{background:#7c3aed}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="540"></canvas>
+<div id="hud"><span id="mode">Mode: B&amp;W</span><span id="col">Colors: </span></div>
+<div class="c">
+<button class="btn" id="bL">◀</button>
+<button class="btn" id="bJ">Jump</button>
+<button class="btn" id="bR">▶</button>
+<button class="btn" id="bC">Cycle</button>
+</div>
+<div class="msg" id="msg"><div>Colorful Metroidvania</div><div style="font-size:12px;margin:6px 10px">Unlock colors. Red walls become solid when in Red mode (off = water). Blue walls are water when off, solid when on. Cycle modes to progress!</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,walls,pickups,goal,mode,running=false,keys={};
+function reset(){
+  p={x:30,y:H-60,w:14,h:22,vx:0,vy:0,onG:false};
+  mode='none';
+  walls=[{x:0,y:H-20,w:W,h:20},{x:0,y:0,w:10,h:H},{x:W-10,y:0,w:10,h:H},
+    {x:140,y:H-120,w:20,h:100,col:'red'},
+    {x:260,y:H-180,w:20,h:160,col:'blue'},
+    {x:360,y:H-260,w:20,h:240,col:'red'},
+    {x:180,y:H-220,w:80,h:8,col:null},
+    {x:300,y:H-300,w:60,h:8,col:null}];
+  pickups=[{x:70,y:H-40,col:'red'},{x:200,y:H-40,col:'blue'}];
+  goal={x:W-40,y:H-40};running=true;
+}
+document.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key===' '){e.preventDefault();doJump();}if(e.key==='c')cycle();});
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+['bL','bR','bJ','bC'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.addEventListener('pointerdown',()=>{keys[id]=true;if(id==='bJ')doJump();if(id==='bC')cycle();});
+  el.addEventListener('pointerup',()=>keys[id]=false);
+});
+function doJump(){if(p&&p.onG){p.vy=-10;p.onG=false;}}
+function cycle(){const m=['none','red','blue'];const have=['none'].concat(['red','blue'].filter(col=>pickups.find(pk=>pk.col===col&&pk.got)));mode=have[(have.indexOf(mode)+1)%have.length];}
+function isSolid(w){if(!w.col)return true;if(w.col==='red')return mode==='red';if(w.col==='blue')return mode==='blue';return true;}
+function rectVs(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+function loop(){
+  if(running){
+    let ax=0;
+    if(keys['arrowleft']||keys['a']||keys['bL'])ax=-1;
+    if(keys['arrowright']||keys['d']||keys['bR'])ax=1;
+    p.vx=ax*3;p.vy+=.5;if(p.vy>12)p.vy=12;
+    p.x+=p.vx;walls.filter(isSolid).forEach(w=>{if(rectVs(p,w)){if(p.vx>0)p.x=w.x-p.w;else if(p.vx<0)p.x=w.x+w.w;p.vx=0;}});
+    p.y+=p.vy;p.onG=false;
+    walls.filter(isSolid).forEach(w=>{if(rectVs(p,w)){if(p.vy>0){p.y=w.y-p.h;p.vy=0;p.onG=true;}else{p.y=w.y+w.h;p.vy=0;}}});
+    // non-solid colored walls act as water - slow fall
+    walls.filter(w=>!isSolid(w)).forEach(w=>{if(rectVs(p,w)){p.vy*=.5;}});
+    pickups.forEach(pk=>{if(!pk.got&&Math.abs(p.x-pk.x)<16&&Math.abs(p.y-(pk.y-10))<20){pk.got=true;}});
+    if(Math.abs(p.x-goal.x)<20&&Math.abs(p.y-goal.y)<30){running=false;showMsg('Completed!');}
+    document.getElementById('mode').textContent='Mode: '+mode;
+    document.getElementById('col').textContent='Colors: '+pickups.filter(p=>p.got).map(p=>p.col).join(' ');
+  }
+  ctx.fillStyle='#111';ctx.fillRect(0,0,W,H);
+  walls.forEach(w=>{
+    let solid=isSolid(w);
+    ctx.fillStyle=w.col==='red'?(solid?'#ef4444':'rgba(239,68,68,.25)'):w.col==='blue'?(solid?'#3b82f6':'rgba(59,130,246,.25)'):'#888';
+    ctx.fillRect(w.x,w.y,w.w,w.h);
+  });
+  pickups.forEach(pk=>{if(pk.got)return;ctx.fillStyle=pk.col==='red'?'#ef4444':'#3b82f6';ctx.beginPath();ctx.arc(pk.x,pk.y-10,8,0,6.28);ctx.fill();});
+  ctx.fillStyle='#22c55e';ctx.fillRect(goal.x-10,goal.y-30,20,30);
+  if(p){ctx.fillStyle='#fff';ctx.fillRect(p.x,p.y,p.w,p.h);}
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>
