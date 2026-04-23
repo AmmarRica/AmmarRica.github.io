@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Prop Hunt</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#3a2a14}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:6px;padding:6px}.btn{flex:1;padding:12px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:12px}
+.btn:active{background:#7c3aed}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="480"></canvas>
+<div id="hud"><span>Time: <b id="tm">60</b>s</span><span>Smoke: <b id="sm">3</b></span></div>
+<div class="c">
+<button class="btn" id="bL">◀</button>
+<button class="btn" id="bU">▲</button>
+<button class="btn" id="bD">▼</button>
+<button class="btn" id="bR">▶</button>
+<button class="btn" id="bD2">Disguise</button>
+<button class="btn" id="bS">Smoke</button>
+</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+const keys={};
+let p,seeker,props,smokes=[],time=60,running=true,tLast=Date.now(),smokeLeft=3;
+function reset(){
+  p={x:W/2,y:H/2,r:12,disguise:null};
+  seeker={x:W-40,y:40,r:14,spd:1.6,state:'search'};
+  props=[];for(let i=0;i<15;i++)props.push({x:50+Math.random()*(W-100),y:50+Math.random()*(H-100),kind:Math.floor(Math.random()*3),w:28,h:28});
+  smokes=[];time=60;smokeLeft=3;running=true;
+}
+document.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+['bL','bR','bU','bD'].forEach(id=>{const el=document.getElementById(id);el.addEventListener('pointerdown',()=>keys[id]=true);el.addEventListener('pointerup',()=>keys[id]=false);});
+document.getElementById('bD2').addEventListener('pointerdown',()=>{
+  const near=props.sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];
+  if(near&&Math.hypot(near.x-p.x,near.y-p.y)<30)p.disguise=near.kind;else p.disguise=null;
+});
+document.getElementById('bS').addEventListener('pointerdown',()=>{if(smokeLeft>0){smokeLeft--;smokes.push({x:p.x,y:p.y,r:10,maxR:80,life:180});}});
+function loop(){
+  if(running){
+    const now=Date.now();if(now-tLast>=1000){tLast=now;time--;if(time<=0){running=false;}}
+    let dx=0,dy=0;
+    if(keys['a']||keys['arrowleft']||keys['bL'])dx=-1;
+    if(keys['d']||keys['arrowright']||keys['bR'])dx=1;
+    if(keys['w']||keys['arrowup']||keys['bU'])dy=-1;
+    if(keys['s']||keys['arrowdown']||keys['bD'])dy=1;
+    const m=Math.hypot(dx,dy)||1;p.x+=dx/m*2;p.y+=dy/m*2;
+    p.x=Math.max(p.r,Math.min(W-p.r,p.x));p.y=Math.max(p.r,Math.min(H-p.r,p.y));
+    // Seeker moves toward guess
+    const inSmoke=smokes.some(s=>Math.hypot(s.x-p.x,s.y-p.y)<s.r);
+    if(!inSmoke){const dx=p.x-seeker.x,dy=p.y-seeker.y,d=Math.hypot(dx,dy)||1;seeker.x+=dx/d*seeker.spd*(p.disguise!=null?.3:1);seeker.y+=dy/d*seeker.spd*(p.disguise!=null?.3:1);}
+    else{seeker.x+=(Math.random()-.5)*1;seeker.y+=(Math.random()-.5)*1;}
+    smokes.forEach(s=>{s.r=Math.min(s.maxR,s.r+2);s.life--;});smokes=smokes.filter(s=>s.life>0);
+    if(Math.hypot(seeker.x-p.x,seeker.y-p.y)<seeker.r+p.r&&!inSmoke&&p.disguise==null){running=false;}
+    document.getElementById('tm').textContent=time;document.getElementById('sm').textContent=smokeLeft;
+  }
+  ctx.fillStyle='#3a2a14';ctx.fillRect(0,0,W,H);
+  props.forEach(pr=>{ctx.fillStyle=['#8b4513','#5a5a7a','#4a7c3a'][pr.kind];ctx.fillRect(pr.x-pr.w/2,pr.y-pr.h/2,pr.w,pr.h);});
+  smokes.forEach(s=>{ctx.fillStyle='rgba(200,200,200,.6)';ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,6.28);ctx.fill();});
+  if(p.disguise!=null){ctx.fillStyle=['#8b4513','#5a5a7a','#4a7c3a'][p.disguise];ctx.fillRect(p.x-14,p.y-14,28,28);}
+  else{ctx.fillStyle='#22d3ee';ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fill();}
+  ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(seeker.x,seeker.y,seeker.r,0,6.28);ctx.fill();
+  if(!running){ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff';ctx.font='24px monospace';ctx.fillText(time<=0?'Survived!':'Caught!',W/2-60,H/2);}
+  requestAnimationFrame(loop);
+}
+reset();loop();
+})();
+</script><script src="../notes.js"></script></body></html>

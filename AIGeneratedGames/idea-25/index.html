@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Real-Time Catan</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:16px;color:#a78bfa}
+.hud{display:flex;gap:6px;font-size:12px;flex-wrap:wrap}
+.hud span{background:#1a1a2e;padding:4px 8px;border-radius:4px}
+#canv{width:100%;aspect-ratio:1;background:#2a3a2a;border-radius:8px;display:block}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.actions button{padding:10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace;font-size:12px}
+.actions button:disabled{opacity:.4}
+.log{background:#111;padding:6px 10px;border-radius:6px;font-size:11px;max-height:80px;overflow-y:auto}
+.timer{background:#7c3aed;color:#fff;padding:6px;border-radius:6px;text-align:center;font-size:14px}
+</style></head><body>
+<h1>⏱ Real-Time Catan</h1>
+<div class="timer">Round ends in <b id="tmr">30</b>s</div>
+<div class="hud">
+<span>🌲 <b id="w">0</b></span>
+<span>🧱 <b id="b">0</b></span>
+<span>🐑 <b id="s">0</b></span>
+<span>🌾 <b id="g">0</b></span>
+<span>⛰ <b id="o">0</b></span>
+<span>⭐ <b id="vp">0</b></span>
+</div>
+<canvas id="canv" width="400" height="400"></canvas>
+<div class="actions">
+<button id="road">Road (🌲+🧱)</button>
+<button id="sett">Settlement (all 4)</button>
+<button id="city">City (🌾🌾+⛰⛰⛰)</button>
+<button id="trade">Trade 4:1 (tap resource above)</button>
+</div>
+<div class="log" id="log"></div>
+<script src="../notes.js"></script>
+<script>
+(function(){
+const c=document.getElementById('canv'),ctx=c.getContext('2d');
+let res={w:0,b:0,s:0,g:0,o:0},vp=0,roads=0,setts=0,cities=0;
+const hexes=[{x:200,y:100,r:'w',num:6},{x:130,y:140,r:'g',num:3},{x:270,y:140,r:'b',num:8},{x:100,y:220,r:'s',num:5},{x:200,y:220,r:'o',num:9},{x:300,y:220,r:'w',num:4},{x:130,y:300,r:'b',num:11},{x:270,y:300,r:'s',num:10},{x:200,y:340,r:'g',num:2}];
+let ai={w:0,b:0,s:0,g:0,o:0,vp:0};
+let timer=30,tradeMode=null;
+function draw(){
+  ctx.fillStyle='#2a3a2a';ctx.fillRect(0,0,400,400);
+  hexes.forEach(h=>{
+    ctx.fillStyle={w:'#2d5a1e',b:'#8b4513',s:'#9acd32',g:'#daa520',o:'#696969'}[h.r];
+    ctx.beginPath();
+    for(let i=0;i<6;i++){const a=Math.PI/3*i;ctx.lineTo(h.x+Math.cos(a)*50,h.y+Math.sin(a)*50);}
+    ctx.closePath();ctx.fill();ctx.strokeStyle='#000';ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font='bold 14px monospace';ctx.fillText(h.num,h.x-6,h.y+5);
+  });
+}
+setInterval(()=>{
+  if(timer<=0)return;
+  const roll=2+Math.floor(Math.random()*11);
+  hexes.forEach(h=>{if(h.num===roll){const gain=setts>0||cities>0?1+cities:0;res[h.r]+=gain;if(gain)log('Rolled '+roll+': +'+gain+' '+h.r);}});
+  const aiRoll=2+Math.floor(Math.random()*11);
+  Object.keys(ai).forEach(k=>{if(k!=='vp')ai[k]+=Math.random()<.3?1:0;});
+  if(Math.random()<.2&&ai.w+ai.b+ai.s+ai.g+ai.o>5){ai.vp++;log('AI built something. AI VP: '+ai.vp);}
+  upd();
+},1500);
+setInterval(()=>{if(timer>0){timer--;document.getElementById('tmr').textContent=timer;if(timer===0){log('Round over! Your VP: '+vp+' vs AI '+ai.vp);}}},1000);
+function log(m){const l=document.getElementById('log');l.innerHTML=m+'<br>'+l.innerHTML;}
+function upd(){['w','b','s','g','o'].forEach(k=>document.getElementById(k).textContent=res[k]);document.getElementById('vp').textContent=vp;}
+document.getElementById('road').onclick=()=>{if(res.w>=1&&res.b>=1){res.w--;res.b--;roads++;log('Road built. Roads: '+roads);upd();}};
+document.getElementById('sett').onclick=()=>{if(res.w>=1&&res.b>=1&&res.s>=1&&res.g>=1){res.w--;res.b--;res.s--;res.g--;setts++;vp++;log('Settlement! VP '+vp);upd();}};
+document.getElementById('city').onclick=()=>{if(res.g>=2&&res.o>=3&&setts>0){res.g-=2;res.o-=3;setts--;cities++;vp+=2;log('City! VP '+vp);upd();}};
+document.getElementById('trade').onclick=()=>{
+  const k=prompt('Trade away 4 of which? (w/b/s/g/o)');if(!k||!res[k]||res[k]<4){log('Need 4 of that resource');return;}
+  const to=prompt('Trade for? (w/b/s/g/o)');if(!to||!(to in res)){log('Invalid');return;}
+  res[k]-=4;res[to]+=1;log('Traded 4 '+k+' for 1 '+to);upd();
+};
+draw();upd();
+})();
+</script>
+</body></html>

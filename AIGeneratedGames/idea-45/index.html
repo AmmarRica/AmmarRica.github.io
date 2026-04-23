@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Spot the Cheater</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:18px;color:#a78bfa}
+.stat{display:flex;justify-content:space-between;background:#111;padding:8px;border-radius:6px;font-size:13px}
+.players{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.p{background:#1a1a2e;padding:10px;border-radius:8px;border:2px solid #333;cursor:pointer}
+.p.sel{border-color:#fbbf24}
+.p h3{font-size:14px;color:#a78bfa;margin-bottom:4px}
+.p .behavior{font-size:11px;color:#ccc;min-height:40px}
+.log{background:#111;padding:8px;border-radius:6px;font-size:11px;max-height:150px;overflow-y:auto}
+button{padding:10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace;font-size:13px}
+</style></head><body>
+<h1>🕵 Spot the Cheater</h1>
+<div class="stat"><span>Round: <b id="rd">1</b></span><span>Score: <b id="sc">0</b></span></div>
+<div class="players" id="pl"></div>
+<button id="next">Next Round (Accuse the Cheater!)</button>
+<div class="log" id="log"></div>
+<script src="../notes.js"></script>
+<script>
+(function(){
+const names=['Alex','Bea','Cam','Dan','Eve','Finn'];
+let round=1,score=0,players=[],cheater=-1,selected=-1;
+function roll(cheat){const dice=[];for(let i=0;i<3;i++){dice.push(cheat&&Math.random()<.6?6:1+Math.floor(Math.random()*6));}return dice;}
+function gen(){
+  players=names.slice(0,4).map((n,i)=>({n,rolls:[]}));
+  cheater=Math.floor(Math.random()*4);
+  for(let r=0;r<3;r++){
+    players.forEach((p,i)=>p.rolls.push(roll(i===cheater)));
+  }
+}
+function render(){
+  const pl=document.getElementById('pl');pl.innerHTML='';
+  players.forEach((p,i)=>{
+    const d=document.createElement('div');d.className='p'+(selected===i?' sel':'');
+    const totalRolls=p.rolls.flat();
+    const avg=totalRolls.reduce((a,b)=>a+b,0)/totalRolls.length;
+    d.innerHTML='<h3>'+p.n+'</h3><div class="behavior">Rolls: '+p.rolls.map(r=>r.join(',')).join(' | ')+'<br>Avg: '+avg.toFixed(1)+'</div>';
+    d.onclick=()=>{selected=i;render();};
+    pl.appendChild(d);
+  });
+  document.getElementById('rd').textContent=round;document.getElementById('sc').textContent=score;
+}
+document.getElementById('next').onclick=()=>{
+  if(selected<0){alert('Pick a player to accuse!');return;}
+  const correct=selected===cheater;
+  const log=document.getElementById('log');
+  log.innerHTML='R'+round+': You accused '+players[selected].n+'. '+(correct?'✅ They were cheating!':'❌ Cheater was '+players[cheater].n)+'<br>'+log.innerHTML;
+  if(correct)score++;
+  round++;selected=-1;gen();render();
+};
+gen();render();
+})();
+</script>
+</body></html>

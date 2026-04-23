@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Endless FTL</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#000;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#000821}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:4px;padding:6px}.btn{flex:1;padding:10px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:12px}
+.btn:active{background:#7c3aed}.btn:disabled{opacity:.4}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="460"></canvas>
+<div id="hud"><span>Boss <b id="bn">1</b></span><span>HP <b id="php">30</b></span><span>Foe HP <b id="ehp">0</b></span></div>
+<div class="c">
+<button class="btn" id="bL">◀</button>
+<button class="btn" id="bS">Shield</button>
+<button class="btn" id="bF">FIRE</button>
+<button class="btn" id="bR">▶</button>
+</div>
+<div class="msg" id="msg"><div>Endless FTL Boss Gauntlet</div><div style="font-size:12px;margin:6px 10px">Dodge attacks, fire back. Each boss has unique patterns. Survive as long as you can!</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,boss,bullets,ebullets,bossN=0,running=false,keys={},shieldT=0,shieldCool=0;
+const bossTemplates=[
+  {n:'Crab',hp:40,pat:'spread'},{n:'Pyre',hp:60,pat:'aim'},{n:'Orb',hp:80,pat:'ring'},{n:'Drone',hp:100,pat:'wave'},{n:'Hydra',hp:140,pat:'aim'}
+];
+function nextBoss(){
+  bossN++;const t=bossTemplates[(bossN-1)%bossTemplates.length];
+  boss={x:W/2,y:80,w:60,h:40,hp:t.hp*(1+Math.floor((bossN-1)/bossTemplates.length)*.5),maxHp:t.hp,vx:2,t:0,pat:t.pat,n:t.n};
+  ebullets=[];
+}
+function reset(){p={x:W/2,y:H-60,hp:30,cool:0};bullets=[];bossN=0;nextBoss();running=true;}
+const keybind={ArrowLeft:'l',ArrowRight:'r',a:'l',d:'r',' ':'f',s:'s'};
+document.addEventListener('keydown',e=>{if(e.key===' ')e.preventDefault();keys[keybind[e.key]||e.key.toLowerCase()]=true;});
+document.addEventListener('keyup',e=>keys[keybind[e.key]||e.key.toLowerCase()]=false);
+['bL','bR'].forEach(id=>{const el=document.getElementById(id);el.addEventListener('pointerdown',()=>keys[id==='bL'?'l':'r']=true);el.addEventListener('pointerup',()=>keys[id==='bL'?'l':'r']=false);});
+document.getElementById('bF').addEventListener('pointerdown',()=>keys['f']=true);
+document.getElementById('bF').addEventListener('pointerup',()=>keys['f']=false);
+document.getElementById('bS').addEventListener('pointerdown',()=>{if(shieldCool<=0){shieldT=30;shieldCool=200;}});
+function loop(){
+  if(running){
+    if(keys['l'])p.x-=5;if(keys['r'])p.x+=5;
+    p.x=Math.max(20,Math.min(W-20,p.x));
+    p.cool--;
+    if(keys['f']&&p.cool<=0){bullets.push({x:p.x,y:p.y-10,vy:-10});p.cool=10;}
+    bullets.forEach(b=>b.y+=b.vy);bullets=bullets.filter(b=>b.y>0);
+    boss.t++;boss.x+=boss.vx;if(boss.x<40||boss.x>W-40)boss.vx*=-1;
+    // fire patterns
+    if(boss.t%40===0){
+      if(boss.pat==='spread'){for(let a=-1;a<=1;a++)ebullets.push({x:boss.x,y:boss.y+20,vx:a*2,vy:3});}
+      if(boss.pat==='aim'){let dx=p.x-boss.x,dy=p.y-boss.y,m=Math.hypot(dx,dy)||1;ebullets.push({x:boss.x,y:boss.y+20,vx:dx/m*4,vy:dy/m*4});}
+      if(boss.pat==='ring'){for(let a=0;a<8;a++)ebullets.push({x:boss.x,y:boss.y+20,vx:Math.cos(a/8*6.28)*3,vy:Math.sin(a/8*6.28)*3});}
+      if(boss.pat==='wave'){for(let a=-2;a<=2;a++)ebullets.push({x:boss.x+a*20,y:boss.y+20,vx:0,vy:3+Math.abs(a)});}
+    }
+    ebullets.forEach(b=>{b.x+=b.vx;b.y+=b.vy;});
+    ebullets=ebullets.filter(b=>b.y<H+20&&b.x>-20&&b.x<W+20);
+    if(shieldT>0)shieldT--;if(shieldCool>0)shieldCool--;
+    // collisions
+    bullets.forEach(b=>{if(Math.abs(b.x-boss.x)<boss.w/2&&Math.abs(b.y-boss.y)<boss.h/2){boss.hp--;b.dead=true;}});
+    bullets=bullets.filter(b=>!b.dead);
+    ebullets.forEach(b=>{if(Math.hypot(b.x-p.x,b.y-p.y)<14){if(shieldT<=0){p.hp-=1;}b.dead=true;}});
+    ebullets=ebullets.filter(b=>!b.dead);
+    if(boss.hp<=0)nextBoss();
+    if(p.hp<=0){running=false;showMsg('Died at Boss '+bossN);}
+    document.getElementById('bn').textContent=bossN;
+    document.getElementById('php').textContent=p.hp;
+    document.getElementById('ehp').textContent=Math.max(0,Math.floor(boss.hp));
+  }
+  ctx.fillStyle='#000821';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#ef4444';ctx.fillRect(boss.x-boss.w/2,boss.y-boss.h/2,boss.w,boss.h);
+  ctx.fillStyle='#fff';ctx.font='11px monospace';ctx.fillText(boss.n,boss.x-15,boss.y-boss.h/2-4);
+  ebullets.forEach(b=>{ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(b.x,b.y,5,0,6.28);ctx.fill();});
+  bullets.forEach(b=>{ctx.fillStyle='#22d3ee';ctx.fillRect(b.x-2,b.y-6,4,12);});
+  ctx.fillStyle='#22d3ee';ctx.beginPath();ctx.moveTo(p.x,p.y-12);ctx.lineTo(p.x-12,p.y+8);ctx.lineTo(p.x+12,p.y+8);ctx.closePath();ctx.fill();
+  if(shieldT>0){ctx.strokeStyle='#7c3aed';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x,p.y,22,0,6.28);ctx.stroke();}
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

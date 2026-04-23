@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Metroidvania No Jump</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:11px;color:#aaa;pointer-events:none;text-shadow:1px 1px #000}
+.c{display:flex;gap:6px;padding:6px;flex-wrap:wrap}.btn{flex:1;padding:14px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:13px;min-width:60px}
+.btn:active{background:#7c3aed}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="520"></canvas>
+<div id="hud"><span id="skills">Abilities: none</span></div>
+<div class="c">
+<button class="btn" id="bL">◀</button>
+<button class="btn" id="bJ">Jump</button>
+<button class="btn" id="bD">Dash</button>
+<button class="btn" id="bR">▶</button>
+</div>
+<div class="msg" id="msg"><div>Movement Metroidvania</div><div style="font-size:13px;margin:6px 10px">You start immobile. Touch pickups to unlock Walk, then Jump, then Dash. Explore to win.</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height*0;
+const CW=W,CH=520;
+let p,abilities,running=false,keys={},pickups,walls,goal,cam={x:0};
+function reset(){
+  p={x:40,y:CH-60,w:16,h:24,vx:0,vy:0,onGround:false,dashC:0};
+  abilities={walk:false,jump:false,dash:false};
+  walls=[{x:0,y:CH-30,w:2000,h:30},{x:200,y:CH-90,w:40,h:60},{x:600,y:CH-150,w:40,h:120},{x:1000,y:CH-200,w:40,h:170},{x:1400,y:CH-250,w:40,h:220},{x:400,y:CH-200,w:80,h:20},{x:800,y:CH-250,w:80,h:20},{x:1200,y:CH-320,w:80,h:20}];
+  pickups=[{x:100,y:CH-60,type:'walk'},{x:300,y:CH-60,type:'jump'},{x:700,y:CH-60,type:'dash'}];
+  goal={x:1800,y:CH-60};running=true;
+}
+document.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key===' '){e.preventDefault();doJump();}if(e.key==='Shift')doDash();});
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+document.getElementById('bL').addEventListener('pointerdown',()=>keys['l']=true);
+document.getElementById('bL').addEventListener('pointerup',()=>keys['l']=false);
+document.getElementById('bR').addEventListener('pointerdown',()=>keys['r']=true);
+document.getElementById('bR').addEventListener('pointerup',()=>keys['r']=false);
+document.getElementById('bJ').addEventListener('pointerdown',doJump);
+document.getElementById('bD').addEventListener('pointerdown',doDash);
+function doJump(){if(p&&abilities.jump&&p.onGround){p.vy=-11;p.onGround=false;}}
+function doDash(){if(p&&abilities.dash&&p.dashC<=0){p.vx=(p.vx>=0?1:-1)*14;p.dashC=40;}}
+function rectVs(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+function loop(){
+  if(running){
+    let ax=0;
+    if(abilities.walk){
+      if(keys['arrowleft']||keys['a']||keys['l'])ax=-1;
+      if(keys['arrowright']||keys['d']||keys['r'])ax=1;
+    }
+    if(p.dashC<=0)p.vx=ax*3;
+    p.vy+=.5;if(p.vy>12)p.vy=12;
+    if(p.dashC>0)p.dashC--;
+    p.x+=p.vx;walls.forEach(w=>{if(rectVs(p,w)){if(p.vx>0)p.x=w.x-p.w;else if(p.vx<0)p.x=w.x+w.w;p.vx=0;}});
+    p.y+=p.vy;p.onGround=false;
+    walls.forEach(w=>{if(rectVs(p,w)){if(p.vy>0){p.y=w.y-p.h;p.vy=0;p.onGround=true;}else{p.y=w.y+w.h;p.vy=0;}}});
+    pickups.forEach(pk=>{if(!pk.got&&Math.abs(p.x-pk.x)<20&&Math.abs(p.y-pk.y)<30){pk.got=true;abilities[pk.type]=true;}});
+    if(Math.abs(p.x-goal.x)<20&&Math.abs(p.y-goal.y)<40){running=false;showMsg('Escaped!');}
+    cam.x=Math.max(0,Math.min(2000-CW,p.x-CW/2));
+    document.getElementById('skills').textContent='Abilities: '+(Object.keys(abilities).filter(k=>abilities[k]).join(', ')||'none');
+  }
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,CW,CH);
+  ctx.save();ctx.translate(-cam.x,0);
+  walls.forEach(w=>{ctx.fillStyle='#555';ctx.fillRect(w.x,w.y,w.w,w.h);});
+  pickups.forEach(pk=>{if(pk.got)return;ctx.fillStyle={walk:'#22d3ee',jump:'#22c55e',dash:'#fbbf24'}[pk.type];ctx.fillRect(pk.x-8,pk.y-16,16,20);ctx.fillStyle='#000';ctx.font='10px monospace';ctx.fillText(pk.type,pk.x-10,pk.y);});
+  ctx.fillStyle='#a78bfa';ctx.fillRect(goal.x-4,goal.y-40,4,40);ctx.fillRect(goal.x-4,goal.y-40,20,14);
+  if(p){ctx.fillStyle='#fbbf24';ctx.fillRect(p.x,p.y,p.w,p.h);}
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

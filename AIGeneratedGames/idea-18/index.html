@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Chess Rogue</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#222;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:18px;color:#a78bfa}
+.stat{background:#111;padding:6px 10px;border-radius:6px;font-size:13px;display:flex;justify-content:space-between}
+#board{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;background:#000;padding:2px}
+.cell{aspect-ratio:1;background:#d8c094;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;cursor:pointer;color:#000;position:relative}
+.cell.dark{background:#8b5a2b}
+.cell.sel{outline:3px solid #fbbf24}
+.cell.move{background:#7c3aed !important}
+.cell .mod{position:absolute;bottom:0;right:2px;font-size:8px;color:#a32}
+.cell.black{color:#fff;text-shadow:0 0 2px #000}
+.msg{background:#111;padding:10px;border-radius:6px;text-align:center}
+</style></head><body>
+<h1>♟ Chess Rogue</h1>
+<div class="stat"><span>Floor: <b id="floor">1</b></span><span>Gold: <b id="gold">0</b></span></div>
+<div id="board"></div>
+<div class="msg" id="msg">Tap your piece then a highlighted square. Modifiers: 💰 earns gold per move, ⚡ moves twice, 🛡 +1 HP. Defeat enemy king!</div>
+<div class="stat"><button id="newrun" style="width:100%;padding:10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace">New Run</button></div>
+<script src="../notes.js"></script>
+<script>
+(function(){
+const N=6;let board=[],sel=null,moves=[],turn='w',floor=1,gold=0;
+const MODS=['💰','⚡','🛡','💥'];
+function randMod(){return Math.random()<.35?MODS[Math.floor(Math.random()*MODS.length)]:'';}
+function reset(){
+  board=Array.from({length:N},()=>Array(N).fill(null));
+  // place
+  for(let c=0;c<N;c++){board[0][c]={piece:'p',color:'b',mod:randMod(),hp:1};board[N-1][c]={piece:'p',color:'w',mod:randMod(),hp:1};}
+  const back=['r','n','b','q','k','r'];
+  for(let c=0;c<N;c++){board[1][c]={piece:back[c],color:'b',mod:randMod(),hp:back[c]==='k'?3:1};}
+  for(let c=0;c<N;c++){board[N-2][c]={piece:back[c],color:'w',mod:randMod(),hp:back[c]==='k'?3:1};}
+  turn='w';sel=null;moves=[];render();
+}
+function glyph(p){const m={p:'♙',n:'♘',b:'♗',r:'♖',q:'♕',k:'♔'};const m2={p:'♟',n:'♞',b:'♝',r:'♜',q:'♛',k:'♚'};return p.color==='w'?m[p.piece]:m2[p.piece];}
+function validMoves(r,c){
+  const p=board[r][c];if(!p)return[];
+  const res=[];
+  const dir=p.color==='w'?-1:1;
+  function add(nr,nc,cap=true){if(nr<0||nr>=N||nc<0||nc>=N)return;const t=board[nr][nc];if(!t)res.push([nr,nc]);else if(cap&&t.color!==p.color)res.push([nr,nc]);}
+  function ray(dr,dc){let nr=r+dr,nc=c+dc;while(nr>=0&&nr<N&&nc>=0&&nc<N){const t=board[nr][nc];if(!t)res.push([nr,nc]);else{if(t.color!==p.color)res.push([nr,nc]);break;}nr+=dr;nc+=dc;}}
+  if(p.piece==='p'){add(r+dir,c,false);if(!board[r+dir]||!board[r+dir][c]){/* no double */}[-1,1].forEach(dc=>{const t=board[r+dir]&&board[r+dir][c+dc];if(t&&t.color!==p.color)res.push([r+dir,c+dc]);});}
+  if(p.piece==='r'){[[1,0],[-1,0],[0,1],[0,-1]].forEach(([dr,dc])=>ray(dr,dc));}
+  if(p.piece==='b'){[[1,1],[-1,1],[1,-1],[-1,-1]].forEach(([dr,dc])=>ray(dr,dc));}
+  if(p.piece==='q'){[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]].forEach(([dr,dc])=>ray(dr,dc));}
+  if(p.piece==='n'){[[-2,-1],[-2,1],[2,-1],[2,1],[-1,-2],[-1,2],[1,-2],[1,2]].forEach(([dr,dc])=>add(r+dr,c+dc));}
+  if(p.piece==='k'){[-1,0,1].forEach(dr=>[-1,0,1].forEach(dc=>{if(dr||dc)add(r+dr,c+dc);}));}
+  if(p.mod==='⚡')res.forEach(m=>m);
+  return res;
+}
+function aiMove(){
+  const mine=[];for(let r=0;r<N;r++)for(let c=0;c<N;c++){const p=board[r][c];if(p&&p.color==='b'){const vs=validMoves(r,c);vs.forEach(v=>mine.push([r,c,v[0],v[1]]));}}
+  if(mine.length===0){turn='w';return;}
+  const captures=mine.filter(m=>board[m[2]][m[3]]);
+  const pick=(captures.length?captures:mine)[Math.floor(Math.random()*(captures.length?captures.length:mine.length))];
+  doMove(pick[0],pick[1],pick[2],pick[3]);
+  turn='w';
+}
+function doMove(r,c,nr,nc){
+  const p=board[r][c];const t=board[nr][nc];
+  if(t){if(t.piece==='k'){board[nr][nc]=null;board[r][c]=null;setTimeout(()=>{floor++;gold+=20;reset();},300);return;}t.hp--;if(t.hp>0){return;}}
+  board[nr][nc]=p;board[r][c]=null;
+  if(p.mod==='💰'&&p.color==='w')gold++;
+}
+function render(){
+  const bd=document.getElementById('board');bd.innerHTML='';
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    const el=document.createElement('div');el.className='cell'+((r+c)%2?' dark':'');
+    const p=board[r][c];
+    if(p){el.textContent=glyph(p);if(p.color==='b')el.classList.add('black');const m=document.createElement('div');m.className='mod';m.textContent=p.mod+(p.hp>1?' '+p.hp:'');el.appendChild(m);}
+    if(sel&&sel[0]===r&&sel[1]===c)el.classList.add('sel');
+    if(moves.find(m=>m[0]===r&&m[1]===c))el.classList.add('move');
+    el.onclick=()=>click(r,c);
+    bd.appendChild(el);
+  }
+  document.getElementById('floor').textContent=floor;document.getElementById('gold').textContent=gold;
+}
+function click(r,c){
+  if(turn!=='w')return;
+  const p=board[r][c];
+  if(sel){
+    if(moves.find(m=>m[0]===r&&m[1]===c)){doMove(sel[0],sel[1],r,c);sel=null;moves=[];turn='b';render();setTimeout(aiMove,400);setTimeout(render,450);return;}
+    sel=null;moves=[];
+  }
+  if(p&&p.color==='w'){sel=[r,c];moves=validMoves(r,c);}
+  render();
+}
+document.getElementById('newrun').onclick=reset;
+reset();
+})();
+</script>
+</body></html>

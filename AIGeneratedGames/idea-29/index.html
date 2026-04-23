@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Traitor Survival</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:18px;color:#a78bfa}
+.stat{background:#111;padding:8px;border-radius:6px;font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.players{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.p{background:#1a1a2e;padding:8px 4px;border-radius:6px;text-align:center;font-size:11px;cursor:pointer;border:2px solid #333}
+.p.vote{border-color:#fbbf24}
+.p.dead{opacity:.3}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.actions button{padding:10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+.log{background:#111;padding:8px;border-radius:6px;font-size:11px;max-height:180px;overflow-y:auto}
+</style></head><body>
+<h1>🕵 Traitor Survival</h1>
+<div class="stat"><span>Day: <b id="day">1</b></span><span>Food: <b id="food">10</b></span><span>Wood: <b id="wd">5</b></span><span>Living: <b id="live">4</b></span></div>
+<div class="players" id="pl"></div>
+<div class="actions">
+<button id="gather">Gather Day</button>
+<button id="vote">Start Vote</button>
+</div>
+<div class="log" id="log"></div>
+<script src="../notes.js"></script>
+<script>
+(function(){
+let players=[{n:'You',alive:true,you:true},{n:'Alex',alive:true},{n:'Bea',alive:true},{n:'Cam',alive:true}];
+let traitor=1+Math.floor(Math.random()*3); // not you
+let food=10,wood=5,day=1,votes={},phase='day';
+function log(s){const l=document.getElementById('log');l.innerHTML=s+'<br>'+l.innerHTML;}
+function render(){
+  const pl=document.getElementById('pl');pl.innerHTML='';
+  players.forEach((p,i)=>{const d=document.createElement('div');d.className='p'+(p.alive?'':' dead')+(votes[i]?' vote':'');d.innerHTML='<b>'+p.n+'</b><br>'+(p.you?'(you)':'');if(phase==='vote'&&p.alive&&!p.you)d.onclick=()=>vote(i);pl.appendChild(d);});
+  document.getElementById('day').textContent=day;document.getElementById('food').textContent=food;document.getElementById('wd').textContent=wood;document.getElementById('live').textContent=players.filter(p=>p.alive).length;
+}
+document.getElementById('gather').onclick=()=>{
+  if(phase!=='day')return;
+  const alive=players.filter(p=>p.alive);
+  let gained={f:0,w:0};
+  alive.forEach((p,i)=>{
+    const realIdx=players.indexOf(p);
+    if(realIdx===traitor&&Math.random()<.5){const sab=Math.random()<.5?'f':'w';log(p.n+' secretly sabotaged '+sab);if(sab==='f')food=Math.max(0,food-2);else wood=Math.max(0,wood-2);}
+    else{const r=Math.random()<.5?'f':'w',amt=1+Math.floor(Math.random()*3);gained[r]+=amt;}
+  });
+  food+=gained.f;wood+=gained.w;
+  food-=alive.length;wood-=Math.floor(alive.length/2);
+  log('Day '+day+': +'+gained.f+' food, +'+gained.w+' wood');
+  if(food<0||wood<0){log('Starved!');}
+  day++;render();
+};
+document.getElementById('vote').onclick=()=>{phase='vote';log('Vote phase: tap a player to accuse');render();};
+function vote(i){
+  // tally: you vote, AI votes
+  votes={};votes[i]=(votes[i]||0)+1;
+  players.forEach((p,idx)=>{if(p.alive&&!p.you){const target=Math.random()<.5?i:1+Math.floor(Math.random()*(players.length-1));votes[target]=(votes[target]||0)+1;}});
+  let maxV=-1,exile=-1;Object.keys(votes).forEach(k=>{if(votes[k]>maxV){maxV=votes[k];exile=+k;}});
+  players[exile].alive=false;
+  log('Exiled '+players[exile].n+(exile===traitor?' — was the traitor! You win!':' — not the traitor.'));
+  if(exile===traitor){setTimeout(()=>alert('Victory! Traitor exposed.'),300);}
+  else if(players.filter(p=>p.alive&&!p.you).length<=1){setTimeout(()=>alert('Traitor survived. You lose.'),300);}
+  phase='day';votes={};render();
+}
+render();
+})();
+</script>
+</body></html>

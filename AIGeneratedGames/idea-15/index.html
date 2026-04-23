@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Kingdom Rogue</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#2a3a2a}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:6px;padding:6px;flex-wrap:wrap}.btn{flex:1;padding:10px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:12px;min-width:70px}
+.btn:active{background:#7c3aed}
+.btn:disabled{opacity:.4}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="440"></canvas>
+<div id="hud"><span>💰 <b id="gold">0</b></span><span>👤 <b id="pop">1</b></span><span>🗡 <b id="army">0</b></span><span>Day <b id="day">1</b></span></div>
+<div class="c">
+<button class="btn" id="bA">Archer (3g)</button>
+<button class="btn" id="bW">Wall (5g)</button>
+<button class="btn" id="bF">Farm (8g)</button>
+<button class="btn" id="bN">Next Day</button>
+</div>
+<div class="msg" id="msg"><div>Kingdom 1-Hour Rogue</div><div style="font-size:12px;margin:6px 10px">Each run randomizes costs/rewards. Defend king 10 days. Build archers, walls, farms.</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let gold,pop,day,enemies,walls,archers,king,runConfig,running=false;
+function rnd(a,b){return a+Math.random()*(b-a);}
+function randomRun(){return{aCost:Math.floor(rnd(2,5)),wCost:Math.floor(rnd(3,8)),fCost:Math.floor(rnd(6,12)),fInc:Math.floor(rnd(2,5))};}
+function reset(){
+  runConfig=randomRun();
+  gold=15;pop=1;day=1;enemies=[];walls=[];archers=[];
+  king={x:W/2,y:H-60,hp:20};running=true;updateBtns();
+}
+function updateBtns(){
+  document.getElementById('bA').textContent='Archer ('+runConfig.aCost+'g)';document.getElementById('bA').disabled=gold<runConfig.aCost;
+  document.getElementById('bW').textContent='Wall ('+runConfig.wCost+'g)';document.getElementById('bW').disabled=gold<runConfig.wCost;
+  document.getElementById('bF').textContent='Farm +'+runConfig.fInc+' ('+runConfig.fCost+'g)';document.getElementById('bF').disabled=gold<runConfig.fCost;
+}
+let farms=0;
+document.getElementById('bA').onclick=()=>{if(gold>=runConfig.aCost){gold-=runConfig.aCost;archers.push({x:W/2+(archers.length%2?1:-1)*(30+archers.length*8),y:H-80,cool:0});updateBtns();}};
+document.getElementById('bW').onclick=()=>{if(gold>=runConfig.wCost){gold-=runConfig.wCost;walls.push({x:W/2+(walls.length%2?1:-1)*(60+walls.length*16),y:H-60,hp:10,w:12,h:30});updateBtns();}};
+document.getElementById('bF').onclick=()=>{if(gold>=runConfig.fCost){gold-=runConfig.fCost;farms++;updateBtns();}};
+document.getElementById('bN').onclick=()=>{if(running)nextDay();};
+function nextDay(){
+  day++;gold+=5+farms*runConfig.fInc;
+  // spawn enemies
+  const n=Math.floor(day*1.5+2);
+  for(let i=0;i<n;i++){
+    enemies.push({x:Math.random()<.5?-20:W+20,y:H-80-Math.random()*30,hp:day,spd:.5+Math.random()*.3});
+  }
+  if(day>10){running=false;showMsg('Survived! 10 days');}
+  updateBtns();
+}
+function loop(){
+  if(running){
+    enemies.forEach(e=>{
+      let dx=king.x-e.x;e.x+=Math.sign(dx)*e.spd;
+      walls.forEach(w=>{if(Math.abs(e.x-w.x)<w.w/2+6&&w.hp>0){w.hp--;e.hp-=2;e.x-=Math.sign(dx)*1;}});
+      if(Math.abs(e.x-king.x)<30){king.hp--;e.hp=0;}
+    });
+    archers.forEach(a=>{a.cool--;if(a.cool<=0){const tar=enemies.filter(e=>e.hp>0).sort((a,b)=>Math.abs(a.x-W/2)-Math.abs(b.x-W/2))[0];if(tar){tar.hp-=2;a.cool=60;if(tar.hp<=0){gold+=1;}}}});
+    walls=walls.filter(w=>w.hp>0);
+    enemies=enemies.filter(e=>e.hp>0);
+    if(king.hp<=0){running=false;showMsg('King fell on day '+day);}
+    document.getElementById('gold').textContent=gold;
+    document.getElementById('pop').textContent=pop;
+    document.getElementById('army').textContent=archers.length;
+    document.getElementById('day').textContent=day;
+  }
+  ctx.fillStyle='#2a3a2a';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#553d1a';ctx.fillRect(0,H-40,W,40);
+  walls.forEach(w=>{ctx.fillStyle='#888';ctx.fillRect(w.x-w.w/2,w.y-w.h,w.w,w.h);});
+  ctx.fillStyle='#fbbf24';ctx.fillRect(king.x-12,king.y-20,24,20);
+  ctx.fillStyle='#fff';ctx.font='10px monospace';ctx.fillText('HP '+king.hp,king.x-14,king.y-22);
+  archers.forEach(a=>{ctx.fillStyle='#22d3ee';ctx.fillRect(a.x-6,a.y-14,12,14);});
+  enemies.forEach(e=>{ctx.fillStyle='#ef4444';ctx.fillRect(e.x-8,e.y-14,16,14);});
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

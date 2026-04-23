@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Plinko</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.info{padding:6px;font-size:11px;color:#aaa;text-align:center}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="600"></canvas>
+<div id="hud"><span>💰 You <b id="you">0</b></span><span>🤖 AI <b id="ai">0</b></span><span>Balls left: <b id="bl">10</b></span></div>
+<div class="info">Tap top to drop a ball. Your zones: 🟦 blue. AI: 🟥 red. Claim more!</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+const pegs=[];
+for(let row=0;row<10;row++)for(let col=0;col<10;col++){
+  const x=(W/11)*(col+1)+(row%2?W/22:0);
+  const y=80+row*40;
+  if(x>10&&x<W-10)pegs.push({x,y,r:4});
+}
+const slots=[];const nSlots=8;
+for(let i=0;i<nSlots;i++){slots.push({x:(W/nSlots)*i,w:W/nSlots,you:i%3===0,ai:i%3===1});}
+let balls=[],you=0,ai=0,left=10,dropping=false;
+c.addEventListener('pointerdown',e=>{
+  if(left<=0)return;
+  const r=c.getBoundingClientRect();
+  const x=(e.clientX-r.left)*W/r.width;
+  balls.push({x,y:20,vx:0,vy:0,r:8,owner:'p'});
+  left--;
+  setTimeout(()=>{if(left>0){balls.push({x:Math.random()*W,y:20,vx:0,vy:0,r:8,owner:'a'});left--;}},500);
+});
+function loop(){
+  balls.forEach(b=>{
+    b.vy+=.3;if(b.vy>8)b.vy=8;
+    b.x+=b.vx;b.y+=b.vy;b.vx*=.99;
+    pegs.forEach(p=>{
+      const dx=b.x-p.x,dy=b.y-p.y,d=Math.hypot(dx,dy);
+      if(d<b.r+p.r){const nx=dx/d,ny=dy/d;b.x=p.x+nx*(b.r+p.r);b.y=p.y+ny*(b.r+p.r);const dot=b.vx*nx+b.vy*ny;b.vx-=2*dot*nx*.7;b.vy-=2*dot*ny*.7;b.vx+=(Math.random()-.5)*.5;}
+    });
+    if(b.x<b.r||b.x>W-b.r){b.vx*=-.7;b.x=Math.max(b.r,Math.min(W-b.r,b.x));}
+    if(b.y>H-40){
+      const slotIdx=Math.floor(b.x/(W/nSlots));
+      const s=slots[slotIdx];
+      if(s){if(b.owner==='p'&&s.you)you+=10;else if(b.owner==='p'&&s.ai)ai+=5;else if(b.owner==='a'&&s.ai)ai+=10;else if(b.owner==='a'&&s.you)you+=5;else you+=2;}
+      b.dead=true;
+    }
+  });
+  balls=balls.filter(b=>!b.dead);
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  pegs.forEach(p=>{ctx.fillStyle='#aaa';ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fill();});
+  slots.forEach((s,i)=>{ctx.fillStyle=s.you?'#3b82f6':s.ai?'#ef4444':'#555';ctx.fillRect(s.x,H-40,s.w,40);ctx.fillStyle='#fff';ctx.font='11px monospace';ctx.fillText(s.you?'+10':s.ai?'+10':'+2',s.x+10,H-16);});
+  balls.forEach(b=>{ctx.fillStyle=b.owner==='p'?'#22d3ee':'#fbbf24';ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,6.28);ctx.fill();});
+  document.getElementById('you').textContent=you;document.getElementById('ai').textContent=ai;document.getElementById('bl').textContent=left;
+  if(left<=0&&balls.length===0){ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff';ctx.font='24px monospace';ctx.fillText(you>ai?'You Win!':'AI Wins',W/2-60,H/2);}
+  requestAnimationFrame(loop);
+}
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

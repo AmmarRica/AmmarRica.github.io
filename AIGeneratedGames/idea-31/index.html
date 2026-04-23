@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Red Remover</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.info{padding:4px 8px;font-size:11px;color:#aaa;text-align:center}
+.c{display:flex;gap:4px;padding:6px}.btn{flex:1;padding:10px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:12px}
+.btn:active{background:#7c3aed}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="480"></canvas>
+<div id="hud"><span>Level <b id="lvl">1</b></span></div>
+<div class="info">Tap RED shapes to remove them. GREEN must stay on screen. BLUE are neutral. Drop RED without dropping GREEN!</div>
+<div class="c">
+<button class="btn" id="bR">Reset</button>
+<button class="btn" id="bN">Next</button>
+</div>
+<div class="msg hide" id="msg"><div id="mt">Level Complete!</div><button id="mn">Next</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+const levels=[
+  [{x:100,y:200,w:60,h:30,col:'r'},{x:200,y:300,w:80,h:20,col:'g'},{x:180,y:240,w:40,h:20,col:'r'}],
+  [{x:100,y:200,w:40,h:40,col:'r'},{x:150,y:100,w:100,h:20,col:'g'},{x:260,y:200,w:40,h:40,col:'r'},{x:300,y:300,w:60,h:20,col:'g'}],
+  [{x:200,y:100,w:30,h:30,col:'r'},{x:100,y:300,w:200,h:20,col:'g'},{x:150,y:200,w:30,h:30,col:'r'},{x:220,y:200,w:30,h:30,col:'b'}]
+];
+let lvl=0,shapes=[],phys=[],falling=false,resolved=false;
+function load(){
+  const L=levels[lvl%levels.length];
+  shapes=L.map(s=>({...s,removed:false,vy:0,locked:true}));
+  phys=[];falling=false;resolved=false;
+  document.getElementById('lvl').textContent=(lvl+1);
+  document.getElementById('msg').classList.add('hide');
+}
+c.addEventListener('pointerdown',e=>{
+  const r=c.getBoundingClientRect();
+  const x=(e.clientX-r.left)*W/r.width,y=(e.clientY-r.top)*H/r.height;
+  shapes.forEach(s=>{if(s.col==='r'&&!s.removed&&x>s.x&&x<s.x+s.w&&y>s.y&&y<s.y+s.h){s.removed=true;checkPhysics();}});
+});
+function checkPhysics(){
+  shapes.forEach(s=>{if(s.removed)return;
+    // if not supported by ground or another shape, fall
+    const below=s.y+s.h;
+    if(below<H-20){
+      const sup=shapes.some(o=>o!==s&&!o.removed&&Math.abs(o.y-below)<8&&!(o.x+o.w<s.x||o.x>s.x+s.w));
+      if(!sup)s.locked=false;
+    }
+  });
+  falling=true;
+}
+function loop(){
+  if(falling){
+    shapes.forEach(s=>{
+      if(s.removed||s.locked)return;
+      s.vy+=.3;s.y+=s.vy;
+      if(s.y+s.h>=H-10){s.y=H-10-s.h;s.vy=0;s.locked=true;}
+      shapes.forEach(o=>{if(o!==s&&!o.removed&&!o.locked||o===s)return;if(o.removed)return;if(s.x<o.x+o.w&&s.x+s.w>o.x&&s.y+s.h>o.y&&s.y<o.y+o.h&&s.vy>=0){s.y=o.y-s.h;s.vy=0;s.locked=true;}});
+      if(s.y>H){s.removed=true;if(s.col==='g')fail();}
+    });
+    if(shapes.every(s=>s.removed||s.locked)&&!resolved){
+      resolved=true;
+      const greenOk=shapes.some(s=>s.col==='g'&&!s.removed);
+      const redGone=shapes.every(s=>s.col!=='r'||s.removed);
+      if(greenOk&&redGone){document.getElementById('mt').textContent='Level Complete!';document.getElementById('msg').classList.remove('hide');}
+      else if(!greenOk){fail();}
+    }
+  }
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#654321';ctx.fillRect(0,H-10,W,10);
+  shapes.forEach(s=>{if(s.removed)return;ctx.fillStyle={r:'#ef4444',g:'#22c55e',b:'#3b82f6'}[s.col];ctx.fillRect(s.x,s.y,s.w,s.h);});
+  requestAnimationFrame(loop);
+}
+function fail(){document.getElementById('mt').textContent='Green fell! Try again.';document.getElementById('msg').classList.remove('hide');}
+document.getElementById('bR').onclick=load;
+document.getElementById('bN').onclick=()=>{lvl++;load();};
+document.getElementById('mn').onclick=()=>{lvl++;load();};
+load();loop();
+})();
+</script><script src="../notes.js"></script></body></html>

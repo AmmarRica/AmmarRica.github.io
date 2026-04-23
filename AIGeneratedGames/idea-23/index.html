@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Insaniquarium</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#032a42;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:linear-gradient(180deg,#032a42,#041a2a)}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:11px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:4px;padding:6px;flex-wrap:wrap}.btn{flex:1;padding:10px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:11px;min-width:70px}
+.btn:disabled{opacity:.4}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="480"></canvas>
+<div id="hud"><span>💰 <b id="gold">50</b></span><span>🐟 <b id="fish">2</b></span></div>
+<div class="c">
+<button class="btn" id="bF">Feed 5g</button>
+<button class="btn" id="bB">Buy Fish 50g</button>
+<button class="btn" id="bG">Big Fish 200g</button>
+<button class="btn" id="bU">Upgrade Food 100g</button>
+</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let gold=50,fish=[],food=[],coins=[],monsters=[],foodLvl=1;
+for(let i=0;i<2;i++)addFish();
+function addFish(big){fish.push({x:Math.random()*W,y:Math.random()*(H-60)+30,vx:(Math.random()-.5)*1,vy:(Math.random()-.5)*.4,hunger:0,size:big?24:14,big:!!big,coinT:0,hp:big?3:1});}
+c.addEventListener('pointerdown',e=>{
+  const r=c.getBoundingClientRect();
+  const x=(e.clientX-r.left)*W/r.width,y=(e.clientY-r.top)*H/r.height;
+  // collect coin
+  const ci=coins.findIndex(co=>Math.hypot(co.x-x,co.y-y)<16);
+  if(ci>=0){gold+=coins[ci].val;coins.splice(ci,1);}
+});
+document.getElementById('bF').onclick=()=>{if(gold>=5){gold-=5;food.push({x:Math.random()*W,y:10,size:6+foodLvl*3,eaten:false});}};
+document.getElementById('bB').onclick=()=>{if(gold>=50){gold-=50;addFish(false);}};
+document.getElementById('bG').onclick=()=>{if(gold>=200){gold-=200;addFish(true);}};
+document.getElementById('bU').onclick=()=>{if(gold>=100){gold-=100;foodLvl++;}};
+setInterval(()=>{if(Math.random()<.15&&fish.length>0){monsters.push({x:-20,y:30+Math.random()*(H-60),vx:1,hp:5});}},4000);
+function loop(){
+  food.forEach(f=>{f.y+=.8;});
+  fish.forEach(f=>{
+    // go toward food
+    let tar=food.filter(fd=>!fd.eaten).sort((a,b)=>Math.hypot(a.x-f.x,a.y-f.y)-Math.hypot(b.x-f.x,b.y-f.y))[0];
+    if(tar){const dx=tar.x-f.x,dy=tar.y-f.y,d=Math.hypot(dx,dy)||1;f.vx=dx/d*1.2;f.vy=dy/d*1.2;if(d<f.size){tar.eaten=true;f.hunger=0;f.coinT+=20;}}else{f.vx+=(Math.random()-.5)*.1;f.vy+=(Math.random()-.5)*.1;f.vx*=.95;f.vy*=.95;}
+    f.x+=f.vx;f.y+=f.vy;
+    if(f.x<10||f.x>W-10)f.vx*=-1;if(f.y<20||f.y>H-20)f.vy*=-1;
+    f.coinT--;f.hunger+=1;
+    if(f.coinT<=0){coins.push({x:f.x,y:f.y,val:f.big?25:5,t:0});f.coinT=300;}
+    if(f.hunger>600){f.hp--;f.hunger=400;}
+  });
+  fish=fish.filter(f=>f.hp>0);
+  food=food.filter(f=>!f.eaten&&f.y<H);
+  coins.forEach(co=>{co.t++;co.y=Math.min(H-20,co.y+.5);});
+  coins=coins.filter(co=>co.t<500);
+  monsters.forEach(m=>{m.x+=m.vx;const tar=fish.sort((a,b)=>Math.hypot(a.x-m.x,a.y-m.y)-Math.hypot(b.x-m.x,b.y-m.y))[0];if(tar){const dx=tar.x-m.x,dy=tar.y-m.y,d=Math.hypot(dx,dy)||1;m.x+=dx/d*.5;m.y=(m.y||tar.y)+dy/d*.5;if(d<14){tar.hp--;m.hp--;}}});
+  monsters=monsters.filter(m=>m.hp>0&&m.x<W+20);
+  ctx.fillStyle='#032a42';ctx.fillRect(0,0,W,H);
+  coins.forEach(co=>{ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(co.x,co.y,8,0,6.28);ctx.fill();});
+  food.forEach(f=>{ctx.fillStyle='#d97706';ctx.beginPath();ctx.arc(f.x,f.y,f.size/2,0,6.28);ctx.fill();});
+  fish.forEach(f=>{ctx.fillStyle=f.big?'#a78bfa':'#fbbf24';ctx.beginPath();ctx.ellipse(f.x,f.y,f.size,f.size*.6,0,0,6.28);ctx.fill();});
+  monsters.forEach(m=>{ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(m.x,m.y,12,0,6.28);ctx.fill();});
+  document.getElementById('gold').textContent=gold;document.getElementById('fish').textContent=fish.length;
+  requestAnimationFrame(loop);
+}
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>
