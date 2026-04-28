@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Color Match Mastermind</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+h1{font-size:18px;color:#a78bfa}
+.stat{display:flex;justify-content:space-between;background:#111;padding:6px 10px;border-radius:6px;font-size:13px}
+.board{display:flex;flex-direction:column;gap:4px;background:#111;padding:8px;border-radius:8px}
+.row{display:flex;gap:4px;align-items:center}
+.peg{width:34px;height:34px;border-radius:50%;border:2px solid #555}
+.result{margin-left:auto;display:flex;gap:2px}
+.dot{width:10px;height:10px;border-radius:50%;background:#555}
+.dot.black{background:#fff}
+.dot.white{background:#888}
+.row.current{border:2px solid #fbbf24;border-radius:8px;padding:2px}
+.colors{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.ck{aspect-ratio:1;border-radius:50%;border:2px solid #fff;cursor:pointer}
+button{padding:10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body>
+<h1>🎨 Color Mastermind</h1>
+<div class="stat"><span>Guesses: <b id="gs">0</b>/10</span><span id="info">Pick 4 colors</span></div>
+<div class="board" id="board"></div>
+<div class="colors" id="colors"></div>
+<button id="submit">Submit Guess</button>
+<button id="newg">New Game</button>
+<script src="../notes.js"></script>
+<script>
+(function(){
+const COLORS=['#ef4444','#fbbf24','#22c55e','#3b82f6','#a78bfa','#ec4899'];
+let secret=[],guesses=[],current=[null,null,null,null];
+function reset(){secret=[];for(let i=0;i<4;i++)secret.push(COLORS[Math.floor(Math.random()*COLORS.length)]);guesses=[];current=[null,null,null,null];render();}
+function score(g){
+  let black=0,white=0;
+  const sCopy=secret.slice(),gCopy=g.slice();
+  for(let i=0;i<4;i++)if(gCopy[i]===sCopy[i]){black++;sCopy[i]=null;gCopy[i]=null;}
+  for(let i=0;i<4;i++)if(gCopy[i]){const idx=sCopy.indexOf(gCopy[i]);if(idx>=0){white++;sCopy[idx]=null;}}
+  return {black,white};
+}
+function render(){
+  const bd=document.getElementById('board');bd.innerHTML='';
+  guesses.forEach(g=>{const r=document.createElement('div');r.className='row';g.guess.forEach(c=>{const p=document.createElement('div');p.className='peg';p.style.background=c;r.appendChild(p);});const res=document.createElement('div');res.className='result';for(let i=0;i<g.black;i++){const d=document.createElement('div');d.className='dot black';res.appendChild(d);}for(let i=0;i<g.white;i++){const d=document.createElement('div');d.className='dot white';res.appendChild(d);}for(let i=0;i<4-g.black-g.white;i++){const d=document.createElement('div');d.className='dot';res.appendChild(d);}r.appendChild(res);bd.appendChild(r);});
+  const cur=document.createElement('div');cur.className='row current';current.forEach((c,i)=>{const p=document.createElement('div');p.className='peg';p.style.background=c||'#222';p.onclick=()=>{current[i]=null;render();};cur.appendChild(p);});bd.appendChild(cur);
+  const col=document.getElementById('colors');col.innerHTML='';
+  COLORS.forEach(c=>{const d=document.createElement('div');d.className='ck';d.style.background=c;d.onclick=()=>{const idx=current.indexOf(null);if(idx>=0){current[idx]=c;render();}};col.appendChild(d);});
+  document.getElementById('gs').textContent=guesses.length;
+}
+document.getElementById('submit').onclick=()=>{
+  if(current.includes(null))return;
+  const s=score(current);
+  guesses.push({guess:current.slice(),...s});
+  if(s.black===4){setTimeout(()=>alert('Solved in '+guesses.length+'!'),100);}
+  else if(guesses.length>=10){setTimeout(()=>alert('Out of guesses. Answer: '+secret.join(', ')),100);}
+  current=[null,null,null,null];render();
+};
+document.getElementById('newg').onclick=reset;
+reset();
+})();
+</script>
+</body></html>

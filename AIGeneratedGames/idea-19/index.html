@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Age of War</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#68a}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:11px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:4px;padding:6px;flex-wrap:wrap}.btn{flex:1;padding:8px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:11px;min-width:75px}
+.btn:active{background:#7c3aed}.btn:disabled{opacity:.4}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="320"></canvas>
+<div id="hud"><span>💰 <b id="gold">50</b></span><span>📈 Income: <b id="inc">1/s</b></span><span>🏰 <b id="hp">20</b> vs <b id="ehp">20</b></span></div>
+<div class="c">
+<button class="btn" id="bS">Soldier 10g</button>
+<button class="btn" id="bA">Archer 25g</button>
+<button class="btn" id="bK">Knight 60g</button>
+<button class="btn" id="bE">+Economy 50g</button>
+</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let gold=50,income=1,units=[],eunits=[],base={hp:20},ebase={hp:20},incomeLvl=1;
+const types={s:{cost:10,hp:5,dmg:1,spd:.7,range:20,col:'#22d3ee',w:12},a:{cost:25,hp:3,dmg:2,spd:.6,range:80,col:'#22c55e',w:12},k:{cost:60,hp:15,dmg:3,spd:.5,range:24,col:'#fbbf24',w:16}};
+document.getElementById('bS').onclick=()=>spawn('s','p');
+document.getElementById('bA').onclick=()=>spawn('a','p');
+document.getElementById('bK').onclick=()=>spawn('k','p');
+document.getElementById('bE').onclick=()=>{if(gold>=50*incomeLvl){gold-=50*incomeLvl;income+=1;incomeLvl++;upd();}};
+function spawn(t,side){const tp=types[t];if(gold>=tp.cost&&side==='p'){gold-=tp.cost;units.push({t,x:40,hp:tp.hp,cool:0});upd();}if(side==='e')eunits.push({t,x:W-40,hp:tp.hp,cool:0});}
+function upd(){document.getElementById('gold').textContent=Math.floor(gold);document.getElementById('inc').textContent=income+'/s';document.getElementById('hp').textContent=base.hp;document.getElementById('ehp').textContent=ebase.hp;document.getElementById('bE').textContent='+Economy '+(50*incomeLvl)+'g';}
+let tick=0,eTick=0;
+function loop(){
+  tick++;
+  if(tick%60===0)gold+=income;
+  eTick++;
+  if(eTick>180-Math.min(150,tick/60)){eTick=0;const choices=['s','s','a','k'];const t=choices[Math.floor(Math.random()*choices.length)];spawn(t,'e');}
+  units.forEach(u=>{
+    const tp=types[u.t];
+    let target=eunits.find(e=>Math.abs(e.x-u.x)<tp.range);
+    if(!target&&Math.abs(W-40-u.x)<tp.range){target={base:true};}
+    if(target){u.cool--;if(u.cool<=0){u.cool=40;if(target.base){ebase.hp-=tp.dmg;}else{target.hp-=tp.dmg;}}}
+    else{u.x+=tp.spd;}
+  });
+  eunits.forEach(u=>{
+    const tp=types[u.t];
+    let target=units.find(e=>Math.abs(e.x-u.x)<tp.range);
+    if(!target&&Math.abs(40-u.x)<tp.range){target={base:true};}
+    if(target){u.cool--;if(u.cool<=0){u.cool=40;if(target.base){base.hp-=tp.dmg;}else{target.hp-=tp.dmg;}}}
+    else{u.x-=tp.spd;}
+  });
+  units=units.filter(u=>u.hp>0);eunits=eunits.filter(u=>u.hp>0);
+  if(base.hp<=0||ebase.hp<=0){ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff';ctx.font='20px monospace';ctx.fillText(base.hp<=0?'Defeat!':'Victory!',W/2-40,H/2);upd();return;}
+  ctx.fillStyle='#68a';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#2a3';ctx.fillRect(0,H-60,W,60);
+  ctx.fillStyle='#543';ctx.fillRect(10,H-140,40,80);ctx.fillRect(W-50,H-140,40,80);
+  units.forEach(u=>{const tp=types[u.t];ctx.fillStyle=tp.col;ctx.fillRect(u.x-tp.w/2,H-80,tp.w,20);});
+  eunits.forEach(u=>{const tp=types[u.t];ctx.fillStyle='#ef4444';ctx.fillRect(u.x-tp.w/2,H-80,tp.w,20);});
+  upd();
+  requestAnimationFrame(loop);
+}
+upd();loop();
+})();
+</script><script src="../notes.js"></script></body></html>

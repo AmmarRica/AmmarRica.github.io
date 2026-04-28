@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Traffic Weaver</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#111}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.info{padding:6px;font-size:11px;color:#aaa;text-align:center}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="600"></canvas>
+<div id="hud"><span>Score: <b id="sc">0</b></span><span>Best: <b id="bs">0</b></span></div>
+<div class="info">Drag cursor through lanes. Notes play as you cross. Avoid red cars.</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+const LANES=[W/5,W*2/5,W*3/5,W*4/5];
+let p={x:W/2,y:H-50},cars=[],score=0,best=+localStorage.idea38Best||0,running=true,tick=0,lastLane=-1;
+const audioCtx=window.AudioContext?new (window.AudioContext||window.webkitAudioContext)():null;
+function playNote(f){if(!audioCtx)return;const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=f;o.connect(g);g.connect(audioCtx.destination);g.gain.value=.15;o.start();g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.2);o.stop(audioCtx.currentTime+.2);}
+c.addEventListener('pointermove',e=>{const r=c.getBoundingClientRect();p.x=(e.clientX-r.left)*W/r.width;const laneIdx=LANES.reduce((best,l,i)=>Math.abs(l-p.x)<Math.abs(LANES[best]-p.x)?i:best,0);if(laneIdx!==lastLane){lastLane=laneIdx;playNote(262*Math.pow(1.22,laneIdx));}});
+c.addEventListener('pointerdown',e=>{const r=c.getBoundingClientRect();p.x=(e.clientX-r.left)*W/r.width;});
+document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')p.x-=30;if(e.key==='ArrowRight')p.x+=30;});
+function loop(){
+  if(running){
+    tick++;
+    if(tick%30===0){const laneIdx=Math.floor(Math.random()*4);cars.push({x:LANES[laneIdx],y:-50,spd:3+score*.01});}
+    cars.forEach(cr=>cr.y+=cr.spd);
+    cars=cars.filter(cr=>cr.y<H+50);
+    cars.forEach(cr=>{if(Math.abs(cr.x-p.x)<24&&Math.abs(cr.y-p.y)<30){running=false;if(score>best){best=score;localStorage.idea38Best=best;}}});
+    score=Math.floor(tick/10);
+  }
+  ctx.fillStyle='#111';ctx.fillRect(0,0,W,H);
+  LANES.forEach((l,i)=>{ctx.strokeStyle='#333';ctx.setLineDash([10,10]);ctx.beginPath();ctx.moveTo(l,0);ctx.lineTo(l,H);ctx.stroke();ctx.setLineDash([]);});
+  // glow trail on current lane
+  const laneIdx=LANES.reduce((best,l,i)=>Math.abs(l-p.x)<Math.abs(LANES[best]-p.x)?i:best,0);
+  ctx.fillStyle='rgba(167,139,250,.3)';ctx.fillRect(LANES[laneIdx]-40,0,80,H);
+  cars.forEach(cr=>{ctx.fillStyle='#ef4444';ctx.fillRect(cr.x-20,cr.y-25,40,50);ctx.fillStyle='#fbbf24';ctx.fillRect(cr.x-16,cr.y-20,32,8);});
+  ctx.fillStyle='#22d3ee';ctx.beginPath();ctx.arc(p.x,p.y,14,0,6.28);ctx.fill();
+  document.getElementById('sc').textContent=score;document.getElementById('bs').textContent=best;
+  if(!running){ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff';ctx.font='24px monospace';ctx.fillText('Crash! '+score,W/2-60,H/2);ctx.font='14px monospace';ctx.fillText('Tap to restart',W/2-60,H/2+30);}
+  requestAnimationFrame(loop);
+}
+c.addEventListener('click',()=>{if(!running){running=true;tick=0;cars=[];score=0;}});
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Twin-Stick Roguelike</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}
+canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:4px;right:4px;font-size:13px;text-shadow:1px 1px #000;pointer-events:none}
+.stick{position:absolute;bottom:12px;width:110px;height:110px;border-radius:50%;background:rgba(120,120,200,.15);border:2px solid rgba(120,120,200,.4);touch-action:none}
+#sL{left:10px}#sR{right:10px}
+.knob{position:absolute;width:48px;height:48px;border-radius:50%;background:rgba(167,139,250,.7);left:31px;top:31px}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center}
+.msg.hide{display:none}
+.msg button{margin:6px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace;font-size:14px}
+.up{font-size:12px;margin:4px;padding:8px 10px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;cursor:pointer;font-family:monospace}
+</style></head>
+<body><div id="wrap">
+<canvas id="c" width="480" height="640"></canvas>
+<div id="hud"><div id="lvl">Level 1</div><div id="hp">HP 3</div><div id="kills">Enemies 0/5</div></div>
+<div class="stick" id="sL"><div class="knob" id="kL"></div></div>
+<div class="stick" id="sR"><div class="knob" id="kR"></div></div>
+<div class="msg" id="msg"><div id="mt">Roguelike Twin-Stick</div><div id="mx">Left stick moves, right stick shoots. Keyboard: WASD + arrows. After each loss, pick a buff.</div><button id="start">Start</button></div>
+</div>
+<script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,enemies,bullets,level,buffs,mv,sh,running=false,kills,killsNeeded;
+function reset(){
+  p={x:W/2,y:H/2,r:14,hp:3,spd:3,dmg:1,fire:18,fcool:0,bspd:7};
+  buffs={};level=1;start();
+}
+function start(){
+  enemies=[];bullets=[];kills=0;killsNeeded=5+level*2;
+  for(let i=0;i<killsNeeded;i++){
+    let ang=Math.random()*Math.PI*2,r=220+Math.random()*40;
+    enemies.push({x:W/2+Math.cos(ang)*r,y:H/2+Math.sin(ang)*r,r:12,hp:1+Math.floor(level/2)});
+  }
+  running=true;
+}
+function applyBuff(b){
+  if(b==='spd'){p.spd+=.8;}
+  if(b==='dmg'){p.dmg+=1;}
+  if(b==='fire'){p.fire=Math.max(6,p.fire-4);}
+  if(b==='hp'){p.hp+=2;}
+  if(b==='bspd'){p.bspd+=2;}
+  document.getElementById('msg').classList.add('hide');
+  level++;start();
+}
+function lose(){
+  running=false;
+  const mt=document.getElementById('mt'),mx=document.getElementById('mx'),m=document.getElementById('msg');
+  mt.textContent='You fell. Pick a buff.';
+  mx.innerHTML='';
+  ['spd','dmg','fire','hp','bspd'].forEach(b=>{
+    const btn=document.createElement('button');btn.className='up';
+    btn.textContent={spd:'+Speed',dmg:'+Damage',fire:'-Fire Cooldown',hp:'+HP',bspd:'+Bullet Speed'}[b];
+    btn.onclick=()=>{p.hp=3;applyBuff(b);};
+    mx.appendChild(btn);
+  });
+  m.classList.remove('hide');
+  document.getElementById('start').style.display='none';
+}
+function setupStick(el,knob,vecOut){
+  let active=null;
+  el.addEventListener('pointerdown',e=>{active=e.pointerId;el.setPointerCapture(e.pointerId);});
+  el.addEventListener('pointermove',e=>{
+    if(e.pointerId!==active)return;
+    const r=el.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+    let dx=e.clientX-cx,dy=e.clientY-cy,mag=Math.hypot(dx,dy),max=r.width/2;
+    if(mag>max){dx=dx/mag*max;dy=dy/mag*max;}
+    knob.style.left=(31+dx)+'px';knob.style.top=(31+dy)+'px';
+    vecOut.x=dx/max;vecOut.y=dy/max;
+  });
+  const end=e=>{if(e.pointerId===active){active=null;knob.style.left='31px';knob.style.top='31px';vecOut.x=0;vecOut.y=0;}};
+  el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+}
+mv={x:0,y:0};sh={x:0,y:0};
+setupStick(document.getElementById('sL'),document.getElementById('kL'),mv);
+setupStick(document.getElementById('sR'),document.getElementById('kR'),sh);
+const keys={};
+document.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+function loop(){
+  if(running){
+    let mx=mv.x,my=mv.y;
+    if(keys['a'])mx=-1;if(keys['d'])mx=1;if(keys['w'])my=-1;if(keys['s'])my=1;
+    p.x+=mx*p.spd;p.y+=my*p.spd;
+    p.x=Math.max(p.r,Math.min(W-p.r,p.x));p.y=Math.max(p.r,Math.min(H-p.r,p.y));
+    let sx=sh.x,sy=sh.y;
+    if(keys['arrowleft'])sx=-1;if(keys['arrowright'])sx=1;if(keys['arrowup'])sy=-1;if(keys['arrowdown'])sy=1;
+    p.fcool--;
+    if((sx||sy)&&p.fcool<=0){
+      let m=Math.hypot(sx,sy);
+      bullets.push({x:p.x,y:p.y,vx:sx/m*p.bspd,vy:sy/m*p.bspd,life:60});
+      p.fcool=p.fire;
+    }
+    bullets.forEach(b=>{b.x+=b.vx;b.y+=b.vy;b.life--;});
+    bullets=bullets.filter(b=>b.life>0);
+    enemies.forEach(en=>{
+      let dx=p.x-en.x,dy=p.y-en.y,m=Math.hypot(dx,dy)||1;
+      en.x+=dx/m*1.4;en.y+=dy/m*1.4;
+    });
+    bullets.forEach(b=>{
+      enemies.forEach(en=>{
+        if(en.hp>0&&Math.hypot(b.x-en.x,b.y-en.y)<en.r+4){en.hp-=p.dmg;b.life=0;if(en.hp<=0){kills++;}}
+      });
+    });
+    enemies=enemies.filter(en=>en.hp>0);
+    enemies.forEach(en=>{if(Math.hypot(p.x-en.x,p.y-en.y)<p.r+en.r){p.hp--;en.hp=0;kills++;}});
+    if(p.hp<=0)lose();
+    if(enemies.length===0){level++;start();}
+    document.getElementById('lvl').textContent='Level '+level;
+    document.getElementById('hp').textContent='HP '+p.hp;
+    document.getElementById('kills').textContent='Enemies '+(killsNeeded-enemies.length)+'/'+killsNeeded;
+  }
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  enemies.forEach(en=>{ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(en.x,en.y,en.r,0,6.28);ctx.fill();});
+  bullets.forEach(b=>{ctx.fillStyle='#fbbf24';ctx.fillRect(b.x-2,b.y-2,4,4);});
+  if(p){ctx.fillStyle='#22d3ee';ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fill();}
+  requestAnimationFrame(loop);
+}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script>
+<script src="../notes.js"></script>
+</body></html>

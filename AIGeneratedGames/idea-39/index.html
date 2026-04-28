@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Infinite Stroke Golf</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#2d5a1e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.info{padding:6px;font-size:11px;color:#aaa;text-align:center}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="520"></canvas>
+<div id="hud"><span>Hole: <b id="ho">1</b></span><span>Strokes: <b id="st">0</b></span><span>Time: <b id="tm">15</b>s</span></div>
+<div class="info">Drag from ball to aim/power. Release to shoot. Time penalty if too slow!</div>
+<div class="msg hide" id="msg"><div id="mt">Hole complete!</div><button id="next">Next Hole</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let ball,hole,obstacles,strokes=0,holeNum=1,time=15,aimStart=null,aimEnd=null,running=true,tLast=Date.now();
+function reset(){
+  ball={x:60,y:H-60,vx:0,vy:0,r:8};
+  hole={x:W-80,y:60,r:16};
+  obstacles=[];for(let i=0;i<2+holeNum;i++)obstacles.push({x:100+Math.random()*(W-200),y:100+Math.random()*(H-200),r:20+Math.random()*20});
+  strokes=0;time=Math.max(8,15-holeNum);running=true;tLast=Date.now();
+  document.getElementById('msg').classList.add('hide');
+}
+c.addEventListener('pointerdown',e=>{const r=c.getBoundingClientRect();const x=(e.clientX-r.left)*W/r.width,y=(e.clientY-r.top)*H/r.height;if(Math.hypot(x-ball.x,y-ball.y)<30&&Math.abs(ball.vx)<.2&&Math.abs(ball.vy)<.2){aimStart={x:ball.x,y:ball.y};aimEnd={x,y};}});
+c.addEventListener('pointermove',e=>{if(!aimStart)return;const r=c.getBoundingClientRect();aimEnd={x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height};});
+c.addEventListener('pointerup',()=>{if(aimStart){const dx=aimStart.x-aimEnd.x,dy=aimStart.y-aimEnd.y;const m=Math.min(Math.hypot(dx,dy)/20,10);const a=Math.atan2(dy,dx);ball.vx=Math.cos(a)*m;ball.vy=Math.sin(a)*m;strokes++;aimStart=null;aimEnd=null;}});
+function loop(){
+  if(running){
+    const now=Date.now();if(now-tLast>=1000){tLast=now;time--;if(time<=0){showMsg('Out of time! Retry.');running=false;}}
+    ball.x+=ball.vx;ball.y+=ball.vy;ball.vx*=.97;ball.vy*=.97;
+    if(ball.x<ball.r||ball.x>W-ball.r){ball.vx*=-.8;ball.x=Math.max(ball.r,Math.min(W-ball.r,ball.x));}
+    if(ball.y<ball.r||ball.y>H-ball.r){ball.vy*=-.8;ball.y=Math.max(ball.r,Math.min(H-ball.r,ball.y));}
+    obstacles.forEach(o=>{const dx=ball.x-o.x,dy=ball.y-o.y,d=Math.hypot(dx,dy);if(d<o.r+ball.r){const nx=dx/d,ny=dy/d;ball.x=o.x+nx*(o.r+ball.r);ball.y=o.y+ny*(o.r+ball.r);const dot=ball.vx*nx+ball.vy*ny;ball.vx-=2*dot*nx*.8;ball.vy-=2*dot*ny*.8;}});
+    if(Math.hypot(ball.x-hole.x,ball.y-hole.y)<hole.r){running=false;showMsg('Hole '+holeNum+' in '+strokes+' strokes!');}
+  }
+  ctx.fillStyle='#2d5a1e';ctx.fillRect(0,0,W,H);
+  obstacles.forEach(o=>{ctx.fillStyle='#6b3a1a';ctx.beginPath();ctx.arc(o.x,o.y,o.r,0,6.28);ctx.fill();});
+  ctx.fillStyle='#000';ctx.beginPath();ctx.arc(hole.x,hole.y,hole.r,0,6.28);ctx.fill();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,6.28);ctx.fill();
+  if(aimStart&&aimEnd){ctx.strokeStyle='#fbbf24';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(aimStart.x,aimStart.y);ctx.lineTo(aimEnd.x,aimEnd.y);ctx.stroke();}
+  document.getElementById('ho').textContent=holeNum;document.getElementById('st').textContent=strokes;document.getElementById('tm').textContent=time;
+  requestAnimationFrame(loop);
+}
+function showMsg(t){document.getElementById('mt').textContent=t;document.getElementById('msg').classList.remove('hide');}
+document.getElementById('next').onclick=()=>{holeNum++;reset();};
+reset();loop();
+})();
+</script><script src="../notes.js"></script></body></html>

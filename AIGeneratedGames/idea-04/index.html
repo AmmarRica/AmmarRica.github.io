@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Archer Platformer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#223}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;display:flex;justify-content:space-between;pointer-events:none;text-shadow:1px 1px #000}
+.info{padding:4px 8px;font-size:11px;color:#aaa;text-align:center}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="620"></canvas>
+<div id="hud"><span id="lvl">Level 1</span><span id="arrows">Arrows: 10</span></div>
+<div class="info">Tap/click anywhere to fire arrow. Arrows stick as platforms. Reach the flag!</div>
+<div class="msg" id="msg"><div>Archer Puzzle Platformer</div><div style="font-size:13px;margin-top:6px">Shoot arrows into walls to create platforms, then jump to reach the flag.</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,arrows,walls,flag,level=1,arrowsLeft,running=false,keys={};
+const levels=[
+  {walls:[{x:0,y:550,w:W,h:70},{x:0,y:0,w:10,h:H},{x:W-10,y:0,w:10,h:H},{x:350,y:400,w:130,h:20}],flag:{x:410,y:380},start:{x:40,y:500}},
+  {walls:[{x:0,y:550,w:W,h:70},{x:0,y:0,w:10,h:H},{x:W-10,y:0,w:10,h:H},{x:0,y:400,w:80,h:20},{x:400,y:300,w:80,h:20},{x:100,y:180,w:80,h:20}],flag:{x:120,y:160},start:{x:40,y:500}},
+  {walls:[{x:0,y:580,w:W,h:40},{x:0,y:0,w:10,h:H},{x:W-10,y:0,w:10,h:H},{x:0,y:300,w:120,h:20},{x:360,y:200,w:120,h:20},{x:200,y:100,w:80,h:20}],flag:{x:230,y:80},start:{x:40,y:540}}
+];
+function reset(){level=1;loadLevel();}
+function loadLevel(){
+  const L=levels[(level-1)%levels.length];
+  walls=L.walls.map(w=>({...w,solid:true}));
+  flag={x:L.flag.x,y:L.flag.y};
+  p={x:L.start.x,y:L.start.y,w:16,h:24,vx:0,vy:0,onGround:false};
+  arrows=[];arrowsLeft=10;running=true;
+}
+function fire(tx,ty){
+  if(arrowsLeft<=0)return;arrowsLeft--;
+  let dx=tx-p.x,dy=ty-p.y,m=Math.hypot(dx,dy)||1;
+  arrows.push({x:p.x,y:p.y-12,vx:dx/m*12,vy:dy/m*12,stuck:false});
+}
+c.addEventListener('pointerdown',e=>{
+  if(!running)return;
+  const r=c.getBoundingClientRect();
+  fire((e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height);
+});
+document.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key===' '){e.preventDefault();if(p&&p.onGround){p.vy=-11;p.onGround=false;}}});
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+function rectVs(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+function loop(){
+  if(running){
+    let ax=0;
+    if(keys['arrowleft']||keys['a'])ax=-1;
+    if(keys['arrowright']||keys['d'])ax=1;
+    p.vx=ax*3;p.vy+=.5;
+    if(p.vy>12)p.vy=12;
+    p.x+=p.vx;
+    walls.forEach(w=>{if(rectVs(p,w)){if(p.vx>0)p.x=w.x-p.w;else if(p.vx<0)p.x=w.x+w.w;}});
+    p.y+=p.vy;p.onGround=false;
+    walls.forEach(w=>{if(rectVs(p,w)){if(p.vy>0){p.y=w.y-p.h;p.vy=0;p.onGround=true;}else{p.y=w.y+w.h;p.vy=0;}}});
+    arrows.forEach(a=>{
+      if(a.stuck)return;
+      a.x+=a.vx;a.y+=a.vy;a.vy+=.2;
+      walls.forEach(w=>{if(a.x>w.x&&a.x<w.x+w.w&&a.y>w.y&&a.y<w.y+w.h){a.stuck=true;
+        let platW=40,platH=6;
+        walls.push({x:a.x-platW/2,y:a.y-platH/2,w:platW,h:platH,solid:true,arrow:true});
+      }});
+      if(a.x<0||a.x>W||a.y>H)a.stuck=true;
+    });
+    if(p.x<flag.x+20&&p.x+p.w>flag.x&&p.y<flag.y+30&&p.y+p.h>flag.y){level++;loadLevel();}
+    if(p.y>H){p.hp=0;running=false;showMsg('Fell! Tap Retry');}
+    document.getElementById('lvl').textContent='Level '+level;
+    document.getElementById('arrows').textContent='Arrows: '+arrowsLeft;
+  }
+  ctx.fillStyle='#223';ctx.fillRect(0,0,W,H);
+  walls.forEach(w=>{ctx.fillStyle=w.arrow?'#a78bfa':'#555';ctx.fillRect(w.x,w.y,w.w,w.h);});
+  arrows.forEach(a=>{if(!a.stuck){ctx.strokeStyle='#fbbf24';ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(a.x-a.vx,a.y-a.vy);ctx.stroke();}});
+  ctx.fillStyle='#22c55e';ctx.fillRect(flag.x,flag.y,4,30);ctx.fillRect(flag.x,flag.y,20,12);
+  if(p){ctx.fillStyle='#22d3ee';ctx.fillRect(p.x,p.y,p.w,p.h);}
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

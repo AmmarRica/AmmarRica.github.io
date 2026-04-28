@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Mini RTS</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#2a3a2a;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#3a4a3a}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:11px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:4px;padding:6px;flex-wrap:wrap}.btn{flex:1;padding:8px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:11px;min-width:70px}
+.btn.sel{background:#7c3aed}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="460"></canvas>
+<div id="hud"><span>💰 <b id="gold">30</b></span><span>Units: <b id="nu">0</b></span><span>Enemies: <b id="en">0</b></span></div>
+<div class="c">
+<button class="btn sel" id="bT">Select</button>
+<button class="btn" id="bI">Train Inf 10g</button>
+<button class="btn" id="bR">Train Rng 20g</button>
+<button class="btn" id="bM">Move</button>
+</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let gold=30,units=[],enemies=[],mode='T',base={x:60,y:H-60},ebase={x:W-60,y:60};
+// terrain (hills = cover)
+let hills=[{x:200,y:200,r:40},{x:320,y:300,r:50},{x:100,y:350,r:35}];
+function spawnEnemy(){enemies.push({x:ebase.x,y:ebase.y,hp:8,dmg:1,spd:.6,cool:0,type:'e'});}
+setInterval(()=>{if(enemies.length<8)spawnEnemy();},3000);
+setInterval(()=>gold+=2,1000);
+document.getElementById('bT').onclick=()=>setMode('T');
+document.getElementById('bI').onclick=()=>{if(gold>=10){gold-=10;units.push({x:base.x,y:base.y,hp:10,dmg:2,spd:1,cool:0,type:'i',range:20,sel:false});}};
+document.getElementById('bR').onclick=()=>{if(gold>=20){gold-=20;units.push({x:base.x,y:base.y,hp:6,dmg:1,spd:.8,cool:0,type:'r',range:90,sel:false});}};
+document.getElementById('bM').onclick=()=>setMode('M');
+function setMode(m){mode=m;['bT','bM'].forEach(id=>document.getElementById(id).classList.remove('sel'));if(m==='T')document.getElementById('bT').classList.add('sel');if(m==='M')document.getElementById('bM').classList.add('sel');}
+c.addEventListener('pointerdown',e=>{
+  const r=c.getBoundingClientRect();
+  const x=(e.clientX-r.left)*W/r.width,y=(e.clientY-r.top)*H/r.height;
+  if(mode==='T'){units.forEach(u=>{u.sel=Math.hypot(u.x-x,u.y-y)<16;});}
+  else if(mode==='M'){units.filter(u=>u.sel).forEach(u=>{u.tx=x;u.ty=y;});}
+});
+function inHill(x,y){return hills.some(h=>Math.hypot(h.x-x,h.y-y)<h.r);}
+function step(u,tlist,targetBase){
+  let dx,dy,tar=null,tarBase=false;
+  // nearest
+  tlist.forEach(t=>{const d=Math.hypot(t.x-u.x,t.y-u.y);if(!tar||d<tar._d){tar=t;tar._d=d;}});
+  const bd=Math.hypot(targetBase.x-u.x,targetBase.y-u.y);
+  if(tar&&tar._d<u.range){u.cool--;if(u.cool<=0){u.cool=40;tar.hp-=u.dmg*(inHill(u.x,u.y)?1.5:1);}}
+  else if(!tar&&bd<u.range+20){targetBase.hp=(targetBase.hp||20)-u.dmg*.3;}
+  else if(u.tx!=null){dx=u.tx-u.x;dy=u.ty-u.y;const d=Math.hypot(dx,dy)||1;if(d>3){u.x+=dx/d*u.spd;u.y+=dy/d*u.spd;}else{u.tx=null;}}
+  else if(tar){dx=tar.x-u.x;dy=tar.y-u.y;const d=Math.hypot(dx,dy)||1;u.x+=dx/d*u.spd;u.y+=dy/d*u.spd;}
+  else{dx=targetBase.x-u.x;dy=targetBase.y-u.y;const d=Math.hypot(dx,dy)||1;u.x+=dx/d*u.spd;u.y+=dy/d*u.spd;}
+}
+function loop(){
+  units.forEach(u=>step(u,enemies,ebase));
+  enemies.forEach(u=>{u.range=20;step(u,units,base);});
+  units=units.filter(u=>u.hp>0);enemies=enemies.filter(u=>u.hp>0);
+  if(ebase.hp<=0||base.hp<=0){ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff';ctx.font='24px monospace';ctx.fillText(base.hp<=0?'Defeat':'Victory!',W/2-50,H/2);return;}
+  ctx.fillStyle='#3a4a3a';ctx.fillRect(0,0,W,H);
+  hills.forEach(h=>{ctx.fillStyle='#4a5a4a';ctx.beginPath();ctx.arc(h.x,h.y,h.r,0,6.28);ctx.fill();});
+  ctx.fillStyle='#22d3ee';ctx.fillRect(base.x-16,base.y-16,32,32);
+  ctx.fillStyle='#ef4444';ctx.fillRect(ebase.x-16,ebase.y-16,32,32);
+  ctx.fillStyle='#fff';ctx.font='10px monospace';ctx.fillText(base.hp||20,base.x-10,base.y+3);ctx.fillText(ebase.hp||20,ebase.x-10,ebase.y+3);
+  units.forEach(u=>{ctx.fillStyle=u.type==='i'?'#22d3ee':'#22c55e';ctx.beginPath();ctx.arc(u.x,u.y,8,0,6.28);ctx.fill();if(u.sel){ctx.strokeStyle='#fbbf24';ctx.lineWidth=2;ctx.stroke();}});
+  enemies.forEach(u=>{ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(u.x,u.y,8,0,6.28);ctx.fill();});
+  document.getElementById('gold').textContent=gold;
+  document.getElementById('nu').textContent=units.length;
+  document.getElementById('en').textContent=enemies.length;
+  requestAnimationFrame(loop);
+}
+base.hp=30;ebase.hp=40;loop();
+})();
+</script><script src="../notes.js"></script></body></html>

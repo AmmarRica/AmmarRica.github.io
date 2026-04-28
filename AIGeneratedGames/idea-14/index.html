@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Idle Brick Breaker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.sh{display:flex;gap:4px;padding:6px;flex-wrap:wrap}
+.sh button{flex:1;min-width:100px;padding:8px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:11px}
+.sh button.sel{background:#7c3aed}
+.sh button:disabled{opacity:.4}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="500"></canvas>
+<div id="hud"><span>💰 <b id="money">0</b></span><span>Balls: <b id="nb">1</b></span></div>
+<div class="sh" id="shop"></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+const GS=24,COLS=Math.floor(W/GS),ROWS=Math.floor(H/GS);
+let balls=[{x:W/2,y:H-20,vx:3,vy:-4,r:6}];
+let bricks={};
+let money=0,brickCost=5,ballCost=50,bPrice={n:'normal',cost:5,val:1,col:'#7c3aed'};
+let placing='normal';
+const types={
+  normal:{cost:5,val:1,col:'#7c3aed'},
+  steel:{cost:20,val:5,col:'#94a3b8'},
+  gold:{cost:100,val:25,col:'#fbbf24'}
+};
+c.addEventListener('pointerdown',e=>{
+  const r=c.getBoundingClientRect();
+  const gx=Math.floor((e.clientX-r.left)*W/r.width/GS),gy=Math.floor((e.clientY-r.top)*H/r.height/GS);
+  if(gy<2||gy>ROWS-3)return;
+  const k=gx+','+gy;
+  const t=types[placing];
+  if(bricks[k]){delete bricks[k];money+=t.cost/2;}
+  else if(money>=t.cost){bricks[k]={hp:t.val,max:t.val,col:t.col,val:t.val,type:placing};money-=t.cost;}
+  upd();
+});
+function buyBall(){if(money>=ballCost){money-=ballCost;ballCost=Math.floor(ballCost*1.8);balls.push({x:W/2,y:H-20,vx:(Math.random()*6-3),vy:-4,r:6});upd();}}
+function upd(){
+  document.getElementById('money').textContent=Math.floor(money);
+  document.getElementById('nb').textContent=balls.length;
+  const shop=document.getElementById('shop');shop.innerHTML='';
+  Object.keys(types).forEach(k=>{
+    const t=types[k],b=document.createElement('button');
+    b.textContent=k+' brick ('+t.cost+')';if(placing===k)b.className='sel';
+    b.onclick=()=>{placing=k;upd();};
+    shop.appendChild(b);
+  });
+  const bb=document.createElement('button');bb.textContent='+Ball ('+ballCost+')';bb.disabled=money<ballCost;bb.onclick=buyBall;shop.appendChild(bb);
+}
+function loop(){
+  balls.forEach(b=>{
+    b.x+=b.vx;b.y+=b.vy;
+    if(b.x<b.r||b.x>W-b.r){b.vx*=-1;b.x=Math.max(b.r,Math.min(W-b.r,b.x));}
+    if(b.y<b.r){b.vy*=-1;b.y=b.r;}
+    if(b.y>H-b.r){b.vy*=-1;b.y=H-b.r;}
+    // brick collisions
+    const gx=Math.floor(b.x/GS),gy=Math.floor(b.y/GS);
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+      const k=(gx+dx)+','+(gy+dy);
+      if(bricks[k]){
+        const bx=(gx+dx)*GS,by=(gy+dy)*GS;
+        if(b.x+b.r>bx&&b.x-b.r<bx+GS&&b.y+b.r>by&&b.y-b.r<by+GS){
+          const br=bricks[k];br.hp--;
+          if(br.hp<=0){money+=br.val*2;delete bricks[k];}
+          // bounce
+          const overlapX=Math.min(b.x+b.r-bx,bx+GS-(b.x-b.r));
+          const overlapY=Math.min(b.y+b.r-by,by+GS-(b.y-b.r));
+          if(overlapX<overlapY)b.vx*=-1;else b.vy*=-1;
+        }
+      }
+    }
+  });
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  // grid lines
+  ctx.strokeStyle='#2a2a44';ctx.lineWidth=1;
+  for(let i=0;i<=COLS;i++){ctx.beginPath();ctx.moveTo(i*GS,2*GS);ctx.lineTo(i*GS,(ROWS-3)*GS);ctx.stroke();}
+  for(let j=2;j<=ROWS-3;j++){ctx.beginPath();ctx.moveTo(0,j*GS);ctx.lineTo(W,j*GS);ctx.stroke();}
+  Object.keys(bricks).forEach(k=>{const [x,y]=k.split(',').map(Number);const br=bricks[k];ctx.fillStyle=br.col;ctx.fillRect(x*GS+1,y*GS+1,GS-2,GS-2);ctx.fillStyle='#fff';ctx.font='10px monospace';ctx.fillText(br.hp,x*GS+3,y*GS+14);});
+  balls.forEach(b=>{ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,6.28);ctx.fill();});
+  requestAnimationFrame(loop);
+}
+// starter money
+money=50;upd();loop();
+})();
+</script><script src="../notes.js"></script></body></html>

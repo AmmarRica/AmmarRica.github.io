@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Bonk Roguelike</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}
+canvas{display:block;width:100%;background:#07070f}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:13px;display:flex;justify-content:space-between;pointer-events:none;text-shadow:1px 1px #000}
+.ct{display:flex;gap:6px;padding:6px;flex-wrap:wrap}
+.btn{flex:1;padding:12px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:14px;min-width:70px}
+.btn:active{background:#7c3aed}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head>
+<body><div id="wrap">
+<canvas id="c" width="480" height="560"></canvas>
+<div id="hud"><span id="round">Round 1</span><span id="left">Enemies: 0</span></div>
+<div class="ct">
+<button class="btn" id="bL">◀</button>
+<button class="btn" id="bD">Dash</button>
+<button class="btn" id="bR">▶</button>
+</div>
+<div class="msg" id="msg"><div>Bonk Roguelike</div><div style="font-size:13px;margin-top:6px">Knock opponents off the shrinking platform! No HP - just momentum.<br>Arrow keys / buttons: move. Space / Dash: boost shove.</div><button id="start">Start</button></div>
+</div>
+<script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,foes,round=0,arenaR,cx=W/2,cy=H/2,running=false,tick=0;
+function reset(){round=0;next();}
+function next(){
+  round++;arenaR=Math.max(80,210-round*6);
+  p={x:cx-40,y:cy,vx:0,vy:0,r:16,dashC:0};
+  foes=[];
+  for(let i=0;i<Math.min(5,1+round);i++){
+    let a=Math.random()*6.28;
+    foes.push({x:cx+Math.cos(a)*60,y:cy+Math.sin(a)*60,vx:0,vy:0,r:16,ai:1});
+  }
+  running=true;
+}
+const keys={};
+document.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key===' ')dash();});
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+function dash(){if(p&&p.dashC<=0){p.vx*=2.5;p.vy*=2.5;if(!p.vx&&!p.vy){p.vx=3;}p.dashC=60;}}
+document.getElementById('bL').addEventListener('pointerdown',()=>keys['l']=true);
+document.getElementById('bL').addEventListener('pointerup',()=>keys['l']=false);
+document.getElementById('bR').addEventListener('pointerdown',()=>keys['r']=true);
+document.getElementById('bR').addEventListener('pointerup',()=>keys['r']=false);
+document.getElementById('bD').addEventListener('pointerdown',dash);
+function loop(){
+  tick++;
+  if(running){
+    let ax=0,ay=0;
+    if(keys['arrowleft']||keys['a']||keys['l'])ax=-1;
+    if(keys['arrowright']||keys['d']||keys['r'])ax=1;
+    if(keys['arrowup']||keys['w'])ay=-1;
+    if(keys['arrowdown']||keys['s'])ay=1;
+    p.vx+=ax*.3;p.vy+=ay*.3;
+    p.vx*=.96;p.vy*=.96;p.x+=p.vx;p.y+=p.vy;
+    if(p.dashC>0)p.dashC--;
+    foes.forEach(en=>{
+      if(en.hp===0)return;
+      let dx=p.x-en.x,dy=p.y-en.y,m=Math.hypot(dx,dy)||1;
+      en.vx+=dx/m*.15;en.vy+=dy/m*.15;
+      en.vx*=.97;en.vy*=.97;en.x+=en.vx;en.y+=en.vy;
+    });
+    // collisions
+    const all=[p].concat(foes);
+    for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
+      let a=all[i],b=all[j];
+      let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy),r=a.r+b.r;
+      if(d<r&&d>0){
+        let nx=dx/d,ny=dy/d,overlap=r-d;
+        a.x-=nx*overlap/2;a.y-=ny*overlap/2;b.x+=nx*overlap/2;b.y+=ny*overlap/2;
+        let relv=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny;
+        if(relv<0){let imp=-relv*1.4;a.vx-=nx*imp;a.vy-=ny*imp;b.vx+=nx*imp;b.vy+=ny*imp;}
+      }
+    }
+    // fall check
+    all.forEach(o=>{if(Math.hypot(o.x-cx,o.y-cy)>arenaR)o.dead=true;});
+    foes=foes.filter(f=>!f.dead);
+    if(p.dead){running=false;showEnd('Fell! Round '+round);}
+    if(foes.length===0&&running){next();}
+    document.getElementById('round').textContent='Round '+round;
+    document.getElementById('left').textContent='Enemies: '+foes.length;
+  }
+  ctx.fillStyle='#07070f';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#1a1a2e';ctx.beginPath();ctx.arc(cx,cy,arenaR,0,6.28);ctx.fill();
+  ctx.strokeStyle='#7c3aed';ctx.lineWidth=3;ctx.stroke();
+  foes.forEach(en=>{ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(en.x,en.y,en.r,0,6.28);ctx.fill();});
+  if(p&&!p.dead){ctx.fillStyle=p.dashC>40?'#fbbf24':'#22d3ee';ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fill();}
+  requestAnimationFrame(loop);
+}
+function showEnd(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script>
+<script src="../notes.js"></script>
+</body></html>

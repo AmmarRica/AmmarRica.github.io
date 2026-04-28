@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Rocket Jumper</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.info{padding:6px;font-size:11px;color:#aaa;text-align:center}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="600"></canvas>
+<div id="hud"><span id="h">Height: 0</span><span id="best">Best: 0</span></div>
+<div class="info">Tap/click to fire rocket at that spot. Explosion launches you. Keyboard: arrows move, click to shoot. Climb as high as possible!</div>
+<div class="msg" id="msg"><div>Rocket Jump Platformer</div><div style="font-size:12px;margin:6px 10px">Fire rockets at walls or below you - the explosion launches you up.</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,rockets,walls,cam,running=false,keys={},best=+localStorage.idea07Best||0,bestH=0;
+function reset(){
+  p={x:W/2,y:H-60,vx:0,vy:0,r:12};
+  rockets=[];cam=0;bestH=0;
+  walls=[{x:0,y:H-20,w:W,h:20}];
+  for(let i=0;i<40;i++){
+    walls.push({x:Math.random()*(W-60),y:H-80-i*100,w:40+Math.random()*40,h:14});
+  }
+  running=true;
+}
+c.addEventListener('pointerdown',e=>{
+  if(!running)return;
+  const r=c.getBoundingClientRect();
+  const tx=(e.clientX-r.left)*W/r.width,ty=(e.clientY-r.top)*H/r.height-cam;
+  let dx=tx-p.x,dy=ty-p.y,m=Math.hypot(dx,dy)||1;
+  rockets.push({x:p.x,y:p.y,vx:dx/m*8,vy:dy/m*8,life:90});
+});
+document.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+function rectCircle(c,r){let cx=Math.max(r.x,Math.min(c.x,r.x+r.w)),cy=Math.max(r.y,Math.min(c.y,r.y+r.h));return Math.hypot(c.x-cx,c.y-cy)<c.r;}
+function loop(){
+  if(running){
+    let ax=0;
+    if(keys['arrowleft']||keys['a'])ax=-1;
+    if(keys['arrowright']||keys['d'])ax=1;
+    p.vx+=ax*.3;p.vx*=.92;p.vy+=.4;if(p.vy>14)p.vy=14;
+    p.x+=p.vx;p.y+=p.vy;
+    walls.forEach(w=>{if(rectCircle(p,w)){
+      if(p.vy>0&&p.y-p.vy<=w.y+p.r){p.y=w.y-p.r;p.vy=0;}
+      else if(p.vy<0){p.y=w.y+w.h+p.r;p.vy=0;}
+      else if(p.vx>0){p.x=w.x-p.r;p.vx=0;}
+      else if(p.vx<0){p.x=w.x+w.w+p.r;p.vx=0;}
+    }});
+    if(p.x<p.r)p.x=p.r;if(p.x>W-p.r)p.x=W-p.r;
+    rockets.forEach(r=>{
+      r.x+=r.vx;r.y+=r.vy;r.life--;
+      let hit=walls.some(w=>r.x>w.x&&r.x<w.x+w.w&&r.y>w.y&&r.y<w.y+w.h);
+      if(hit||r.life<=0||r.x<0||r.x>W){
+        // explode
+        let dx=p.x-r.x,dy=p.y-r.y,d=Math.hypot(dx,dy);
+        if(d<80){let f=(80-d)/80*16;p.vx+=dx/(d||1)*f;p.vy+=dy/(d||1)*f;}
+        r.dead=true;
+        r.boom={x:r.x,y:r.y,t:15};
+      }
+    });
+    rockets.forEach(r=>{if(r.boom){r.boom.t--;}});
+    rockets=rockets.filter(r=>!r.dead||(r.boom&&r.boom.t>0));
+    cam=Math.max(cam,-(p.y-H/2));
+    bestH=Math.max(bestH,Math.floor(cam));
+    if(p.y-cam>H+100){running=false;if(bestH>best){best=bestH;localStorage.idea07Best=best;}showMsg('Fell! Height '+bestH);}
+    document.getElementById('h').textContent='Height: '+Math.floor(cam);
+    document.getElementById('best').textContent='Best: '+best;
+  }
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.translate(0,cam);
+  walls.forEach(w=>{ctx.fillStyle='#555';ctx.fillRect(w.x,w.y,w.w,w.h);});
+  rockets.forEach(r=>{
+    if(r.boom){ctx.fillStyle='rgba(251,191,36,'+r.boom.t/15+')';ctx.beginPath();ctx.arc(r.boom.x,r.boom.y,60*(1-r.boom.t/15)+10,0,6.28);ctx.fill();}
+    else{ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(r.x,r.y,5,0,6.28);ctx.fill();}
+  });
+  if(p){ctx.fillStyle='#22d3ee';ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fill();}
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

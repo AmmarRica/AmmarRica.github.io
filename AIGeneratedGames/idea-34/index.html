@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Prisoner's Dilemma</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;min-height:100vh;touch-action:manipulation;user-select:none}
+body{max-width:480px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:18px;color:#a78bfa}
+.score{display:flex;justify-content:space-between;background:#111;padding:8px;border-radius:6px}
+.rounds{display:flex;gap:4px;flex-wrap:wrap}
+.round{background:#111;padding:4px 8px;border-radius:4px;font-size:11px}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.choices button{padding:20px;background:#7c3aed;color:#fff;border:0;border-radius:8px;font-family:monospace;font-size:14px;font-weight:700}
+.choices button.bet{background:#22c55e}
+.log{background:#111;padding:10px;border-radius:6px;font-size:12px;max-height:180px;overflow-y:auto}
+.payoff{background:#1a1a2e;padding:8px;border-radius:6px;font-size:11px;color:#ccc}
+</style></head><body>
+<h1>🤝 Prisoner's Dilemma - 2 Rulers</h1>
+<div class="payoff">Both Cooperate: +3 each. Both Betray: +1 each. You Coop, AI Betray: -2 / +5. You Betray, AI Coop: +5 / -2. 10 rounds.</div>
+<div class="score"><span>You: <b id="me">0</b></span><span>Round: <b id="rd">1</b>/10</span><span>AI: <b id="ai">0</b></span></div>
+<div class="rounds" id="rds"></div>
+<div class="choices">
+<button id="coop">🤝 Cooperate</button>
+<button id="bet" class="bet">⚔ Betray</button>
+</div>
+<div class="log" id="log"></div>
+<script src="../notes.js"></script>
+<script>
+(function(){
+let me=0,ai=0,r=1,history=[];
+function aiMove(){
+  // Tit-for-tat with small noise
+  if(history.length===0)return 'c';
+  const last=history[history.length-1];
+  if(last.you==='b')return Math.random()<.8?'b':'c';
+  return Math.random()<.1?'b':'c';
+}
+function render(){
+  document.getElementById('me').textContent=me;
+  document.getElementById('ai').textContent=ai;
+  document.getElementById('rd').textContent=Math.min(r,10);
+  const rds=document.getElementById('rds');rds.innerHTML='';
+  history.forEach((h,i)=>{const d=document.createElement('div');d.className='round';d.textContent='R'+(i+1)+': '+h.you+'/'+h.ai;rds.appendChild(d);});
+}
+function play(you){
+  if(r>10)return;
+  const a=aiMove();
+  let mp=0,ap=0;
+  if(you==='c'&&a==='c'){mp=3;ap=3;}
+  else if(you==='b'&&a==='b'){mp=1;ap=1;}
+  else if(you==='c'&&a==='b'){mp=-2;ap=5;}
+  else{mp=5;ap=-2;}
+  me+=mp;ai+=ap;history.push({you,ai:a});r++;
+  const log=document.getElementById('log');log.innerHTML='R'+(r-1)+': You '+you+', AI '+a+' → You'+(mp>=0?'+':'')+mp+', AI'+(ap>=0?'+':'')+ap+'<br>'+log.innerHTML;
+  render();
+  if(r>10){
+    setTimeout(()=>alert('Final: You '+me+' vs AI '+ai+(me>ai?' — You win!':me<ai?' — You lose.':' — Draw.')),200);
+  }
+}
+document.getElementById('coop').onclick=()=>play('c');
+document.getElementById('bet').onclick=()=>play('b');
+render();
+})();
+</script>
+</body></html>

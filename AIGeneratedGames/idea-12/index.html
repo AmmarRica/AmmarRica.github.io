@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Incremental Shooter</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{padding:6px 10px;font-size:12px;background:#111;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px}
+.sh{display:flex;gap:4px;padding:6px;flex-wrap:wrap}
+.sh button{flex:1;min-width:100px;padding:8px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:11px;text-align:left}
+.sh button:disabled{opacity:.4}
+.sh button:active{background:#7c3aed}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="380"></canvas>
+<div id="hud">
+<span>💰 <b id="money">0</b></span>
+<span>🎯 Hits: <b id="hits">0</b></span>
+<span>💥 Dmg: <b id="dmg">1</b></span>
+<span>🔁 Rate: <b id="rate">1/s</b></span>
+<span>🎯 Spread: <b id="spd">1</b></span>
+</div>
+<div class="sh" id="shop"></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let targets=[],bullets=[],player={x:W/2,y:H-30},money=0,hits=0;
+let stats={dmg:1,fireRate:1,spread:1,speed:5,pierce:1,bspd:7};
+const upgrades=[
+  {k:'dmg',name:'+Damage',cost:10,cur:1,inc:c=>Math.floor(c*1.7+5),apply:()=>stats.dmg++},
+  {k:'fireRate',name:'+Fire Rate',cost:20,cur:1,inc:c=>Math.floor(c*1.8+10),apply:()=>stats.fireRate+=.5},
+  {k:'spread',name:'+Bullets/Shot',cost:100,cur:1,inc:c=>Math.floor(c*3+50),apply:()=>stats.spread++},
+  {k:'bspd',name:'+Bullet Speed',cost:30,cur:1,inc:c=>Math.floor(c*1.6+15),apply:()=>stats.bspd+=1},
+  {k:'pierce',name:'+Pierce',cost:200,cur:1,inc:c=>Math.floor(c*2.2+80),apply:()=>stats.pierce++}
+];
+const shop=document.getElementById('shop');
+function renderShop(){
+  shop.innerHTML='';
+  upgrades.forEach(u=>{
+    const b=document.createElement('button');
+    b.textContent=u.name+' (Lv '+u.cur+')\nCost: '+u.cost;
+    b.disabled=money<u.cost;
+    b.onclick=()=>{if(money>=u.cost){money-=u.cost;u.cur++;u.apply();u.cost=u.inc(u.cost);updateHud();renderShop();}};
+    shop.appendChild(b);
+  });
+}
+function updateHud(){
+  document.getElementById('money').textContent=Math.floor(money);
+  document.getElementById('hits').textContent=hits;
+  document.getElementById('dmg').textContent=stats.dmg;
+  document.getElementById('rate').textContent=stats.fireRate.toFixed(1)+'/s';
+  document.getElementById('spd').textContent=stats.spread;
+}
+function spawnTarget(){
+  if(targets.length<8){
+    targets.push({x:20+Math.random()*(W-40),y:30+Math.random()*200,r:14+Math.random()*8,hp:3+Math.floor(hits/20)*2,max:3+Math.floor(hits/20)*2,vx:(Math.random()-.5)*1});
+  }
+}
+c.addEventListener('pointermove',e=>{const r=c.getBoundingClientRect();player.x=(e.clientX-r.left)*W/r.width;});
+c.addEventListener('pointerdown',e=>{const r=c.getBoundingClientRect();player.x=(e.clientX-r.left)*W/r.width;});
+let fireT=0;
+function loop(){
+  fireT+=1/60;
+  if(fireT>=1/stats.fireRate){
+    fireT=0;
+    for(let i=0;i<stats.spread;i++){
+      let ang=-Math.PI/2+((i-(stats.spread-1)/2)*.1);
+      bullets.push({x:player.x,y:player.y,vx:Math.cos(ang)*stats.bspd,vy:Math.sin(ang)*stats.bspd,hits:0,pierce:stats.pierce});
+    }
+  }
+  if(Math.random()<.04)spawnTarget();
+  bullets.forEach(b=>{b.x+=b.vx;b.y+=b.vy;});
+  bullets=bullets.filter(b=>b.y>-10&&b.x>-10&&b.x<W+10&&b.hits<b.pierce);
+  targets.forEach(t=>{t.x+=t.vx;if(t.x<t.r||t.x>W-t.r)t.vx*=-1;});
+  bullets.forEach(b=>{
+    targets.forEach(t=>{
+      if(t.hp>0&&Math.hypot(b.x-t.x,b.y-t.y)<t.r){t.hp-=stats.dmg;b.hits++;}
+    });
+  });
+  targets.forEach(t=>{if(t.hp<=0){money+=Math.ceil(t.max);hits++;t.dead=true;}});
+  targets=targets.filter(t=>!t.dead);
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  targets.forEach(t=>{
+    ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(t.x,t.y,t.r,0,6.28);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='10px monospace';ctx.fillText(t.hp,t.x-6,t.y+3);
+  });
+  bullets.forEach(b=>{ctx.fillStyle='#fbbf24';ctx.fillRect(b.x-2,b.y-6,4,12);});
+  ctx.fillStyle='#22d3ee';ctx.fillRect(player.x-14,player.y,28,10);
+  updateHud();renderShop();
+  requestAnimationFrame(loop);
+}
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

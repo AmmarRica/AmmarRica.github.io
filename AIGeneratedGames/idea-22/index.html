@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Rogue Tower Defense</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#2a3a2a}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:11px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:4px;padding:6px;flex-wrap:wrap}.btn{flex:1;padding:10px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:11px;min-width:80px}
+.btn.sel{background:#7c3aed}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="440"></canvas>
+<div id="hud"><span>💰 <b id="gold">30</b></span><span>❤ <b id="hp">10</b></span><span>Wave <b id="wv">1</b></span></div>
+<div class="c">
+<button class="btn sel" id="bA">Arrow 10g</button>
+<button class="btn" id="bC">Cannon 30g</button>
+<button class="btn" id="bD">Delete (full refund!)</button>
+<button class="btn" id="bS">Start Wave</button>
+</div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+const path=[{x:0,y:100},{x:150,y:100},{x:150,y:250},{x:330,y:250},{x:330,y:380},{x:W,y:380}];
+let gold=30,hp=10,wave=1,towers=[],enemies=[],bullets=[],waveActive=false,waveQ=0,spawnT=0,mode='A';
+const towerTypes={A:{cost:10,range:70,rate:25,dmg:1,col:'#22d3ee'},C:{cost:30,range:90,rate:55,dmg:4,col:'#fbbf24'}};
+function onPath(x,y){for(let i=0;i<path.length-1;i++){const a=path[i],b=path[i+1];const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;const dx=Math.abs(x-mx),dy=Math.abs(y-my);const lx=Math.abs(b.x-a.x)/2+20,ly=Math.abs(b.y-a.y)/2+20;if(dx<lx&&dy<ly)return true;}return false;}
+c.addEventListener('pointerdown',e=>{
+  const r=c.getBoundingClientRect();
+  const x=(e.clientX-r.left)*W/r.width,y=(e.clientY-r.top)*H/r.height;
+  if(mode==='D'){const i=towers.findIndex(t=>Math.hypot(t.x-x,t.y-y)<16);if(i>=0){gold+=towerTypes[towers[i].type].cost;towers.splice(i,1);}return;}
+  if(onPath(x,y))return;
+  const tp=towerTypes[mode];if(gold>=tp.cost){gold-=tp.cost;towers.push({x,y,type:mode,cool:0});}
+});
+document.getElementById('bA').onclick=()=>setMode('A');
+document.getElementById('bC').onclick=()=>setMode('C');
+document.getElementById('bD').onclick=()=>setMode('D');
+document.getElementById('bS').onclick=()=>{if(!waveActive){waveQ=5+wave*2;waveActive=true;}};
+function setMode(m){mode=m;['bA','bC','bD'].forEach(id=>document.getElementById(id).classList.remove('sel'));document.getElementById('b'+m).classList.add('sel');}
+function drawPath(){ctx.strokeStyle='#8b7040';ctx.lineWidth=24;ctx.beginPath();ctx.moveTo(path[0].x,path[0].y);for(let i=1;i<path.length;i++)ctx.lineTo(path[i].x,path[i].y);ctx.stroke();}
+function moveEnemy(e){const p=path[e.seg+1];const dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy);if(d<2){e.seg++;if(e.seg>=path.length-1){e.escape=true;}}else{e.x+=dx/d*e.spd;e.y+=dy/d*e.spd;}}
+function loop(){
+  if(waveActive){spawnT++;if(waveQ>0&&spawnT>30){spawnT=0;waveQ--;enemies.push({x:path[0].x,y:path[0].y,seg:0,hp:3+wave*2,spd:.7+wave*.05});}if(waveQ===0&&enemies.length===0){waveActive=false;wave++;gold+=20;}}
+  enemies.forEach(e=>{moveEnemy(e);if(e.escape){hp--;e.dead=true;}});
+  towers.forEach(t=>{
+    t.cool--;if(t.cool>0)return;
+    const tp=towerTypes[t.type];
+    const tgt=enemies.find(e=>!e.dead&&Math.hypot(e.x-t.x,e.y-t.y)<tp.range);
+    if(tgt){bullets.push({x:t.x,y:t.y,tx:tgt.x,ty:tgt.y,dmg:tp.dmg,tgt});t.cool=tp.rate;}
+  });
+  bullets.forEach(b=>{const dx=b.tx-b.x,dy=b.ty-b.y,d=Math.hypot(dx,dy);if(d<6||!b.tgt||b.tgt.dead){if(b.tgt&&!b.tgt.dead){b.tgt.hp-=b.dmg;}b.dead=true;}else{b.x+=dx/d*6;b.y+=dy/d*6;b.tx=b.tgt.x;b.ty=b.tgt.y;}});
+  enemies.forEach(e=>{if(e.hp<=0){gold+=2;e.dead=true;}});
+  enemies=enemies.filter(e=>!e.dead);bullets=bullets.filter(b=>!b.dead);
+  ctx.fillStyle='#2a3a2a';ctx.fillRect(0,0,W,H);
+  drawPath();
+  towers.forEach(t=>{const tp=towerTypes[t.type];ctx.fillStyle=tp.col;ctx.beginPath();ctx.arc(t.x,t.y,12,0,6.28);ctx.fill();});
+  enemies.forEach(e=>{ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(e.x,e.y,9,0,6.28);ctx.fill();ctx.fillStyle='#fff';ctx.font='9px monospace';ctx.fillText(e.hp,e.x-6,e.y+3);});
+  bullets.forEach(b=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(b.x,b.y,3,0,6.28);ctx.fill();});
+  document.getElementById('gold').textContent=gold;document.getElementById('hp').textContent=hp;document.getElementById('wv').textContent=wave;
+  if(hp<=0){ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff';ctx.font='24px monospace';ctx.fillText('Lost at wave '+wave,W/2-90,H/2);return;}
+  requestAnimationFrame(loop);
+}
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

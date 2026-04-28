@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Sound Horror</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#000;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#000}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:12px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:6px;padding:6px}.btn{flex:1;padding:14px;background:#2a2a44;color:#fff;border:1px solid #555;border-radius:6px;font-family:monospace;font-size:12px}
+.btn:active{background:#ef4444}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.95);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+.meter{position:absolute;bottom:80px;left:10px;right:10px;height:8px;background:#222;border-radius:4px;overflow:hidden}
+.meter .fill{height:100%;background:#ef4444;width:0%;transition:width .1s}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="440"></canvas>
+<div id="hud"><span>Items: <b id="it">0</b>/3</span><span>Noise: <b id="nz">0</b></span></div>
+<div class="meter"><div class="fill" id="mf"></div></div>
+<div class="c">
+<button class="btn" id="bM">Move (hold quiet)</button>
+<button class="btn" id="bS">Sprint / Shout</button>
+</div>
+<div class="msg" id="msg"><div>Sound Horror</div><div style="font-size:12px;margin:6px 10px">Tap Move to sneak. Sprint/Shout makes noise. Collect 3 items, escape via exit. Noise attracts the creature!</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,items,exit,monster,noise=0,gotItems=0,running=false,moving=false,sprinting=false;
+const keys={};
+function reset(){
+  p={x:40,y:H-40,r:10};
+  items=[{x:100,y:60},{x:400,y:100},{x:80,y:300}];
+  exit={x:W-30,y:H-30};
+  monster={x:W-60,y:60,r:14,spd:.4,state:'wander'};
+  gotItems=0;noise=0;running=true;
+}
+document.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+document.getElementById('bM').addEventListener('pointerdown',()=>moving=true);
+document.getElementById('bM').addEventListener('pointerup',()=>moving=false);
+document.getElementById('bS').addEventListener('pointerdown',()=>{sprinting=true;noise+=30;});
+document.getElementById('bS').addEventListener('pointerup',()=>sprinting=false);
+c.addEventListener('pointermove',e=>{
+  if(!moving&&!keys['arrowup']&&!keys['arrowdown']&&!keys['arrowleft']&&!keys['arrowright'])return;
+  const r=c.getBoundingClientRect();
+  p.tx=(e.clientX-r.left)*W/r.width;p.ty=(e.clientY-r.top)*H/r.height;
+});
+c.addEventListener('pointerdown',e=>{const r=c.getBoundingClientRect();p.tx=(e.clientX-r.left)*W/r.width;p.ty=(e.clientY-r.top)*H/r.height;moving=true;});
+function loop(){
+  if(running){
+    // move
+    let dx=0,dy=0;
+    if(p.tx!=null&&moving){dx=p.tx-p.x;dy=p.ty-p.y;}
+    if(keys['a']||keys['arrowleft'])dx=-1;
+    if(keys['d']||keys['arrowright'])dx=1;
+    if(keys['w']||keys['arrowup'])dy=-1;
+    if(keys['s']||keys['arrowdown'])dy=1;
+    const d=Math.hypot(dx,dy)||1,spd=sprinting?3:1.5;
+    if(Math.hypot(dx,dy)>2){p.x+=dx/d*spd;p.y+=dy/d*spd;noise+=sprinting?1:.2;}
+    noise=Math.max(0,noise-.3);
+    items.forEach(it=>{if(!it.got&&Math.hypot(p.x-it.x,p.y-it.y)<14){it.got=true;gotItems++;noise+=10;}});
+    if(gotItems>=3&&Math.hypot(p.x-exit.x,p.y-exit.y)<20){running=false;showMsg('Escaped!');}
+    // monster
+    if(noise>20){monster.state='hunt';}else if(noise<5){monster.state='wander';}
+    if(monster.state==='hunt'){const dx=p.x-monster.x,dy=p.y-monster.y,d=Math.hypot(dx,dy)||1;monster.x+=dx/d*1.2;monster.y+=dy/d*1.2;}
+    else{monster.x+=(Math.random()-.5)*.4;monster.y+=(Math.random()-.5)*.4;}
+    if(Math.hypot(p.x-monster.x,p.y-monster.y)<p.r+monster.r){running=false;showMsg('Caught!');}
+    document.getElementById('it').textContent=gotItems;
+    document.getElementById('nz').textContent=Math.floor(noise);
+    document.getElementById('mf').style.width=Math.min(100,noise)+'%';
+  }
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  // fog of war - only see near player
+  ctx.save();
+  const grad=ctx.createRadialGradient(p.x,p.y,20,p.x,p.y,160);
+  grad.addColorStop(0,'rgba(40,40,60,1)');grad.addColorStop(1,'rgba(0,0,0,1)');
+  ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
+  items.forEach(it=>{if(it.got)return;if(Math.hypot(p.x-it.x,p.y-it.y)<140){ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(it.x,it.y,8,0,6.28);ctx.fill();}});
+  if(Math.hypot(p.x-exit.x,p.y-exit.y)<140){ctx.fillStyle=gotItems>=3?'#22c55e':'#444';ctx.fillRect(exit.x-14,exit.y-14,28,28);}
+  // monster visible when close OR noise high
+  if(Math.hypot(p.x-monster.x,p.y-monster.y)<160||noise>40){ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(monster.x,monster.y,monster.r,0,6.28);ctx.fill();}
+  ctx.fillStyle='#22d3ee';ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fill();
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>

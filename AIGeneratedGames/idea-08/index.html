@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Auto-Run Tower</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0a0a15;color:#eee;font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+#wrap{max-width:480px;margin:0 auto;position:relative}canvas{display:block;width:100%;background:#1a1a2e}
+#hud{position:absolute;top:4px;left:8px;right:8px;font-size:13px;pointer-events:none;text-shadow:1px 1px #000;display:flex;justify-content:space-between}
+.c{display:flex;gap:6px;padding:8px}.btn{flex:1;padding:18px;background:#7c3aed;color:#fff;border:0;border-radius:8px;font-family:monospace;font-size:16px;font-weight:700}
+.msg{position:absolute;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center}
+.msg.hide{display:none}.msg button{margin-top:8px;padding:10px 16px;background:#7c3aed;color:#fff;border:0;border-radius:6px;font-family:monospace}
+</style></head><body><div id="wrap">
+<canvas id="c" width="480" height="560"></canvas>
+<div id="hud"><span id="h">Height: 0</span><span id="best">Best: 0</span></div>
+<div class="c">
+<button class="btn" id="bJ">JUMP</button>
+</div>
+<div class="msg" id="msg"><div>Auto-Run Tower</div><div style="font-size:13px;margin:6px 10px">You auto-run up the tower. Tap JUMP (or Space) to jump and wall-jump. Stay ahead of the lava!</div><button id="start">Start</button></div>
+</div><script>
+(function(){
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=c.width,H=c.height;
+let p,walls,lava,cam,running=false,best=+localStorage.idea08Best||0;
+function gen(){
+  walls=[];
+  // left and right walls
+  for(let y=H-40;y>-6000;y-=40){walls.push({x:0,y,w:20,h:40,side:'L'});walls.push({x:W-20,y,w:20,h:40,side:'R'});}
+  // platforms alternating
+  for(let i=0;i<80;i++){
+    let side=Math.random()<.5;
+    walls.push({x:side?20:W-120,y:H-180-i*120,w:100,h:14});
+  }
+}
+function reset(){gen();p={x:W/2,y:H-80,w:18,h:26,vx:2,vy:0,onG:false,onWallL:false,onWallR:false,face:1};cam=0;lava=H+40;running=true;}
+document.addEventListener('keydown',e=>{if(e.key===' '){e.preventDefault();jump();}});
+document.getElementById('bJ').addEventListener('pointerdown',e=>{e.preventDefault();jump();});
+function jump(){if(!p)return;if(p.onG){p.vy=-12;}else if(p.onWallL){p.vy=-11;p.vx=4;p.face=1;}else if(p.onWallR){p.vy=-11;p.vx=-4;p.face=-1;}}
+function rectVs(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+function loop(){
+  if(running){
+    p.vy+=.5;if(p.vy>14)p.vy=14;
+    // auto-run toward facing
+    p.vx=p.face*3.2;
+    p.x+=p.vx;p.onWallL=false;p.onWallR=false;
+    walls.forEach(w=>{if(rectVs(p,w)){
+      if(p.vx>0){p.x=w.x-p.w;p.onWallR=true;p.face=-1;}
+      else if(p.vx<0){p.x=w.x+w.w;p.onWallL=true;p.face=1;}
+      p.vx=0;
+    }});
+    p.y+=p.vy;p.onG=false;
+    walls.forEach(w=>{if(rectVs(p,w)){if(p.vy>0){p.y=w.y-p.h;p.vy=0;p.onG=true;}else{p.y=w.y+w.h;p.vy=0;}}});
+    cam=Math.max(cam,-(p.y-H*.6));
+    lava-=.4;
+    if(p.y-cam>lava){running=false;if(cam>best){best=Math.floor(cam);localStorage.idea08Best=best;}showMsg('Burned! Height '+Math.floor(cam));}
+    document.getElementById('h').textContent='Height: '+Math.floor(cam);
+    document.getElementById('best').textContent='Best: '+best;
+  }
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.translate(0,cam);
+  walls.forEach(w=>{ctx.fillStyle='#555';ctx.fillRect(w.x,w.y,w.w,w.h);});
+  // lava
+  ctx.fillStyle='#ef4444';ctx.fillRect(0,lava,W,H-lava+200);
+  ctx.fillStyle='#fbbf24';ctx.fillRect(0,lava-4,W,4);
+  if(p){ctx.fillStyle='#22d3ee';ctx.fillRect(p.x,p.y,p.w,p.h);}
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+function showMsg(t){const m=document.getElementById('msg');m.firstChild.textContent=t;m.classList.remove('hide');}
+document.getElementById('start').onclick=()=>{document.getElementById('msg').classList.add('hide');reset();};
+loop();
+})();
+</script><script src="../notes.js"></script></body></html>
