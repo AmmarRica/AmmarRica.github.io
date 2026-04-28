@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a1d20" />
+  <title>City Builder</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #1a1d20;
+      color: #eee;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+    }
+    #canvas-wrap {
+      position: relative;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 4px;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+      background: #cfe1c2;
+      box-shadow: 0 0 0 1px #2a2d30;
+    }
+    #help {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      color: #eee;
+      padding: 6px 12px;
+      border-radius: 16px;
+      font-size: 12px;
+      line-height: 1.3;
+      max-width: 90%;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    body.playing #help { opacity: 0; }
+    #hud {
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      padding: 8px;
+      gap: 8px;
+      background: #23262a;
+      border-top: 1px solid #3a3d40;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+      flex-wrap: wrap;
+    }
+    #hud button, #hud a.btn {
+      background: #3c4044;
+      color: #eee;
+      border: 1px solid #555;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      touch-action: manipulation;
+      min-height: 44px;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #hud button:active { transform: translateY(1px); }
+    #hud button.active {
+      background: #4f7a3f;
+      border-color: #6aa55a;
+      color: #fff;
+    }
+    .group { display: flex; gap: 6px; }
+    #mode-btn {
+      background: #2c7be5;
+      border-color: #4a92f0;
+      padding: 10px 22px;
+      flex: 0 0 auto;
+    }
+    #mode-btn.playing {
+      background: #c33820;
+      border-color: #e54c2c;
+    }
+    #back-btn { padding: 10px 12px; }
+    @media (max-width: 480px) {
+      #hud { padding: 6px; gap: 5px; }
+      #hud button, #hud a.btn { padding: 8px 10px; font-size: 12px; min-height: 42px; }
+      #mode-btn { padding: 8px 14px; font-size: 13px; }
+      .group { gap: 4px; }
+      #help { font-size: 11px; top: 8px; padding: 4px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div id="help">Drag to paint roads. Pick &quot;Light&quot; then tap a road to add a stoplight. Hit Play.</div>
+    </div>
+    <div id="hud">
+      <a id="back-btn" class="btn" href="../" aria-label="Back to games">&larr;</a>
+      <button id="mode-btn" type="button">Play</button>
+      <div class="group" id="tools">
+        <button type="button" data-tool="road" class="active">Road</button>
+        <button type="button" data-tool="light">Light</button>
+        <button type="button" data-tool="erase">Erase</button>
+      </div>
+      <button id="clear-btn" type="button">Clear</button>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const wrap = document.getElementById('canvas-wrap');
+    const modeBtn = document.getElementById('mode-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    const toolBtns = document.querySelectorAll('[data-tool]');
+
+    const SPEED = 3.0;
+    const PHASE = 4.0;
+    const COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#ff7043','#ec407a','#26c6da'];
+
+    let cellSize = 36;
+    let cols = 0, rows = 0;
+
+    const state = {
+      mode: 'build',
+      tool: 'road',
+      grid: [],
+      cars: [],
+      lastTs: 0,
+    };
+
+    function newCell() { return { road: false, light: null, occupant: null }; }
+
+    function makeGrid(r, c) {
+      state.grid = [];
+      for (let i = 0; i < r; i++) {
+        const row = [];
+        for (let j = 0; j < c; j++) row.push(newCell());
+        state.grid.push(row);
+      }
+      rows = r; cols = c;
+    }
+
+    function copyGrid(newR, newC) {
+      const carry = state.grid.map(row => row.slice());
+      const oldR = carry.length, oldC = oldR ? carry[0].length : 0;
+      makeGrid(newR, newC);
+      const r = Math.min(newR, oldR), c = Math.min(newC, oldC);
+      for (let i = 0; i < r; i++)
+        for (let j = 0; j < c; j++) {
+          const o = carry[i][j];
+          state.grid[i][j] = {
+            road: o.road,
+            light: o.light ? { phase: o.light.phase, timer: 0 } : null,
+            occupant: null,
+          };
+        }
+    }
+
+    function resize() {
+      const W = wrap.clientWidth - 8;
+      const H = wrap.clientHeight - 8;
+      if (W <= 0 || H <= 0) return;
+      let cs = Math.floor(Math.min(W, H) / 14);
+      cs = Math.max(28, Math.min(48, cs));
+      const newCols = Math.max(4, Math.floor(W / cs));
+      const newRows = Math.max(4, Math.floor(H / cs));
+      if (newCols === cols && newRows === rows && cs === cellSize) return;
+      if (state.mode === 'play') setMode('build');
+      cellSize = cs;
+      if (state.grid.length === 0) makeGrid(newRows, newCols);
+      else copyGrid(newRows, newCols);
+      canvas.width = newCols * cs;
+      canvas.height = newRows * cs;
+    }
+
+    function inBounds(r, c) { return r >= 0 && r < rows && c >= 0 && c < cols; }
+    function hasRoad(r, c) { return inBounds(r, c) && state.grid[r][c].road; }
+    function step(r, c, d) {
+      if (d === 'N') return [r-1, c];
+      if (d === 'S') return [r+1, c];
+      if (d === 'E') return [r, c+1];
+      return [r, c-1];
+    }
+    const REV = { N: 'S', S: 'N', E: 'W', W: 'E' };
+    function roadNeighbors(r, c) {
+      const out = [];
+      for (const d of ['N','E','S','W']) {
+        const [nr, nc] = step(r, c, d);
+        if (hasRoad(nr, nc)) out.push(d);
+      }
+      return out;
+    }
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+    function pickColor() { return COLORS[Math.floor(Math.random() * COLORS.length)]; }
+
+    function clearOccupants() {
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          state.grid[r][c].occupant = null;
+    }
+
+    function spawnCars() {
+      state.cars = [];
+      clearOccupants();
+      const roadCells = [];
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          if (state.grid[r][c].road) roadCells.push([r, c]);
+      if (!roadCells.length) return;
+      const target = Math.min(20, Math.max(2, Math.floor(roadCells.length / 4)));
+      shuffle(roadCells);
+      let placed = 0;
+      for (const [r, c] of roadCells) {
+        if (placed >= target) break;
+        const cell = state.grid[r][c];
+        if (cell.occupant) continue;
+        const dirs = roadNeighbors(r, c);
+        if (!dirs.length) continue;
+        const dir = dirs[Math.floor(Math.random() * dirs.length)];
+        const car = {
+          fromR: r, fromC: c,
+          toR: r, toC: c,
+          dir,
+          progress: 0,
+          color: pickColor(),
+          waiting: true,
+        };
+        cell.occupant = car;
+        state.cars.push(car);
+        placed++;
+      }
+    }
+
+    function setMode(m) {
+      state.mode = m;
+      modeBtn.textContent = m === 'build' ? 'Play' : 'Build';
+      modeBtn.classList.toggle('playing', m === 'play');
+      document.body.classList.toggle('playing', m === 'play');
+      if (m === 'play') {
+        for (let r = 0; r < rows; r++)
+          for (let c = 0; c < cols; c++) {
+            const l = state.grid[r][c].light;
+            if (l) {
+              l.timer = Math.random() * PHASE;
+              l.phase = Math.random() < 0.5 ? 'NS' : 'EW';
+            }
+          }
+        spawnCars();
+      } else {
+        state.cars = [];
+        clearOccupants();
+      }
+    }
+
+    function tryStart(car) {
+      const r = car.toR, c = car.toC;
+      const neighbors = roadNeighbors(r, c);
+      if (!neighbors.length) { car.waiting = true; return; }
+      const nonReverse = neighbors.filter(d => d !== REV[car.dir]);
+      const pool = shuffle((nonReverse.length ? nonReverse : neighbors).slice());
+      for (const d of pool) {
+        const [nr, nc] = step(r, c, d);
+        const next = state.grid[nr][nc];
+        if (next.light) {
+          const need = (d === 'N' || d === 'S') ? 'NS' : 'EW';
+          if (next.light.phase !== need) continue;
+        }
+        if (next.occupant && next.occupant !== car) continue;
+        car.toR = nr; car.toC = nc;
+        car.dir = d;
+        car.progress = 0;
+        next.occupant = car;
+        car.waiting = false;
+        return;
+      }
+      car.waiting = true;
+    }
+
+    function tick(dt) {
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) {
+          const l = state.grid[r][c].light;
+          if (!l) continue;
+          l.timer += dt;
+          if (l.timer >= PHASE) {
+            l.timer = 0;
+            l.phase = l.phase === 'NS' ? 'EW' : 'NS';
+          }
+        }
+      for (const car of state.cars) {
+        if (car.waiting) { tryStart(car); continue; }
+        car.progress += dt * SPEED;
+        if (car.progress >= 1) {
+          if (state.grid[car.fromR][car.fromC].occupant === car) {
+            state.grid[car.fromR][car.fromC].occupant = null;
+          }
+          car.fromR = car.toR;
+          car.fromC = car.toC;
+          car.progress = 0;
+          tryStart(car);
+        }
+      }
+    }
+
+    function draw() {
+      ctx.fillStyle = '#cfe1c2';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (state.mode === 'build') {
+        ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 0; i <= cols; i++) {
+          const x = i * cellSize + 0.5;
+          ctx.moveTo(x, 0); ctx.lineTo(x, rows * cellSize);
+        }
+        for (let j = 0; j <= rows; j++) {
+          const y = j * cellSize + 0.5;
+          ctx.moveTo(0, y); ctx.lineTo(cols * cellSize, y);
+        }
+        ctx.stroke();
+      }
+
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          if (state.grid[r][c].road) drawRoad(r, c);
+
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          if (state.grid[r][c].light) drawLight(r, c);
+
+      for (const car of state.cars) drawCar(car);
+    }
+
+    function drawRoad(r, c) {
+      const x = c * cellSize, y = r * cellSize;
+      const cx = x + cellSize / 2, cy = y + cellSize / 2;
+      ctx.fillStyle = '#3a3d40';
+      ctx.fillRect(x, y, cellSize, cellSize);
+
+      const n = roadNeighbors(r, c);
+      const isIntersection = n.length >= 3;
+      if (!isIntersection) {
+        ctx.strokeStyle = '#f5d442';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([cellSize * 0.14, cellSize * 0.14]);
+        ctx.beginPath();
+        if (n.includes('N')) { ctx.moveTo(cx, cy); ctx.lineTo(cx, y); }
+        if (n.includes('S')) { ctx.moveTo(cx, cy); ctx.lineTo(cx, y + cellSize); }
+        if (n.includes('E')) { ctx.moveTo(cx, cy); ctx.lineTo(x + cellSize, cy); }
+        if (n.includes('W')) { ctx.moveTo(cx, cy); ctx.lineTo(x, cy); }
+        if (!n.length) { ctx.moveTo(cx - 4, cy); ctx.lineTo(cx + 4, cy); }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    function drawLight(r, c) {
+      const x = c * cellSize, y = r * cellSize;
+      const cx = x + cellSize / 2, cy = y + cellSize / 2;
+      const phase = state.grid[r][c].light.phase;
+      const dotR = Math.max(3, cellSize * 0.13);
+      const off = cellSize * 0.32;
+      const ON = '#3eef3e', OFF = '#e74c3c';
+      const ns = phase === 'NS';
+      function dot(dx, dy, on) {
+        ctx.fillStyle = on ? ON : OFF;
+        ctx.beginPath();
+        ctx.arc(cx + dx, cy + dy, dotR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      dot(0, -off, ns);
+      dot(0, off, ns);
+      dot(off, 0, !ns);
+      dot(-off, 0, !ns);
+    }
+
+    function drawCar(car) {
+      const fcx = car.fromC * cellSize + cellSize / 2;
+      const fcy = car.fromR * cellSize + cellSize / 2;
+      const tcx = car.toC * cellSize + cellSize / 2;
+      const tcy = car.toR * cellSize + cellSize / 2;
+      const x = fcx + (tcx - fcx) * car.progress;
+      const y = fcy + (tcy - fcy) * car.progress;
+      const w = cellSize * 0.55, h = cellSize * 0.32;
+      let angle = 0;
+      if (car.dir === 'N') angle = -Math.PI / 2;
+      else if (car.dir === 'S') angle = Math.PI / 2;
+      else if (car.dir === 'W') angle = Math.PI;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = car.color;
+      roundRect(-w/2, -h/2, w, h, 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(20,30,55,0.7)';
+      ctx.fillRect(w * 0.05, -h * 0.38, w * 0.28, h * 0.76);
+      ctx.fillStyle = '#fff7c0';
+      ctx.fillRect(w * 0.42, -h * 0.42, w * 0.08, h * 0.2);
+      ctx.fillRect(w * 0.42,  h * 0.22, w * 0.08, h * 0.2);
+      ctx.restore();
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    let painting = false;
+    let lastKey = null;
+
+    function cellFromEvent(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+      return { r: Math.floor(y / cellSize), c: Math.floor(x / cellSize) };
+    }
+
+    function applyTool(r, c, isInitial) {
+      if (!inBounds(r, c)) return;
+      const cell = state.grid[r][c];
+      if (state.tool === 'road') {
+        cell.road = true;
+      } else if (state.tool === 'erase') {
+        cell.road = false;
+        cell.light = null;
+      } else if (state.tool === 'light' && isInitial) {
+        if (!cell.road) return;
+        cell.light = cell.light ? null : { phase: 'NS', timer: 0 };
+      }
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (state.mode !== 'build') return;
+      e.preventDefault();
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+      painting = true;
+      const { r, c } = cellFromEvent(e);
+      applyTool(r, c, true);
+      lastKey = r + ',' + c;
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!painting || state.mode !== 'build') return;
+      const { r, c } = cellFromEvent(e);
+      const key = r + ',' + c;
+      if (key === lastKey) return;
+      applyTool(r, c, false);
+      lastKey = key;
+    });
+
+    function endPaint() {
+      painting = false;
+      lastKey = null;
+    }
+    canvas.addEventListener('pointerup', endPaint);
+    canvas.addEventListener('pointercancel', endPaint);
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    modeBtn.addEventListener('click', () => {
+      setMode(state.mode === 'build' ? 'play' : 'build');
+    });
+
+    clearBtn.addEventListener('click', () => {
+      const hasAny = state.grid.some(row => row.some(c => c.road));
+      if (hasAny && !confirm('Clear all roads?')) return;
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          state.grid[r][c] = newCell();
+      if (state.mode === 'play') setMode('build');
+    });
+
+    toolBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.tool = btn.getAttribute('data-tool');
+        toolBtns.forEach(b => b.classList.toggle('active', b === btn));
+        if (state.mode === 'play') setMode('build');
+      });
+    });
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', resize);
+
+    function loop(ts) {
+      const dt = state.lastTs ? Math.min(0.05, (ts - state.lastTs) / 1000) : 0;
+      state.lastTs = ts;
+      if (state.mode === 'play') tick(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    resize();
+    requestAnimationFrame(loop);
+  })();
+  </script>
+</body>
+</html>
