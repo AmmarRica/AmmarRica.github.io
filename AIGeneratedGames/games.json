@@ -54,9 +54,7 @@
   { "dir": "game-51", "title": "Uptown Charlotte 3D", "input": "keyboard", "series": "charlotte" },
   { "dir": "game-52", "title": "Memory Dungeon", "input": "touch", "series": "specials", "genre": "Memory / Roguelite" },
   { "dir": "game-53", "title": "Times Table Trainer", "input": "both", "series": "specials", "genre": "Educational" },
-<<<<<<< HEAD
-  { "dir": "game-54", "title": "City Builder", "input": "both", "series": "specials", "genre": "Simulation" }
-=======
+  { "dir": "game-54", "title": "City Builder", "input": "both", "series": "specials", "genre": "Simulation" },
   { "dir": "idea-01", "title": "Dive Kick Platformer", "input": "both", "series": "ideas", "genre": "Platformer" },
   { "dir": "idea-02", "title": "Roguelike Twin-Stick", "input": "both", "series": "ideas", "genre": "Shooter" },
   { "dir": "idea-03", "title": "Bonk Roguelike", "input": "both", "series": "ideas", "genre": "Brawler" },
@@ -107,5 +105,4 @@
   { "dir": "idea-48", "title": "Search Party", "input": "both", "series": "ideas", "genre": "Stealth" },
   { "dir": "idea-49", "title": "Mortar Fireteam", "input": "touch", "series": "ideas", "genre": "Puzzle" },
   { "dir": "idea-50", "title": "Ship Merger", "input": "both", "series": "ideas", "genre": "Shooter" }
->>>>>>> 7d378bf027f5b4403bd2ba052080b5b0f10ce077
 ]

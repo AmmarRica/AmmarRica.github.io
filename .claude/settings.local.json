@@ -4,7 +4,8 @@
       "Bash(git -C \"C:\\\\Users\\\\Ammar\\\\Desktop\\\\GameDev\\\\Repos\\\\AmmarRica.github.io\" log --all --name-status --oneline -- \"_posts/\")",
       "Bash(start:*)",
       "Bash(git fetch *)",
-      "Bash(gh pr *)"
+      "Bash(gh pr *)",
+      "Bash(python *)"
     ]
   }
 }
