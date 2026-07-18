@@ -43,6 +43,30 @@
       --bad:       #e03131;
       --shadow:    rgba(0,0,0,0.15);
     }
+    [data-theme="midnight"] {
+      --bg:#0a0e1f; --panel:#131a36; --panel-2:#1d2750; --text:#e4e8ff; --muted:#8189c4;
+      --accent:#7b6cff; --accent-2:#d16cff; --fill:#e9ebff; --fill-edge:#b7bcf0;
+      --line:rgba(255,255,255,0.10); --line-bold:rgba(255,255,255,0.30);
+      --cell-bg:#1b2450; --clue-done:#4d5698; --good:#5fd0ff; --bad:#ff6b9d; --shadow:rgba(0,0,0,0.5);
+    }
+    [data-theme="forest"] {
+      --bg:#0c1a12; --panel:#12261a; --panel-2:#1a3525; --text:#e2ffec; --muted:#79a88e;
+      --accent:#35c46a; --accent-2:#a3d63f; --fill:#e6ffef; --fill-edge:#b7e6c6;
+      --line:rgba(255,255,255,0.10); --line-bold:rgba(255,255,255,0.28);
+      --cell-bg:#173021; --clue-done:#4c6d58; --good:#7be08a; --bad:#ff8a6b; --shadow:rgba(0,0,0,0.45);
+    }
+    [data-theme="sunset"] {
+      --bg:#1e1020; --panel:#2b1930; --panel-2:#3c2442; --text:#ffe9f3; --muted:#c491a8;
+      --accent:#ff7a59; --accent-2:#ffb454; --fill:#ffe9d9; --fill-edge:#f0c4a8;
+      --line:rgba(255,255,255,0.10); --line-bold:rgba(255,255,255,0.28);
+      --cell-bg:#35223c; --clue-done:#7c586a; --good:#ffcf5f; --bad:#ff5f8a; --shadow:rgba(0,0,0,0.5);
+    }
+    [data-theme="ocean"] {
+      --bg:#06181f; --panel:#0c2733; --panel-2:#113644; --text:#dff4ff; --muted:#7fabbf;
+      --accent:#20b8d6; --accent-2:#3ad6b0; --fill:#e2f6ff; --fill-edge:#aed8e6;
+      --line:rgba(255,255,255,0.10); --line-bold:rgba(255,255,255,0.28);
+      --cell-bg:#0f3140; --clue-done:#4a7488; --good:#3ad6b0; --bad:#ff7a8a; --shadow:rgba(0,0,0,0.5);
+    }
 
     html, body {
       width: 100%; min-height: 100%;
@@ -108,6 +132,26 @@
     .mini-grid { display: grid; gap: 2px; margin-top: 2px; }
     .mini-grid i { background: var(--cell-bg); border-radius: 1.5px; }
     .mini-grid i.on { background: var(--accent); }
+
+    /* ── Daily card ──────────────────────────── */
+    .daily-card {
+      width: 100%; text-align: left; cursor: pointer; color: var(--text);
+      background: linear-gradient(135deg, var(--panel) 0%, var(--panel-2) 100%);
+      border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px;
+      display: flex; align-items: center; gap: 14px; transition: transform .12s ease;
+    }
+    .daily-card:active { transform: scale(0.98); }
+    .daily-card .dc-icon {
+      width: 46px; height: 46px; border-radius: 12px; flex: none;
+      background: var(--accent); color: #fff; display: flex; align-items: center;
+      justify-content: center; font-size: 1.5rem; font-weight: 800;
+    }
+    .daily-card .dc-body { flex: 1; }
+    .daily-card .dc-title { font-size: 1.1rem; font-weight: 800; }
+    .daily-card .dc-sub { color: var(--muted); font-size: 0.82rem; margin-top: 2px; }
+    .daily-card .dc-chev { color: var(--muted); font-size: 1.3rem; }
+    .daily-card.solved .dc-icon { background: var(--good); }
+    .daily-card.solved .dc-sub { color: var(--good); font-weight: 600; }
 
     /* ── Puzzle picker ───────────────────────── */
     .picker-wrap { padding: 18px; max-width: 560px; margin: 0 auto; width: 100%; }
@@ -271,6 +315,27 @@
     .switch input:checked + .slider { background: var(--accent); border-color: var(--accent); }
     .switch input:checked + .slider::before { transform: translateX(22px); background: #fff; }
 
+    /* ── Theme swatches ──────────────────────── */
+    .set-block { padding: 12px 2px; border-top: 1px solid var(--line); }
+    .set-block .label { font-weight: 600; }
+    .set-block .desc { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+    .theme-swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .swatch {
+      width: 58px; cursor: pointer; border-radius: 12px; padding: 4px;
+      border: 2px solid transparent; text-align: center;
+    }
+    .swatch.active { border-color: var(--accent); }
+    .swatch .sw-prev {
+      height: 40px; border-radius: 8px; position: relative; overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    .swatch .sw-prev .dot { position: absolute; width: 14px; height: 14px; border-radius: 50%;
+      left: 8px; top: 12px; }
+    .swatch .sw-prev .dot2 { position: absolute; width: 10px; height: 10px; border-radius: 50%;
+      right: 8px; bottom: 9px; }
+    .swatch .sw-name { font-size: 0.7rem; margin-top: 5px; color: var(--muted); }
+    .swatch.active .sw-name { color: var(--text); font-weight: 700; }
+
     .toast {
       position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(20px);
       background: var(--panel); color: var(--text); padding: 10px 18px; border-radius: 30px;
@@ -297,6 +362,15 @@
         <h1>Nonogram</h1>
         <p>Fill the grid from the number clues to reveal a hidden picture.</p>
       </div>
+      <div class="section-label">Daily challenge</div>
+      <button class="daily-card" id="daily-card">
+        <div class="dc-icon" id="daily-icon">★</div>
+        <div class="dc-body">
+          <div class="dc-title" id="daily-title">Daily Puzzle</div>
+          <div class="dc-sub" id="daily-sub">A fresh auto-generated grid every day.</div>
+        </div>
+        <div class="dc-chev">›</div>
+      </button>
       <div class="section-label">Choose a size</div>
       <div class="size-grid" id="size-grid"></div>
     </div>
@@ -355,12 +429,10 @@
   <div class="overlay" id="settings-overlay">
     <div class="win-card settings-card">
       <h2>Settings</h2>
-      <div class="set-row">
-        <div>
-          <div class="label">Dark theme</div>
-          <div class="desc">Switch between dark and light.</div>
-        </div>
-        <label class="switch"><input type="checkbox" id="set-theme"><span class="slider"></span></label>
+      <div class="set-block">
+        <div class="label">Theme</div>
+        <div class="desc">Pick a color palette.</div>
+        <div class="theme-swatches" id="theme-swatches"></div>
       </div>
       <div class="set-row">
         <div>
@@ -430,6 +502,15 @@
   };
   const SIZE_ORDER = ['5x5','10x5','5x10','10x10'];
 
+  const THEMES = [
+    { key: 'dark',     name: 'Dark',     bg: '#10131c', a: '#6c8cff', b: '#a78bfa' },
+    { key: 'light',    name: 'Light',    bg: '#eef1f8', a: '#3b5bdb', b: '#7048e8' },
+    { key: 'midnight', name: 'Midnight', bg: '#0a0e1f', a: '#7b6cff', b: '#d16cff' },
+    { key: 'forest',   name: 'Forest',   bg: '#0c1a12', a: '#35c46a', b: '#a3d63f' },
+    { key: 'sunset',   name: 'Sunset',   bg: '#1e1020', a: '#ff7a59', b: '#ffb454' },
+    { key: 'ocean',    name: 'Ocean',    bg: '#06181f', a: '#20b8d6', b: '#3ad6b0' },
+  ];
+
   //// ── State ──────────────────────────────────────────────────
   const EMPTY = 0, FILL = 1, MARK = 2;
   let cur = null; // { size, idx, W, H, sol[], state[], rowClues, colClues }
@@ -479,7 +560,8 @@
   function stateKey(size, idx){ return `nono_state_${size}_${idx}`; }
   function saveBoardState(){
     if (!cur) return;
-    try { localStorage.setItem(stateKey(cur.size, cur.idx), JSON.stringify(cur.state)); } catch(e){}
+    const key = cur.daily ? `nono_dstate_${cur.dailyDate}` : stateKey(cur.size, cur.idx);
+    try { localStorage.setItem(key, JSON.stringify(cur.state)); } catch(e){}
   }
   function loadBoardState(size, idx, len){
     try {
@@ -490,8 +572,153 @@
   }
   function clearBoardState(size, idx){ try { localStorage.removeItem(stateKey(size, idx)); } catch(e){} }
 
+  //// ── Daily progress ─────────────────────────────────────────
+  function loadDaily(){ try { return JSON.parse(localStorage.getItem('nono_daily')) || {}; } catch(e){ return {}; } }
+  function markDailySolved(date, timeMs){
+    const d = loadDaily(); d[date] = { solved: true, time: timeMs };
+    try { localStorage.setItem('nono_daily', JSON.stringify(d)); } catch(e){}
+  }
+  function isDailySolved(date){ const d = loadDaily()[date]; return !!(d && d.solved); }
+  function dailyStreak(){
+    const d = loadDaily(); let streak = 0; const day = new Date();
+    for (;;){
+      const k = dateKey(day);
+      if (d[k] && d[k].solved){ streak++; day.setDate(day.getDate() - 1); }
+      else break;
+    }
+    return streak;
+  }
+  function loadDailyBoard(date, len){
+    try {
+      const s = JSON.parse(localStorage.getItem(`nono_dstate_${date}`));
+      if (Array.isArray(s) && s.length === len) return s;
+    } catch(e){}
+    return null;
+  }
+  function clearDailyBoard(date){ try { localStorage.removeItem(`nono_dstate_${date}`); } catch(e){} }
+
+  //// ── Seeded generation ──────────────────────────────────────
+  function dateKey(d){
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  // Deterministic PRNG (xmur3 seed → mulberry32) so a given date always
+  // yields the same puzzle across browsers and sessions.
+  function seededRng(seedStr){
+    let h = 1779033703 ^ seedStr.length;
+    for (let i = 0; i < seedStr.length; i++){
+      h = Math.imul(h ^ seedStr.charCodeAt(i), 3432918353);
+      h = (h << 13) | (h >>> 19);
+    }
+    let a = (h ^= h >>> 16) >>> 0;
+    return function(){
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  // Enumerate every valid placement of `clue` blocks in a line of `len`.
+  function* placements(len, clue){
+    const blocks = (clue.length === 1 && clue[0] === 0) ? [] : clue;
+    function* rec(idx, start, acc){
+      if (idx === blocks.length){
+        const line = new Array(len).fill(0);
+        for (const [s, l] of acc) for (let k = 0; k < l; k++) line[s + k] = 1;
+        yield line; return;
+      }
+      let rest = 0; for (let j = idx + 1; j < blocks.length; j++) rest += blocks[j] + 1;
+      const maxStart = len - rest - blocks[idx];
+      for (let s = start; s <= maxStart; s++) yield* rec(idx + 1, s + blocks[idx] + 1, [...acc, [s, blocks[idx]]]);
+    }
+    yield* rec(0, 0, []);
+  }
+  // Intersection of all placements consistent with `known` (-1 unknown/0/1).
+  function intersectLine(len, clue, known){
+    let acc = null, any = false;
+    for (const p of placements(len, clue)){
+      let ok = true;
+      for (let i = 0; i < len; i++){ if (known[i] !== -1 && known[i] !== p[i]){ ok = false; break; } }
+      if (!ok) continue;
+      any = true;
+      if (acc === null) acc = p.slice();
+      else for (let i = 0; i < len; i++) if (acc[i] !== p[i]) acc[i] = -1;
+    }
+    return any ? acc : null;
+  }
+  // A grid is a fair puzzle only if pure line-logic solves it to a unique fill.
+  function isLogicSolvable(grid, clues, W, H){
+    const known = Array.from({ length: H }, () => new Array(W).fill(-1));
+    let changed = true, guard = 0;
+    while (changed && guard++ < 400){
+      changed = false;
+      for (let r = 0; r < H; r++){
+        const res = intersectLine(W, clues.rows[r], known[r]);
+        if (!res) return false;
+        for (let c = 0; c < W; c++) if (res[c] !== -1 && known[r][c] === -1){ known[r][c] = res[c]; changed = true; }
+      }
+      for (let c = 0; c < W; c++){
+        const col = []; for (let r = 0; r < H; r++) col.push(known[r][c]);
+        const res = intersectLine(H, clues.cols[c], col);
+        if (!res) return false;
+        for (let r = 0; r < H; r++) if (res[r] !== -1 && known[r][c] === -1){ known[r][c] = res[r]; changed = true; }
+      }
+    }
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++){
+      if (known[r][c] === -1) return false;                       // still ambiguous
+      if ((known[r][c] === 1 ? 1 : 0) !== grid[r][c]) return false; // contradiction
+    }
+    return true;
+  }
+  // Build today's daily: seed by date, generate random grids until one is
+  // uniquely logic-solvable. Cached so a day's puzzle is computed once.
+  function buildDaily(date){
+    const cache = (() => { try { return JSON.parse(localStorage.getItem(`nono_dpuz_${date}`)); } catch(e){ return null; } })();
+    if (cache && cache.g && cache.size) return cache;
+    const rng = seededRng('nono-' + date);
+    const pool = ['10x10','5x10','10x10','10x5'];
+    const size = pool[Math.floor(rng() * pool.length) % pool.length];
+    const m = SIZE_META[size];
+    const density = 0.52 + rng() * 0.12;
+    for (let attempt = 0; attempt < 400; attempt++){
+      const grid = [];
+      for (let r = 0; r < m.H; r++){
+        const row = []; for (let c = 0; c < m.W; c++) row.push(rng() < density ? 1 : 0);
+        grid.push(row);
+      }
+      // reject degenerate (empty / full) grids
+      let filled = 0; grid.forEach(r => r.forEach(v => filled += v));
+      if (filled < m.W * m.H * 0.25 || filled > m.W * m.H * 0.8) continue;
+      const clues = computeClues(grid, m.W, m.H);
+      if (isLogicSolvable(grid, clues, m.W, m.H)){
+        const out = { size, g: grid.map(r => r.map(v => v ? '#' : '.').join('')) };
+        try { localStorage.setItem(`nono_dpuz_${date}`, JSON.stringify(out)); } catch(e){}
+        return out;
+      }
+    }
+    // Fallback: deterministic pick from curated 10x10 library
+    const idx = Math.floor(rng() * PUZZLES['10x10'].length);
+    return { size: '10x10', g: PUZZLES['10x10'][idx].g };
+  }
+
   //// ── Theme ──────────────────────────────────────────────────
   function applyTheme(){ document.documentElement.setAttribute('data-theme', settings.theme); }
+  function buildThemeSwatches(){
+    const wrap = $('theme-swatches'); wrap.innerHTML = '';
+    THEMES.forEach(t => {
+      const b = document.createElement('button');
+      b.className = 'swatch' + (settings.theme === t.key ? ' active' : '');
+      b.dataset.key = t.key;
+      b.innerHTML = `<div class="sw-prev" style="background:${t.bg}">
+          <span class="dot" style="background:${t.a}"></span>
+          <span class="dot2" style="background:${t.b}"></span>
+        </div><div class="sw-name">${t.name}</div>`;
+      b.onclick = () => {
+        settings.theme = t.key; applyTheme(); saveSettings();
+        wrap.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.key === t.key));
+      };
+      wrap.appendChild(b);
+    });
+  }
 
   //// ── Toast ──────────────────────────────────────────────────
   let toastTimer = null;
@@ -533,6 +760,20 @@
       card.onclick = () => openPicker(size);
       grid.appendChild(card);
     });
+    refreshDailyCard();
+  }
+  function refreshDailyCard(){
+    const today = dateKey(new Date());
+    const solved = isDailySolved(today);
+    const card = $('daily-card');
+    card.classList.toggle('solved', solved);
+    $('daily-icon').textContent = solved ? '✓' : '★';
+    const nice = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    $('daily-title').textContent = 'Daily • ' + nice;
+    const streak = dailyStreak();
+    $('daily-sub').textContent = solved
+      ? `Solved today!${streak > 1 ? ` 🔥 ${streak}-day streak` : ''}`
+      : `Auto-generated puzzle${streak > 0 ? ` • 🔥 ${streak}-day streak` : ' — one new grid each day'}`;
   }
 
   //// ── Picker ─────────────────────────────────────────────────
@@ -716,10 +957,20 @@
   }
   function onWin(){
     stopTimer();
-    markSolved(cur.size, cur.idx);
-    clearBoardState(cur.size, cur.idx);
-    const p = PUZZLES[cur.size][cur.idx];
-    $('win-name').textContent = p.name;
+    if (cur.daily){
+      markDailySolved(cur.dailyDate, timer.elapsed);
+      clearDailyBoard(cur.dailyDate);
+      const streak = dailyStreak();
+      $('win-name').textContent = 'Daily complete' + (streak > 1 ? ` • 🔥 ${streak}-day streak` : '');
+      $('win-menu').textContent = 'Menu';
+      $('win-next').textContent = 'Replay';
+    } else {
+      markSolved(cur.size, cur.idx);
+      clearBoardState(cur.size, cur.idx);
+      $('win-name').textContent = PUZZLES[cur.size][cur.idx].name;
+      $('win-menu').textContent = 'Puzzles';
+      $('win-next').textContent = 'Next ›';
+    }
     $('win-time').textContent = 'Time: ' + fmtTime(timer.elapsed);
     const thumb = $('win-thumb');
     thumb.style.gridTemplateColumns = `repeat(${cur.W}, 14px)`;
@@ -760,6 +1011,28 @@
     showScreen('screen-game');
     buildBoard();
     startTimer(0);
+  }
+  function startDaily(){
+    const date = dateKey(new Date());
+    const puz = buildDaily(date);
+    const m = SIZE_META[puz.size];
+    const sol = parseGrid(puz.g);
+    const clues = computeClues(sol, m.W, m.H);
+    const len = m.W * m.H;
+    const saved = loadDailyBoard(date, len);
+    cur = {
+      size: puz.size, idx: 0, daily: true, dailyDate: date, W: m.W, H: m.H, sol,
+      state: saved ? saved.slice() : new Array(len).fill(EMPTY),
+      rowClues: clues.rows, colClues: clues.cols,
+    };
+    history = [];
+    $('btn-undo').disabled = true;
+    const nice = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    $('nav-title').textContent = `Daily • ${nice}`;
+    showScreen('screen-game');
+    buildBoard();
+    startTimer(0);
+    if (isDailySolved(date)) toast("Today's daily already solved — replaying");
   }
   function resetBoard(){
     if (!cur) return;
@@ -895,32 +1168,40 @@
   $('btn-reset').onclick = resetBoard;
 
   //// ── Nav ────────────────────────────────────────────────────
+  function backToMenu(){ $('nav-title').textContent = 'Nonogram'; buildMenu(); showScreen('screen-menu'); }
   $('nav-back').onclick = () => {
     const active = document.querySelector('.screen.active').id;
-    if (active === 'screen-game'){ stopTimer(); saveBoardState(); buildMenu(); openPicker(cur.size); }
-    else if (active === 'screen-picker'){ $('nav-title').textContent = 'Nonogram'; buildMenu(); showScreen('screen-menu'); }
+    if (active === 'screen-game'){
+      stopTimer(); saveBoardState();
+      if (cur.daily) backToMenu();
+      else { buildMenu(); openPicker(cur.size); }
+    }
+    else if (active === 'screen-picker'){ backToMenu(); }
     else { window.location.href = '/'; }
   };
   $('nav-settings').onclick = () => $('settings-overlay').classList.add('active');
   $('settings-close').onclick = () => $('settings-overlay').classList.remove('active');
+  $('daily-card').onclick = () => startDaily();
 
   //// ── Win overlay wiring ─────────────────────────────────────
-  $('win-menu').onclick = () => { $('win-overlay').classList.remove('active'); buildMenu(); openPicker(cur.size); };
+  $('win-menu').onclick = () => {
+    $('win-overlay').classList.remove('active');
+    if (cur.daily) backToMenu(); else { buildMenu(); openPicker(cur.size); }
+  };
   $('win-next').onclick = () => {
     $('win-overlay').classList.remove('active');
+    if (cur.daily){ startDaily(); return; }
     const list = PUZZLES[cur.size];
-    let n = (cur.idx + 1) % list.length;
-    startPuzzle(cur.size, n);
+    startPuzzle(cur.size, (cur.idx + 1) % list.length);
   };
 
   //// ── Settings wiring ────────────────────────────────────────
   function syncSettingsUI(){
-    $('set-theme').checked    = settings.theme === 'dark';
+    buildThemeSwatches();
     $('set-automark').checked = settings.autoMark;
     $('set-errors').checked   = settings.errors;
     $('set-vibrate').checked  = settings.vibrate;
   }
-  $('set-theme').onchange = e => { settings.theme = e.target.checked ? 'dark' : 'light'; applyTheme(); saveSettings(); };
   $('set-automark').onchange = e => { settings.autoMark = e.target.checked; saveSettings(); };
   $('set-errors').onchange = e => { settings.errors = e.target.checked; saveSettings(); if (cur) updateStatus(); };
   $('set-vibrate').onchange = e => { settings.vibrate = e.target.checked; saveSettings(); if (e.target.checked) vibe(20); };
