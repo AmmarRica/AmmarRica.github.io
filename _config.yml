@@ -63,6 +63,8 @@ navigation:
     url: /crab-breed-swiper/
   - title: Gridiron Legends
     url: /football-cards/
+  - title: Nonogram
+    url: /nonogram/
 
 future: true
 

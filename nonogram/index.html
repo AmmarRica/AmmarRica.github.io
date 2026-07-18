@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Nonogram</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --bg:        #10131c;
+      --panel:     #1a1f2e;
+      --panel-2:   #232a3d;
+      --text:      #e7ecff;
+      --muted:     #8b93b0;
+      --accent:    #6c8cff;
+      --accent-2:  #a78bfa;
+      --fill:      #e7ecff;
+      --fill-edge: #b9c2e6;
+      --line:      rgba(255,255,255,0.10);
+      --line-bold: rgba(255,255,255,0.30);
+      --cell-bg:   #222a3d;
+      --clue-done: #545c78;
+      --good:      #4cd07d;
+      --bad:       #ff6b6b;
+      --shadow:    rgba(0,0,0,0.4);
+    }
+    [data-theme="light"] {
+      --bg:        #eef1f8;
+      --panel:     #ffffff;
+      --panel-2:   #f1f4fb;
+      --text:      #1b2138;
+      --muted:     #67708c;
+      --accent:    #3b5bdb;
+      --accent-2:  #7048e8;
+      --fill:      #2b3350;
+      --fill-edge: #1b2138;
+      --line:      rgba(0,0,0,0.12);
+      --line-bold: rgba(0,0,0,0.34);
+      --cell-bg:   #e6eaf5;
+      --clue-done: #b3bacb;
+      --good:      #1a9d54;
+      --bad:       #e03131;
+      --shadow:    rgba(0,0,0,0.15);
+    }
+
+    html, body {
+      width: 100%; min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      user-select: none; -webkit-user-select: none;
+    }
+
+    /* ── Top nav ─────────────────────────────── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; height: 50px;
+      background: var(--panel);
+      display: flex; align-items: center; padding: 0 12px; z-index: 300;
+      border-bottom: 1px solid var(--line);
+    }
+    .nav-btn {
+      background: none; border: none; color: var(--accent);
+      font-size: 0.92rem; font-weight: 600; cursor: pointer; padding: 8px;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .nav-title {
+      flex: 1; text-align: center; font-size: 1.02rem; font-weight: 700;
+      color: var(--text); pointer-events: none;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .nav-right { display: flex; gap: 2px; }
+
+    /* ── Screens ─────────────────────────────── */
+    .screen {
+      position: fixed; top: 50px; left: 0; right: 0; bottom: 0;
+      overflow-y: auto; display: none; flex-direction: column;
+    }
+    .screen.active { display: flex; }
+
+    /* ── Menu ────────────────────────────────── */
+    .menu-wrap { padding: 22px 18px 40px; max-width: 560px; margin: 0 auto; width: 100%; }
+    .hero { text-align: center; margin: 8px 0 22px; }
+    .hero h1 { font-size: 2rem; letter-spacing: 0.5px; }
+    .hero .logo {
+      display: inline-grid; grid-template-columns: repeat(5, 12px); gap: 2px;
+      margin-bottom: 12px;
+    }
+    .hero .logo span { width: 12px; height: 12px; border-radius: 3px; background: var(--cell-bg); }
+    .hero .logo span.on { background: var(--accent); }
+    .hero p { color: var(--muted); font-size: 0.92rem; margin-top: 6px; }
+
+    .section-label { color: var(--muted); font-size: 0.78rem; text-transform: uppercase;
+      letter-spacing: 1px; margin: 18px 4px 10px; font-weight: 700; }
+
+    .size-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .size-card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+      padding: 16px; cursor: pointer; text-align: left; color: var(--text);
+      transition: transform .12s ease, border-color .12s ease;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .size-card:active { transform: scale(0.97); }
+    .size-card .big { font-size: 1.5rem; font-weight: 800; }
+    .size-card .sub { color: var(--muted); font-size: 0.8rem; }
+    .size-card .prog { font-size: 0.78rem; color: var(--accent-2); font-weight: 600; }
+    .mini-grid { display: grid; gap: 2px; margin-top: 2px; }
+    .mini-grid i { background: var(--cell-bg); border-radius: 1.5px; }
+    .mini-grid i.on { background: var(--accent); }
+
+    /* ── Puzzle picker ───────────────────────── */
+    .picker-wrap { padding: 18px; max-width: 560px; margin: 0 auto; width: 100%; }
+    .puzzle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px,1fr)); gap: 12px; }
+    .puzzle-card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      padding: 12px; cursor: pointer; display: flex; flex-direction: column;
+      align-items: center; gap: 8px; color: var(--text);
+      transition: transform .12s ease;
+    }
+    .puzzle-card:active { transform: scale(0.95); }
+    .puzzle-card .thumb { display: grid; gap: 1px; }
+    .puzzle-card .thumb i { background: var(--cell-bg); border-radius: 1px; }
+    .puzzle-card.solved .thumb i.on { background: var(--good); }
+    .puzzle-card .thumb i.on { background: var(--muted); }
+    .puzzle-card .pl { font-size: 0.8rem; font-weight: 600; }
+    .puzzle-card .badge { font-size: 0.72rem; color: var(--muted); }
+    .puzzle-card.solved .badge { color: var(--good); font-weight: 700; }
+    .puzzle-card.solved .pl::after { content: " ✓"; color: var(--good); }
+
+    /* ── Game ────────────────────────────────── */
+    #screen-game { align-items: center; }
+    .game-inner { width: 100%; max-width: 640px; padding: 10px 8px 0;
+      display: flex; flex-direction: column; align-items: center; height: 100%; }
+    .board-scroll { flex: 1; display: flex; align-items: center; justify-content: center;
+      width: 100%; overflow: auto; }
+
+    .board {
+      display: grid; touch-action: none;
+      --cell: 30px; --clueR: 60px; --clueC: 60px;
+      grid-template-columns: var(--clueR) calc(var(--W) * var(--cell));
+      grid-template-rows: var(--clueC) calc(var(--H) * var(--cell));
+    }
+    .corner { grid-column: 1; grid-row: 1; }
+    .col-clues {
+      grid-column: 2; grid-row: 1;
+      display: grid; grid-template-columns: repeat(var(--W), var(--cell));
+    }
+    .row-clues {
+      grid-column: 1; grid-row: 2;
+      display: grid; grid-template-rows: repeat(var(--H), var(--cell));
+    }
+    .cells {
+      grid-column: 2; grid-row: 2;
+      display: grid;
+      grid-template-columns: repeat(var(--W), var(--cell));
+      grid-template-rows: repeat(var(--H), var(--cell));
+      border-top: 2px solid var(--line-bold);
+      border-left: 2px solid var(--line-bold);
+    }
+    .col-clue {
+      display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+      padding-bottom: 4px; gap: 1px; font-weight: 700; color: var(--text);
+      font-size: calc(var(--cell) * 0.42); line-height: 1.05;
+    }
+    .col-clue.g5 { border-left: 2px solid var(--line-bold); }
+    .col-clue.done { color: var(--clue-done); }
+    .row-clue {
+      display: flex; flex-direction: row; justify-content: flex-end; align-items: center;
+      padding-right: 6px; gap: 5px; font-weight: 700; color: var(--text);
+      font-size: calc(var(--cell) * 0.42);
+    }
+    .row-clue.g5 { border-top: 2px solid var(--line-bold); }
+    .row-clue.done { color: var(--clue-done); }
+
+    .cell {
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: var(--cell-bg);
+      position: relative; display: flex; align-items: center; justify-content: center;
+    }
+    .cell.b5r { border-right: 2px solid var(--line-bold); }
+    .cell.b5b { border-bottom: 2px solid var(--line-bold); }
+    .cell.fill { background: var(--fill); }
+    .cell.mark::after {
+      content: ""; position: absolute; width: 46%; height: 46%;
+      background:
+        linear-gradient(45deg, transparent 44%, var(--muted) 44%, var(--muted) 56%, transparent 56%),
+        linear-gradient(-45deg, transparent 44%, var(--muted) 44%, var(--muted) 56%, transparent 56%);
+    }
+
+    /* ── Controls ────────────────────────────── */
+    .controls {
+      width: 100%; max-width: 640px; padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+      display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap;
+    }
+    .mode-toggle {
+      display: flex; background: var(--panel-2); border-radius: 12px; padding: 4px; gap: 4px;
+      border: 1px solid var(--line);
+    }
+    .mode-toggle button {
+      border: none; background: none; color: var(--muted); font-weight: 700;
+      padding: 9px 16px; border-radius: 9px; cursor: pointer; font-size: 0.95rem;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .mode-toggle button.active { background: var(--accent); color: #fff; }
+    .mode-toggle button.active.mark { background: var(--accent-2); }
+    .icon-btn {
+      border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+      width: 46px; height: 46px; border-radius: 12px; cursor: pointer; font-size: 1.15rem;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .icon-btn:active { transform: scale(0.93); }
+    .icon-btn:disabled { opacity: 0.4; cursor: default; }
+
+    .game-status { color: var(--muted); font-size: 0.85rem; margin: 4px 0 2px;
+      display: flex; gap: 14px; align-items: center; }
+    .game-status .err { color: var(--bad); font-weight: 700; }
+
+    /* ── Win overlay ─────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0; z-index: 400; display: none;
+      align-items: center; justify-content: center; padding: 24px;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(3px);
+    }
+    .overlay.active { display: flex; }
+    .win-card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
+      padding: 26px 22px; max-width: 340px; width: 100%; text-align: center;
+      box-shadow: 0 20px 60px var(--shadow); animation: pop .28s ease;
+    }
+    @keyframes pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .win-card h2 { font-size: 1.5rem; margin-bottom: 4px; }
+    .win-card .pic-name { color: var(--accent-2); font-weight: 700; font-size: 1.05rem; }
+    .win-thumb { display: grid; gap: 2px; justify-content: center; margin: 16px auto; }
+    .win-thumb i { width: 14px; height: 14px; border-radius: 2px; background: transparent; }
+    .win-thumb i.on { background: var(--accent); }
+    .win-time { color: var(--muted); font-size: 0.85rem; margin-bottom: 16px; }
+    .win-actions { display: flex; gap: 10px; }
+    .btn {
+      flex: 1; border: none; border-radius: 12px; padding: 13px; font-size: 0.98rem;
+      font-weight: 700; cursor: pointer; color: #fff; background: var(--accent);
+    }
+    .btn.ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+    .btn:active { transform: scale(0.97); }
+
+    /* ── Settings ────────────────────────────── */
+    .settings-card { max-width: 380px; }
+    .settings-card h2 { margin-bottom: 16px; }
+    .set-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 2px; border-top: 1px solid var(--line);
+    }
+    .set-row:first-of-type { border-top: none; }
+    .set-row .label { font-weight: 600; }
+    .set-row .desc { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+    .switch { position: relative; width: 50px; height: 28px; flex: none; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0; background: var(--panel-2); border: 1px solid var(--line);
+      border-radius: 30px; transition: .2s; cursor: pointer;
+    }
+    .slider::before {
+      content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px;
+      background: var(--muted); border-radius: 50%; transition: .2s;
+    }
+    .switch input:checked + .slider { background: var(--accent); border-color: var(--accent); }
+    .switch input:checked + .slider::before { transform: translateX(22px); background: #fff; }
+
+    .toast {
+      position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--panel); color: var(--text); padding: 10px 18px; border-radius: 30px;
+      border: 1px solid var(--line); font-size: 0.85rem; font-weight: 600; opacity: 0;
+      transition: .25s; z-index: 500; pointer-events: none; box-shadow: 0 6px 24px var(--shadow);
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <nav>
+    <button class="nav-btn" id="nav-back">‹ Back</button>
+    <div class="nav-title" id="nav-title">Nonogram</div>
+    <div class="nav-right">
+      <button class="nav-btn" id="nav-settings" title="Settings">⚙</button>
+    </div>
+  </nav>
+
+  <!-- MENU -->
+  <section class="screen active" id="screen-menu">
+    <div class="menu-wrap">
+      <div class="hero">
+        <div class="logo" id="hero-logo"></div>
+        <h1>Nonogram</h1>
+        <p>Fill the grid from the number clues to reveal a hidden picture.</p>
+      </div>
+      <div class="section-label">Choose a size</div>
+      <div class="size-grid" id="size-grid"></div>
+    </div>
+  </section>
+
+  <!-- PICKER -->
+  <section class="screen" id="screen-picker">
+    <div class="picker-wrap">
+      <div class="section-label" id="picker-label">Puzzles</div>
+      <div class="puzzle-grid" id="puzzle-grid"></div>
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section class="screen" id="screen-game">
+    <div class="game-inner">
+      <div class="game-status">
+        <span id="stat-time">0:00</span>
+        <span id="stat-progress">0%</span>
+        <span class="err" id="stat-errors"></span>
+      </div>
+      <div class="board-scroll">
+        <div class="board" id="board">
+          <div class="corner"></div>
+          <div class="col-clues" id="col-clues"></div>
+          <div class="row-clues" id="row-clues"></div>
+          <div class="cells" id="cells"></div>
+        </div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="icon-btn" id="btn-undo" title="Undo">↶</button>
+      <div class="mode-toggle">
+        <button id="mode-fill" class="active">■ Fill</button>
+        <button id="mode-mark" class="mark">✕ Mark</button>
+      </div>
+      <button class="icon-btn" id="btn-reset" title="Reset">⟳</button>
+    </div>
+  </section>
+
+  <!-- WIN OVERLAY -->
+  <div class="overlay" id="win-overlay">
+    <div class="win-card">
+      <h2>Solved! 🎉</h2>
+      <div class="pic-name" id="win-name">Heart</div>
+      <div class="win-thumb" id="win-thumb"></div>
+      <div class="win-time" id="win-time">Time: 0:00</div>
+      <div class="win-actions">
+        <button class="btn ghost" id="win-menu">Puzzles</button>
+        <button class="btn" id="win-next">Next ›</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS OVERLAY -->
+  <div class="overlay" id="settings-overlay">
+    <div class="win-card settings-card">
+      <h2>Settings</h2>
+      <div class="set-row">
+        <div>
+          <div class="label">Dark theme</div>
+          <div class="desc">Switch between dark and light.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-theme"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div>
+          <div class="label">Auto-mark full lines</div>
+          <div class="desc">Cross out remaining cells when a row/column is done.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-automark"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div>
+          <div class="label">Highlight mistakes</div>
+          <div class="desc">Count filled cells that don't belong.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-errors"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div>
+          <div class="label">Vibrate</div>
+          <div class="desc">Haptic feedback on touch (if supported).</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-vibrate"><span class="slider"></span></label>
+      </div>
+      <div class="win-actions" style="margin-top:18px">
+        <button class="btn" id="settings-close">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  //// ── Puzzle library ─────────────────────────────────────────
+  // '#' = filled, anything else = empty. Rows top→bottom.
+  const PUZZLES = {
+    '5x5': [
+      { name: 'Heart',  g: ['.#.#.','#####','#####','.###.','..#..'] },
+      { name: 'Diamond',g: ['..#..','.###.','#####','.###.','..#..'] },
+      { name: 'Plus',   g: ['..#..','..#..','#####','..#..','..#..'] },
+      { name: 'Arrow',  g: ['..#..','.###.','#####','..#..','..#..'] },
+      { name: 'Check',  g: ['....#','...##','#.##.','###..','.#...'] },
+    ],
+    '10x5': [ // 10 wide, 5 tall
+      { name: 'Bone',   g: ['##......##','###....###','##########','###....###','##......##'] },
+      { name: 'Arrow',  g: ['......#...','.......#..','#########.','.......#..','......#...'] },
+      { name: 'Fish',   g: ['.#...####.','##..######','##.#######','##..######','.#...####.'] },
+      { name: 'Car',    g: ['...####...','.########.','##########','##########','.##....##.'] },
+    ],
+    '5x10': [ // 5 wide, 10 tall
+      { name: 'Tree',   g: ['..#..','.###.','#####','.###.','#####','.###.','..#..','..#..','.###.','.###.'] },
+      { name: 'Key',    g: ['.###.','.#.#.','.#.#.','.###.','..#..','..#..','..##.','..#..','..##.','..#..'] },
+      { name: 'Sword',  g: ['..#..','..#..','..#..','..#..','..#..','#####','..#..','..#..','.###.','..#..'] },
+      { name: 'Rocket', g: ['..#..','.###.','.###.','#####','#####','#####','#####','#.#.#','#...#','.#.#.'] },
+    ],
+    '10x10': [
+      { name: 'Heart',   g: ['..........','.##....##.','##########','##########','##########','.########.','.########.','..######..','...####...','....##....'] },
+      { name: 'Diamond', g: ['....##....','...####...','..######..','.########.','##########','##########','.########.','..######..','...####...','....##....'] },
+      { name: 'Plus',    g: ['....##....','....##....','....##....','....##....','##########','##########','....##....','....##....','....##....','....##....'] },
+      { name: 'Ghost',   g: ['..######..','.########.','##########','###.##.###','##########','##########','##########','##########','##########','#.##.##.##'] },
+      { name: 'Sailboat',g: ['....#.....','....##....','....###...','....####..','....#####.','....######','##########','.########.','..######..','..........'] },
+    ],
+  };
+  const SIZE_META = {
+    '5x5':   { label: '5 × 5',  sub: 'Easy',   W: 5,  H: 5  },
+    '10x5':  { label: '10 × 5', sub: 'Wide',   W: 10, H: 5  },
+    '5x10':  { label: '5 × 10', sub: 'Tall',   W: 5,  H: 10 },
+    '10x10': { label: '10 × 10',sub: 'Hard',   W: 10, H: 10 },
+  };
+  const SIZE_ORDER = ['5x5','10x5','5x10','10x10'];
+
+  //// ── State ──────────────────────────────────────────────────
+  const EMPTY = 0, FILL = 1, MARK = 2;
+  let cur = null; // { size, idx, W, H, sol[], state[], rowClues, colClues }
+  let mode = 'fill';
+  let history = [];
+  let timer = { start: 0, elapsed: 0, id: null };
+
+  const settings = loadSettings();
+
+  //// ── Helpers ────────────────────────────────────────────────
+  function parseGrid(g){ return g.map(row => row.split('').map(c => c === '#' ? 1 : 0)); }
+  function lineClues(line){
+    const out = []; let c = 0;
+    for (const v of line){ if (v) c++; else if (c){ out.push(c); c = 0; } }
+    if (c) out.push(c);
+    return out.length ? out : [0];
+  }
+  function computeClues(sol, W, H){
+    const rows = [], cols = [];
+    for (let r = 0; r < H; r++) rows.push(lineClues(sol[r]));
+    for (let c = 0; c < W; c++){ const col = []; for (let r = 0; r < H; r++) col.push(sol[r][c]); cols.push(lineClues(col)); }
+    return { rows, cols };
+  }
+  function fmtTime(ms){ const s = Math.floor(ms/1000); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+  function $(id){ return document.getElementById(id); }
+
+  //// ── Persistence ────────────────────────────────────────────
+  function loadSettings(){
+    let s = {};
+    try { s = JSON.parse(localStorage.getItem('nono_settings')) || {}; } catch(e){}
+    return {
+      theme:    s.theme    ?? 'dark',
+      autoMark: s.autoMark ?? true,
+      errors:   s.errors   ?? true,
+      vibrate:  s.vibrate  ?? false,
+    };
+  }
+  function saveSettings(){ try { localStorage.setItem('nono_settings', JSON.stringify(settings)); } catch(e){} }
+  function progressKey(){ return 'nono_solved'; }
+  function loadSolved(){ try { return JSON.parse(localStorage.getItem(progressKey())) || {}; } catch(e){ return {}; } }
+  function markSolved(size, idx){
+    const s = loadSolved(); s[size] = s[size] || {}; s[size][idx] = true;
+    try { localStorage.setItem(progressKey(), JSON.stringify(s)); } catch(e){}
+  }
+  function isSolved(size, idx){ const s = loadSolved(); return !!(s[size] && s[size][idx]); }
+  function solvedCount(size){ const s = loadSolved()[size] || {}; return Object.keys(s).length; }
+  function stateKey(size, idx){ return `nono_state_${size}_${idx}`; }
+  function saveBoardState(){
+    if (!cur) return;
+    try { localStorage.setItem(stateKey(cur.size, cur.idx), JSON.stringify(cur.state)); } catch(e){}
+  }
+  function loadBoardState(size, idx, len){
+    try {
+      const s = JSON.parse(localStorage.getItem(stateKey(size, idx)));
+      if (Array.isArray(s) && s.length === len) return s;
+    } catch(e){}
+    return null;
+  }
+  function clearBoardState(size, idx){ try { localStorage.removeItem(stateKey(size, idx)); } catch(e){} }
+
+  //// ── Theme ──────────────────────────────────────────────────
+  function applyTheme(){ document.documentElement.setAttribute('data-theme', settings.theme); }
+
+  //// ── Toast ──────────────────────────────────────────────────
+  let toastTimer = null;
+  function toast(msg){
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
+  }
+  function vibe(ms){ if (settings.vibrate && navigator.vibrate) navigator.vibrate(ms); }
+
+  //// ── Screens ────────────────────────────────────────────────
+  function showScreen(id){
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    $(id).classList.add('active');
+  }
+
+  //// ── Menu ───────────────────────────────────────────────────
+  function buildHeroLogo(){
+    const pat = ['.###.','#...#','#.#.#','#...#','.###.']; // little face-ish
+    const heart = ['.#.#.','#####','#####','.###.','..#..'];
+    const el = $('hero-logo'); el.innerHTML = '';
+    heart.forEach(row => row.split('').forEach(c => {
+      const s = document.createElement('span'); if (c === '#') s.className = 'on'; el.appendChild(s);
+    }));
+  }
+  function buildMenu(){
+    const grid = $('size-grid'); grid.innerHTML = '';
+    SIZE_ORDER.forEach(size => {
+      const m = SIZE_META[size]; const total = PUZZLES[size].length; const done = solvedCount(size);
+      const card = document.createElement('button'); card.className = 'size-card';
+      const mini = document.createElement('div'); mini.className = 'mini-grid';
+      const cellPx = size === '10x10' ? 7 : 9;
+      mini.style.gridTemplateColumns = `repeat(${m.W}, ${cellPx}px)`;
+      const sample = parseGrid(PUZZLES[size][0].g);
+      sample.forEach(r => r.forEach(v => { const i = document.createElement('i');
+        i.style.width = cellPx+'px'; i.style.height = cellPx+'px'; if (v) i.className = 'on'; mini.appendChild(i); }));
+      const info = document.createElement('div');
+      info.innerHTML = `<div class="big">${m.label}</div><div class="sub">${m.sub} • ${done}/${total} solved</div>`;
+      card.appendChild(mini); card.appendChild(info);
+      card.onclick = () => openPicker(size);
+      grid.appendChild(card);
+    });
+  }
+
+  //// ── Picker ─────────────────────────────────────────────────
+  let pickerSize = null;
+  function openPicker(size){
+    pickerSize = size;
+    const m = SIZE_META[size];
+    $('picker-label').textContent = `${m.label} puzzles`;
+    $('nav-title').textContent = `${m.label} Nonograms`;
+    const grid = $('puzzle-grid'); grid.innerHTML = '';
+    PUZZLES[size].forEach((p, idx) => {
+      const solved = isSolved(size, idx);
+      const card = document.createElement('button');
+      card.className = 'puzzle-card' + (solved ? ' solved' : '');
+      const thumb = document.createElement('div'); thumb.className = 'thumb';
+      const cellPx = m.W >= 10 ? 6 : 8;
+      thumb.style.gridTemplateColumns = `repeat(${m.W}, ${cellPx}px)`;
+      if (solved) {
+        parseGrid(p.g).forEach(r => r.forEach(v => { const i = document.createElement('i');
+          i.style.width=cellPx+'px'; i.style.height=cellPx+'px'; if (v) i.className='on'; thumb.appendChild(i); }));
+      } else {
+        // hidden: show a neutral tile
+        for (let k=0;k<m.W*m.H;k++){ const i=document.createElement('i');
+          i.style.width=cellPx+'px'; i.style.height=cellPx+'px'; thumb.appendChild(i); }
+      }
+      const lbl = document.createElement('div'); lbl.className = 'pl'; lbl.textContent = solved ? p.name : `#${idx+1}`;
+      const badge = document.createElement('div'); badge.className = 'badge'; badge.textContent = solved ? 'Solved' : 'Tap to play';
+      card.appendChild(thumb); card.appendChild(lbl); card.appendChild(badge);
+      card.onclick = () => startPuzzle(size, idx);
+      grid.appendChild(card);
+    });
+    showScreen('screen-picker');
+  }
+
+  //// ── Board build ────────────────────────────────────────────
+  function fitCellSize(){
+    if (!cur) return;
+    const scroll = document.querySelector('.board-scroll');
+    const availW = scroll.clientWidth - 8;
+    const availH = scroll.clientHeight - 8;
+    // rough clue allowances proportional to number counts
+    const maxRowNums = Math.max(...cur.rowClues.map(a => a.length));
+    const maxColNums = Math.max(...cur.colClues.map(a => a.length));
+    // estimate clue px against a candidate cell, then solve for cell
+    let cell = 40;
+    for (let i = 0; i < 6; i++){
+      const clueR = Math.max(28, maxRowNums * cell * 0.6 + 8);
+      const clueC = Math.max(28, maxColNums * cell * 0.55 + 6);
+      const byW = (availW - clueR) / cur.W;
+      const byH = (availH - clueC) / cur.H;
+      cell = Math.max(18, Math.min(byW, byH, 52));
+    }
+    cell = Math.floor(cell);
+    const clueR = Math.round(Math.max(28, maxRowNums * cell * 0.6 + 8));
+    const clueC = Math.round(Math.max(28, maxColNums * cell * 0.55 + 6));
+    const b = $('board');
+    b.style.setProperty('--cell', cell + 'px');
+    b.style.setProperty('--clueR', clueR + 'px');
+    b.style.setProperty('--clueC', clueC + 'px');
+  }
+
+  function buildBoard(){
+    const b = $('board');
+    b.style.setProperty('--W', cur.W);
+    b.style.setProperty('--H', cur.H);
+
+    // column clues
+    const cc = $('col-clues'); cc.innerHTML = '';
+    cur.colClues.forEach((clue, c) => {
+      const d = document.createElement('div');
+      d.className = 'col-clue' + (c % 5 === 0 && c !== 0 ? ' g5' : '');
+      d.dataset.c = c;
+      clue.forEach(n => { const s = document.createElement('span'); s.textContent = n; d.appendChild(s); });
+      cc.appendChild(d);
+    });
+    // row clues
+    const rc = $('row-clues'); rc.innerHTML = '';
+    cur.rowClues.forEach((clue, r) => {
+      const d = document.createElement('div');
+      d.className = 'row-clue' + (r % 5 === 0 && r !== 0 ? ' g5' : '');
+      d.dataset.r = r;
+      clue.forEach(n => { const s = document.createElement('span'); s.textContent = n; d.appendChild(s); });
+      rc.appendChild(d);
+    });
+    // cells
+    const cells = $('cells'); cells.innerHTML = '';
+    for (let r = 0; r < cur.H; r++){
+      for (let c = 0; c < cur.W; c++){
+        const el = document.createElement('div');
+        el.className = 'cell';
+        if ((c + 1) % 5 === 0 && c !== cur.W - 1) el.classList.add('b5r');
+        if ((r + 1) % 5 === 0 && r !== cur.H - 1) el.classList.add('b5b');
+        el.dataset.r = r; el.dataset.c = c;
+        cells.appendChild(el);
+      }
+    }
+    fitCellSize();
+    renderAll();
+  }
+
+  function cellEl(r, c){ return $('cells').children[r * cur.W + c]; }
+
+  function renderCell(r, c){
+    const st = cur.state[r * cur.W + c];
+    const el = cellEl(r, c);
+    el.classList.toggle('fill', st === FILL);
+    el.classList.toggle('mark', st === MARK);
+  }
+  function renderAll(){
+    for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++) renderCell(r, c);
+    updateClueDone(); updateStatus();
+  }
+
+  function lineSatisfied(cells, clue){
+    return JSON.stringify(lineClues(cells)) === JSON.stringify(clue);
+  }
+  function updateClueDone(){
+    // rows
+    for (let r = 0; r < cur.H; r++){
+      const line = []; for (let c = 0; c < cur.W; c++) line.push(cur.state[r*cur.W+c] === FILL ? 1 : 0);
+      const done = lineSatisfied(line, cur.rowClues[r]);
+      $('row-clues').children[r].classList.toggle('done', done);
+    }
+    for (let c = 0; c < cur.W; c++){
+      const line = []; for (let r = 0; r < cur.H; r++) line.push(cur.state[r*cur.W+c] === FILL ? 1 : 0);
+      const done = lineSatisfied(line, cur.colClues[c]);
+      $('col-clues').children[c].classList.toggle('done', done);
+    }
+  }
+
+  function countErrors(){
+    let e = 0;
+    for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++)
+      if (cur.state[r*cur.W+c] === FILL && !cur.sol[r][c]) e++;
+    return e;
+  }
+  function updateStatus(){
+    // progress = correctly filled / total-to-fill
+    let need = 0, have = 0;
+    for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++){
+      if (cur.sol[r][c]) { need++; if (cur.state[r*cur.W+c] === FILL) have++; }
+    }
+    $('stat-progress').textContent = Math.round(have/need*100) + '%';
+    if (settings.errors){
+      const e = countErrors();
+      $('stat-errors').textContent = e ? `✕ ${e} wrong` : '';
+    } else $('stat-errors').textContent = '';
+  }
+
+  //// ── Win ────────────────────────────────────────────────────
+  function checkWin(){
+    for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++){
+      const filled = cur.state[r*cur.W+c] === FILL;
+      if (filled !== !!cur.sol[r][c]) return false;
+    }
+    return true;
+  }
+  function onWin(){
+    stopTimer();
+    markSolved(cur.size, cur.idx);
+    clearBoardState(cur.size, cur.idx);
+    const p = PUZZLES[cur.size][cur.idx];
+    $('win-name').textContent = p.name;
+    $('win-time').textContent = 'Time: ' + fmtTime(timer.elapsed);
+    const thumb = $('win-thumb');
+    thumb.style.gridTemplateColumns = `repeat(${cur.W}, 14px)`;
+    thumb.innerHTML = '';
+    cur.sol.forEach(row => row.forEach(v => { const i = document.createElement('i'); if (v) i.className='on'; thumb.appendChild(i); }));
+    vibe([40,40,80]);
+    setTimeout(() => $('win-overlay').classList.add('active'), 350);
+  }
+
+  //// ── Timer ──────────────────────────────────────────────────
+  function startTimer(fromElapsed){
+    timer.elapsed = fromElapsed || 0;
+    timer.start = performance.now() - timer.elapsed;
+    stopTimer();
+    timer.id = setInterval(() => {
+      timer.elapsed = performance.now() - timer.start;
+      $('stat-time').textContent = fmtTime(timer.elapsed);
+    }, 500);
+  }
+  function stopTimer(){ if (timer.id){ clearInterval(timer.id); timer.id = null; } }
+
+  //// ── Start / reset puzzle ───────────────────────────────────
+  function startPuzzle(size, idx){
+    const p = PUZZLES[size][idx];
+    const m = SIZE_META[size];
+    const sol = parseGrid(p.g);
+    const clues = computeClues(sol, m.W, m.H);
+    const len = m.W * m.H;
+    const saved = loadBoardState(size, idx, len);
+    cur = {
+      size, idx, W: m.W, H: m.H, sol,
+      state: saved ? saved.slice() : new Array(len).fill(EMPTY),
+      rowClues: clues.rows, colClues: clues.cols,
+    };
+    history = [];
+    $('btn-undo').disabled = true;
+    $('nav-title').textContent = `${m.label} • #${idx+1}`;
+    showScreen('screen-game');
+    buildBoard();
+    startTimer(0);
+  }
+  function resetBoard(){
+    if (!cur) return;
+    pushHistorySnapshot();
+    cur.state = new Array(cur.W * cur.H).fill(EMPTY);
+    saveBoardState();
+    renderAll();
+    toast('Board cleared');
+  }
+
+  //// ── History (undo) ─────────────────────────────────────────
+  function pushHistorySnapshot(){ history.push(cur.state.slice()); if (history.length > 60) history.shift(); $('btn-undo').disabled = false; }
+  function undo(){
+    if (!history.length) return;
+    cur.state = history.pop();
+    if (!history.length) $('btn-undo').disabled = true;
+    saveBoardState(); renderAll();
+  }
+
+  //// ── Painting / input ───────────────────────────────────────
+  let dragging = false, paintValue = null, startR = 0, startC = 0, axis = null, lastIdx = null, changedDuringDrag = false;
+
+  function applyCell(r, c, value){
+    const k = r * cur.W + c;
+    if (cur.state[k] === value) return false;
+    cur.state[k] = value;
+    renderCell(r, c);
+    changedDuringDrag = true;
+    return true;
+  }
+
+  function beginDrag(r, c){
+    startR = r; startC = c; axis = null; lastIdx = null; changedDuringDrag = false;
+    const k = r * cur.W + c;
+    const st = cur.state[k];
+    if (mode === 'fill') paintValue = (st === FILL) ? EMPTY : FILL;
+    else                 paintValue = (st === MARK) ? EMPTY : MARK;
+    pushHistorySnapshot();
+    dragging = true;
+    applyCell(r, c, paintValue);
+    lastIdx = 0;
+    vibe(8);
+  }
+
+  function dragTo(r, c){
+    if (!dragging) return;
+    if (axis === null){
+      if (r !== startR && c === startC) axis = 'col';
+      else if (c !== startC && r === startR) axis = 'row';
+      else if (r !== startR || c !== startC){
+        axis = Math.abs(r - startR) >= Math.abs(c - startC) ? 'col' : 'row';
+      } else return;
+    }
+    // constrain to axis and interpolate to avoid skipped cells on fast swipes
+    if (axis === 'row'){
+      if (r !== startR) return; // stay on row
+      const from = lastIdx == null ? startC : lastIdx;
+      const step = c >= from ? 1 : -1;
+      for (let cc = from; cc !== c + step; cc += step) applyCell(startR, cc, paintValue);
+      lastIdx = c;
+    } else {
+      if (c !== startC) return;
+      const from = lastIdx == null ? startR : lastIdx;
+      const step = r >= from ? 1 : -1;
+      for (let rr = from; rr !== r + step; rr += step) applyCell(rr, startC, paintValue);
+      lastIdx = r;
+    }
+  }
+
+  function endDrag(){
+    if (!dragging) return;
+    dragging = false;
+    if (!changedDuringDrag){ // no change → drop the snapshot we pushed
+      history.pop(); if (!history.length) $('btn-undo').disabled = true;
+    } else {
+      if (settings.autoMark) autoMarkLines();
+      saveBoardState();
+    }
+    updateClueDone(); updateStatus();
+    if (checkWin()) onWin();
+  }
+
+  function autoMarkLines(){
+    // rows
+    for (let r = 0; r < cur.H; r++){
+      const line = []; for (let c = 0; c < cur.W; c++) line.push(cur.state[r*cur.W+c] === FILL ? 1 : 0);
+      if (lineSatisfied(line, cur.rowClues[r])){
+        for (let c = 0; c < cur.W; c++) if (cur.state[r*cur.W+c] === EMPTY) applyCell(r, c, MARK);
+      }
+    }
+    for (let c = 0; c < cur.W; c++){
+      const line = []; for (let r = 0; r < cur.H; r++) line.push(cur.state[r*cur.W+c] === FILL ? 1 : 0);
+      if (lineSatisfied(line, cur.colClues[c])){
+        for (let r = 0; r < cur.H; r++) if (cur.state[r*cur.W+c] === EMPTY) applyCell(r, c, MARK);
+      }
+    }
+  }
+
+  function cellFromPoint(x, y){
+    const el = document.elementFromPoint(x, y);
+    if (!el || !el.classList || !el.classList.contains('cell')) return null;
+    return { r: +el.dataset.r, c: +el.dataset.c };
+  }
+
+  // Pointer events on the cells container
+  const cellsEl = $('cells');
+  cellsEl.addEventListener('pointerdown', e => {
+    const t = cellFromPoint(e.clientX, e.clientY);
+    if (!t) return;
+    e.preventDefault();
+    try { cellsEl.setPointerCapture(e.pointerId); } catch(_){}
+    beginDrag(t.r, t.c);
+  });
+  cellsEl.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    e.preventDefault();
+    const t = cellFromPoint(e.clientX, e.clientY);
+    if (t) dragTo(t.r, t.c);
+  });
+  cellsEl.addEventListener('pointerup', e => { e.preventDefault(); endDrag(); });
+  cellsEl.addEventListener('pointercancel', () => endDrag());
+  cellsEl.addEventListener('contextmenu', e => e.preventDefault());
+
+  //// ── Controls wiring ────────────────────────────────────────
+  function setMode(m){
+    mode = m;
+    $('mode-fill').classList.toggle('active', m === 'fill');
+    $('mode-mark').classList.toggle('active', m === 'mark');
+  }
+  $('mode-fill').onclick = () => setMode('fill');
+  $('mode-mark').onclick = () => setMode('mark');
+  $('btn-undo').onclick = undo;
+  $('btn-reset').onclick = resetBoard;
+
+  //// ── Nav ────────────────────────────────────────────────────
+  $('nav-back').onclick = () => {
+    const active = document.querySelector('.screen.active').id;
+    if (active === 'screen-game'){ stopTimer(); saveBoardState(); buildMenu(); openPicker(cur.size); }
+    else if (active === 'screen-picker'){ $('nav-title').textContent = 'Nonogram'; buildMenu(); showScreen('screen-menu'); }
+    else { window.location.href = '/'; }
+  };
+  $('nav-settings').onclick = () => $('settings-overlay').classList.add('active');
+  $('settings-close').onclick = () => $('settings-overlay').classList.remove('active');
+
+  //// ── Win overlay wiring ─────────────────────────────────────
+  $('win-menu').onclick = () => { $('win-overlay').classList.remove('active'); buildMenu(); openPicker(cur.size); };
+  $('win-next').onclick = () => {
+    $('win-overlay').classList.remove('active');
+    const list = PUZZLES[cur.size];
+    let n = (cur.idx + 1) % list.length;
+    startPuzzle(cur.size, n);
+  };
+
+  //// ── Settings wiring ────────────────────────────────────────
+  function syncSettingsUI(){
+    $('set-theme').checked    = settings.theme === 'dark';
+    $('set-automark').checked = settings.autoMark;
+    $('set-errors').checked   = settings.errors;
+    $('set-vibrate').checked  = settings.vibrate;
+  }
+  $('set-theme').onchange = e => { settings.theme = e.target.checked ? 'dark' : 'light'; applyTheme(); saveSettings(); };
+  $('set-automark').onchange = e => { settings.autoMark = e.target.checked; saveSettings(); };
+  $('set-errors').onchange = e => { settings.errors = e.target.checked; saveSettings(); if (cur) updateStatus(); };
+  $('set-vibrate').onchange = e => { settings.vibrate = e.target.checked; saveSettings(); if (e.target.checked) vibe(20); };
+
+  //// ── Resize ─────────────────────────────────────────────────
+  let resizeTO = null;
+  window.addEventListener('resize', () => {
+    if (!cur || !$('screen-game').classList.contains('active')) return;
+    clearTimeout(resizeTO); resizeTO = setTimeout(fitCellSize, 120);
+  });
+
+  //// ── Init ───────────────────────────────────────────────────
+  applyTheme();
+  syncSettingsUI();
+  buildHeroLogo();
+  buildMenu();
+  </script>
+</body>
+</html>
