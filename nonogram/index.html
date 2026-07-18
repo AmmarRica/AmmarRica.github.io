@@ -165,6 +165,10 @@
     }
     .col-clue.g5 { border-left: 2px solid var(--line-bold); }
     .col-clue.done { color: var(--clue-done); }
+    .col-clue span.used, .row-clue span.used {
+      color: var(--clue-done); text-decoration: line-through;
+      text-decoration-thickness: 2px; opacity: 0.85;
+    }
     .row-clue {
       display: flex; flex-direction: row; justify-content: flex-end; align-items: center;
       padding-right: 6px; gap: 5px; font-weight: 700; color: var(--text);
@@ -645,17 +649,41 @@
   function lineSatisfied(cells, clue){
     return JSON.stringify(lineClues(cells)) === JSON.stringify(clue);
   }
+  // Decide which individual clue numbers are "used" by matching the filled
+  // runs to the clue from both ends inward — the leftmost/topmost runs pair
+  // with the first clues, the rightmost/bottommost with the last, greying
+  // each number as soon as its block is placed with the right length.
+  function usedFlags(line, clue){
+    const runs = []; let c = 0;
+    for (const v of line){ if (v) c++; else if (c){ runs.push(c); c = 0; } }
+    if (c) runs.push(c);
+    const n = clue.length;
+    const done = new Array(n).fill(false);
+    if (n === 1 && clue[0] === 0) return done; // empty line has no real numbers
+    let li = 0;
+    while (li < runs.length && li < n && runs[li] === clue[li]){ done[li] = true; li++; }
+    let ri = 0;
+    while (ri < n - li && ri < runs.length - li && runs[runs.length-1-ri] === clue[n-1-ri]){
+      done[n-1-ri] = true; ri++;
+    }
+    return done;
+  }
+  function applyUsed(clueEl, done){
+    const spans = clueEl.children;
+    for (let i = 0; i < spans.length; i++) spans[i].classList.toggle('used', !!done[i]);
+  }
   function updateClueDone(){
-    // rows
     for (let r = 0; r < cur.H; r++){
       const line = []; for (let c = 0; c < cur.W; c++) line.push(cur.state[r*cur.W+c] === FILL ? 1 : 0);
-      const done = lineSatisfied(line, cur.rowClues[r]);
-      $('row-clues').children[r].classList.toggle('done', done);
+      const el = $('row-clues').children[r];
+      el.classList.toggle('done', lineSatisfied(line, cur.rowClues[r]));
+      applyUsed(el, usedFlags(line, cur.rowClues[r]));
     }
     for (let c = 0; c < cur.W; c++){
       const line = []; for (let r = 0; r < cur.H; r++) line.push(cur.state[r*cur.W+c] === FILL ? 1 : 0);
-      const done = lineSatisfied(line, cur.colClues[c]);
-      $('col-clues').children[c].classList.toggle('done', done);
+      const el = $('col-clues').children[c];
+      el.classList.toggle('done', lineSatisfied(line, cur.colClues[c]));
+      applyUsed(el, usedFlags(line, cur.colClues[c]));
     }
   }
 
