@@ -219,7 +219,7 @@
     }
     .col-clue {
       display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-      padding-bottom: 4px; gap: 1px; font-weight: 700; color: var(--text);
+      padding-bottom: 4px; gap: 3px; font-weight: 700; color: var(--text);
       font-size: calc(var(--cell) * 0.34); line-height: 1.05;
     }
     .col-clue.g5 { border-left: 2px solid var(--line-bold); }
@@ -227,9 +227,14 @@
     .col-clue span.used, .row-clue span.used {
       color: var(--clue-done); opacity: 0.8;
     }
+    /* even slot per number so a wide "10" isn't cramped next to a "2" */
+    .col-clue span, .row-clue span {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 1em; font-variant-numeric: tabular-nums;
+    }
     .row-clue {
       display: flex; flex-direction: row; justify-content: flex-end; align-items: center;
-      padding-right: 6px; gap: 5px; font-weight: 700; color: var(--text);
+      padding-right: 6px; gap: 6px; font-weight: 700; color: var(--text);
       font-size: calc(var(--cell) * 0.34);
     }
     .row-clue.g5 { border-top: 2px solid var(--line-bold); }
