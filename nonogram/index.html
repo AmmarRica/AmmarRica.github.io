@@ -205,18 +205,17 @@
     .col-clue {
       display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
       padding-bottom: 4px; gap: 1px; font-weight: 700; color: var(--text);
-      font-size: calc(var(--cell) * 0.42); line-height: 1.05;
+      font-size: calc(var(--cell) * 0.34); line-height: 1.05;
     }
     .col-clue.g5 { border-left: 2px solid var(--line-bold); }
     .col-clue.done { color: var(--clue-done); }
     .col-clue span.used, .row-clue span.used {
-      color: var(--clue-done); text-decoration: line-through;
-      text-decoration-thickness: 2px; opacity: 0.85;
+      color: var(--clue-done); opacity: 0.8;
     }
     .row-clue {
       display: flex; flex-direction: row; justify-content: flex-end; align-items: center;
       padding-right: 6px; gap: 5px; font-weight: 700; color: var(--text);
-      font-size: calc(var(--cell) * 0.42);
+      font-size: calc(var(--cell) * 0.34);
     }
     .row-clue.g5 { border-top: 2px solid var(--line-bold); }
     .row-clue.done { color: var(--clue-done); }
