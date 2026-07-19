@@ -1149,10 +1149,18 @@
     if (checkWin()) onWin();
   }
 
+  // `central` is true only when the pointer is near the middle of the cell.
+  // During a swipe we require this so grazing a cell's edge doesn't paint it —
+  // a cell only registers once your finger reaches its core.
+  const CENTER_MARGIN = 0.26; // ignore the outer 26% band on each side
   function cellFromPoint(x, y){
     const el = document.elementFromPoint(x, y);
     if (!el || !el.classList || !el.classList.contains('cell')) return null;
-    return { r: +el.dataset.r, c: +el.dataset.c };
+    const r = el.getBoundingClientRect();
+    const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height;
+    const central = fx >= CENTER_MARGIN && fx <= 1 - CENTER_MARGIN &&
+                    fy >= CENTER_MARGIN && fy <= 1 - CENTER_MARGIN;
+    return { r: +el.dataset.r, c: +el.dataset.c, central };
   }
 
   // Pointer events on the cells container
@@ -1168,7 +1176,7 @@
     if (!dragging) return;
     e.preventDefault();
     const t = cellFromPoint(e.clientX, e.clientY);
-    if (t) dragTo(t.r, t.c);
+    if (t && t.central) dragTo(t.r, t.c);
   });
   cellsEl.addEventListener('pointerup', e => { e.preventDefault(); endDrag(); });
   cellsEl.addEventListener('pointercancel', () => endDrag());
