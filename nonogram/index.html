@@ -401,9 +401,10 @@
     #confetti.on { display: block; }
     .win-thumb i.paint { animation: paintin .45s ease both; }
     @keyframes paintin { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .win-share-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 14px; flex-wrap: wrap; }
     .win-share {
       background: none; border: none; color: var(--accent); font-weight: 700; cursor: pointer;
-      font-size: 0.85rem; margin-bottom: 14px; padding: 4px;
+      font-size: 0.85rem; padding: 4px 6px;
     }
     .data-btns { display: flex; gap: 10px; margin-top: 12px; }
     .data-btns .btn { flex: 1; }
@@ -545,7 +546,10 @@
       <div class="pic-name" id="win-name">Heart</div>
       <div class="win-thumb" id="win-thumb"></div>
       <div class="win-time" id="win-time">Time: 0:00</div>
-      <button class="win-share" id="win-share">🔗 Share this puzzle</button>
+      <div class="win-share-row">
+        <button class="win-share" id="win-result">📋 Copy result</button>
+        <button class="win-share" id="win-share">🔗 Share link</button>
+      </div>
       <div class="win-actions">
         <button class="btn ghost" id="win-menu">Puzzles</button>
         <button class="btn" id="win-next">Next ›</button>
@@ -652,6 +656,11 @@
       { name: 'Letter T',g:['#####','..#..','..#..','..#..','..#..'] },
       { name: 'Letter H',g:['#...#','#...#','#####','#...#','#...#'] },
       { name: 'Hourglass',g:['#####','.###.','..#..','.###.','#####'] },
+      { name: 'Fish',   g: ['.....','.###.','####.','.###.','.....'] },
+      { name: 'Cup',    g: ['#####','.###.','.###.','.###.','.###.'] },
+      { name: 'Bell',   g: ['..#..','.###.','.###.','#####','..#..'] },
+      { name: 'Duck',   g: ['.##..','###.#','.####','.###.','.....'] },
+      { name: 'Bird',   g: ['.#...','###.#','.####','.#.#.','.#.#.'] },
     ],
     '10x5': [ // 10 wide, 5 tall
       { name: 'Bone',    g: ['##......##','###....###','##########','###....###','##......##'] },
@@ -663,6 +672,8 @@
       { name: 'Mug',     g: ['########..','#......#.#','#......#.#','#......#.#','########..'] },
       { name: 'Invader', g: ['..#....#..','..######..','.########.','##.####.##','#.#....#.#'] },
       { name: 'Heart',   g: ['.##....##.','##########','.########.','..######..','....##....'] },
+      { name: 'Crab',    g: ['#.#...#.#.','.#######.#','##########','.#.###.#..','#.#...#.#.'] },
+      { name: 'UFO',     g: ['...####...','..######..','##########','.#.#.#.#.#','..#....#..'] },
     ],
     '5x10': [ // 5 wide, 10 tall
       { name: 'Tree',    g: ['..#..','.###.','#####','.###.','#####','.###.','..#..','..#..','.###.','.###.'] },
@@ -687,8 +698,18 @@
       { name: 'Anchor',  g: ['....##....','...#..#...','...#..#...','....##....','....##....','#...##...#','#...##...#','##.####.##','.########.','..######..'] },
       { name: 'Umbrella',g: ['....#.....','..######..','.########.','##########','....#.....','....#.....','....#.....','....#.....','...##.....','.###......'] },
       { name: 'Butterfly',g:['##......##','###....###','.###..###.','..######..','...####...','..######..','.###..###.','###....###','##......##','..........'] },
+      { name: 'Apple',   g: ['....#.....','....#.....','..######..','.########.','##########','##########','##########','##########','.########.','..######..'] },
+      { name: 'Owl',     g: ['.##....##.','####..####','##.#..#.##','##########','#.######.#','##########','##.####.##','##.####.##','.##....##.','..#....#..'] },
+      { name: 'Crown',   g: ['#...#...#.','#.#.#.#.#.','#.#.#.#.#.','##########','##########','.########.','.########.','.########.','.########.','..........'] },
+      { name: 'Robot',   g: ['..######..','..#.##.#..','..######..','.########.','###.##.###','#.######.#','#.######.#','.########.','..#....#..','..##..##..'] },
+      { name: 'Penguin', g: ['...####...','..######..','..#.##.#..','..######..','.########.','.########.','.########.','.########.','.#.####.#.','...#..#...'] },
+      { name: 'Snowman', g: ['...####...','..#....#..','..#....#..','...####...','.########.','##########','.########.','.########.','..######..','..........'] },
+      { name: 'Coffee',  g: ['..........','.######.#.','.######.##','.######.##','.######.#.','.######...','.########.','..######..','..........','..........'] },
+      { name: 'Planet',  g: ['...####...','..######..','.########.','##########','#####.####','####.#####','##########','.########.','..######..','.#......#.'] },
     ],
     '15x10': [ // 15 wide, 10 tall
+      { name: 'Whale', g: ['....########...','..############.','.##############','###############','.##############','..############.','....######.###.','...............','...............','...............'] },
+      { name: 'Rocket',g: ['.......#.......','......###......','......###......','.....#####.....','.....#####.....','....#######....','....#######....','...#########...','...#.###.#.....','...............'] },
       { name: 'Car',   g: ['.....#######...','...###########.','..#############','###############','###############','###############','###############','.##..#####..##.','...............','...............'] },
       { name: 'Bone',  g: ['##.........##..','###.......###..','###############','###############','###.......###..','##.........##..','...............','...............','...............','...............'] },
       { name: 'Heart', g: ['..###...###....','.#####.#####...','#############..','#############..','.###########...','..#########....','...#######.....','....#####......','.....###.......','......#........'] },
@@ -704,6 +725,7 @@
       { name: 'Invader', g: ['..#.........#..','...#.......#...','..#####.#####..','.##.#######.##.','###############','#.###########.#','#.#.........#.#','#.#.........#.#','...##.....##...','...............','...............','...............','...............','...............','...............'] },
       { name: 'Mushroom',g: ['....#######....','..###########..','.#############.','###############','###############','###############','.##.#####.####.','..###########..','......###......','.....#####.....','.....#####.....','.....#####.....','.....#####.....','......###......','...............'] },
       { name: 'Ghost',   g: ['....#######....','..###########..','.#############.','.##.#####.###.#','###############','###############','###############','###############','###############','###############','###############','#.###.###.###.#','#..#...#...#..#','...............','...............'] },
+      { name: 'Skull',   g: ['...#########...','..###########..','.#############.','###############','###.#####.#####','###.#####.#####','###############','####.###.####..','###############','.#############.','.#.#.#.#.#.#.#.','.#############.','..#.#.#.#.#.#..','...............','...............'] },
     ],
   };
   const SIZE_META = {
@@ -739,11 +761,13 @@
     Hourglass:'Shapes', Smiley:'Shapes', Check:'Shapes',
     'Letter A':'Letters', 'Letter E':'Letters', 'Letter T':'Letters', 'Letter H':'Letters',
     Cat:'Animals', Fish:'Animals', Dog:'Animals', Snake:'Animals', Butterfly:'Animals',
-    'Ice Cream':'Food', Mushroom:'Food', Mug:'Food', Bottle:'Food',
-    Rocket:'Space', Invader:'Space', Ghost:'Space',
+    Duck:'Animals', Bird:'Animals', Crab:'Animals', Owl:'Animals', Penguin:'Animals', Whale:'Animals',
+    'Ice Cream':'Food', Mushroom:'Food', Mug:'Food', Bottle:'Food', Cup:'Food', Apple:'Food', Coffee:'Food',
+    Rocket:'Space', Invader:'Space', Ghost:'Space', UFO:'Space', Planet:'Space',
     House:'Objects', Key:'Objects', Sword:'Objects', Boat:'Objects', Car:'Objects',
     Bone:'Objects', Anchor:'Objects', Umbrella:'Objects', Tree:'Objects',
-    Cactus:'Objects', Sailboat:'Objects', Candle:'Objects',
+    Cactus:'Objects', Sailboat:'Objects', Candle:'Objects', Bell:'Objects',
+    Crown:'Objects', Robot:'Space', Snowman:'Objects', Skull:'Objects',
   };
   function packOf(name){ return PACK_OF[name] || 'Shapes'; }
   function packEntries(pack){
@@ -998,14 +1022,28 @@
   }
 
   //// ── Share ──────────────────────────────────────────────────
+  let winStats = null;
   function shareLink(){
     const base = location.href.split('#')[0];
     const hash = cur.daily ? '#daily' : `#p=${cur.size},${cur.idx}`;
     const url = base + hash;
-    const name = cur.daily ? 'the daily' : PUZZLES[cur.size][cur.idx].name;
-    if (navigator.share){ navigator.share({ title: 'Nonogram', text: `Try "${name}" on Nonogram!`, url }).catch(()=>{}); return; }
+    // spoiler-free: never name the picture
+    if (navigator.share){ navigator.share({ title: 'Nonogram', text: 'Can you solve this Nonogram puzzle?', url }).catch(()=>{}); return; }
     try { navigator.clipboard.writeText(url); toast('Link copied!'); }
     catch(e){ prompt('Copy this link:', url); }
+  }
+  // Wordle-style brag with your stats — NO picture / solution grid revealed.
+  function shareResult(){
+    if (!winStats) return;
+    const s = winStats; const base = location.href.split('#')[0];
+    const text = [
+      `🧩 Nonogram — ${s.label}`,
+      `⏱ ${fmtTime(s.time)}  💡 ${s.hints} hint${s.hints === 1 ? '' : 's'}${s.best ? '  🏆 best!' : ''}`,
+      base + s.link,
+    ].join('\n');
+    if (navigator.share){ navigator.share({ title: 'Nonogram', text }).catch(()=>{}); return; }
+    try { navigator.clipboard.writeText(text); toast('Result copied!'); }
+    catch(e){ prompt('Copy your result:', text); }
   }
   function loadFromHash(){
     const h = location.hash;
@@ -1371,6 +1409,7 @@
     stopTimer();
     saveLast(null); // finished — nothing to resume
     sfxWin();
+    let bestFlag = false;
     if (cur.daily){
       markDailySolved(cur.dailyDate, timer.elapsed);
       clearDailyBoard(cur.dailyDate);
@@ -1380,15 +1419,20 @@
       $('win-next').textContent = 'Replay';
       $('win-time').textContent = 'Time: ' + fmtTime(timer.elapsed);
     } else {
-      const isBest = recordTime(cur.size, cur.idx, timer.elapsed);
+      bestFlag = recordTime(cur.size, cur.idx, timer.elapsed);
       markSolved(cur.size, cur.idx);
       clearBoardState(cur.size, cur.idx);
       $('win-name').textContent = PUZZLES[cur.size][cur.idx].name;
       $('win-menu').textContent = 'Puzzles';
       $('win-next').textContent = 'Next ›';
       $('win-time').textContent = 'Time: ' + fmtTime(timer.elapsed) +
-        (isBest ? ' • 🏆 New best!' : ' • Best ' + fmtTime(bestTime(cur.size, cur.idx)));
+        (bestFlag ? ' • 🏆 New best!' : ' • Best ' + fmtTime(bestTime(cur.size, cur.idx)));
     }
+    winStats = {
+      label: SIZE_META[cur.size].label + (cur.daily ? ' daily' : ''),
+      time: timer.elapsed, hints: hintsUsed, best: bestFlag,
+      link: cur.daily ? '#daily' : `#p=${cur.size},${cur.idx}`,
+    };
     const thumb = $('win-thumb');
     const px = cur.W >= 15 ? 10 : 14;
     thumb.style.gridTemplateColumns = `repeat(${cur.W}, ${px}px)`;
@@ -1657,6 +1701,7 @@
     startPuzzle(cur.size, (cur.idx + 1) % list.length);
   };
   $('win-share').onclick = shareLink;
+  $('win-result').onclick = shareResult;
 
   //// ── Settings wiring ────────────────────────────────────────
   function syncSettingsUI(){
