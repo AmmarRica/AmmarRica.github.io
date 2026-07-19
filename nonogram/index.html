@@ -129,6 +129,25 @@
     .size-card .big { font-size: 1.5rem; font-weight: 800; }
     .size-card .sub { color: var(--muted); font-size: 0.8rem; }
     .size-card .prog { font-size: 0.78rem; color: var(--accent-2); font-weight: 600; }
+    /* ── Packs ───────────────────────────────── */
+    .pack-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .pack-card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      padding: 14px; cursor: pointer; color: var(--text); text-align: left;
+      display: flex; align-items: center; gap: 12px; transition: transform .12s ease;
+    }
+    .pack-card:active { transform: scale(0.97); }
+    .pack-card .pk-icon {
+      width: 40px; height: 40px; border-radius: 10px; flex: none; font-size: 1.3rem;
+      display: flex; align-items: center; justify-content: center; background: var(--panel-2);
+    }
+    .pack-card .pk-name { font-weight: 800; font-size: 1rem; }
+    .pack-card .pk-sub { color: var(--muted); font-size: 0.76rem; margin-top: 1px; }
+    .puzzle-card .size-tag {
+      font-size: 0.64rem; font-weight: 700; color: var(--accent-2);
+      background: var(--panel-2); border-radius: 6px; padding: 1px 6px; margin-top: 2px;
+    }
+
     .mini-wrap { height: 66px; display: flex; align-items: center; justify-content: flex-start; }
     .mini-grid { display: grid; gap: 2px; }
     .mini-grid i { background: var(--cell-bg); border-radius: 1.5px; }
@@ -445,6 +464,8 @@
       </button>
       <div class="section-label">Choose a size</div>
       <div class="size-grid" id="size-grid"></div>
+      <div class="section-label">Puzzle packs</div>
+      <div class="pack-grid" id="pack-grid"></div>
     </div>
   </section>
 
@@ -621,14 +642,33 @@
       { name: 'Umbrella',g: ['....#.....','..######..','.########.','##########','....#.....','....#.....','....#.....','....#.....','...##.....','.###......'] },
       { name: 'Butterfly',g:['##......##','###....###','.###..###.','..######..','...####...','..######..','.###..###.','###....###','##......##','..........'] },
     ],
+    '15x10': [ // 15 wide, 10 tall
+      { name: 'Car',   g: ['.....#######...','...###########.','..#############','###############','###############','###############','###############','.##..#####..##.','...............','...............'] },
+      { name: 'Bone',  g: ['##.........##..','###.......###..','###############','###############','###.......###..','##.........##..','...............','...............','...............','...............'] },
+      { name: 'Heart', g: ['..###...###....','.#####.#####...','#############..','#############..','.###########...','..#########....','...#######.....','....#####......','.....###.......','......#........'] },
+      { name: 'Fish',  g: ['....######.#...','..########.##..','.###########.#.','###############','.###########.#.','..########.##..','....######.#...','...............','...............','...............'] },
+      { name: 'Snake', g: ['###############','.............##','###############','##.............','###############','.............##','###############','...............','...............','...............'] },
+    ],
+    '15x15': [
+      { name: 'Heart',   g: ['...###...###...','..#####.#####..','.#############.','.#############.','.#############.','.#############.','.#############.','..###########..','..###########..','...#########...','....#######....','.....#####.....','......###......','.......#.......','...............'] },
+      { name: 'Diamond', g: ['.......#.......','......###......','.....#####.....','....#######....','...#########...','..###########..','.#############.','###############','.#############.','..###########..','...#########...','....#######....','.....#####.....','......###......','.......#.......'] },
+      { name: 'Plus',    g: ['......###......','......###......','......###......','......###......','......###......','......###......','###############','###############','###############','......###......','......###......','......###......','......###......','......###......','......###......'] },
+      { name: 'Star',    g: ['.......#.......','.......#.......','......###......','......###......','###############','.#############.','..#########....','...#######.....','...#######.....','..#########....','..##.....##....','.##.......##...','##.........##..','#...........#..','...............'] },
+      { name: 'Tree',    g: ['.......#.......','......###......','......###......','.....#####.....','....#######....','....#######....','...#########...','..###########..','.#############.','.#############.','######.######..','.....###.......','.....###.......','.....###.......','...............'] },
+      { name: 'Invader', g: ['..#.........#..','...#.......#...','..#####.#####..','.##.#######.##.','###############','#.###########.#','#.#.........#.#','#.#.........#.#','...##.....##...','...............','...............','...............','...............','...............','...............'] },
+      { name: 'Mushroom',g: ['....#######....','..###########..','.#############.','###############','###############','###############','.##.#####.####.','..###########..','......###......','.....#####.....','.....#####.....','.....#####.....','.....#####.....','......###......','...............'] },
+      { name: 'Ghost',   g: ['....#######....','..###########..','.#############.','.##.#####.###.#','###############','###############','###############','###############','###############','###############','###############','#.###.###.###.#','#..#...#...#..#','...............','...............'] },
+    ],
   };
   const SIZE_META = {
     '5x5':   { label: '5 × 5',  sub: 'Easy',   W: 5,  H: 5  },
     '10x5':  { label: '10 × 5', sub: 'Wide',   W: 10, H: 5  },
     '5x10':  { label: '5 × 10', sub: 'Tall',   W: 5,  H: 10 },
     '10x10': { label: '10 × 10',sub: 'Hard',   W: 10, H: 10 },
+    '15x10': { label: '15 × 10',sub: 'Big',    W: 15, H: 10 },
+    '15x15': { label: '15 × 15',sub: 'Expert', W: 15, H: 15 },
   };
-  const SIZE_ORDER = ['5x5','10x5','5x10','10x10'];
+  const SIZE_ORDER = ['5x5','10x5','5x10','10x10','15x10','15x15'];
 
   const THEMES = [
     { key: 'dark',     name: 'Dark',     bg: '#10131c', a: '#6c8cff', b: '#a78bfa' },
@@ -638,6 +678,35 @@
     { key: 'sunset',   name: 'Sunset',   bg: '#1e1020', a: '#ff7a59', b: '#ffb454' },
     { key: 'ocean',    name: 'Ocean',    bg: '#06181f', a: '#20b8d6', b: '#3ad6b0' },
   ];
+
+  //// ── Themed packs ───────────────────────────────────────────
+  const PACKS = [
+    { key: 'Shapes',  icon: '◆'  },
+    { key: 'Animals', icon: '🐾' },
+    { key: 'Food',    icon: '🍔' },
+    { key: 'Space',   icon: '🚀' },
+    { key: 'Objects', icon: '🔧' },
+    { key: 'Letters', icon: '🔤' },
+  ];
+  const PACK_OF = {
+    Heart:'Shapes', Diamond:'Shapes', Plus:'Shapes', Star:'Shapes', Arrow:'Shapes',
+    Hourglass:'Shapes', Smiley:'Shapes', Check:'Shapes',
+    'Letter A':'Letters', 'Letter E':'Letters', 'Letter T':'Letters', 'Letter H':'Letters',
+    Cat:'Animals', Fish:'Animals', Dog:'Animals', Snake:'Animals', Butterfly:'Animals',
+    'Ice Cream':'Food', Mushroom:'Food', Mug:'Food', Bottle:'Food',
+    Rocket:'Space', Invader:'Space', Ghost:'Space',
+    House:'Objects', Key:'Objects', Sword:'Objects', Boat:'Objects', Car:'Objects',
+    Bone:'Objects', Anchor:'Objects', Umbrella:'Objects', Tree:'Objects',
+    Cactus:'Objects', Sailboat:'Objects', Candle:'Objects',
+  };
+  function packOf(name){ return PACK_OF[name] || 'Shapes'; }
+  function packEntries(pack){
+    const out = [];
+    SIZE_ORDER.forEach(size => PUZZLES[size].forEach((p, idx) => {
+      if (packOf(p.name) === pack) out.push({ size, idx });
+    }));
+    return out;
+  }
 
   //// ── State ──────────────────────────────────────────────────
   const EMPTY = 0, FILL = 1, MARK = 2;
@@ -812,35 +881,19 @@
     }
     return true;
   }
-  // Build today's daily: seed by date, generate random grids until one is
-  // uniquely logic-solvable. Cached so a day's puzzle is computed once.
+  // Today's daily: deterministically pick a named curated puzzle by date seed,
+  // so every day reveals a recognizable picture (all are uniquely solvable).
   function buildDaily(date){
     const cache = (() => { try { return JSON.parse(localStorage.getItem(`nono_dpuz_${date}`)); } catch(e){ return null; } })();
     if (cache && cache.g && cache.size) return cache;
     const rng = seededRng('nono-' + date);
-    const pool = ['10x10','5x10','10x10','10x5'];
-    const size = pool[Math.floor(rng() * pool.length) % pool.length];
-    const m = SIZE_META[size];
-    const density = 0.52 + rng() * 0.12;
-    for (let attempt = 0; attempt < 400; attempt++){
-      const grid = [];
-      for (let r = 0; r < m.H; r++){
-        const row = []; for (let c = 0; c < m.W; c++) row.push(rng() < density ? 1 : 0);
-        grid.push(row);
-      }
-      // reject degenerate (empty / full) grids
-      let filled = 0; grid.forEach(r => r.forEach(v => filled += v));
-      if (filled < m.W * m.H * 0.25 || filled > m.W * m.H * 0.8) continue;
-      const clues = computeClues(grid, m.W, m.H);
-      if (isLogicSolvable(grid, clues, m.W, m.H)){
-        const out = { size, g: grid.map(r => r.map(v => v ? '#' : '.').join('')) };
-        try { localStorage.setItem(`nono_dpuz_${date}`, JSON.stringify(out)); } catch(e){}
-        return out;
-      }
-    }
-    // Fallback: deterministic pick from curated 10x10 library
-    const idx = Math.floor(rng() * PUZZLES['10x10'].length);
-    return { size: '10x10', g: PUZZLES['10x10'][idx].g };
+    const pool = [];
+    ['10x10','15x10','15x15','5x10','10x5'].forEach(size =>
+      PUZZLES[size].forEach((p, idx) => pool.push({ size, idx, name: p.name })));
+    const pick = pool[Math.floor(rng() * pool.length)];
+    const out = { size: pick.size, idx: pick.idx, name: pick.name, g: PUZZLES[pick.size][pick.idx].g };
+    try { localStorage.setItem(`nono_dpuz_${date}`, JSON.stringify(out)); } catch(e){}
+    return out;
   }
 
   //// ── Theme ──────────────────────────────────────────────────
@@ -930,8 +983,22 @@
       card.onclick = () => openPicker(size);
       grid.appendChild(card);
     });
+    buildPacks();
     refreshDailyCard();
     refreshContinueCard();
+  }
+  function buildPacks(){
+    const grid = $('pack-grid'); grid.innerHTML = '';
+    PACKS.forEach(pk => {
+      const entries = packEntries(pk.key);
+      const done = entries.filter(e => isSolved(e.size, e.idx)).length;
+      const card = document.createElement('button'); card.className = 'pack-card';
+      card.innerHTML = `<div class="pk-icon">${pk.icon}</div>
+        <div><div class="pk-name">${pk.key}</div>
+        <div class="pk-sub">${done}/${entries.length} solved</div></div>`;
+      card.onclick = () => openPack(pk.key);
+      grid.appendChild(card);
+    });
   }
   function progressPct(state, W, H, sol){
     let need = 0, have = 0;
@@ -975,33 +1042,28 @@
     const streak = dailyStreak();
     $('daily-sub').textContent = solved
       ? `Solved today!${streak > 1 ? ` 🔥 ${streak}-day streak` : ''}`
-      : `Auto-generated puzzle${streak > 0 ? ` • 🔥 ${streak}-day streak` : ' — one new grid each day'}`;
+      : `A new picture to uncover${streak > 0 ? ` • 🔥 ${streak}-day streak` : ' each day'}`;
   }
 
   //// ── Picker ─────────────────────────────────────────────────
-  let pickerSize = null;
-  function openPicker(size){
-    pickerSize = size;
-    const m = SIZE_META[size];
-    $('picker-label').textContent = `${solvedCount(size)} of ${PUZZLES[size].length} solved`;
-    $('nav-title').textContent = `${m.label} Nonograms`;
+  function renderPuzzleCards(entries, showSize){
     const grid = $('puzzle-grid'); grid.innerHTML = '';
-    PUZZLES[size].forEach((p, idx) => {
+    entries.forEach(({ size, idx }, n) => {
+      const p = PUZZLES[size][idx]; const m = SIZE_META[size];
       const solved = isSolved(size, idx);
       const diff = puzzleDifficulty(size, p);
       const card = document.createElement('button');
       card.className = 'puzzle-card' + (solved ? ' solved' : '');
       if (solved) {
         const thumb = document.createElement('div'); thumb.className = 'thumb';
-        const cellPx = m.W >= 10 ? 6 : 8;
+        const cellPx = m.W >= 15 ? 4 : (m.W >= 10 ? 6 : 8);
         thumb.style.gridTemplateColumns = `repeat(${m.W}, ${cellPx}px)`;
         parseGrid(p.g).forEach(r => r.forEach(v => { const i = document.createElement('i');
           i.style.width=cellPx+'px'; i.style.height=cellPx+'px'; if (v) i.className='on'; thumb.appendChild(i); }));
         card.appendChild(thumb);
       } else {
-        // mystery tile: big number + difficulty pips, so cards read distinctly
         const myst = document.createElement('div'); myst.className = 'myst';
-        myst.innerHTML = `<span class="myst-n">${idx+1}</span>
+        myst.innerHTML = `<span class="myst-n">${showSize ? m.label.replace(/ /g,'') : '#'+(idx+1)}</span>
           <span class="pips lvl${diff.lvl}"><i></i><i></i><i></i></span>`;
         card.appendChild(myst);
       }
@@ -1010,11 +1072,25 @@
       const bt = bestTime(size, idx);
       const badge = document.createElement('div'); badge.className = 'badge';
       badge.textContent = solved ? (bt !== undefined ? '⏱ ' + fmtTime(bt) : 'Solved') : 'Tap to play';
-      card.appendChild(lbl); card.appendChild(badge);
+      card.appendChild(lbl);
+      if (showSize){ const tag = document.createElement('div'); tag.className = 'size-tag'; tag.textContent = m.label; card.appendChild(tag); }
+      card.appendChild(badge);
       card.onclick = () => startPuzzle(size, idx);
       grid.appendChild(card);
     });
     showScreen('screen-picker');
+  }
+  function openPicker(size){
+    $('picker-label').textContent = `${solvedCount(size)} of ${PUZZLES[size].length} solved`;
+    $('nav-title').textContent = `${SIZE_META[size].label} Nonograms`;
+    renderPuzzleCards(PUZZLES[size].map((_, i) => ({ size, idx: i })), false);
+  }
+  function openPack(pack){
+    const entries = packEntries(pack);
+    const solved = entries.filter(e => isSolved(e.size, e.idx)).length;
+    $('picker-label').textContent = `${solved} of ${entries.length} solved`;
+    $('nav-title').textContent = `${pack} pack`;
+    renderPuzzleCards(entries, true);
   }
   // Rough difficulty from clue fragmentation (more/smaller runs = harder).
   function puzzleDifficulty(size, p){
@@ -1184,7 +1260,7 @@
       markDailySolved(cur.dailyDate, timer.elapsed);
       clearDailyBoard(cur.dailyDate);
       const streak = dailyStreak();
-      $('win-name').textContent = 'Daily complete' + (streak > 1 ? ` • 🔥 ${streak}-day streak` : '');
+      $('win-name').textContent = (cur.dailyName ? cur.dailyName + ' • ' : '') + 'Daily done' + (streak > 1 ? ` • 🔥 ${streak}` : '');
       $('win-menu').textContent = 'Menu';
       $('win-next').textContent = 'Replay';
       $('win-time').textContent = 'Time: ' + fmtTime(timer.elapsed);
@@ -1249,7 +1325,7 @@
     const len = m.W * m.H;
     const saved = loadDailyBoard(date, len);
     cur = {
-      size: puz.size, idx: 0, daily: true, dailyDate: date, W: m.W, H: m.H, sol,
+      size: puz.size, idx: 0, daily: true, dailyDate: date, dailyName: puz.name, W: m.W, H: m.H, sol,
       state: saved ? saved.slice() : new Array(len).fill(EMPTY),
       rowClues: clues.rows, colClues: clues.cols,
     };
