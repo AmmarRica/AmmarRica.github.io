@@ -365,6 +365,35 @@
     .swatch .sw-name { font-size: 0.7rem; margin-top: 5px; color: var(--muted); }
     .swatch.active .sw-name { color: var(--accent); font-weight: 800; }
 
+    /* hint flash */
+    .cell.flash { animation: cellflash .7s ease; z-index: 2; }
+    @keyframes cellflash {
+      0%, 100% { box-shadow: none; }
+      35% { box-shadow: 0 0 0 3px var(--accent-2) inset, 0 0 12px var(--accent-2); }
+    }
+
+    /* high-contrast mode: bolder lines + orange, thicker X marks */
+    [data-contrast="high"] .cell { border-right-color: var(--line-bold); border-bottom-color: var(--line-bold); }
+    [data-contrast="high"] .cell.b5r { border-right-width: 4px; }
+    [data-contrast="high"] .cell.b5b { border-bottom-width: 4px; }
+    [data-contrast="high"] .cell.fill { outline: 2px solid var(--fill-edge); outline-offset: -3px; }
+    [data-contrast="high"] .cell.mark::after {
+      width: 58%; height: 58%;
+      background:
+        linear-gradient(45deg, transparent 38%, #ff7a1a 38%, #ff7a1a 62%, transparent 62%),
+        linear-gradient(-45deg, transparent 38%, #ff7a1a 38%, #ff7a1a 62%, transparent 62%);
+    }
+
+    /* continue card */
+    .continue-card .dc-icon { background: var(--accent-2); }
+
+    /* how-to-play */
+    .help-card { max-width: 400px; }
+    .help-body { list-style: none; text-align: left; display: flex; flex-direction: column; gap: 10px; margin: 6px 0; }
+    .help-body li { color: var(--muted); font-size: 0.88rem; line-height: 1.4; padding-left: 20px; position: relative; }
+    .help-body li::before { content: "▸"; position: absolute; left: 2px; color: var(--accent); }
+    .help-body b { color: var(--text); }
+
     .toast {
       position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(20px);
       background: var(--panel); color: var(--text); padding: 10px 18px; border-radius: 30px;
@@ -379,6 +408,7 @@
     <button class="nav-btn" id="nav-back">‹ Back</button>
     <div class="nav-title" id="nav-title">Nonogram</div>
     <div class="nav-right">
+      <button class="nav-btn" id="nav-help" title="How to play">?</button>
       <button class="nav-btn" id="nav-settings" title="Settings">⚙</button>
     </div>
   </nav>
@@ -391,6 +421,14 @@
         <h1>Nonogram</h1>
         <p>Fill the grid from the number clues to reveal a hidden picture.</p>
       </div>
+      <button class="daily-card continue-card" id="continue-card" style="display:none">
+        <div class="dc-icon" id="continue-icon">▶</div>
+        <div class="dc-body">
+          <div class="dc-title" id="continue-title">Continue</div>
+          <div class="dc-sub" id="continue-sub"></div>
+        </div>
+        <div class="dc-chev">›</div>
+      </button>
       <div class="section-label">Daily challenge</div>
       <button class="daily-card" id="daily-card">
         <div class="dc-icon" id="daily-icon">★</div>
@@ -440,6 +478,7 @@
         <button id="mode-fill" class="active">■ Fill</button>
         <button id="mode-mark" class="mark">✕ Mark</button>
       </div>
+      <button class="icon-btn" id="btn-hint" title="Hint">💡</button>
       <button class="icon-btn" id="btn-reset" title="Reset">⟳</button>
     </div>
   </section>
@@ -476,13 +515,47 @@
       </div>
       <div class="set-row">
         <div>
+          <div class="label">Sound effects</div>
+          <div class="desc">Clicks, error buzz and a win chime.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-sound"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div>
+          <div class="label">High contrast</div>
+          <div class="desc">Bolder gridlines and clearer fill / X marks.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-contrast"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div>
           <div class="label">Vibrate</div>
           <div class="desc">Haptic feedback on touch (if supported).</div>
         </div>
         <label class="switch"><input type="checkbox" id="set-vibrate"><span class="slider"></span></label>
       </div>
       <div class="win-actions" style="margin-top:18px">
+        <button class="btn ghost" id="settings-help">How to play</button>
         <button class="btn" id="settings-close">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HELP OVERLAY -->
+  <div class="overlay" id="help-overlay">
+    <div class="win-card help-card">
+      <h2>How to play</h2>
+      <ul class="help-body">
+        <li><b>Goal:</b> fill the grid to reveal a hidden picture.</li>
+        <li><b>Clues</b> above each column and beside each row list the runs of filled squares in order — e.g. <b>3 1</b> means a block of 3, a gap, then 1.</li>
+        <li><b>Fill</b> mode paints squares; <b>Mark</b> mode places an ✕ on squares you know are empty. Tap the toggle to switch.</li>
+        <li><b>Swipe</b> across cells to fill or mark a whole line at once.</li>
+        <li>A clue <b>greys out</b> once its block is placed. A full row/column dims when it matches.</li>
+        <li>Use <b>💡 Hint</b> to reveal a square (+10s), <b>↶</b> to undo, <b>⟳</b> to reset.</li>
+        <li>Every puzzle has exactly <b>one</b> solution — no guessing needed.</li>
+      </ul>
+      <div class="win-actions" style="margin-top:16px">
+        <button class="btn" id="help-close">Got it</button>
       </div>
     </div>
   </div>
@@ -595,8 +668,12 @@
       theme:    s.theme    ?? 'dark',
       errors:   s.errors   ?? true,
       vibrate:  s.vibrate  ?? false,
+      sound:    s.sound    ?? true,
+      contrast: s.contrast ?? false,
     };
   }
+  function saveLast(obj){ try { localStorage.setItem('nono_last', JSON.stringify(obj)); } catch(e){} }
+  function loadLast(){ try { return JSON.parse(localStorage.getItem('nono_last')); } catch(e){ return null; } }
   function saveSettings(){ try { localStorage.setItem('nono_settings', JSON.stringify(settings)); } catch(e){} }
   function progressKey(){ return 'nono_solved'; }
   function loadSolved(){ try { return JSON.parse(localStorage.getItem(progressKey())) || {}; } catch(e){ return {}; } }
@@ -763,6 +840,30 @@
 
   //// ── Theme ──────────────────────────────────────────────────
   function applyTheme(){ document.documentElement.setAttribute('data-theme', settings.theme); }
+  function applyContrast(){ document.documentElement.setAttribute('data-contrast', settings.contrast ? 'high' : 'off'); }
+
+  //// ── Sound (WebAudio) ───────────────────────────────────────
+  let audioCtx = null;
+  function ensureAudio(){
+    if (!audioCtx){ try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function beep(freq, dur, type, vol){
+    if (!settings.sound) return; ensureAudio(); if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.05, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function sfxFill(){ beep(460, 0.05, 'square', 0.045); }
+  function sfxMark(){ beep(300, 0.045, 'sine', 0.04); }
+  function sfxErase(){ beep(220, 0.05, 'sine', 0.035); }
+  function sfxError(){ beep(150, 0.2, 'sawtooth', 0.05); }
+  function sfxWin(){ [523,659,784,1047].forEach((f,i) => setTimeout(() => beep(f, 0.22, 'triangle', 0.06), i*110)); }
   function buildThemeSwatches(){
     const wrap = $('theme-swatches'); wrap.innerHTML = '';
     THEMES.forEach(t => {
@@ -825,6 +926,38 @@
       grid.appendChild(card);
     });
     refreshDailyCard();
+    refreshContinueCard();
+  }
+  function progressPct(state, W, H, sol){
+    let need = 0, have = 0;
+    for (let i = 0; i < W*H; i++){ const r = Math.floor(i/W), c = i%W;
+      if (sol[r][c]){ need++; if (state[i] === FILL) have++; } }
+    return need ? Math.round(have/need*100) : 0;
+  }
+  function refreshContinueCard(){
+    const card = $('continue-card'); const last = loadLast(); let show = false;
+    if (last && last.t === 'p' && PUZZLES[last.size] && PUZZLES[last.size][last.idx] && !isSolved(last.size, last.idx)){
+      const m = SIZE_META[last.size]; const st = loadBoardState(last.size, last.idx, m.W*m.H);
+      if (st && st.some(v => v !== EMPTY)){
+        show = true;
+        const sol = parseGrid(PUZZLES[last.size][last.idx].g);
+        $('continue-title').textContent = `Continue • ${m.label}`;
+        $('continue-sub').textContent = `Puzzle #${last.idx+1} • ${progressPct(st, m.W, m.H, sol)}% filled`;
+      }
+    } else if (last && last.t === 'd'){
+      const date = dateKey(new Date());
+      if (!isDailySolved(date)){
+        const puz = buildDaily(date); const m = SIZE_META[puz.size];
+        const st = loadDailyBoard(date, m.W*m.H);
+        if (st && st.some(v => v !== EMPTY)){
+          show = true;
+          const sol = parseGrid(puz.g);
+          $('continue-title').textContent = 'Continue • Daily';
+          $('continue-sub').textContent = `${progressPct(st, m.W, m.H, sol)}% filled`;
+        }
+      }
+    }
+    card.style.display = show ? 'flex' : 'none';
   }
   function refreshDailyCard(){
     const today = dateKey(new Date());
@@ -1040,6 +1173,8 @@
   }
   function onWin(){
     stopTimer();
+    saveLast(null); // finished — nothing to resume
+    sfxWin();
     if (cur.daily){
       markDailySolved(cur.dailyDate, timer.elapsed);
       clearDailyBoard(cur.dailyDate);
@@ -1092,7 +1227,8 @@
       state: saved ? saved.slice() : new Array(len).fill(EMPTY),
       rowClues: clues.rows, colClues: clues.cols,
     };
-    history = [];
+    history = []; lastErrors = 0; hintsUsed = 0;
+    saveLast({ t: 'p', size, idx });
     $('btn-undo').disabled = true;
     $('nav-title').textContent = `${m.label} • #${idx+1}`;
     showScreen('screen-game');
@@ -1112,7 +1248,8 @@
       state: saved ? saved.slice() : new Array(len).fill(EMPTY),
       rowClues: clues.rows, colClues: clues.cols,
     };
-    history = [];
+    history = []; lastErrors = 0; hintsUsed = 0;
+    saveLast({ t: 'd' });
     $('btn-undo').disabled = true;
     const nice = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     $('nav-title').textContent = `Daily • ${nice}`;
@@ -1141,6 +1278,36 @@
 
   //// ── Painting / input ───────────────────────────────────────
   let dragging = false, paintValue = null, startR = 0, startC = 0, axis = null, lastIdx = null, changedDuringDrag = false;
+  let lastErrors = 0, hintsUsed = 0;
+
+  function flashCell(r, c){
+    const el = cellEl(r, c);
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 700);
+  }
+  // Reveal one correct cell (fill a needed cell, or X a wrongly-filled one). +10s penalty.
+  function useHint(){
+    if (!cur) return;
+    let cands = [];
+    for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++)
+      if (cur.sol[r][c] && cur.state[r*cur.W+c] !== FILL) cands.push([r, c, FILL]);
+    if (!cands.length)
+      for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++)
+        if (!cur.sol[r][c] && cur.state[r*cur.W+c] === FILL) cands.push([r, c, MARK]);
+    if (!cands.length){ toast('Nothing to hint — you’ve got it!'); return; }
+    const [r, c, v] = cands[Math.floor(Math.random() * cands.length)];
+    pushHistorySnapshot();
+    applyCell(r, c, v);
+    hintsUsed++;
+    timer.start -= 10000; timer.elapsed = performance.now() - timer.start; // +10s penalty
+    $('stat-time').textContent = '⏱ ' + fmtTime(timer.elapsed);
+    saveBoardState();
+    flashCell(r, c);
+    if (v === FILL) sfxFill(); else sfxMark();
+    toast('Hint revealed (+10s)');
+    updateClueDone(); updateStatus();
+    if (checkWin()) onWin();
+  }
 
   function applyCell(r, c, value){
     const k = r * cur.W + c;
@@ -1160,7 +1327,8 @@
     pushHistorySnapshot();
     dragging = true;
     applyCell(r, c, paintValue);
-    lastIdx = 0;
+    lastIdx = null; // first move interpolates from the start cell, not column 0
+    if (paintValue === FILL) sfxFill(); else if (paintValue === MARK) sfxMark(); else sfxErase();
     vibe(8);
   }
 
@@ -1196,6 +1364,7 @@
       history.pop(); if (!history.length) $('btn-undo').disabled = true;
     } else {
       saveBoardState();
+      if (settings.errors){ const e = countErrors(); if (e > lastErrors) sfxError(); lastErrors = e; }
     }
     updateClueDone(); updateStatus();
     if (checkWin()) onWin();
@@ -1244,6 +1413,7 @@
   $('mode-mark').onclick = () => setMode('mark');
   $('btn-undo').onclick = undo;
   $('btn-reset').onclick = resetBoard;
+  $('btn-hint').onclick = useHint;
 
   //// ── Nav ────────────────────────────────────────────────────
   function backToMenu(){ $('nav-title').textContent = 'Nonogram'; buildMenu(); showScreen('screen-menu'); }
@@ -1260,6 +1430,17 @@
   $('nav-settings').onclick = () => $('settings-overlay').classList.add('active');
   $('settings-close').onclick = () => $('settings-overlay').classList.remove('active');
   $('daily-card').onclick = () => startDaily();
+  $('continue-card').onclick = () => {
+    const last = loadLast(); if (!last) return;
+    if (last.t === 'd') startDaily(); else startPuzzle(last.size, last.idx);
+  };
+
+  //// ── Help wiring ────────────────────────────────────────────
+  function openHelp(){ $('help-overlay').classList.add('active'); }
+  function closeHelp(){ $('help-overlay').classList.remove('active'); try { localStorage.setItem('nono_helpseen', '1'); } catch(e){} }
+  $('nav-help').onclick = openHelp;
+  $('help-close').onclick = closeHelp;
+  $('settings-help').onclick = () => { $('settings-overlay').classList.remove('active'); openHelp(); };
 
   //// ── Win overlay wiring ─────────────────────────────────────
   $('win-menu').onclick = () => {
@@ -1277,9 +1458,13 @@
   function syncSettingsUI(){
     buildThemeSwatches();
     $('set-errors').checked   = settings.errors;
+    $('set-sound').checked    = settings.sound;
+    $('set-contrast').checked = settings.contrast;
     $('set-vibrate').checked  = settings.vibrate;
   }
   $('set-errors').onchange = e => { settings.errors = e.target.checked; saveSettings(); if (cur) updateStatus(); };
+  $('set-sound').onchange = e => { settings.sound = e.target.checked; saveSettings(); if (e.target.checked){ ensureAudio(); sfxFill(); } };
+  $('set-contrast').onchange = e => { settings.contrast = e.target.checked; applyContrast(); saveSettings(); };
   $('set-vibrate').onchange = e => { settings.vibrate = e.target.checked; saveSettings(); if (e.target.checked) vibe(20); };
 
   //// ── Resize ─────────────────────────────────────────────────
@@ -1291,9 +1476,12 @@
 
   //// ── Init ───────────────────────────────────────────────────
   applyTheme();
+  applyContrast();
   syncSettingsUI();
   buildHeroLogo();
   buildMenu();
+  // First-time players get the how-to-play automatically.
+  try { if (!localStorage.getItem('nono_helpseen')) openHelp(); } catch(e){}
   </script>
 </body>
 </html>
