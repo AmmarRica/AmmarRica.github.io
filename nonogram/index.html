@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Nonogram</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#10131c" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Nonogram" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -389,6 +396,26 @@
     .swatch .sw-name { font-size: 0.7rem; margin-top: 5px; color: var(--muted); }
     .swatch.active .sw-name { color: var(--accent); font-weight: 800; }
 
+    /* confetti + win paint-in */
+    #confetti { position: fixed; inset: 0; z-index: 999; pointer-events: none; display: none; }
+    #confetti.on { display: block; }
+    .win-thumb i.paint { animation: paintin .45s ease both; }
+    @keyframes paintin { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .win-share {
+      background: none; border: none; color: var(--accent); font-weight: 700; cursor: pointer;
+      font-size: 0.85rem; margin-bottom: 14px; padding: 4px;
+    }
+    .data-btns { display: flex; gap: 10px; margin-top: 12px; }
+    .data-btns .btn { flex: 1; }
+
+    /* left-handed: row clues move to the right of the grid */
+    [data-hand="left"] .board { grid-template-columns: calc(var(--W) * var(--cell)) var(--clueR); }
+    [data-hand="left"] .corner    { grid-column: 2; grid-row: 1; }
+    [data-hand="left"] .col-clues { grid-column: 1; grid-row: 1; }
+    [data-hand="left"] .row-clues { grid-column: 2; grid-row: 2; }
+    [data-hand="left"] .cells     { grid-column: 1; grid-row: 2; border-left: none; border-right: 2px solid var(--line-bold); }
+    [data-hand="left"] .row-clue  { justify-content: flex-start; padding-right: 0; padding-left: 6px; }
+
     /* hint flash */
     .cell.flash { animation: cellflash .7s ease; z-index: 2; }
     @keyframes cellflash {
@@ -509,6 +536,8 @@
     </div>
   </section>
 
+  <canvas id="confetti"></canvas>
+
   <!-- WIN OVERLAY -->
   <div class="overlay" id="win-overlay">
     <div class="win-card">
@@ -516,6 +545,7 @@
       <div class="pic-name" id="win-name">Heart</div>
       <div class="win-thumb" id="win-thumb"></div>
       <div class="win-time" id="win-time">Time: 0:00</div>
+      <button class="win-share" id="win-share">🔗 Share this puzzle</button>
       <div class="win-actions">
         <button class="btn ghost" id="win-menu">Puzzles</button>
         <button class="btn" id="win-next">Next ›</button>
@@ -559,6 +589,22 @@
           <div class="desc">Haptic feedback on touch (if supported).</div>
         </div>
         <label class="switch"><input type="checkbox" id="set-vibrate"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div>
+          <div class="label">Left-handed</div>
+          <div class="desc">Put the row clues on the right side.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-hand"><span class="slider"></span></label>
+      </div>
+      <div class="set-block">
+        <div class="label">Your data</div>
+        <div class="desc">Back up or move your progress and settings.</div>
+        <div class="data-btns">
+          <button class="btn ghost" id="data-export">⬇ Export</button>
+          <button class="btn ghost" id="data-import">⬆ Import</button>
+        </div>
+        <input type="file" id="import-file" accept="application/json,.json" style="display:none">
       </div>
       <div class="win-actions" style="margin-top:18px">
         <button class="btn ghost" id="settings-help">How to play</button>
@@ -744,6 +790,7 @@
       vibrate:  s.vibrate  ?? false,
       sound:    s.sound    ?? true,
       contrast: s.contrast ?? false,
+      hand:     s.hand     ?? 'right',
     };
   }
   function saveLast(obj){ try { localStorage.setItem('nono_last', JSON.stringify(obj)); } catch(e){} }
@@ -899,6 +946,7 @@
   //// ── Theme ──────────────────────────────────────────────────
   function applyTheme(){ document.documentElement.setAttribute('data-theme', settings.theme); }
   function applyContrast(){ document.documentElement.setAttribute('data-contrast', settings.contrast ? 'high' : 'off'); }
+  function applyHand(){ document.documentElement.setAttribute('data-hand', settings.hand); if (cur && $('screen-game').classList.contains('active')) fitCellSize(); }
 
   //// ── Sound (WebAudio) ───────────────────────────────────────
   let audioCtx = null;
@@ -922,6 +970,73 @@
   function sfxErase(){ beep(220, 0.05, 'sine', 0.035); }
   function sfxError(){ beep(150, 0.2, 'sawtooth', 0.05); }
   function sfxWin(){ [523,659,784,1047].forEach((f,i) => setTimeout(() => beep(f, 0.22, 'triangle', 0.06), i*110)); }
+
+  //// ── Confetti ───────────────────────────────────────────────
+  function launchConfetti(){
+    const cv = $('confetti'); const ctx = cv.getContext('2d');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; ctx.scale(dpr, dpr);
+    cv.classList.add('on');
+    const colors = ['#6c8cff','#a78bfa','#4cd07d','#ff6b6b','#ffb454','#20b8d6'];
+    const parts = [];
+    for (let i = 0; i < 130; i++) parts.push({
+      x: innerWidth/2 + (i%2?1:-1)*Math.random()*60, y: innerHeight*0.35,
+      vx: (i/130*2-1)*6 + (Math.random()-0.5)*4, vy: -Math.random()*11 - 4,
+      s: 4 + Math.random()*5, c: colors[i%colors.length], rot: Math.random()*6, vr: (Math.random()-0.5)*0.4,
+    });
+    const t0 = performance.now();
+    function frame(t){
+      const el = t - t0; ctx.clearRect(0,0,cv.width,cv.height);
+      parts.forEach(p => { p.vy += 0.28; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle = p.c;
+        ctx.globalAlpha = Math.max(0, 1 - el/2600);
+        ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.5); ctx.restore(); });
+      if (el < 2600) requestAnimationFrame(frame);
+      else { ctx.clearRect(0,0,cv.width,cv.height); cv.classList.remove('on'); }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  //// ── Share ──────────────────────────────────────────────────
+  function shareLink(){
+    const base = location.href.split('#')[0];
+    const hash = cur.daily ? '#daily' : `#p=${cur.size},${cur.idx}`;
+    const url = base + hash;
+    const name = cur.daily ? 'the daily' : PUZZLES[cur.size][cur.idx].name;
+    if (navigator.share){ navigator.share({ title: 'Nonogram', text: `Try "${name}" on Nonogram!`, url }).catch(()=>{}); return; }
+    try { navigator.clipboard.writeText(url); toast('Link copied!'); }
+    catch(e){ prompt('Copy this link:', url); }
+  }
+  function loadFromHash(){
+    const h = location.hash;
+    if (h === '#daily'){ startDaily(); return true; }
+    const m = h.match(/^#p=([\w]+),(\d+)$/);
+    if (m && PUZZLES[m[1]] && PUZZLES[m[1]][+m[2]]){ startPuzzle(m[1], +m[2]); return true; }
+    return false;
+  }
+
+  //// ── Export / import ────────────────────────────────────────
+  function exportData(){
+    const data = {};
+    for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i);
+      if (k && k.startsWith('nono_')) data[k] = localStorage.getItem(k); }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'nonogram-save.json'; a.click(); URL.revokeObjectURL(a.href);
+    toast('Progress exported');
+  }
+  function importData(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        Object.keys(data).forEach(k => { if (k.startsWith('nono_')) localStorage.setItem(k, data[k]); });
+        toast('Imported — reloading…');
+        setTimeout(() => location.reload(), 800);
+      } catch(e){ toast('Import failed — bad file'); }
+    };
+    reader.readAsText(file);
+  }
   function buildThemeSwatches(){
     const wrap = $('theme-swatches'); wrap.innerHTML = '';
     THEMES.forEach(t => {
@@ -1275,11 +1390,18 @@
         (isBest ? ' • 🏆 New best!' : ' • Best ' + fmtTime(bestTime(cur.size, cur.idx)));
     }
     const thumb = $('win-thumb');
-    thumb.style.gridTemplateColumns = `repeat(${cur.W}, 14px)`;
+    const px = cur.W >= 15 ? 10 : 14;
+    thumb.style.gridTemplateColumns = `repeat(${cur.W}, ${px}px)`;
     thumb.innerHTML = '';
-    cur.sol.forEach(row => row.forEach(v => { const i = document.createElement('i'); if (v) i.className='on'; thumb.appendChild(i); }));
+    let onIdx = 0;
+    cur.sol.forEach(row => row.forEach(v => {
+      const i = document.createElement('i');
+      i.style.width = px+'px'; i.style.height = px+'px';
+      if (v){ i.className = 'on paint'; i.style.animationDelay = (onIdx++ * 12) + 'ms'; }
+      thumb.appendChild(i);
+    }));
     vibe([40,40,80]);
-    setTimeout(() => $('win-overlay').classList.add('active'), 350);
+    setTimeout(() => { $('win-overlay').classList.add('active'); launchConfetti(); }, 350);
   }
 
   //// ── Timer ──────────────────────────────────────────────────
@@ -1534,6 +1656,7 @@
     const list = PUZZLES[cur.size];
     startPuzzle(cur.size, (cur.idx + 1) % list.length);
   };
+  $('win-share').onclick = shareLink;
 
   //// ── Settings wiring ────────────────────────────────────────
   function syncSettingsUI(){
@@ -1542,11 +1665,16 @@
     $('set-sound').checked    = settings.sound;
     $('set-contrast').checked = settings.contrast;
     $('set-vibrate').checked  = settings.vibrate;
+    $('set-hand').checked     = settings.hand === 'left';
   }
   $('set-errors').onchange = e => { settings.errors = e.target.checked; saveSettings(); if (cur) updateStatus(); };
   $('set-sound').onchange = e => { settings.sound = e.target.checked; saveSettings(); if (e.target.checked){ ensureAudio(); sfxFill(); } };
   $('set-contrast').onchange = e => { settings.contrast = e.target.checked; applyContrast(); saveSettings(); };
   $('set-vibrate').onchange = e => { settings.vibrate = e.target.checked; saveSettings(); if (e.target.checked) vibe(20); };
+  $('set-hand').onchange = e => { settings.hand = e.target.checked ? 'left' : 'right'; applyHand(); saveSettings(); };
+  $('data-export').onclick = exportData;
+  $('data-import').onclick = () => $('import-file').click();
+  $('import-file').onchange = e => { if (e.target.files[0]) importData(e.target.files[0]); };
 
   //// ── Resize ─────────────────────────────────────────────────
   let resizeTO = null;
@@ -1558,11 +1686,18 @@
   //// ── Init ───────────────────────────────────────────────────
   applyTheme();
   applyContrast();
+  applyHand();
   syncSettingsUI();
   buildHeroLogo();
   buildMenu();
+  // A shared #p=size,idx or #daily link opens straight into that puzzle.
+  const openedFromLink = loadFromHash();
   // First-time players get the how-to-play automatically.
-  try { if (!localStorage.getItem('nono_helpseen')) openHelp(); } catch(e){}
+  try { if (!openedFromLink && !localStorage.getItem('nono_helpseen')) openHelp(); } catch(e){}
+  // Register the service worker for offline / installable use (https only).
+  if ('serviceWorker' in navigator && location.protocol === 'https:'){
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
   </script>
 </body>
 </html>

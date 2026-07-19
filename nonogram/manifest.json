@@ -1,0 +1,14 @@
+{
+  "name": "Nonogram",
+  "short_name": "Nonogram",
+  "description": "Picross-style nonogram logic puzzles with a daily challenge.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#10131c",
+  "theme_color": "#10131c",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
