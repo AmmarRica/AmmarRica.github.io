@@ -129,7 +129,8 @@
     .size-card .big { font-size: 1.5rem; font-weight: 800; }
     .size-card .sub { color: var(--muted); font-size: 0.8rem; }
     .size-card .prog { font-size: 0.78rem; color: var(--accent-2); font-weight: 600; }
-    .mini-grid { display: grid; gap: 2px; margin-top: 2px; }
+    .mini-wrap { height: 66px; display: flex; align-items: center; justify-content: flex-start; }
+    .mini-grid { display: grid; gap: 2px; }
     .mini-grid i { background: var(--cell-bg); border-radius: 1.5px; }
     .mini-grid i.on { background: var(--accent); }
 
@@ -167,6 +168,17 @@
     .puzzle-card .thumb i { background: var(--cell-bg); border-radius: 1px; }
     .puzzle-card.solved .thumb i.on { background: var(--good); }
     .puzzle-card .thumb i.on { background: var(--muted); }
+    .puzzle-card .myst {
+      width: 66px; height: 66px; border-radius: 12px; background: var(--panel-2);
+      border: 1px solid var(--line); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 6px;
+    }
+    .puzzle-card .myst-n { font-size: 1.5rem; font-weight: 800; color: var(--muted); }
+    .pips { display: flex; gap: 3px; }
+    .pips i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-bold); }
+    .pips.lvl1 i:nth-child(1) { background: var(--good); }
+    .pips.lvl2 i:nth-child(1), .pips.lvl2 i:nth-child(2) { background: var(--accent-2); }
+    .pips.lvl3 i { background: var(--bad); }
     .puzzle-card .pl { font-size: 0.8rem; font-weight: 600; }
     .puzzle-card .badge { font-size: 0.72rem; color: var(--muted); }
     .puzzle-card.solved .badge { color: var(--good); font-weight: 700; }
@@ -174,10 +186,13 @@
 
     /* ── Game ────────────────────────────────── */
     #screen-game { align-items: center; }
-    .game-inner { width: 100%; max-width: 640px; padding: 10px 8px 0;
+    .game-inner { width: 100%; max-width: 640px; padding: 8px;
       display: flex; flex-direction: column; align-items: center; height: 100%; }
     .board-scroll { flex: 1; display: flex; align-items: center; justify-content: center;
       width: 100%; overflow: auto; }
+    /* status + board travel together and centre as one group */
+    .play-group { display: flex; flex-direction: column; align-items: center;
+      gap: 10px; width: max-content; margin: auto; }
 
     .board {
       display: grid; touch-action: none;
@@ -263,8 +278,14 @@
     .icon-btn:active { transform: scale(0.93); }
     .icon-btn:disabled { opacity: 0.4; cursor: default; }
 
-    .game-status { color: var(--muted); font-size: 0.85rem; margin: 4px 0 2px;
-      display: flex; gap: 14px; align-items: center; }
+    .game-status {
+      align-self: stretch; display: flex; justify-content: space-between; align-items: center;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 8px 12px; font-size: 0.9rem; font-weight: 600; color: var(--muted);
+    }
+    .game-status #stat-time { color: var(--text); font-variant-numeric: tabular-nums; }
+    .game-status .gs-right { display: flex; gap: 10px; align-items: center; }
+    .game-status #stat-progress { color: var(--accent-2); font-weight: 700; }
     .game-status .err { color: var(--bad); font-weight: 700; }
 
     /* ── Win overlay ─────────────────────────── */
@@ -324,9 +345,9 @@
     .theme-swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
     .swatch {
       width: 58px; cursor: pointer; border-radius: 12px; padding: 4px;
-      border: 2px solid transparent; text-align: center;
+      border: 2px solid transparent; text-align: center; background: transparent;
     }
-    .swatch.active { border-color: var(--accent); }
+    .swatch.active { border-color: var(--accent); background: var(--panel-2); }
     .swatch .sw-prev {
       height: 40px; border-radius: 8px; position: relative; overflow: hidden;
       border: 1px solid var(--line);
@@ -335,8 +356,14 @@
       left: 8px; top: 12px; }
     .swatch .sw-prev .dot2 { position: absolute; width: 10px; height: 10px; border-radius: 50%;
       right: 8px; bottom: 9px; }
+    /* checkmark badge on the selected swatch */
+    .swatch.active .sw-prev::after {
+      content: "✓"; position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; font-size: 1.1rem; font-weight: 900; color: #fff;
+      background: rgba(0,0,0,0.32); text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+    }
     .swatch .sw-name { font-size: 0.7rem; margin-top: 5px; color: var(--muted); }
-    .swatch.active .sw-name { color: var(--text); font-weight: 700; }
+    .swatch.active .sw-name { color: var(--accent); font-weight: 800; }
 
     .toast {
       position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(20px);
@@ -389,17 +416,21 @@
   <!-- GAME -->
   <section class="screen" id="screen-game">
     <div class="game-inner">
-      <div class="game-status">
-        <span id="stat-time">0:00</span>
-        <span id="stat-progress">0%</span>
-        <span class="err" id="stat-errors"></span>
-      </div>
       <div class="board-scroll">
-        <div class="board" id="board">
-          <div class="corner"></div>
-          <div class="col-clues" id="col-clues"></div>
-          <div class="row-clues" id="row-clues"></div>
-          <div class="cells" id="cells"></div>
+        <div class="play-group">
+          <div class="game-status">
+            <span id="stat-time">⏱ 0:00</span>
+            <span class="gs-right">
+              <span class="err" id="stat-errors"></span>
+              <span id="stat-progress">0%</span>
+            </span>
+          </div>
+          <div class="board" id="board">
+            <div class="corner"></div>
+            <div class="col-clues" id="col-clues"></div>
+            <div class="row-clues" id="row-clues"></div>
+            <div class="cells" id="cells"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -778,15 +809,18 @@
     SIZE_ORDER.forEach(size => {
       const m = SIZE_META[size]; const total = PUZZLES[size].length; const done = solvedCount(size);
       const card = document.createElement('button'); card.className = 'size-card';
+      const miniWrap = document.createElement('div'); miniWrap.className = 'mini-wrap';
       const mini = document.createElement('div'); mini.className = 'mini-grid';
-      const cellPx = size === '10x10' ? 7 : 9;
+      // scale cell so every preview fits the same fixed box height
+      const cellPx = Math.max(5, Math.min(9, Math.floor(64 / m.H)));
       mini.style.gridTemplateColumns = `repeat(${m.W}, ${cellPx}px)`;
       const sample = parseGrid(PUZZLES[size][0].g);
       sample.forEach(r => r.forEach(v => { const i = document.createElement('i');
         i.style.width = cellPx+'px'; i.style.height = cellPx+'px'; if (v) i.className = 'on'; mini.appendChild(i); }));
+      miniWrap.appendChild(mini);
       const info = document.createElement('div');
       info.innerHTML = `<div class="big">${m.label}</div><div class="sub">${m.sub} • ${done}/${total} solved</div>`;
-      card.appendChild(mini); card.appendChild(info);
+      card.appendChild(miniWrap); card.appendChild(info);
       card.onclick = () => openPicker(size);
       grid.appendChild(card);
     });
@@ -811,33 +845,49 @@
   function openPicker(size){
     pickerSize = size;
     const m = SIZE_META[size];
-    $('picker-label').textContent = `${m.label} puzzles`;
+    $('picker-label').textContent = `${solvedCount(size)} of ${PUZZLES[size].length} solved`;
     $('nav-title').textContent = `${m.label} Nonograms`;
     const grid = $('puzzle-grid'); grid.innerHTML = '';
     PUZZLES[size].forEach((p, idx) => {
       const solved = isSolved(size, idx);
+      const diff = puzzleDifficulty(size, p);
       const card = document.createElement('button');
       card.className = 'puzzle-card' + (solved ? ' solved' : '');
-      const thumb = document.createElement('div'); thumb.className = 'thumb';
-      const cellPx = m.W >= 10 ? 6 : 8;
-      thumb.style.gridTemplateColumns = `repeat(${m.W}, ${cellPx}px)`;
       if (solved) {
+        const thumb = document.createElement('div'); thumb.className = 'thumb';
+        const cellPx = m.W >= 10 ? 6 : 8;
+        thumb.style.gridTemplateColumns = `repeat(${m.W}, ${cellPx}px)`;
         parseGrid(p.g).forEach(r => r.forEach(v => { const i = document.createElement('i');
           i.style.width=cellPx+'px'; i.style.height=cellPx+'px'; if (v) i.className='on'; thumb.appendChild(i); }));
+        card.appendChild(thumb);
       } else {
-        // hidden: show a neutral tile
-        for (let k=0;k<m.W*m.H;k++){ const i=document.createElement('i');
-          i.style.width=cellPx+'px'; i.style.height=cellPx+'px'; thumb.appendChild(i); }
+        // mystery tile: big number + difficulty pips, so cards read distinctly
+        const myst = document.createElement('div'); myst.className = 'myst';
+        myst.innerHTML = `<span class="myst-n">${idx+1}</span>
+          <span class="pips lvl${diff.lvl}"><i></i><i></i><i></i></span>`;
+        card.appendChild(myst);
       }
-      const lbl = document.createElement('div'); lbl.className = 'pl'; lbl.textContent = solved ? p.name : `#${idx+1}`;
+      const lbl = document.createElement('div'); lbl.className = 'pl';
+      lbl.textContent = solved ? p.name : diff.label;
       const bt = bestTime(size, idx);
       const badge = document.createElement('div'); badge.className = 'badge';
       badge.textContent = solved ? (bt !== undefined ? '⏱ ' + fmtTime(bt) : 'Solved') : 'Tap to play';
-      card.appendChild(thumb); card.appendChild(lbl); card.appendChild(badge);
+      card.appendChild(lbl); card.appendChild(badge);
       card.onclick = () => startPuzzle(size, idx);
       grid.appendChild(card);
     });
     showScreen('screen-picker');
+  }
+  // Rough difficulty from clue fragmentation (more/smaller runs = harder).
+  function puzzleDifficulty(size, p){
+    const m = SIZE_META[size]; const grid = parseGrid(p.g);
+    const cl = computeClues(grid, m.W, m.H);
+    const segs = cl.rows.reduce((a,c)=>a+(c[0]===0?0:c.length),0) +
+                 cl.cols.reduce((a,c)=>a+(c[0]===0?0:c.length),0);
+    const density = segs / (m.W + m.H);
+    if (density < 1.4) return { label: 'Easy',   lvl: 1 };
+    if (density < 2.2) return { label: 'Medium', lvl: 2 };
+    return { label: 'Hard', lvl: 3 };
   }
 
   //// ── Board build ────────────────────────────────────────────
@@ -845,7 +895,8 @@
     if (!cur) return;
     const scroll = document.querySelector('.board-scroll');
     const availW = scroll.clientWidth - 8;
-    const availH = scroll.clientHeight - 8;
+    // leave room for the status strip + gap that share the play-group
+    const availH = scroll.clientHeight - 8 - 52;
     // rough clue allowances proportional to number counts
     const maxRowNums = Math.max(...cur.rowClues.map(a => a.length));
     const maxColNums = Math.max(...cur.colClues.map(a => a.length));
@@ -856,7 +907,7 @@
       const clueC = Math.max(28, maxColNums * cell * 0.55 + 6);
       const byW = (availW - clueR) / cur.W;
       const byH = (availH - clueC) / cur.H;
-      cell = Math.max(18, Math.min(byW, byH, 52));
+      cell = Math.max(18, Math.min(byW, byH, 62));
     }
     cell = Math.floor(cell);
     const clueR = Math.round(Math.max(28, maxRowNums * cell * 0.6 + 8));
@@ -1019,10 +1070,11 @@
   function startTimer(fromElapsed){
     timer.elapsed = fromElapsed || 0;
     timer.start = performance.now() - timer.elapsed;
+    $('stat-time').textContent = '⏱ ' + fmtTime(timer.elapsed);
     stopTimer();
     timer.id = setInterval(() => {
       timer.elapsed = performance.now() - timer.start;
-      $('stat-time').textContent = fmtTime(timer.elapsed);
+      $('stat-time').textContent = '⏱ ' + fmtTime(timer.elapsed);
     }, 500);
   }
   function stopTimer(){ if (timer.id){ clearInterval(timer.id); timer.id = null; } }
