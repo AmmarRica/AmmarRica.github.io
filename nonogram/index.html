@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Nonogram</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#10131c" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Nonogram" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -129,7 +136,27 @@
     .size-card .big { font-size: 1.5rem; font-weight: 800; }
     .size-card .sub { color: var(--muted); font-size: 0.8rem; }
     .size-card .prog { font-size: 0.78rem; color: var(--accent-2); font-weight: 600; }
-    .mini-grid { display: grid; gap: 2px; margin-top: 2px; }
+    /* ── Packs ───────────────────────────────── */
+    .pack-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .pack-card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      padding: 14px; cursor: pointer; color: var(--text); text-align: left;
+      display: flex; align-items: center; gap: 12px; transition: transform .12s ease;
+    }
+    .pack-card:active { transform: scale(0.97); }
+    .pack-card .pk-icon {
+      width: 40px; height: 40px; border-radius: 10px; flex: none; font-size: 1.3rem;
+      display: flex; align-items: center; justify-content: center; background: var(--panel-2);
+    }
+    .pack-card .pk-name { font-weight: 800; font-size: 1rem; }
+    .pack-card .pk-sub { color: var(--muted); font-size: 0.76rem; margin-top: 1px; }
+    .puzzle-card .size-tag {
+      font-size: 0.64rem; font-weight: 700; color: var(--accent-2);
+      background: var(--panel-2); border-radius: 6px; padding: 1px 6px; margin-top: 2px;
+    }
+
+    .mini-wrap { height: 66px; display: flex; align-items: center; justify-content: flex-start; }
+    .mini-grid { display: grid; gap: 2px; }
     .mini-grid i { background: var(--cell-bg); border-radius: 1.5px; }
     .mini-grid i.on { background: var(--accent); }
 
@@ -167,6 +194,17 @@
     .puzzle-card .thumb i { background: var(--cell-bg); border-radius: 1px; }
     .puzzle-card.solved .thumb i.on { background: var(--good); }
     .puzzle-card .thumb i.on { background: var(--muted); }
+    .puzzle-card .myst {
+      width: 66px; height: 66px; border-radius: 12px; background: var(--panel-2);
+      border: 1px solid var(--line); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 6px;
+    }
+    .puzzle-card .myst-n { font-size: 1.5rem; font-weight: 800; color: var(--muted); }
+    .pips { display: flex; gap: 3px; }
+    .pips i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-bold); }
+    .pips.lvl1 i:nth-child(1) { background: var(--good); }
+    .pips.lvl2 i:nth-child(1), .pips.lvl2 i:nth-child(2) { background: var(--accent-2); }
+    .pips.lvl3 i { background: var(--bad); }
     .puzzle-card .pl { font-size: 0.8rem; font-weight: 600; }
     .puzzle-card .badge { font-size: 0.72rem; color: var(--muted); }
     .puzzle-card.solved .badge { color: var(--good); font-weight: 700; }
@@ -174,10 +212,13 @@
 
     /* ── Game ────────────────────────────────── */
     #screen-game { align-items: center; }
-    .game-inner { width: 100%; max-width: 640px; padding: 10px 8px 0;
+    .game-inner { width: 100%; max-width: 640px; padding: 8px;
       display: flex; flex-direction: column; align-items: center; height: 100%; }
     .board-scroll { flex: 1; display: flex; align-items: center; justify-content: center;
       width: 100%; overflow: auto; }
+    /* status + board travel together and centre as one group */
+    .play-group { display: flex; flex-direction: column; align-items: center;
+      gap: 10px; width: max-content; margin: auto; }
 
     .board {
       display: grid; touch-action: none;
@@ -204,32 +245,39 @@
     }
     .col-clue {
       display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-      padding-bottom: 4px; gap: 1px; font-weight: 700; color: var(--text);
-      font-size: calc(var(--cell) * 0.42); line-height: 1.05;
+      padding-bottom: 4px; gap: 3px; font-weight: 700; color: var(--text);
+      font-size: calc(var(--cell) * 0.34); line-height: 1.05;
     }
     .col-clue.g5 { border-left: 2px solid var(--line-bold); }
     .col-clue.done { color: var(--clue-done); }
     .col-clue span.used, .row-clue span.used {
-      color: var(--clue-done); text-decoration: line-through;
-      text-decoration-thickness: 2px; opacity: 0.85;
+      color: var(--clue-done); opacity: 0.8;
+    }
+    /* even slot per number so a wide "10" isn't cramped next to a "2" */
+    .col-clue span, .row-clue span {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 1em; font-variant-numeric: tabular-nums;
     }
     .row-clue {
       display: flex; flex-direction: row; justify-content: flex-end; align-items: center;
-      padding-right: 6px; gap: 5px; font-weight: 700; color: var(--text);
-      font-size: calc(var(--cell) * 0.42);
+      padding-right: 6px; gap: 6px; font-weight: 700; color: var(--text);
+      font-size: calc(var(--cell) * 0.34);
     }
     .row-clue.g5 { border-top: 2px solid var(--line-bold); }
     .row-clue.done { color: var(--clue-done); }
 
     .cell {
-      border-right: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
+      border-right: 2px solid var(--line);
+      border-bottom: 2px solid var(--line);
       background: var(--cell-bg);
+      padding: 2px;
       position: relative; display: flex; align-items: center; justify-content: center;
     }
-    .cell.b5r { border-right: 2px solid var(--line-bold); }
-    .cell.b5b { border-bottom: 2px solid var(--line-bold); }
-    .cell.fill { background: var(--fill); }
+    .cell.b5r { border-right: 3px solid var(--line-bold); }
+    .cell.b5b { border-bottom: 3px solid var(--line-bold); }
+    /* Clip the fill to the padding-inset content box so adjacent filled
+       squares keep a visible gap instead of merging into one blob. */
+    .cell.fill { background: var(--fill); background-clip: content-box; }
     .cell.mark::after {
       content: ""; position: absolute; width: 46%; height: 46%;
       background:
@@ -261,8 +309,14 @@
     .icon-btn:active { transform: scale(0.93); }
     .icon-btn:disabled { opacity: 0.4; cursor: default; }
 
-    .game-status { color: var(--muted); font-size: 0.85rem; margin: 4px 0 2px;
-      display: flex; gap: 14px; align-items: center; }
+    .game-status {
+      align-self: stretch; display: flex; justify-content: space-between; align-items: center;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 8px 12px; font-size: 0.9rem; font-weight: 600; color: var(--muted);
+    }
+    .game-status #stat-time { color: var(--text); font-variant-numeric: tabular-nums; }
+    .game-status .gs-right { display: flex; gap: 10px; align-items: center; }
+    .game-status #stat-progress { color: var(--accent-2); font-weight: 700; }
     .game-status .err { color: var(--bad); font-weight: 700; }
 
     /* ── Win overlay ─────────────────────────── */
@@ -322,9 +376,9 @@
     .theme-swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
     .swatch {
       width: 58px; cursor: pointer; border-radius: 12px; padding: 4px;
-      border: 2px solid transparent; text-align: center;
+      border: 2px solid transparent; text-align: center; background: transparent;
     }
-    .swatch.active { border-color: var(--accent); }
+    .swatch.active { border-color: var(--accent); background: var(--panel-2); }
     .swatch .sw-prev {
       height: 40px; border-radius: 8px; position: relative; overflow: hidden;
       border: 1px solid var(--line);
@@ -333,8 +387,64 @@
       left: 8px; top: 12px; }
     .swatch .sw-prev .dot2 { position: absolute; width: 10px; height: 10px; border-radius: 50%;
       right: 8px; bottom: 9px; }
+    /* checkmark badge on the selected swatch */
+    .swatch.active .sw-prev::after {
+      content: "✓"; position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; font-size: 1.1rem; font-weight: 900; color: #fff;
+      background: rgba(0,0,0,0.32); text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+    }
     .swatch .sw-name { font-size: 0.7rem; margin-top: 5px; color: var(--muted); }
-    .swatch.active .sw-name { color: var(--text); font-weight: 700; }
+    .swatch.active .sw-name { color: var(--accent); font-weight: 800; }
+
+    /* confetti + win paint-in */
+    #confetti { position: fixed; inset: 0; z-index: 999; pointer-events: none; display: none; }
+    #confetti.on { display: block; }
+    .win-thumb i.paint { animation: paintin .45s ease both; }
+    @keyframes paintin { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .win-share-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 14px; flex-wrap: wrap; }
+    .win-share {
+      background: none; border: none; color: var(--accent); font-weight: 700; cursor: pointer;
+      font-size: 0.85rem; padding: 4px 6px;
+    }
+    .data-btns { display: flex; gap: 10px; margin-top: 12px; }
+    .data-btns .btn { flex: 1; }
+
+    /* left-handed: row clues move to the right of the grid */
+    [data-hand="left"] .board { grid-template-columns: calc(var(--W) * var(--cell)) var(--clueR); }
+    [data-hand="left"] .corner    { grid-column: 2; grid-row: 1; }
+    [data-hand="left"] .col-clues { grid-column: 1; grid-row: 1; }
+    [data-hand="left"] .row-clues { grid-column: 2; grid-row: 2; }
+    [data-hand="left"] .cells     { grid-column: 1; grid-row: 2; border-left: none; border-right: 2px solid var(--line-bold); }
+    [data-hand="left"] .row-clue  { justify-content: flex-start; padding-right: 0; padding-left: 6px; }
+
+    /* hint flash */
+    .cell.flash { animation: cellflash .7s ease; z-index: 2; }
+    @keyframes cellflash {
+      0%, 100% { box-shadow: none; }
+      35% { box-shadow: 0 0 0 3px var(--accent-2) inset, 0 0 12px var(--accent-2); }
+    }
+
+    /* high-contrast mode: bolder lines + orange, thicker X marks */
+    [data-contrast="high"] .cell { border-right-color: var(--line-bold); border-bottom-color: var(--line-bold); }
+    [data-contrast="high"] .cell.b5r { border-right-width: 4px; }
+    [data-contrast="high"] .cell.b5b { border-bottom-width: 4px; }
+    [data-contrast="high"] .cell.fill { outline: 2px solid var(--fill-edge); outline-offset: -3px; }
+    [data-contrast="high"] .cell.mark::after {
+      width: 58%; height: 58%;
+      background:
+        linear-gradient(45deg, transparent 38%, #ff7a1a 38%, #ff7a1a 62%, transparent 62%),
+        linear-gradient(-45deg, transparent 38%, #ff7a1a 38%, #ff7a1a 62%, transparent 62%);
+    }
+
+    /* continue card */
+    .continue-card .dc-icon { background: var(--accent-2); }
+
+    /* how-to-play */
+    .help-card { max-width: 400px; }
+    .help-body { list-style: none; text-align: left; display: flex; flex-direction: column; gap: 10px; margin: 6px 0; }
+    .help-body li { color: var(--muted); font-size: 0.88rem; line-height: 1.4; padding-left: 20px; position: relative; }
+    .help-body li::before { content: "▸"; position: absolute; left: 2px; color: var(--accent); }
+    .help-body b { color: var(--text); }
 
     .toast {
       position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(20px);
@@ -350,6 +460,7 @@
     <button class="nav-btn" id="nav-back">‹ Back</button>
     <div class="nav-title" id="nav-title">Nonogram</div>
     <div class="nav-right">
+      <button class="nav-btn" id="nav-help" title="How to play">?</button>
       <button class="nav-btn" id="nav-settings" title="Settings">⚙</button>
     </div>
   </nav>
@@ -362,6 +473,14 @@
         <h1>Nonogram</h1>
         <p>Fill the grid from the number clues to reveal a hidden picture.</p>
       </div>
+      <button class="daily-card continue-card" id="continue-card" style="display:none">
+        <div class="dc-icon" id="continue-icon">▶</div>
+        <div class="dc-body">
+          <div class="dc-title" id="continue-title">Continue</div>
+          <div class="dc-sub" id="continue-sub"></div>
+        </div>
+        <div class="dc-chev">›</div>
+      </button>
       <div class="section-label">Daily challenge</div>
       <button class="daily-card" id="daily-card">
         <div class="dc-icon" id="daily-icon">★</div>
@@ -373,6 +492,8 @@
       </button>
       <div class="section-label">Choose a size</div>
       <div class="size-grid" id="size-grid"></div>
+      <div class="section-label">Puzzle packs</div>
+      <div class="pack-grid" id="pack-grid"></div>
     </div>
   </section>
 
@@ -387,17 +508,21 @@
   <!-- GAME -->
   <section class="screen" id="screen-game">
     <div class="game-inner">
-      <div class="game-status">
-        <span id="stat-time">0:00</span>
-        <span id="stat-progress">0%</span>
-        <span class="err" id="stat-errors"></span>
-      </div>
       <div class="board-scroll">
-        <div class="board" id="board">
-          <div class="corner"></div>
-          <div class="col-clues" id="col-clues"></div>
-          <div class="row-clues" id="row-clues"></div>
-          <div class="cells" id="cells"></div>
+        <div class="play-group">
+          <div class="game-status">
+            <span id="stat-time">⏱ 0:00</span>
+            <span class="gs-right">
+              <span class="err" id="stat-errors"></span>
+              <span id="stat-progress">0%</span>
+            </span>
+          </div>
+          <div class="board" id="board">
+            <div class="corner"></div>
+            <div class="col-clues" id="col-clues"></div>
+            <div class="row-clues" id="row-clues"></div>
+            <div class="cells" id="cells"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -407,9 +532,12 @@
         <button id="mode-fill" class="active">■ Fill</button>
         <button id="mode-mark" class="mark">✕ Mark</button>
       </div>
+      <button class="icon-btn" id="btn-hint" title="Hint">💡</button>
       <button class="icon-btn" id="btn-reset" title="Reset">⟳</button>
     </div>
   </section>
+
+  <canvas id="confetti"></canvas>
 
   <!-- WIN OVERLAY -->
   <div class="overlay" id="win-overlay">
@@ -418,6 +546,10 @@
       <div class="pic-name" id="win-name">Heart</div>
       <div class="win-thumb" id="win-thumb"></div>
       <div class="win-time" id="win-time">Time: 0:00</div>
+      <div class="win-share-row">
+        <button class="win-share" id="win-result">📋 Copy result</button>
+        <button class="win-share" id="win-share">🔗 Share link</button>
+      </div>
       <div class="win-actions">
         <button class="btn ghost" id="win-menu">Puzzles</button>
         <button class="btn" id="win-next">Next ›</button>
@@ -436,17 +568,24 @@
       </div>
       <div class="set-row">
         <div>
-          <div class="label">Auto-mark full lines</div>
-          <div class="desc">Cross out remaining cells when a row/column is done.</div>
-        </div>
-        <label class="switch"><input type="checkbox" id="set-automark"><span class="slider"></span></label>
-      </div>
-      <div class="set-row">
-        <div>
           <div class="label">Highlight mistakes</div>
           <div class="desc">Count filled cells that don't belong.</div>
         </div>
         <label class="switch"><input type="checkbox" id="set-errors"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div>
+          <div class="label">Sound effects</div>
+          <div class="desc">Clicks, error buzz and a win chime.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-sound"><span class="slider"></span></label>
+      </div>
+      <div class="set-row">
+        <div>
+          <div class="label">High contrast</div>
+          <div class="desc">Bolder gridlines and clearer fill / X marks.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-contrast"><span class="slider"></span></label>
       </div>
       <div class="set-row">
         <div>
@@ -455,8 +594,44 @@
         </div>
         <label class="switch"><input type="checkbox" id="set-vibrate"><span class="slider"></span></label>
       </div>
+      <div class="set-row">
+        <div>
+          <div class="label">Left-handed</div>
+          <div class="desc">Put the row clues on the right side.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="set-hand"><span class="slider"></span></label>
+      </div>
+      <div class="set-block">
+        <div class="label">Your data</div>
+        <div class="desc">Back up or move your progress and settings.</div>
+        <div class="data-btns">
+          <button class="btn ghost" id="data-export">⬇ Export</button>
+          <button class="btn ghost" id="data-import">⬆ Import</button>
+        </div>
+        <input type="file" id="import-file" accept="application/json,.json" style="display:none">
+      </div>
       <div class="win-actions" style="margin-top:18px">
+        <button class="btn ghost" id="settings-help">How to play</button>
         <button class="btn" id="settings-close">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HELP OVERLAY -->
+  <div class="overlay" id="help-overlay">
+    <div class="win-card help-card">
+      <h2>How to play</h2>
+      <ul class="help-body">
+        <li><b>Goal:</b> fill the grid to reveal a hidden picture.</li>
+        <li><b>Clues</b> above each column and beside each row list the runs of filled squares in order — e.g. <b>3 1</b> means a block of 3, a gap, then 1.</li>
+        <li><b>Fill</b> mode paints squares; <b>Mark</b> mode places an ✕ on squares you know are empty. Tap the toggle to switch.</li>
+        <li><b>Swipe</b> across cells to fill or mark a whole line at once.</li>
+        <li>A clue <b>greys out</b> once its block is placed. A full row/column dims when it matches.</li>
+        <li>Use <b>💡 Hint</b> to reveal a square (+10s), <b>↶</b> to undo, <b>⟳</b> to reset.</li>
+        <li>Every puzzle has exactly <b>one</b> solution — no guessing needed.</li>
+      </ul>
+      <div class="win-actions" style="margin-top:16px">
+        <button class="btn" id="help-close">Got it</button>
       </div>
     </div>
   </div>
@@ -472,19 +647,44 @@
       { name: 'Diamond',g: ['..#..','.###.','#####','.###.','..#..'] },
       { name: 'Plus',   g: ['..#..','..#..','#####','..#..','..#..'] },
       { name: 'Arrow',  g: ['..#..','.###.','#####','..#..','..#..'] },
-      { name: 'Check',  g: ['....#','...##','#.##.','###..','.#...'] },
+      { name: 'House',  g: ['..#..','.###.','#####','#...#','#####'] },
+      { name: 'Smiley', g: ['.....','.#.#.','.....','#...#','.###.'] },
+      { name: 'Star',   g: ['..#..','.###.','#####','.#.#.','#...#'] },
+      { name: 'Boat',   g: ['..#..','..#..','#...#','#####','.###.'] },
+      { name: 'Letter E',g:['#####','#....','###..','#....','#####'] },
+      { name: 'Letter A',g:['.###.','#...#','#####','#...#','#...#'] },
+      { name: 'Letter T',g:['#####','..#..','..#..','..#..','..#..'] },
+      { name: 'Letter H',g:['#...#','#...#','#####','#...#','#...#'] },
+      { name: 'Hourglass',g:['#####','.###.','..#..','.###.','#####'] },
+      { name: 'Fish',   g: ['.....','.###.','####.','.###.','.....'] },
+      { name: 'Cup',    g: ['#####','.###.','.###.','.###.','.###.'] },
+      { name: 'Bell',   g: ['..#..','.###.','.###.','#####','..#..'] },
+      { name: 'Duck',   g: ['.##..','###.#','.####','.###.','.....'] },
+      { name: 'Bird',   g: ['.#...','###.#','.####','.#.#.','.#.#.'] },
     ],
     '10x5': [ // 10 wide, 5 tall
-      { name: 'Bone',   g: ['##......##','###....###','##########','###....###','##......##'] },
-      { name: 'Arrow',  g: ['......#...','.......#..','#########.','.......#..','......#...'] },
-      { name: 'Fish',   g: ['.#...####.','##..######','##.#######','##..######','.#...####.'] },
-      { name: 'Car',    g: ['...####...','.########.','##########','##########','.##....##.'] },
+      { name: 'Bone',    g: ['##......##','###....###','##########','###....###','##......##'] },
+      { name: 'Arrow',   g: ['......#...','.......#..','#########.','.......#..','......#...'] },
+      { name: 'Fish',    g: ['.#...####.','##..######','##.#######','##..######','.#...####.'] },
+      { name: 'Car',     g: ['...####...','.########.','##########','##########','.##....##.'] },
+      { name: 'Snake',   g: ['##########','.........#','##########','#.........','##########'] },
+      { name: 'Dog',     g: ['##.....###','##########','##########','.#.....#..','.#.....#..'] },
+      { name: 'Mug',     g: ['########..','#......#.#','#......#.#','#......#.#','########..'] },
+      { name: 'Invader', g: ['..#....#..','..######..','.########.','##.####.##','#.#....#.#'] },
+      { name: 'Heart',   g: ['.##....##.','##########','.########.','..######..','....##....'] },
+      { name: 'Crab',    g: ['#.#...#.#.','.#######.#','##########','.#.###.#..','#.#...#.#.'] },
+      { name: 'UFO',     g: ['...####...','..######..','##########','.#.#.#.#.#','..#....#..'] },
     ],
     '5x10': [ // 5 wide, 10 tall
-      { name: 'Tree',   g: ['..#..','.###.','#####','.###.','#####','.###.','..#..','..#..','.###.','.###.'] },
-      { name: 'Key',    g: ['.###.','.#.#.','.#.#.','.###.','..#..','..#..','..##.','..#..','..##.','..#..'] },
-      { name: 'Sword',  g: ['..#..','..#..','..#..','..#..','..#..','#####','..#..','..#..','.###.','..#..'] },
-      { name: 'Rocket', g: ['..#..','.###.','.###.','#####','#####','#####','#####','#.#.#','#...#','.#.#.'] },
+      { name: 'Tree',    g: ['..#..','.###.','#####','.###.','#####','.###.','..#..','..#..','.###.','.###.'] },
+      { name: 'Key',     g: ['.###.','.#.#.','.#.#.','.###.','..#..','..#..','..##.','..#..','..##.','..#..'] },
+      { name: 'Sword',   g: ['..#..','..#..','..#..','..#..','..#..','#####','..#..','..#..','.###.','..#..'] },
+      { name: 'Rocket',  g: ['..#..','.###.','.###.','#####','#####','#####','#####','#.#.#','#...#','.#.#.'] },
+      { name: 'Candle',  g: ['..#..','..#..','.###.','.###.','.###.','.###.','.###.','.###.','#####','#####'] },
+      { name: 'Bottle',  g: ['..#..','..#..','.###.','.###.','#####','#####','#####','#####','#####','#####'] },
+      { name: 'Cactus',  g: ['..#..','..#..','#.#.#','#.#.#','#####','..#..','..#..','..#..','.###.','.###.'] },
+      { name: 'Umbrella',g: ['.###.','#####','#####','..#..','..#..','..#..','..#..','..#..','#.#..','.##..'] },
+      { name: 'Ice Cream',g:['#####','#####','.###.','.###.','.###.','.###.','..#..','..#..','..#..','.....'] },
     ],
     '10x10': [
       { name: 'Heart',   g: ['..........','.##....##.','##########','##########','##########','.########.','.########.','..######..','...####...','....##....'] },
@@ -492,6 +692,40 @@
       { name: 'Plus',    g: ['....##....','....##....','....##....','....##....','##########','##########','....##....','....##....','....##....','....##....'] },
       { name: 'Ghost',   g: ['..######..','.########.','##########','###.##.###','##########','##########','##########','##########','##########','#.##.##.##'] },
       { name: 'Sailboat',g: ['....#.....','....##....','....###...','....####..','....#####.','....######','##########','.########.','..######..','..........'] },
+      { name: 'Smiley',  g: ['..######..','.########.','##########','##.####.##','##########','##########','#.######.#','##.####.##','.########.','..######..'] },
+      { name: 'Cat',     g: ['#........#','##......##','##########','##.####.##','##########','##########','###.##.###','##########','.########.','..######..'] },
+      { name: 'Mushroom',g: ['..######..','.########.','##########','##########','##########','.########.','...####...','...#..#...','...####...','..........'] },
+      { name: 'Anchor',  g: ['....##....','...#..#...','...#..#...','....##....','....##....','#...##...#','#...##...#','##.####.##','.########.','..######..'] },
+      { name: 'Umbrella',g: ['....#.....','..######..','.########.','##########','....#.....','....#.....','....#.....','....#.....','...##.....','.###......'] },
+      { name: 'Butterfly',g:['##......##','###....###','.###..###.','..######..','...####...','..######..','.###..###.','###....###','##......##','..........'] },
+      { name: 'Apple',   g: ['....#.....','....#.....','..######..','.########.','##########','##########','##########','##########','.########.','..######..'] },
+      { name: 'Owl',     g: ['.##....##.','####..####','##.#..#.##','##########','#.######.#','##########','##.####.##','##.####.##','.##....##.','..#....#..'] },
+      { name: 'Crown',   g: ['#...#...#.','#.#.#.#.#.','#.#.#.#.#.','##########','##########','.########.','.########.','.########.','.########.','..........'] },
+      { name: 'Robot',   g: ['..######..','..#.##.#..','..######..','.########.','###.##.###','#.######.#','#.######.#','.########.','..#....#..','..##..##..'] },
+      { name: 'Penguin', g: ['...####...','..######..','..#.##.#..','..######..','.########.','.########.','.########.','.########.','.#.####.#.','...#..#...'] },
+      { name: 'Snowman', g: ['...####...','..#....#..','..#....#..','...####...','.########.','##########','.########.','.########.','..######..','..........'] },
+      { name: 'Coffee',  g: ['..........','.######.#.','.######.##','.######.##','.######.#.','.######...','.########.','..######..','..........','..........'] },
+      { name: 'Planet',  g: ['...####...','..######..','.########.','##########','#####.####','####.#####','##########','.########.','..######..','.#......#.'] },
+    ],
+    '15x10': [ // 15 wide, 10 tall
+      { name: 'Whale', g: ['....########...','..############.','.##############','###############','.##############','..############.','....######.###.','...............','...............','...............'] },
+      { name: 'Rocket',g: ['.......#.......','......###......','......###......','.....#####.....','.....#####.....','....#######....','....#######....','...#########...','...#.###.#.....','...............'] },
+      { name: 'Car',   g: ['.....#######...','...###########.','..#############','###############','###############','###############','###############','.##..#####..##.','...............','...............'] },
+      { name: 'Bone',  g: ['##.........##..','###.......###..','###############','###############','###.......###..','##.........##..','...............','...............','...............','...............'] },
+      { name: 'Heart', g: ['..###...###....','.#####.#####...','#############..','#############..','.###########...','..#########....','...#######.....','....#####......','.....###.......','......#........'] },
+      { name: 'Fish',  g: ['....######.#...','..########.##..','.###########.#.','###############','.###########.#.','..########.##..','....######.#...','...............','...............','...............'] },
+      { name: 'Snake', g: ['###############','.............##','###############','##.............','###############','.............##','###############','...............','...............','...............'] },
+    ],
+    '15x15': [
+      { name: 'Heart',   g: ['...###...###...','..#####.#####..','.#############.','.#############.','.#############.','.#############.','.#############.','..###########..','..###########..','...#########...','....#######....','.....#####.....','......###......','.......#.......','...............'] },
+      { name: 'Diamond', g: ['.......#.......','......###......','.....#####.....','....#######....','...#########...','..###########..','.#############.','###############','.#############.','..###########..','...#########...','....#######....','.....#####.....','......###......','.......#.......'] },
+      { name: 'Plus',    g: ['......###......','......###......','......###......','......###......','......###......','......###......','###############','###############','###############','......###......','......###......','......###......','......###......','......###......','......###......'] },
+      { name: 'Star',    g: ['.......#.......','.......#.......','......###......','......###......','###############','.#############.','..#########....','...#######.....','...#######.....','..#########....','..##.....##....','.##.......##...','##.........##..','#...........#..','...............'] },
+      { name: 'Tree',    g: ['.......#.......','......###......','......###......','.....#####.....','....#######....','....#######....','...#########...','..###########..','.#############.','.#############.','######.######..','.....###.......','.....###.......','.....###.......','...............'] },
+      { name: 'Invader', g: ['..#.........#..','...#.......#...','..#####.#####..','.##.#######.##.','###############','#.###########.#','#.#.........#.#','#.#.........#.#','...##.....##...','...............','...............','...............','...............','...............','...............'] },
+      { name: 'Mushroom',g: ['....#######....','..###########..','.#############.','###############','###############','###############','.##.#####.####.','..###########..','......###......','.....#####.....','.....#####.....','.....#####.....','.....#####.....','......###......','...............'] },
+      { name: 'Ghost',   g: ['....#######....','..###########..','.#############.','.##.#####.###.#','###############','###############','###############','###############','###############','###############','###############','#.###.###.###.#','#..#...#...#..#','...............','...............'] },
+      { name: 'Skull',   g: ['...#########...','..###########..','.#############.','###############','###.#####.#####','###.#####.#####','###############','####.###.####..','###############','.#############.','.#.#.#.#.#.#.#.','.#############.','..#.#.#.#.#.#..','...............','...............'] },
     ],
   };
   const SIZE_META = {
@@ -499,8 +733,10 @@
     '10x5':  { label: '10 × 5', sub: 'Wide',   W: 10, H: 5  },
     '5x10':  { label: '5 × 10', sub: 'Tall',   W: 5,  H: 10 },
     '10x10': { label: '10 × 10',sub: 'Hard',   W: 10, H: 10 },
+    '15x10': { label: '15 × 10',sub: 'Big',    W: 15, H: 10 },
+    '15x15': { label: '15 × 15',sub: 'Expert', W: 15, H: 15 },
   };
-  const SIZE_ORDER = ['5x5','10x5','5x10','10x10'];
+  const SIZE_ORDER = ['5x5','10x5','5x10','10x10','15x10','15x15'];
 
   const THEMES = [
     { key: 'dark',     name: 'Dark',     bg: '#10131c', a: '#6c8cff', b: '#a78bfa' },
@@ -510,6 +746,37 @@
     { key: 'sunset',   name: 'Sunset',   bg: '#1e1020', a: '#ff7a59', b: '#ffb454' },
     { key: 'ocean',    name: 'Ocean',    bg: '#06181f', a: '#20b8d6', b: '#3ad6b0' },
   ];
+
+  //// ── Themed packs ───────────────────────────────────────────
+  const PACKS = [
+    { key: 'Shapes',  icon: '◆'  },
+    { key: 'Animals', icon: '🐾' },
+    { key: 'Food',    icon: '🍔' },
+    { key: 'Space',   icon: '🚀' },
+    { key: 'Objects', icon: '🔧' },
+    { key: 'Letters', icon: '🔤' },
+  ];
+  const PACK_OF = {
+    Heart:'Shapes', Diamond:'Shapes', Plus:'Shapes', Star:'Shapes', Arrow:'Shapes',
+    Hourglass:'Shapes', Smiley:'Shapes', Check:'Shapes',
+    'Letter A':'Letters', 'Letter E':'Letters', 'Letter T':'Letters', 'Letter H':'Letters',
+    Cat:'Animals', Fish:'Animals', Dog:'Animals', Snake:'Animals', Butterfly:'Animals',
+    Duck:'Animals', Bird:'Animals', Crab:'Animals', Owl:'Animals', Penguin:'Animals', Whale:'Animals',
+    'Ice Cream':'Food', Mushroom:'Food', Mug:'Food', Bottle:'Food', Cup:'Food', Apple:'Food', Coffee:'Food',
+    Rocket:'Space', Invader:'Space', Ghost:'Space', UFO:'Space', Planet:'Space',
+    House:'Objects', Key:'Objects', Sword:'Objects', Boat:'Objects', Car:'Objects',
+    Bone:'Objects', Anchor:'Objects', Umbrella:'Objects', Tree:'Objects',
+    Cactus:'Objects', Sailboat:'Objects', Candle:'Objects', Bell:'Objects',
+    Crown:'Objects', Robot:'Space', Snowman:'Objects', Skull:'Objects',
+  };
+  function packOf(name){ return PACK_OF[name] || 'Shapes'; }
+  function packEntries(pack){
+    const out = [];
+    SIZE_ORDER.forEach(size => PUZZLES[size].forEach((p, idx) => {
+      if (packOf(p.name) === pack) out.push({ size, idx });
+    }));
+    return out;
+  }
 
   //// ── State ──────────────────────────────────────────────────
   const EMPTY = 0, FILL = 1, MARK = 2;
@@ -543,11 +810,15 @@
     try { s = JSON.parse(localStorage.getItem('nono_settings')) || {}; } catch(e){}
     return {
       theme:    s.theme    ?? 'dark',
-      autoMark: s.autoMark ?? true,
       errors:   s.errors   ?? true,
       vibrate:  s.vibrate  ?? false,
+      sound:    s.sound    ?? true,
+      contrast: s.contrast ?? false,
+      hand:     s.hand     ?? 'right',
     };
   }
+  function saveLast(obj){ try { localStorage.setItem('nono_last', JSON.stringify(obj)); } catch(e){} }
+  function loadLast(){ try { return JSON.parse(localStorage.getItem('nono_last')); } catch(e){ return null; } }
   function saveSettings(){ try { localStorage.setItem('nono_settings', JSON.stringify(settings)); } catch(e){} }
   function progressKey(){ return 'nono_solved'; }
   function loadSolved(){ try { return JSON.parse(localStorage.getItem(progressKey())) || {}; } catch(e){ return {}; } }
@@ -557,6 +828,18 @@
   }
   function isSolved(size, idx){ const s = loadSolved(); return !!(s[size] && s[size][idx]); }
   function solvedCount(size){ const s = loadSolved()[size] || {}; return Object.keys(s).length; }
+
+  // Best time per puzzle (ms), saved in the browser.
+  function loadTimes(){ try { return JSON.parse(localStorage.getItem('nono_times')) || {}; } catch(e){ return {}; } }
+  function bestTime(size, idx){ const t = loadTimes()[size]; return t ? t[idx] : undefined; }
+  function recordTime(size, idx, ms){
+    const t = loadTimes(); t[size] = t[size] || {};
+    const prev = t[size][idx];
+    const isBest = prev === undefined || ms < prev;
+    if (isBest){ t[size][idx] = ms; try { localStorage.setItem('nono_times', JSON.stringify(t)); } catch(e){} }
+    return isBest;
+  }
+
   function stateKey(size, idx){ return `nono_state_${size}_${idx}`; }
   function saveBoardState(){
     if (!cur) return;
@@ -669,39 +952,129 @@
     }
     return true;
   }
-  // Build today's daily: seed by date, generate random grids until one is
-  // uniquely logic-solvable. Cached so a day's puzzle is computed once.
+  // Today's daily: deterministically pick a named curated puzzle by date seed,
+  // so every day reveals a recognizable picture (all are uniquely solvable).
   function buildDaily(date){
     const cache = (() => { try { return JSON.parse(localStorage.getItem(`nono_dpuz_${date}`)); } catch(e){ return null; } })();
     if (cache && cache.g && cache.size) return cache;
     const rng = seededRng('nono-' + date);
-    const pool = ['10x10','5x10','10x10','10x5'];
-    const size = pool[Math.floor(rng() * pool.length) % pool.length];
-    const m = SIZE_META[size];
-    const density = 0.52 + rng() * 0.12;
-    for (let attempt = 0; attempt < 400; attempt++){
-      const grid = [];
-      for (let r = 0; r < m.H; r++){
-        const row = []; for (let c = 0; c < m.W; c++) row.push(rng() < density ? 1 : 0);
-        grid.push(row);
-      }
-      // reject degenerate (empty / full) grids
-      let filled = 0; grid.forEach(r => r.forEach(v => filled += v));
-      if (filled < m.W * m.H * 0.25 || filled > m.W * m.H * 0.8) continue;
-      const clues = computeClues(grid, m.W, m.H);
-      if (isLogicSolvable(grid, clues, m.W, m.H)){
-        const out = { size, g: grid.map(r => r.map(v => v ? '#' : '.').join('')) };
-        try { localStorage.setItem(`nono_dpuz_${date}`, JSON.stringify(out)); } catch(e){}
-        return out;
-      }
-    }
-    // Fallback: deterministic pick from curated 10x10 library
-    const idx = Math.floor(rng() * PUZZLES['10x10'].length);
-    return { size: '10x10', g: PUZZLES['10x10'][idx].g };
+    const pool = [];
+    ['10x10','15x10','15x15','5x10','10x5'].forEach(size =>
+      PUZZLES[size].forEach((p, idx) => pool.push({ size, idx, name: p.name })));
+    const pick = pool[Math.floor(rng() * pool.length)];
+    const out = { size: pick.size, idx: pick.idx, name: pick.name, g: PUZZLES[pick.size][pick.idx].g };
+    try { localStorage.setItem(`nono_dpuz_${date}`, JSON.stringify(out)); } catch(e){}
+    return out;
   }
 
   //// ── Theme ──────────────────────────────────────────────────
   function applyTheme(){ document.documentElement.setAttribute('data-theme', settings.theme); }
+  function applyContrast(){ document.documentElement.setAttribute('data-contrast', settings.contrast ? 'high' : 'off'); }
+  function applyHand(){ document.documentElement.setAttribute('data-hand', settings.hand); if (cur && $('screen-game').classList.contains('active')) fitCellSize(); }
+
+  //// ── Sound (WebAudio) ───────────────────────────────────────
+  let audioCtx = null;
+  function ensureAudio(){
+    if (!audioCtx){ try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function beep(freq, dur, type, vol){
+    if (!settings.sound) return; ensureAudio(); if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.05, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function sfxFill(){ beep(460, 0.05, 'square', 0.045); }
+  function sfxMark(){ beep(300, 0.045, 'sine', 0.04); }
+  function sfxErase(){ beep(220, 0.05, 'sine', 0.035); }
+  function sfxError(){ beep(150, 0.2, 'sawtooth', 0.05); }
+  function sfxWin(){ [523,659,784,1047].forEach((f,i) => setTimeout(() => beep(f, 0.22, 'triangle', 0.06), i*110)); }
+
+  //// ── Confetti ───────────────────────────────────────────────
+  function launchConfetti(){
+    const cv = $('confetti'); const ctx = cv.getContext('2d');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; ctx.scale(dpr, dpr);
+    cv.classList.add('on');
+    const colors = ['#6c8cff','#a78bfa','#4cd07d','#ff6b6b','#ffb454','#20b8d6'];
+    const parts = [];
+    for (let i = 0; i < 130; i++) parts.push({
+      x: innerWidth/2 + (i%2?1:-1)*Math.random()*60, y: innerHeight*0.35,
+      vx: (i/130*2-1)*6 + (Math.random()-0.5)*4, vy: -Math.random()*11 - 4,
+      s: 4 + Math.random()*5, c: colors[i%colors.length], rot: Math.random()*6, vr: (Math.random()-0.5)*0.4,
+    });
+    const t0 = performance.now();
+    function frame(t){
+      const el = t - t0; ctx.clearRect(0,0,cv.width,cv.height);
+      parts.forEach(p => { p.vy += 0.28; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle = p.c;
+        ctx.globalAlpha = Math.max(0, 1 - el/2600);
+        ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.5); ctx.restore(); });
+      if (el < 2600) requestAnimationFrame(frame);
+      else { ctx.clearRect(0,0,cv.width,cv.height); cv.classList.remove('on'); }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  //// ── Share ──────────────────────────────────────────────────
+  let winStats = null;
+  function shareLink(){
+    const base = location.href.split('#')[0];
+    const hash = cur.daily ? '#daily' : `#p=${cur.size},${cur.idx}`;
+    const url = base + hash;
+    // spoiler-free: never name the picture
+    if (navigator.share){ navigator.share({ title: 'Nonogram', text: 'Can you solve this Nonogram puzzle?', url }).catch(()=>{}); return; }
+    try { navigator.clipboard.writeText(url); toast('Link copied!'); }
+    catch(e){ prompt('Copy this link:', url); }
+  }
+  // Wordle-style brag with your stats — NO picture / solution grid revealed.
+  function shareResult(){
+    if (!winStats) return;
+    const s = winStats; const base = location.href.split('#')[0];
+    const text = [
+      `🧩 Nonogram — ${s.label}`,
+      `⏱ ${fmtTime(s.time)}  💡 ${s.hints} hint${s.hints === 1 ? '' : 's'}${s.best ? '  🏆 best!' : ''}`,
+      base + s.link,
+    ].join('\n');
+    if (navigator.share){ navigator.share({ title: 'Nonogram', text }).catch(()=>{}); return; }
+    try { navigator.clipboard.writeText(text); toast('Result copied!'); }
+    catch(e){ prompt('Copy your result:', text); }
+  }
+  function loadFromHash(){
+    const h = location.hash;
+    if (h === '#daily'){ startDaily(); return true; }
+    const m = h.match(/^#p=([\w]+),(\d+)$/);
+    if (m && PUZZLES[m[1]] && PUZZLES[m[1]][+m[2]]){ startPuzzle(m[1], +m[2]); return true; }
+    return false;
+  }
+
+  //// ── Export / import ────────────────────────────────────────
+  function exportData(){
+    const data = {};
+    for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i);
+      if (k && k.startsWith('nono_')) data[k] = localStorage.getItem(k); }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'nonogram-save.json'; a.click(); URL.revokeObjectURL(a.href);
+    toast('Progress exported');
+  }
+  function importData(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        Object.keys(data).forEach(k => { if (k.startsWith('nono_')) localStorage.setItem(k, data[k]); });
+        toast('Imported — reloading…');
+        setTimeout(() => location.reload(), 800);
+      } catch(e){ toast('Import failed — bad file'); }
+    };
+    reader.readAsText(file);
+  }
   function buildThemeSwatches(){
     const wrap = $('theme-swatches'); wrap.innerHTML = '';
     THEMES.forEach(t => {
@@ -748,19 +1121,68 @@
     SIZE_ORDER.forEach(size => {
       const m = SIZE_META[size]; const total = PUZZLES[size].length; const done = solvedCount(size);
       const card = document.createElement('button'); card.className = 'size-card';
+      const miniWrap = document.createElement('div'); miniWrap.className = 'mini-wrap';
       const mini = document.createElement('div'); mini.className = 'mini-grid';
-      const cellPx = size === '10x10' ? 7 : 9;
+      // scale cell so every preview fits the same fixed box height
+      const cellPx = Math.max(5, Math.min(9, Math.floor(64 / m.H)));
       mini.style.gridTemplateColumns = `repeat(${m.W}, ${cellPx}px)`;
       const sample = parseGrid(PUZZLES[size][0].g);
       sample.forEach(r => r.forEach(v => { const i = document.createElement('i');
         i.style.width = cellPx+'px'; i.style.height = cellPx+'px'; if (v) i.className = 'on'; mini.appendChild(i); }));
+      miniWrap.appendChild(mini);
       const info = document.createElement('div');
       info.innerHTML = `<div class="big">${m.label}</div><div class="sub">${m.sub} • ${done}/${total} solved</div>`;
-      card.appendChild(mini); card.appendChild(info);
+      card.appendChild(miniWrap); card.appendChild(info);
       card.onclick = () => openPicker(size);
       grid.appendChild(card);
     });
+    buildPacks();
     refreshDailyCard();
+    refreshContinueCard();
+  }
+  function buildPacks(){
+    const grid = $('pack-grid'); grid.innerHTML = '';
+    PACKS.forEach(pk => {
+      const entries = packEntries(pk.key);
+      const done = entries.filter(e => isSolved(e.size, e.idx)).length;
+      const card = document.createElement('button'); card.className = 'pack-card';
+      card.innerHTML = `<div class="pk-icon">${pk.icon}</div>
+        <div><div class="pk-name">${pk.key}</div>
+        <div class="pk-sub">${done}/${entries.length} solved</div></div>`;
+      card.onclick = () => openPack(pk.key);
+      grid.appendChild(card);
+    });
+  }
+  function progressPct(state, W, H, sol){
+    let need = 0, have = 0;
+    for (let i = 0; i < W*H; i++){ const r = Math.floor(i/W), c = i%W;
+      if (sol[r][c]){ need++; if (state[i] === FILL) have++; } }
+    return need ? Math.round(have/need*100) : 0;
+  }
+  function refreshContinueCard(){
+    const card = $('continue-card'); const last = loadLast(); let show = false;
+    if (last && last.t === 'p' && PUZZLES[last.size] && PUZZLES[last.size][last.idx] && !isSolved(last.size, last.idx)){
+      const m = SIZE_META[last.size]; const st = loadBoardState(last.size, last.idx, m.W*m.H);
+      if (st && st.some(v => v !== EMPTY)){
+        show = true;
+        const sol = parseGrid(PUZZLES[last.size][last.idx].g);
+        $('continue-title').textContent = `Continue • ${m.label}`;
+        $('continue-sub').textContent = `Puzzle #${last.idx+1} • ${progressPct(st, m.W, m.H, sol)}% filled`;
+      }
+    } else if (last && last.t === 'd'){
+      const date = dateKey(new Date());
+      if (!isDailySolved(date)){
+        const puz = buildDaily(date); const m = SIZE_META[puz.size];
+        const st = loadDailyBoard(date, m.W*m.H);
+        if (st && st.some(v => v !== EMPTY)){
+          show = true;
+          const sol = parseGrid(puz.g);
+          $('continue-title').textContent = 'Continue • Daily';
+          $('continue-sub').textContent = `${progressPct(st, m.W, m.H, sol)}% filled`;
+        }
+      }
+    }
+    card.style.display = show ? 'flex' : 'none';
   }
   function refreshDailyCard(){
     const today = dateKey(new Date());
@@ -773,39 +1195,66 @@
     const streak = dailyStreak();
     $('daily-sub').textContent = solved
       ? `Solved today!${streak > 1 ? ` 🔥 ${streak}-day streak` : ''}`
-      : `Auto-generated puzzle${streak > 0 ? ` • 🔥 ${streak}-day streak` : ' — one new grid each day'}`;
+      : `A new picture to uncover${streak > 0 ? ` • 🔥 ${streak}-day streak` : ' each day'}`;
   }
 
   //// ── Picker ─────────────────────────────────────────────────
-  let pickerSize = null;
-  function openPicker(size){
-    pickerSize = size;
-    const m = SIZE_META[size];
-    $('picker-label').textContent = `${m.label} puzzles`;
-    $('nav-title').textContent = `${m.label} Nonograms`;
+  function renderPuzzleCards(entries, showSize){
     const grid = $('puzzle-grid'); grid.innerHTML = '';
-    PUZZLES[size].forEach((p, idx) => {
+    entries.forEach(({ size, idx }, n) => {
+      const p = PUZZLES[size][idx]; const m = SIZE_META[size];
       const solved = isSolved(size, idx);
+      const diff = puzzleDifficulty(size, p);
       const card = document.createElement('button');
       card.className = 'puzzle-card' + (solved ? ' solved' : '');
-      const thumb = document.createElement('div'); thumb.className = 'thumb';
-      const cellPx = m.W >= 10 ? 6 : 8;
-      thumb.style.gridTemplateColumns = `repeat(${m.W}, ${cellPx}px)`;
       if (solved) {
+        const thumb = document.createElement('div'); thumb.className = 'thumb';
+        const cellPx = m.W >= 15 ? 4 : (m.W >= 10 ? 6 : 8);
+        thumb.style.gridTemplateColumns = `repeat(${m.W}, ${cellPx}px)`;
         parseGrid(p.g).forEach(r => r.forEach(v => { const i = document.createElement('i');
           i.style.width=cellPx+'px'; i.style.height=cellPx+'px'; if (v) i.className='on'; thumb.appendChild(i); }));
+        card.appendChild(thumb);
       } else {
-        // hidden: show a neutral tile
-        for (let k=0;k<m.W*m.H;k++){ const i=document.createElement('i');
-          i.style.width=cellPx+'px'; i.style.height=cellPx+'px'; thumb.appendChild(i); }
+        const myst = document.createElement('div'); myst.className = 'myst';
+        myst.innerHTML = `<span class="myst-n">${showSize ? m.label.replace(/ /g,'') : '#'+(idx+1)}</span>
+          <span class="pips lvl${diff.lvl}"><i></i><i></i><i></i></span>`;
+        card.appendChild(myst);
       }
-      const lbl = document.createElement('div'); lbl.className = 'pl'; lbl.textContent = solved ? p.name : `#${idx+1}`;
-      const badge = document.createElement('div'); badge.className = 'badge'; badge.textContent = solved ? 'Solved' : 'Tap to play';
-      card.appendChild(thumb); card.appendChild(lbl); card.appendChild(badge);
+      const lbl = document.createElement('div'); lbl.className = 'pl';
+      lbl.textContent = solved ? p.name : diff.label;
+      const bt = bestTime(size, idx);
+      const badge = document.createElement('div'); badge.className = 'badge';
+      badge.textContent = solved ? (bt !== undefined ? '⏱ ' + fmtTime(bt) : 'Solved') : 'Tap to play';
+      card.appendChild(lbl);
+      if (showSize){ const tag = document.createElement('div'); tag.className = 'size-tag'; tag.textContent = m.label; card.appendChild(tag); }
+      card.appendChild(badge);
       card.onclick = () => startPuzzle(size, idx);
       grid.appendChild(card);
     });
     showScreen('screen-picker');
+  }
+  function openPicker(size){
+    $('picker-label').textContent = `${solvedCount(size)} of ${PUZZLES[size].length} solved`;
+    $('nav-title').textContent = `${SIZE_META[size].label} Nonograms`;
+    renderPuzzleCards(PUZZLES[size].map((_, i) => ({ size, idx: i })), false);
+  }
+  function openPack(pack){
+    const entries = packEntries(pack);
+    const solved = entries.filter(e => isSolved(e.size, e.idx)).length;
+    $('picker-label').textContent = `${solved} of ${entries.length} solved`;
+    $('nav-title').textContent = `${pack} pack`;
+    renderPuzzleCards(entries, true);
+  }
+  // Rough difficulty from clue fragmentation (more/smaller runs = harder).
+  function puzzleDifficulty(size, p){
+    const m = SIZE_META[size]; const grid = parseGrid(p.g);
+    const cl = computeClues(grid, m.W, m.H);
+    const segs = cl.rows.reduce((a,c)=>a+(c[0]===0?0:c.length),0) +
+                 cl.cols.reduce((a,c)=>a+(c[0]===0?0:c.length),0);
+    const density = segs / (m.W + m.H);
+    if (density < 1.4) return { label: 'Easy',   lvl: 1 };
+    if (density < 2.2) return { label: 'Medium', lvl: 2 };
+    return { label: 'Hard', lvl: 3 };
   }
 
   //// ── Board build ────────────────────────────────────────────
@@ -813,7 +1262,8 @@
     if (!cur) return;
     const scroll = document.querySelector('.board-scroll');
     const availW = scroll.clientWidth - 8;
-    const availH = scroll.clientHeight - 8;
+    // leave room for the status strip + gap that share the play-group
+    const availH = scroll.clientHeight - 8 - 52;
     // rough clue allowances proportional to number counts
     const maxRowNums = Math.max(...cur.rowClues.map(a => a.length));
     const maxColNums = Math.max(...cur.colClues.map(a => a.length));
@@ -824,7 +1274,7 @@
       const clueC = Math.max(28, maxColNums * cell * 0.55 + 6);
       const byW = (availW - clueR) / cur.W;
       const byH = (availH - clueC) / cur.H;
-      cell = Math.max(18, Math.min(byW, byH, 52));
+      cell = Math.max(18, Math.min(byW, byH, 62));
     }
     cell = Math.floor(cell);
     const clueR = Math.round(Math.max(28, maxRowNums * cell * 0.6 + 8));
@@ -957,37 +1407,56 @@
   }
   function onWin(){
     stopTimer();
+    saveLast(null); // finished — nothing to resume
+    sfxWin();
+    let bestFlag = false;
     if (cur.daily){
       markDailySolved(cur.dailyDate, timer.elapsed);
       clearDailyBoard(cur.dailyDate);
       const streak = dailyStreak();
-      $('win-name').textContent = 'Daily complete' + (streak > 1 ? ` • 🔥 ${streak}-day streak` : '');
+      $('win-name').textContent = (cur.dailyName ? cur.dailyName + ' • ' : '') + 'Daily done' + (streak > 1 ? ` • 🔥 ${streak}` : '');
       $('win-menu').textContent = 'Menu';
       $('win-next').textContent = 'Replay';
+      $('win-time').textContent = 'Time: ' + fmtTime(timer.elapsed);
     } else {
+      bestFlag = recordTime(cur.size, cur.idx, timer.elapsed);
       markSolved(cur.size, cur.idx);
       clearBoardState(cur.size, cur.idx);
       $('win-name').textContent = PUZZLES[cur.size][cur.idx].name;
       $('win-menu').textContent = 'Puzzles';
       $('win-next').textContent = 'Next ›';
+      $('win-time').textContent = 'Time: ' + fmtTime(timer.elapsed) +
+        (bestFlag ? ' • 🏆 New best!' : ' • Best ' + fmtTime(bestTime(cur.size, cur.idx)));
     }
-    $('win-time').textContent = 'Time: ' + fmtTime(timer.elapsed);
+    winStats = {
+      label: SIZE_META[cur.size].label + (cur.daily ? ' daily' : ''),
+      time: timer.elapsed, hints: hintsUsed, best: bestFlag,
+      link: cur.daily ? '#daily' : `#p=${cur.size},${cur.idx}`,
+    };
     const thumb = $('win-thumb');
-    thumb.style.gridTemplateColumns = `repeat(${cur.W}, 14px)`;
+    const px = cur.W >= 15 ? 10 : 14;
+    thumb.style.gridTemplateColumns = `repeat(${cur.W}, ${px}px)`;
     thumb.innerHTML = '';
-    cur.sol.forEach(row => row.forEach(v => { const i = document.createElement('i'); if (v) i.className='on'; thumb.appendChild(i); }));
+    let onIdx = 0;
+    cur.sol.forEach(row => row.forEach(v => {
+      const i = document.createElement('i');
+      i.style.width = px+'px'; i.style.height = px+'px';
+      if (v){ i.className = 'on paint'; i.style.animationDelay = (onIdx++ * 12) + 'ms'; }
+      thumb.appendChild(i);
+    }));
     vibe([40,40,80]);
-    setTimeout(() => $('win-overlay').classList.add('active'), 350);
+    setTimeout(() => { $('win-overlay').classList.add('active'); launchConfetti(); }, 350);
   }
 
   //// ── Timer ──────────────────────────────────────────────────
   function startTimer(fromElapsed){
     timer.elapsed = fromElapsed || 0;
     timer.start = performance.now() - timer.elapsed;
+    $('stat-time').textContent = '⏱ ' + fmtTime(timer.elapsed);
     stopTimer();
     timer.id = setInterval(() => {
       timer.elapsed = performance.now() - timer.start;
-      $('stat-time').textContent = fmtTime(timer.elapsed);
+      $('stat-time').textContent = '⏱ ' + fmtTime(timer.elapsed);
     }, 500);
   }
   function stopTimer(){ if (timer.id){ clearInterval(timer.id); timer.id = null; } }
@@ -1005,7 +1474,8 @@
       state: saved ? saved.slice() : new Array(len).fill(EMPTY),
       rowClues: clues.rows, colClues: clues.cols,
     };
-    history = [];
+    history = []; lastErrors = 0; hintsUsed = 0;
+    saveLast({ t: 'p', size, idx });
     $('btn-undo').disabled = true;
     $('nav-title').textContent = `${m.label} • #${idx+1}`;
     showScreen('screen-game');
@@ -1021,11 +1491,12 @@
     const len = m.W * m.H;
     const saved = loadDailyBoard(date, len);
     cur = {
-      size: puz.size, idx: 0, daily: true, dailyDate: date, W: m.W, H: m.H, sol,
+      size: puz.size, idx: 0, daily: true, dailyDate: date, dailyName: puz.name, W: m.W, H: m.H, sol,
       state: saved ? saved.slice() : new Array(len).fill(EMPTY),
       rowClues: clues.rows, colClues: clues.cols,
     };
-    history = [];
+    history = []; lastErrors = 0; hintsUsed = 0;
+    saveLast({ t: 'd' });
     $('btn-undo').disabled = true;
     const nice = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     $('nav-title').textContent = `Daily • ${nice}`;
@@ -1054,6 +1525,36 @@
 
   //// ── Painting / input ───────────────────────────────────────
   let dragging = false, paintValue = null, startR = 0, startC = 0, axis = null, lastIdx = null, changedDuringDrag = false;
+  let lastErrors = 0, hintsUsed = 0;
+
+  function flashCell(r, c){
+    const el = cellEl(r, c);
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 700);
+  }
+  // Reveal one correct cell (fill a needed cell, or X a wrongly-filled one). +10s penalty.
+  function useHint(){
+    if (!cur) return;
+    let cands = [];
+    for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++)
+      if (cur.sol[r][c] && cur.state[r*cur.W+c] !== FILL) cands.push([r, c, FILL]);
+    if (!cands.length)
+      for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++)
+        if (!cur.sol[r][c] && cur.state[r*cur.W+c] === FILL) cands.push([r, c, MARK]);
+    if (!cands.length){ toast('Nothing to hint — you’ve got it!'); return; }
+    const [r, c, v] = cands[Math.floor(Math.random() * cands.length)];
+    pushHistorySnapshot();
+    applyCell(r, c, v);
+    hintsUsed++;
+    timer.start -= 10000; timer.elapsed = performance.now() - timer.start; // +10s penalty
+    $('stat-time').textContent = '⏱ ' + fmtTime(timer.elapsed);
+    saveBoardState();
+    flashCell(r, c);
+    if (v === FILL) sfxFill(); else sfxMark();
+    toast('Hint revealed (+10s)');
+    updateClueDone(); updateStatus();
+    if (checkWin()) onWin();
+  }
 
   function applyCell(r, c, value){
     const k = r * cur.W + c;
@@ -1073,7 +1574,8 @@
     pushHistorySnapshot();
     dragging = true;
     applyCell(r, c, paintValue);
-    lastIdx = 0;
+    lastIdx = null; // first move interpolates from the start cell, not column 0
+    if (paintValue === FILL) sfxFill(); else if (paintValue === MARK) sfxMark(); else sfxErase();
     vibe(8);
   }
 
@@ -1108,33 +1610,25 @@
     if (!changedDuringDrag){ // no change → drop the snapshot we pushed
       history.pop(); if (!history.length) $('btn-undo').disabled = true;
     } else {
-      if (settings.autoMark) autoMarkLines();
       saveBoardState();
+      if (settings.errors){ const e = countErrors(); if (e > lastErrors) sfxError(); lastErrors = e; }
     }
     updateClueDone(); updateStatus();
     if (checkWin()) onWin();
   }
 
-  function autoMarkLines(){
-    // rows
-    for (let r = 0; r < cur.H; r++){
-      const line = []; for (let c = 0; c < cur.W; c++) line.push(cur.state[r*cur.W+c] === FILL ? 1 : 0);
-      if (lineSatisfied(line, cur.rowClues[r])){
-        for (let c = 0; c < cur.W; c++) if (cur.state[r*cur.W+c] === EMPTY) applyCell(r, c, MARK);
-      }
-    }
-    for (let c = 0; c < cur.W; c++){
-      const line = []; for (let r = 0; r < cur.H; r++) line.push(cur.state[r*cur.W+c] === FILL ? 1 : 0);
-      if (lineSatisfied(line, cur.colClues[c])){
-        for (let r = 0; r < cur.H; r++) if (cur.state[r*cur.W+c] === EMPTY) applyCell(r, c, MARK);
-      }
-    }
-  }
-
+  // `central` is true only when the pointer is near the middle of the cell.
+  // During a swipe we require this so grazing a cell's edge doesn't paint it —
+  // a cell only registers once your finger reaches its core.
+  const CENTER_MARGIN = 0.26; // ignore the outer 26% band on each side
   function cellFromPoint(x, y){
     const el = document.elementFromPoint(x, y);
     if (!el || !el.classList || !el.classList.contains('cell')) return null;
-    return { r: +el.dataset.r, c: +el.dataset.c };
+    const r = el.getBoundingClientRect();
+    const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height;
+    const central = fx >= CENTER_MARGIN && fx <= 1 - CENTER_MARGIN &&
+                    fy >= CENTER_MARGIN && fy <= 1 - CENTER_MARGIN;
+    return { r: +el.dataset.r, c: +el.dataset.c, central };
   }
 
   // Pointer events on the cells container
@@ -1150,7 +1644,7 @@
     if (!dragging) return;
     e.preventDefault();
     const t = cellFromPoint(e.clientX, e.clientY);
-    if (t) dragTo(t.r, t.c);
+    if (t && t.central) dragTo(t.r, t.c);
   });
   cellsEl.addEventListener('pointerup', e => { e.preventDefault(); endDrag(); });
   cellsEl.addEventListener('pointercancel', () => endDrag());
@@ -1166,6 +1660,7 @@
   $('mode-mark').onclick = () => setMode('mark');
   $('btn-undo').onclick = undo;
   $('btn-reset').onclick = resetBoard;
+  $('btn-hint').onclick = useHint;
 
   //// ── Nav ────────────────────────────────────────────────────
   function backToMenu(){ $('nav-title').textContent = 'Nonogram'; buildMenu(); showScreen('screen-menu'); }
@@ -1182,6 +1677,17 @@
   $('nav-settings').onclick = () => $('settings-overlay').classList.add('active');
   $('settings-close').onclick = () => $('settings-overlay').classList.remove('active');
   $('daily-card').onclick = () => startDaily();
+  $('continue-card').onclick = () => {
+    const last = loadLast(); if (!last) return;
+    if (last.t === 'd') startDaily(); else startPuzzle(last.size, last.idx);
+  };
+
+  //// ── Help wiring ────────────────────────────────────────────
+  function openHelp(){ $('help-overlay').classList.add('active'); }
+  function closeHelp(){ $('help-overlay').classList.remove('active'); try { localStorage.setItem('nono_helpseen', '1'); } catch(e){} }
+  $('nav-help').onclick = openHelp;
+  $('help-close').onclick = closeHelp;
+  $('settings-help').onclick = () => { $('settings-overlay').classList.remove('active'); openHelp(); };
 
   //// ── Win overlay wiring ─────────────────────────────────────
   $('win-menu').onclick = () => {
@@ -1194,17 +1700,26 @@
     const list = PUZZLES[cur.size];
     startPuzzle(cur.size, (cur.idx + 1) % list.length);
   };
+  $('win-share').onclick = shareLink;
+  $('win-result').onclick = shareResult;
 
   //// ── Settings wiring ────────────────────────────────────────
   function syncSettingsUI(){
     buildThemeSwatches();
-    $('set-automark').checked = settings.autoMark;
     $('set-errors').checked   = settings.errors;
+    $('set-sound').checked    = settings.sound;
+    $('set-contrast').checked = settings.contrast;
     $('set-vibrate').checked  = settings.vibrate;
+    $('set-hand').checked     = settings.hand === 'left';
   }
-  $('set-automark').onchange = e => { settings.autoMark = e.target.checked; saveSettings(); };
   $('set-errors').onchange = e => { settings.errors = e.target.checked; saveSettings(); if (cur) updateStatus(); };
+  $('set-sound').onchange = e => { settings.sound = e.target.checked; saveSettings(); if (e.target.checked){ ensureAudio(); sfxFill(); } };
+  $('set-contrast').onchange = e => { settings.contrast = e.target.checked; applyContrast(); saveSettings(); };
   $('set-vibrate').onchange = e => { settings.vibrate = e.target.checked; saveSettings(); if (e.target.checked) vibe(20); };
+  $('set-hand').onchange = e => { settings.hand = e.target.checked ? 'left' : 'right'; applyHand(); saveSettings(); };
+  $('data-export').onclick = exportData;
+  $('data-import').onclick = () => $('import-file').click();
+  $('import-file').onchange = e => { if (e.target.files[0]) importData(e.target.files[0]); };
 
   //// ── Resize ─────────────────────────────────────────────────
   let resizeTO = null;
@@ -1215,9 +1730,19 @@
 
   //// ── Init ───────────────────────────────────────────────────
   applyTheme();
+  applyContrast();
+  applyHand();
   syncSettingsUI();
   buildHeroLogo();
   buildMenu();
+  // A shared #p=size,idx or #daily link opens straight into that puzzle.
+  const openedFromLink = loadFromHash();
+  // First-time players get the how-to-play automatically.
+  try { if (!openedFromLink && !localStorage.getItem('nono_helpseen')) openHelp(); } catch(e){}
+  // Register the service worker for offline / installable use (https only).
+  if ('serviceWorker' in navigator && location.protocol === 'https:'){
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
   </script>
 </body>
 </html>
