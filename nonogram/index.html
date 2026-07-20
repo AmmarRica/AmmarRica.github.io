@@ -270,14 +270,13 @@
       border-right: 2px solid var(--line);
       border-bottom: 2px solid var(--line);
       background: var(--cell-bg);
-      padding: 2px;
       position: relative; display: flex; align-items: center; justify-content: center;
     }
     .cell.b5r { border-right: 3px solid var(--line-bold); }
     .cell.b5b { border-bottom: 3px solid var(--line-bold); }
-    /* Clip the fill to the padding-inset content box so adjacent filled
-       squares keep a visible gap instead of merging into one blob. */
-    .cell.fill { background: var(--fill); background-clip: content-box; }
+    /* Fill edge-to-edge so a run reads as one connected shape, with a subtle
+       inner seam so you can still count the individual boxes. */
+    .cell.fill { background: var(--fill); box-shadow: inset -2px -2px 0 var(--fill-edge); }
     .cell.mark::after {
       content: ""; position: absolute; width: 46%; height: 46%;
       background:
