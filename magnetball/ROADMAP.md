@@ -9,7 +9,13 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 
 ---
 
-## ✅ Shipped in the latest update
+## ✅ Shipped since
+- **Pitch surface** (#18) — Grass / Ice (slide) / Mud (sluggish), scaling player grip
+- **Spectator / Watch** (#15) — hand your seat to the AI and watch
+- **Colour-blind team markers** (#7) — solid vs dashed white rings, hue-independent
+- (Theme switched to a ZX Spectrum / MSX dark-neon look per request)
+
+## ✅ Shipped earlier
 - **Charge-kick power meter** (#1) — hold KICK to wind up power (pad ring fills)
 - **Local stats + Rank/ELO ladder** (#3, #8) — RP, Wood→Legend ranks, W/L/D, goals, streaks
 - **Golden-goal overtime** (#5) — tied timed matches go to sudden death
