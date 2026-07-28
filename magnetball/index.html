@@ -918,29 +918,52 @@ function integrate(w, ballFrozen, playersFrozen){
     }
   }
 
-  if (!ballFrozen){
-    ball.vx *= ball.damp; ball.vy *= ball.damp;
-    ball.x += ball.vx; ball.y += ball.vy;
-  }
-
-  // Collisions: player-player, player-ball, disc-post, disc-wall/arc
+  // Player collisions (players move at low speed, so a single step is safe).
   if (!playersFrozen){
-    for (let i=0;i<discs.length;i++){
+    for (let i=0;i<discs.length;i++)
       for (let j=i+1;j<discs.length;j++) collideDiscs(discs[i], discs[j]);
+    for (const p of discs){
+      for (const post of w.posts) collideDiscs(p, post);
+      for (const wall of w.walls) collideWall(p, wall);
+      for (const arc of w.arcs) collideArc(p, arc);
     }
   }
+
+  // Ball: cap speed, then SUB-STEP the move so a fast ball can't tunnel through
+  // the thin wall segments (the old single-step check missed fast balls and let
+  // them escape the field). Collide vs players + posts + walls each substep.
   if (!ballFrozen){
-    for (const p of discs) collideDiscs(p, ball);
-  }
-  const movers = ballFrozen ? discs : (playersFrozen ? [ball] : discs.concat([ball]));
-  for (const m of movers){
-    for (const post of w.posts) collideDiscs(m, post);
-    for (const wall of w.walls) collideWall(m, wall);
-    for (const arc of w.arcs) collideArc(m, arc);
+    ball.vx *= ball.damp; ball.vy *= ball.damp;
+    const cap = 60, sp0 = Math.hypot(ball.vx, ball.vy);
+    if (sp0 > cap){ const k = cap/sp0; ball.vx *= k; ball.vy *= k; }
+    const speed = Math.hypot(ball.vx, ball.vy);
+    const n = Math.max(1, Math.min(20, Math.ceil(speed / (ball.r*0.5))));
+    for (let s=0; s<n; s++){
+      ball.x += ball.vx/n; ball.y += ball.vy/n;
+      for (const p of discs) collideDiscs(p, ball);
+      for (const post of w.posts) collideDiscs(ball, post);
+      for (const wall of w.walls) collideWall(ball, wall);
+      for (const arc of w.arcs) collideArc(ball, arc);
+    }
+    clampBallInside(w);   // hard backstop: the ball can never leave the pitch/net
   }
 
   // Goal detection
   if (!ballFrozen && w.state==='play') checkGoal(w);
+}
+
+// Hard containment for the ball: keep it inside the pitch, allowing it into the
+// net pocket only through the goal mouth. Backstop for any collision that slips.
+function clampBallInside(w){
+  const b = w.ball, r = b.r;
+  const halfW = w.field.W/2, halfL = w.field.L/2, gh = w.field.goal/2, net = w.field.net;
+  if (b.x < -halfW + r){ b.x = -halfW + r; if (b.vx < 0) b.vx = -b.vx*0.3; }
+  if (b.x >  halfW - r){ b.x =  halfW - r; if (b.vx > 0) b.vx = -b.vx*0.3; }
+  const inGoalX = Math.abs(b.x) < gh - r*0.5;
+  const top = inGoalX ? -(halfL + net - r) : -(halfL - r);
+  const bot = inGoalX ?  (halfL + net - r) :  (halfL - r);
+  if (b.y < top){ b.y = top; if (b.vy < 0) b.vy = -b.vy*0.3; }
+  if (b.y > bot){ b.y = bot; if (b.vy > 0) b.vy = -b.vy*0.3; }
 }
 
 function handleBallControl(w, p, ball, ballFrozen){
