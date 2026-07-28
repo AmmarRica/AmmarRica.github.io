@@ -1,0 +1,14 @@
+{
+  "name": "NOVA Pinball",
+  "short_name": "NOVA",
+  "description": "A cosmic mobile pinball game with touch flippers, drop-target jackpots and multiplier lanes.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0e1f",
+  "theme_color": "#0a0e1f",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
