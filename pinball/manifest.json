@@ -1,0 +1,14 @@
+{
+  "name": "Pinball",
+  "short_name": "Pinball",
+  "description": "A mobile-friendly pinball game with left and right touch flippers.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0e1f",
+  "theme_color": "#0a0e1f",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
