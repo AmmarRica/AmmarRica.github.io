@@ -153,6 +153,14 @@
       letter-spacing: .5px;
     }
     .btn:active { transform: translateY(1px); }
+    .btn.ghost {
+      background: transparent;
+      border: 1px solid var(--accent);
+      box-shadow: none;
+      color: var(--text);
+      font-size: 14px;
+      padding: 10px 24px;
+    }
 
     #footer {
       width: 100%;
@@ -196,6 +204,7 @@
         <b style="color:#ff4fd8">drop targets</b> for a jackpot.<br>
         <span style="opacity:.7">Desktop: <b>←</b>/<b>→</b> flip, <b>Space</b> launch.</span></p>
         <button class="btn" id="startBtn">Play</button>
+        <button class="btn ghost" id="demoBtn">Watch demo</button>
       </div>
     </div>
 
@@ -213,13 +222,15 @@
     // Fixed logical playfield resolution; scaled to fit device.
     const W = 400, H = 640;
     let scale = 1, offX = 0, offY = 0, dpr = 1;
+    let bgCanvas = null; // pre-rendered static playfield (perf)
 
     function resize() {
       const stage = document.getElementById('stage');
       const availW = stage.clientWidth;
       const availH = stage.clientHeight;
       const s = Math.min(availW / W, availH / H);
-      dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      // Cap DPR at 2 — the extra pixels of 2.5x+ cost fill-rate for little gain.
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(W * s * dpr);
       canvas.height = Math.round(H * s * dpr);
       canvas.style.width = (W * s) + 'px';
@@ -227,6 +238,7 @@
       scale = s;
       const rect = canvas.getBoundingClientRect();
       offX = rect.left; offY = rect.top;
+      buildBackground();
     }
     window.addEventListener('resize', resize);
 
@@ -355,6 +367,14 @@
     let running = false, gameOver = false;
     let plungerPower = 0;      // 0..1 while charging
     let plungerCharging = false;
+    let ballInPlay = false;    // true once the ball has left the shooter lane
+    let stallTick = 0, lastSX = 0, lastSY = 0, nudges = 0; // position-based anti-stall
+    let demo = false, demoLaunchAt = 0; // auto-play demo mode
+    let fps = 60;              // smoothed frame rate (for the demo HUD / tests)
+
+    // One-way gate sealing the top of the shooter lane once the ball is in play,
+    // so it can never roll back to its start position.
+    const laneGate = { x1: 356, y1: 124, x2: 356, y2: 192, rest: 0.4 };
 
     try { best = parseInt(localStorage.getItem('pinball_best') || '0', 10) || 0; } catch (_) {}
 
@@ -410,6 +430,8 @@
       ball.stuck = true;
       plungerPower = 0;
       plungerCharging = false;
+      ballInPlay = false;
+      stallTick = 0;
       // Bonus features reset with each new ball.
       setMultiplier(1);
       laneLights.forEach(l => { l.lit = false; l.flash = 0; });
@@ -426,12 +448,29 @@
       el.overlay.classList.add('hidden');
     }
 
-    function showOverlay(html, btnLabel) {
-      el.overlay.innerHTML = html + '<button class="btn" id="startBtn2">' + btnLabel + '</button>';
+    const START_HTML =
+      '<h1>NOVA</h1>' +
+      '<p><b>Hold</b> the left or right side to flip. <b>Charge</b> the plunger to launch.<br>' +
+      'Light the <b style="color:var(--good)">top lanes</b> to raise your multiplier and clear the ' +
+      '<b style="color:#ff4fd8">drop targets</b> for a jackpot.<br>' +
+      '<span style="opacity:.7">Desktop: <b>←</b>/<b>→</b> flip, <b>Space</b> launch.</span></p>';
+
+    function showStartOverlay() {
+      el.overlay.innerHTML = START_HTML +
+        '<button class="btn" id="startBtn">Play</button>' +
+        '<button class="btn ghost" id="demoBtn">Watch demo</button>';
       el.overlay.classList.remove('hidden');
-      document.getElementById('startBtn2').addEventListener('click', () => {
-        if (gameOver) newGame();
-      }, { once: true });
+      document.getElementById('startBtn').addEventListener('click', newGame, { once: true });
+      document.getElementById('demoBtn').addEventListener('click', startDemo, { once: true });
+    }
+
+    function showOverlay(html, btnLabel) {
+      el.overlay.innerHTML = html +
+        '<button class="btn" id="startBtn2">' + btnLabel + '</button>' +
+        '<button class="btn ghost" id="demoBtn2">Watch demo</button>';
+      el.overlay.classList.remove('hidden');
+      document.getElementById('startBtn2').addEventListener('click', () => { if (gameOver) newGame(); }, { once: true });
+      document.getElementById('demoBtn2').addEventListener('click', startDemo, { once: true });
     }
 
     function loseBall() {
@@ -440,6 +479,7 @@
       if (ballsLeft <= 0) {
         running = false;
         gameOver = true;
+        if (demo) { setTimeout(() => { if (demo) newGame(); }, 1600); return; }
         showOverlay(
           '<h1>GAME OVER</h1><p>Final score</p><div class="big">' + score + '</div>' +
           '<p>Best: ' + best + '</p>',
@@ -547,6 +587,8 @@
     }
 
     function step() {
+      if (demo) demoAI();
+
       // Flippers
       updateFlipper(flipL);
       updateFlipper(flipR);
@@ -554,6 +596,13 @@
       if (ball.stuck) {
         // waiting in plunger lane; sits on plunger
         return;
+      }
+
+      // Once the ball has cleared the shooter lane, mark it in play and seal
+      // the one-way gate so it can't roll back to the start position.
+      if (!ballInPlay && ball.x < laneLeft - 16) {
+        ballInPlay = true;
+        lastSX = ball.x; lastSY = ball.y; stallTick = 0;
       }
 
       // gravity
@@ -572,6 +621,7 @@
         ball.y += ball.vy / steps;
 
         for (const w of walls) reflectOffSegment(w);
+        if (ballInPlay) reflectOffSegment(laneGate);
         for (const b of bumpers) if (reflectOffCircle(b, 1.05, 3.2)) addScore(b.score);
         for (const p of pegs) if (reflectOffCircle(p, 0.9, 1.2)) addScore(p.score);
         for (const t of dropTargets) {
@@ -612,202 +662,254 @@
       // If ball rolls into plunger lane from the top, keep it bounded by outer wall
       if (ball.x > 388 - ball.r) { ball.x = 388 - ball.r; if (ball.vx > 0) ball.vx *= -0.5; }
 
-      // Drain: ball falls below flippers through the gap
+      // A launch that fails to reach the field falls back down the lane — just
+      // re-seat it on the plunger instead of losing the ball.
+      if (!ballInPlay && ball.x > laneLeft && ball.y > 592 && ball.vy >= 0) {
+        ball.stuck = true; ball.x = plungerLaneX; ball.y = 585; ball.py = 585;
+        ball.vx = 0; ball.vy = 0;
+        return;
+      }
+
+      // Anti-stall watchdog: if an in-play ball barely moves over ~1s (wedged
+      // against a wall or resting on a flipper), nudge it so it never gets
+      // permanently stuck. Position-based, so it also catches slow creeps.
+      if (ballInPlay && ++stallTick >= 60) {
+        const moved = len(ball.x - lastSX, ball.y - lastSY);
+        if (moved < 12) {
+          ball.vx += (Math.floor(tNow / 97) % 2 ? 1 : -1) * 2.6;
+          ball.vy -= 1.8;
+          nudges++;
+        }
+        lastSX = ball.x; lastSY = ball.y; stallTick = 0;
+      }
+
+      // Drain: ball falls below the flippers through the gap
       if (ball.y - ball.r > H + 10) {
         loseBall();
       }
     }
 
-    // ---------- Rendering ----------
-    function draw() {
-      ctx.save();
-      ctx.scale(scale * dpr, scale * dpr);
-      ctx.clearRect(0, 0, W, H);
+    // ---------- Demo (auto-play) ----------
+    function demoAI() {
+      if (ball.stuck) {
+        if (!demoLaunchAt) demoLaunchAt = tNow + 500;
+        if (tNow >= demoLaunchAt) { plungerPower = 0.85; launchBall(); demoLaunchAt = 0; }
+        return;
+      }
+      // Flip whichever flipper the descending ball is approaching.
+      const descending = ball.vy > -0.5;
+      const inReach = ball.y > 470 && ball.y < 608;
+      flipL.active = descending && inReach && ball.x > 55 && ball.x < 203;
+      flipR.active = descending && inReach && ball.x > 197 && ball.x < 345;
+    }
 
-      // Deep-space background gradient
-      const bg = ctx.createLinearGradient(0, 0, 0, H);
+    function startDemo() {
+      demo = true; demoLaunchAt = 0;
+      newGame();
+    }
+    function stopDemo() {
+      demo = false;
+      flipL.active = flipR.active = false;
+      running = false; gameOver = false;
+      showStartOverlay();
+    }
+
+    // ---------- Rendering ----------
+    // Path helper (works on any context).
+    function roundRectPath(g, x, y, w, h, r) {
+      g.beginPath();
+      g.moveTo(x + r, y);
+      g.arcTo(x + w, y, x + w, y + h, r);
+      g.arcTo(x + w, y + h, x, y + h, r);
+      g.arcTo(x, y + h, x, y, r);
+      g.arcTo(x, y, x + w, y, r);
+      g.closePath();
+    }
+
+    // Pre-render everything static (background, stars, nebula, walls, title,
+    // inserts, labels) once into an offscreen canvas. Blitting this each frame
+    // is far cheaper than re-drawing gradients + shadows every frame.
+    function buildBackground() {
+      bgCanvas = document.createElement('canvas');
+      bgCanvas.width = canvas.width;
+      bgCanvas.height = canvas.height;
+      const g = bgCanvas.getContext('2d');
+      g.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+
+      // Deep-space gradient
+      const bg = g.createLinearGradient(0, 0, 0, H);
       bg.addColorStop(0, '#1a2149');
       bg.addColorStop(0.5, '#10152e');
       bg.addColorStop(1, '#080b18');
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, W, H);
+      g.fillStyle = bg;
+      g.fillRect(0, 0, W, H);
 
-      // Nebula blooms for depth
-      drawNebula(120, 150, 200, 'rgba(47,224,255,0.10)');
-      drawNebula(300, 470, 230, 'rgba(209,79,216,0.10)');
-      drawNebula(210, 300, 170, 'rgba(123,108,255,0.08)');
+      // Nebula blooms
+      const nebula = (x, y, r, col) => {
+        const rg = g.createRadialGradient(x, y, 0, x, y, r);
+        rg.addColorStop(0, col); rg.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = rg; g.fillRect(0, 0, W, H);
+      };
+      nebula(120, 150, 200, 'rgba(47,224,255,0.10)');
+      nebula(300, 470, 230, 'rgba(209,79,216,0.10)');
+      nebula(210, 300, 170, 'rgba(123,108,255,0.08)');
 
-      // Twinkling stars
+      // Stars (fixed brightness — baked)
+      g.fillStyle = '#dfe6ff';
       for (const s of stars) {
-        const a = 0.35 + s.tw * 0.35 * Math.sin(tNow * 0.002 + s.ph);
-        ctx.globalAlpha = Math.max(0.05, a);
-        ctx.fillStyle = '#dfe6ff';
-        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+        g.globalAlpha = Math.max(0.08, 0.3 + s.tw * 0.3);
+        g.beginPath(); g.arc(s.x, s.y, s.r, 0, Math.PI * 2); g.fill();
       }
-      ctx.globalAlpha = 1;
+      g.globalAlpha = 1;
 
-      // Playfield vignette / border glow
-      ctx.fillStyle = 'rgba(123,108,255,0.04)';
-      roundRect(10, 12, W - 20, H - 24, 16); ctx.fill();
+      // Vignette
+      g.fillStyle = 'rgba(123,108,255,0.04)';
+      roundRectPath(g, 10, 12, W - 20, H - 24, 16); g.fill();
 
-      drawTitle();
-      drawInserts();
-      drawLaneLights();
+      // Wordmark
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = '800 40px -apple-system, "Segoe UI", Roboto, sans-serif';
+      g.globalAlpha = 0.10; g.fillStyle = '#9fb4ff';
+      g.fillText('NOVA', 200, 470);
+      g.font = '600 11px -apple-system, "Segoe UI", Roboto, sans-serif';
+      g.globalAlpha = 0.14; g.fillStyle = '#8ff6ff';
+      g.fillText('★  P I N B A L L  ★', 200, 498);
+      g.globalAlpha = 1;
+
+      // Inlane guide arrows
+      const arrow = (x, y, col) => {
+        g.strokeStyle = col; g.lineWidth = 3; g.lineCap = 'round';
+        for (let i = 0; i < 3; i++) {
+          const yy = y + i * 9;
+          g.globalAlpha = 0.5 - i * 0.13;
+          g.beginPath();
+          g.moveTo(x - 7, yy); g.lineTo(x, yy + 6); g.lineTo(x + 7, yy);
+          g.stroke();
+        }
+        g.globalAlpha = 1;
+      };
+      arrow(70, 470, '#2fe0ff');
+      arrow(330, 470, '#ff4fd8');
+
+      // Walls (shadow is fine here — drawn once)
+      g.lineCap = 'round'; g.lineWidth = 4;
+      g.strokeStyle = 'rgba(123,108,255,0.55)';
+      g.shadowColor = 'rgba(123,108,255,0.5)'; g.shadowBlur = 8;
+      for (const w of walls) {
+        g.beginPath(); g.moveTo(w.x1, w.y1); g.lineTo(w.x2, w.y2); g.stroke();
+      }
+      g.shadowBlur = 0;
+
+      // Lane label
+      g.textAlign = 'center'; g.globalAlpha = 0.35;
+      g.font = '600 9px -apple-system, sans-serif'; g.fillStyle = '#8ff6ff';
+      g.fillText('LIGHT LANES → MULTIPLIER', 200, LANE_Y + 8);
+      g.globalAlpha = 1;
+    }
+
+    // Soft glow disc via a cached radial gradient (no shadowBlur).
+    function glowGrad(x, y, r, coreCol, ringCol) {
+      const gr = ctx.createRadialGradient(x, y, r * 0.15, x, y, r * 1.5);
+      gr.addColorStop(0, coreCol);
+      gr.addColorStop(0.6, ringCol);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      return gr;
+    }
+
+    function draw() {
+      // Blit the pre-rendered static playfield at native resolution.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (bgCanvas) ctx.drawImage(bgCanvas, 0, 0);
+      else ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Dynamic content in logical coordinates.
+      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+
+      // Lane lamps
+      for (const l of laneLights) {
+        const on = l.lit || l.flash > 0.02;
+        roundRectPath(ctx, l.x - 15, LANE_Y - 19, 30, 14, 7);
+        ctx.fillStyle = on ? 'rgba(120,224,255,0.95)' : 'rgba(90,99,168,0.30)';
+        ctx.fill();
+        if (on) {
+          ctx.fillStyle = 'rgba(120,224,255,0.22)';
+          ctx.beginPath(); ctx.arc(l.x, LANE_Y - 12, 20, 0, Math.PI * 2); ctx.fill();
+        }
+        l.flash *= 0.9; if (l.flash < 0.02) l.flash = 0;
+      }
 
       // Side posts
       for (const p of pegs) {
-        drawGlowCircle(p.x, p.y, p.r, p.hit ? '#ffffff' : '#5a63a8', '#8a94e0');
+        if (!p._g) p._g = glowGrad(p.x, p.y, p.r, '#c9d0f0', '#8a94e0');
+        ctx.fillStyle = p._g;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#5a63a8';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.7, 0, Math.PI * 2); ctx.fill();
+        if (p.hit > 0.02) {
+          ctx.globalAlpha = Math.min(1, p.hit); ctx.fillStyle = '#fff';
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        }
         p.hit *= 0.8; if (p.hit < 0.02) p.hit = 0;
       }
 
-      drawDropTargets();
+      // Drop targets
+      for (const t of dropTargets) {
+        if (t.down) {
+          ctx.globalAlpha = 0.45; ctx.strokeStyle = 'rgba(120,130,180,0.6)';
+          ctx.lineWidth = 3; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(t.x - t.r, t.y + t.r - 2); ctx.lineTo(t.x + t.r, t.y + t.r - 2); ctx.stroke();
+          ctx.globalAlpha = 1;
+        } else {
+          const flash = t.hit;
+          if (!t._g) {
+            t._g = ctx.createLinearGradient(t.x, t.y - t.r, t.x, t.y + t.r);
+            t._g.addColorStop(0, '#ffe28f'); t._g.addColorStop(1, '#ff9d3c');
+          }
+          roundRectPath(ctx, t.x - t.r, t.y - t.r + 3, t.r * 2, t.r * 2 - 6, 4);
+          ctx.fillStyle = flash ? '#ffffff' : t._g;
+          ctx.fill();
+        }
+        t.hit *= 0.8; if (t.hit < 0.02) t.hit = 0;
+      }
 
-      // Pop bumpers (each its own colour)
+      // Pop bumpers
       for (const b of bumpers) {
-        const flash = b.hit;
-        const pulse = 1 + 0.05 * Math.sin(tNow * 0.006 + b.x);
-        drawGlowCircle(b.x, b.y, b.r * pulse, flash ? '#ffffff' : b.core, b.ring);
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, b.r * 0.5, 0, Math.PI * 2);
-        ctx.fillStyle = flash ? '#fff' : b.ring;
-        ctx.globalAlpha = 0.9; ctx.fill(); ctx.globalAlpha = 1;
-        // thin outline ring
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, b.r * pulse + 2, 0, Math.PI * 2);
-        ctx.strokeStyle = b.ring; ctx.globalAlpha = 0.5; ctx.lineWidth = 1.5; ctx.stroke();
-        ctx.globalAlpha = 1;
+        if (!b._g) b._g = glowGrad(b.x, b.y, b.r, b.core, b.ring);
+        ctx.fillStyle = b._g;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = b.ring;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.5, 0, Math.PI * 2); ctx.fill();
+        if (b.hit > 0.02) {
+          ctx.globalAlpha = Math.min(1, b.hit); ctx.fillStyle = '#fff';
+          ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.9, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        }
         b.hit *= 0.82; if (b.hit < 0.02) b.hit = 0;
       }
-
-      // Walls
-      ctx.lineCap = 'round';
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = 'rgba(123,108,255,0.55)';
-      ctx.shadowColor = 'rgba(123,108,255,0.5)';
-      ctx.shadowBlur = 8;
-      for (const w of walls) {
-        ctx.beginPath();
-        ctx.moveTo(w.x1, w.y1);
-        ctx.lineTo(w.x2, w.y2);
-        ctx.stroke();
-      }
-      ctx.shadowBlur = 0;
 
       // Flippers
       for (const f of flippers) drawFlipper(f);
 
-      // Plunger (spring at bottom of lane)
       drawPlunger();
-
-      // Ball
       if (!gameOver) drawBall();
-
       drawPopText();
 
       if (jackpotFlash > 0.02) {
-        ctx.fillStyle = 'rgba(255,212,95,' + (jackpotFlash * 0.18).toFixed(3) + ')';
+        ctx.fillStyle = 'rgba(255,212,95,' + (jackpotFlash * 0.16).toFixed(3) + ')';
         ctx.fillRect(0, 0, W, H);
         jackpotFlash *= 0.9;
       } else jackpotFlash = 0;
 
-      ctx.restore();
+      if (demo) drawDemoOverlay();
     }
 
-    function drawNebula(x, y, r, col) {
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, col);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
-    }
-
-    // Faint wordmark on the playfield.
-    function drawTitle() {
+    function drawDemoOverlay() {
       ctx.save();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = '800 40px -apple-system, "Segoe UI", Roboto, sans-serif';
-      ctx.globalAlpha = 0.10;
-      ctx.fillStyle = '#9fb4ff';
-      ctx.fillText('NOVA', 200, 470);
-      ctx.font = '600 11px -apple-system, "Segoe UI", Roboto, sans-serif';
-      ctx.globalAlpha = 0.14;
-      ctx.fillStyle = '#8ff6ff';
-      ctx.fillText('★  P I N B A L L  ★', 200, 498);
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = '#5fd0ff';
+      ctx.font = '700 11px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('DEMO · ' + Math.round(fps) + ' fps · Esc to exit', 16, 24);
       ctx.restore();
-    }
-
-    // Decorative playfield inserts: inlane guide arrows near the flippers.
-    function drawInserts() {
-      const arrow = (x, y, col) => {
-        ctx.save();
-        ctx.strokeStyle = col; ctx.globalAlpha = 0.5; ctx.lineWidth = 3; ctx.lineCap = 'round';
-        for (let i = 0; i < 3; i++) {
-          const yy = y + i * 9;
-          ctx.beginPath();
-          ctx.moveTo(x - 7, yy); ctx.lineTo(x, yy + 6); ctx.lineTo(x + 7, yy);
-          ctx.globalAlpha = 0.5 - i * 0.13;
-          ctx.stroke();
-        }
-        ctx.restore();
-      };
-      arrow(70, 470, '#2fe0ff');
-      arrow(330, 470, '#ff4fd8');
-    }
-
-    function drawLaneLights() {
-      for (const l of laneLights) {
-        const on = l.lit || l.flash > 0.02;
-        const y = LANE_Y - 12;
-        // little rounded lamp
-        ctx.beginPath();
-        roundRect(l.x - 15, y - 7, 30, 14, 7);
-        if (on) {
-          ctx.fillStyle = 'rgba(95,208,255,0.9)';
-          ctx.shadowColor = '#5fd0ff'; ctx.shadowBlur = 14;
-        } else {
-          ctx.fillStyle = 'rgba(90,99,168,0.35)';
-          ctx.shadowBlur = 0;
-        }
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        l.flash *= 0.9; if (l.flash < 0.02) l.flash = 0;
-      }
-      // label
-      ctx.save();
-      ctx.textAlign = 'center'; ctx.globalAlpha = 0.35;
-      ctx.font = '600 9px -apple-system, sans-serif'; ctx.fillStyle = '#8ff6ff';
-      ctx.fillText('LIGHT LANES → MULTIPLIER', 200, LANE_Y + 8);
-      ctx.restore();
-    }
-
-    function drawDropTargets() {
-      for (const t of dropTargets) {
-        ctx.save();
-        if (t.down) {
-          // knocked down — a dim slot
-          ctx.globalAlpha = 0.5;
-          ctx.strokeStyle = 'rgba(120,130,180,0.5)';
-          ctx.lineWidth = 3; ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.moveTo(t.x - t.r, t.y + t.r - 2);
-          ctx.lineTo(t.x + t.r, t.y + t.r - 2);
-          ctx.stroke();
-        } else {
-          const flash = t.hit;
-          ctx.beginPath();
-          roundRect(t.x - t.r, t.y - t.r + 3, t.r * 2, t.r * 2 - 6, 4);
-          const g = ctx.createLinearGradient(t.x, t.y - t.r, t.x, t.y + t.r);
-          g.addColorStop(0, flash ? '#ffffff' : '#ffe28f');
-          g.addColorStop(1, flash ? '#ffd45f' : '#ff9d3c');
-          ctx.fillStyle = g;
-          ctx.shadowColor = '#ffb42e'; ctx.shadowBlur = 10;
-          ctx.fill();
-          ctx.shadowBlur = 0;
-        }
-        ctx.restore();
-        t.hit *= 0.8; if (t.hit < 0.02) t.hit = 0;
-      }
     }
 
     function drawPopText() {
@@ -818,7 +920,6 @@
       ctx.font = '800 22px -apple-system, "Segoe UI", Roboto, sans-serif';
       const yy = comboY - (1 - comboFlash) * 26;
       ctx.fillStyle = '#fff';
-      ctx.shadowColor = '#ffd45f'; ctx.shadowBlur = 16;
       ctx.fillText(comboText, comboX, yy);
       ctx.restore();
       comboFlash *= 0.955;
@@ -832,10 +933,7 @@
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
       ctx.fillStyle = g;
-      ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      ctx.shadowBlur = 6;
       ctx.fill();
-      ctx.shadowBlur = 0;
     }
 
     function drawFlipper(f) {
@@ -846,13 +944,10 @@
       grad.addColorStop(0, '#ff9dd8');
       grad.addColorStop(1, '#d16cff');
       ctx.strokeStyle = grad;
-      ctx.shadowColor = 'rgba(209,108,255,0.55)';
-      ctx.shadowBlur = 5;
       ctx.beginPath();
       ctx.moveTo(f.px, f.py);
       ctx.lineTo(tip.x, tip.y);
       ctx.stroke();
-      ctx.shadowBlur = 0;
       // pivot cap
       ctx.beginPath();
       ctx.arc(f.px, f.py, f.width - 1, 0, Math.PI * 2);
@@ -862,51 +957,24 @@
 
     function drawPlunger() {
       const laneX = plungerLaneX;
-      const topY = 600;
       const pull = ball.stuck ? plungerPower * 24 : 0;
-      // spring
       ctx.strokeStyle = '#8189c4';
       ctx.lineWidth = 3;
-      ctx.beginPath();
       const baseY = 632;
-      const knobY = topY + 8 + pull;
+      const knobY = 608 + pull;
+      ctx.beginPath();
       ctx.moveTo(laneX, baseY);
       ctx.lineTo(laneX, knobY);
       ctx.stroke();
-      // knob
       ctx.beginPath();
       ctx.arc(laneX, knobY, 7, 0, Math.PI * 2);
       ctx.fillStyle = plungerCharging ? '#ffd45f' : '#a7add6';
       ctx.fill();
-      // power meter
       if (ball.stuck && plungerPower > 0.02) {
         ctx.fillStyle = 'rgba(255,212,95,0.9)';
         const h = plungerPower * 60;
         ctx.fillRect(laneX + 12, baseY - h, 5, h);
       }
-    }
-
-    function drawGlowCircle(x, y, r, coreCol, ringCol) {
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r);
-      g.addColorStop(0, coreCol);
-      g.addColorStop(1, ringCol);
-      ctx.fillStyle = g;
-      ctx.shadowColor = ringCol;
-      ctx.shadowBlur = 12;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
-
-    function roundRect(x, y, w, h, r) {
-      ctx.beginPath();
-      ctx.moveTo(x + r, y);
-      ctx.arcTo(x + w, y, x + w, y + h, r);
-      ctx.arcTo(x + w, y + h, x, y + h, r);
-      ctx.arcTo(x, y + h, x, y, r);
-      ctx.arcTo(x, y, x + w, y, r);
-      ctx.closePath();
     }
 
     // ---------- Plunger launch ----------
@@ -951,6 +1019,7 @@
 
     function pressAt(clientX, clientY, id) {
       if (!running) return; // let the overlay button / links behave normally
+      demo = false;         // a manual tap takes over from the demo autopilot
       if (isPlungerPress(clientX, clientY)) {
         plungerCharging = true;
         activeTouches.set(id, 'plunger');
@@ -1004,9 +1073,10 @@
 
     // Keyboard (desktop)
     window.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && demo) { stopDemo(); return; }
       if (e.repeat) return;
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'z') { flipL.active = true; el.zoneL.classList.add('active'); }
-      else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === '/') { flipR.active = true; el.zoneR.classList.add('active'); }
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'z') { demo = false; flipL.active = true; el.zoneL.classList.add('active'); }
+      else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === '/') { demo = false; flipR.active = true; el.zoneR.classList.add('active'); }
       else if (e.key === ' ' || e.key === 'ArrowDown') {
         if (ball.stuck) plungerCharging = true;
         e.preventDefault();
@@ -1018,8 +1088,6 @@
       else if (e.key === ' ' || e.key === 'ArrowDown') { launchBall(); }
     });
 
-    el.startBtn.addEventListener('click', newGame);
-
     // ---------- Main loop ----------
     let last = performance.now();
     let acc = 0;
@@ -1029,6 +1097,7 @@
       tNow = now;
       let dt = now - last; last = now;
       if (dt > 100) dt = 100;
+      if (dt > 0) fps += (1000 / dt - fps) * 0.1; // smoothed FPS
       acc += dt;
 
       // Charge plunger while held
@@ -1048,14 +1117,21 @@
     // Minimal debug hook (harmless in production) for automated testing.
     window.__pinball = {
       ball, flipL, flipR, bumpers, dropTargets, laneLights,
-      state: () => ({ score, ballsLeft, running, multiplier }),
+      startDemo, stopDemo,
+      setDemo: v => { v ? startDemo() : stopDemo(); },
+      benchDraw: n => { const t = performance.now(); for (let i = 0; i < n; i++) draw(); return (performance.now() - t) / n; },
+      state: () => ({ score, ballsLeft, running, multiplier, ballInPlay, demo, fps, nudges }),
     };
 
     buildWalls();
-    resize();
+    resize();          // also builds the static background
     renderBalls();
     resetBallToLane();
-    // Draw once behind overlay
+    showStartOverlay();
+
+    // Optional ?demo=1 to auto-start the demo (handy for testing).
+    if (/[?&]demo\b/.test(location.search)) startDemo();
+
     requestAnimationFrame(frame);
 
     // Register service worker for offline / installable PWA
