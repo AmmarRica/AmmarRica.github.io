@@ -65,6 +65,8 @@ navigation:
     url: /football-cards/
   - title: Nonogram
     url: /nonogram/
+  - title: Pinball
+    url: /pinball/
   - title: Thumb Haxball
     url: /haxball/
 

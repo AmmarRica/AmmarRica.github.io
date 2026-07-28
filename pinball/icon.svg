@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#161d40"/>
+      <stop offset="1" stop-color="#0a0e1f"/>
+    </linearGradient>
+    <radialGradient id="ball" cx="0.35" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#c7cef0"/>
+      <stop offset="1" stop-color="#6470a8"/>
+    </radialGradient>
+    <linearGradient id="flip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff9dd8"/>
+      <stop offset="1" stop-color="#d16cff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- bumpers -->
+  <circle cx="180" cy="180" r="46" fill="#7b6cff" opacity="0.9"/>
+  <circle cx="320" cy="160" r="46" fill="#7b6cff" opacity="0.9"/>
+  <circle cx="256" cy="270" r="30" fill="#d16cff" opacity="0.9"/>
+  <!-- flippers -->
+  <g stroke="url(#flip)" stroke-width="30" stroke-linecap="round">
+    <line x1="150" y1="410" x2="245" y2="452"/>
+    <line x1="362" y1="410" x2="267" y2="452"/>
+  </g>
+  <!-- ball -->
+  <circle cx="300" cy="360" r="34" fill="url(#ball)"/>
+</svg>
