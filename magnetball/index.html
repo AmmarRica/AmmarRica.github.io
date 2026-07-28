@@ -380,7 +380,7 @@ const STEP = 1/60;
 // Momentum: low acceleration + high damping give players real inertia — they
 // take ~1s to wind up to top speed and coast when you let go, so starting,
 // stopping and reversing all carry weight for a momentum-driven feel.
-const PLAYER = { r:15, invMass:0.5, bCoef:0.45, damp:0.966, accel:0.19, kick:6.4, kickRange:4.2 };
+const PLAYER = { r:15, invMass:0.5, bCoef:0.45, damp:0.966, accel:0.19, kick:7.0, kickRange:14 };
 const BALL   = { r:10, invMass:1.0, bCoef:0.55, damp:0.992 };
 const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 
@@ -828,7 +828,10 @@ function handleBallControl(w, p, ball, ballFrozen){
       let nx, ny;
       if (dist > 0.001){ nx = dx/dist; ny = dy/dist; }
       else { nx = p.faceX; ny = p.faceY; }
-      const power = PLAYER.kick * (p.ctrl==='bot' ? (w.diff.power) : 1);
+      let power = PLAYER.kick * (p.ctrl==='bot' ? (w.diff.power) : 1);
+      // Magnet charge: a ball held close by the magnet launches further when
+      // kicked, scaling with the magnet strength (up to +70% at magnet 100).
+      if (w.magnet > 0 && dist < sum + 22) power *= 1 + (w.magnet/100) * 0.7;
       ball.vx += nx * power; ball.vy += ny * power;
       p.kickUsed = true;
       spawnKickFx(ball.x, ball.y, nx, ny);
