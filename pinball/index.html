@@ -258,21 +258,21 @@
         seg(arch[i - 1][0], arch[i - 1][1], arch[i][0], arch[i][1]);
       }
       // Outer left wall, down to the left funnel
-      seg(20, 150, 20, 520);
-      // Left funnel wall -> guides ball onto the left flipper
-      seg(20, 520, 112, 588);
+      seg(20, 150, 20, 512);
+      // Left funnel wall -> guides ball onto the left flipper (ends by its pivot)
+      seg(20, 512, 108, 590);
 
       // Plunger lane outer wall (far right)
       seg(388, 150, 388, wallBot);
       // Shooter-lane divider. Its top (y=190) sits below the ceiling opening,
       // leaving a gap through which the deflected ball crosses into the field.
       seg(laneLeft, 190, laneLeft, wallBot);
-      // Right funnel wall -> guides ball onto the right flipper
-      seg(laneLeft, 520, 288, 588);
+      // Right funnel wall -> guides ball onto the right flipper (ends by its pivot)
+      seg(laneLeft, 512, 292, 590);
 
       // Slingshot kickers just above each flipper (inlanes)
-      seg(58, 452, 96, 548, 0.75);
-      seg(342, 452, 304, 548, 0.75);
+      seg(56, 446, 94, 548, 0.75);
+      seg(344, 446, 306, 548, 0.75);
     }
 
     // Bumpers (circles that add score + kick)
@@ -298,16 +298,16 @@
         length,
         side,                 // 'L' or 'R'
         active: false,
-        width: 13,            // half-thickness of the flipper bar
+        width: 10,            // half-thickness of the flipper bar
         omega: 0,             // angular velocity (for imparting energy)
         prevAngle: restAngle,
       };
     }
-    // Left flipper pivot near bottom-left; rest angle points down-right, active swings up.
-    // Reach: cos(0.70)*78 ≈ 60px inward from pivot 120 -> tip ~x180.
-    const flipL = makeFlipper(120, 560, 0.70, -0.35, 78, 'L');
-    // Right flipper pivot near bottom-right; mirrored -> tip ~x220. Center drain gap ≈ 40px.
-    const flipR = makeFlipper(280, 560, Math.PI - 0.70, Math.PI + 0.35, 78, 'R');
+    // Flippers form a wide V. Pivots 170px apart, length 66: at rest the tips
+    // sit ~40px apart (a clear drain gap); at full swing the tips still stay
+    // ~18px apart, so the two flippers never overlap.
+    const flipL = makeFlipper(115, 562, 0.62, -0.30, 66, 'L');
+    const flipR = makeFlipper(285, 562, Math.PI - 0.62, Math.PI + 0.30, 66, 'R');
     const flippers = [flipL, flipR];
 
     function flipperTip(f) {
@@ -612,8 +612,8 @@
       grad.addColorStop(0, '#ff9dd8');
       grad.addColorStop(1, '#d16cff');
       ctx.strokeStyle = grad;
-      ctx.shadowColor = 'rgba(209,108,255,0.6)';
-      ctx.shadowBlur = 10;
+      ctx.shadowColor = 'rgba(209,108,255,0.55)';
+      ctx.shadowBlur = 5;
       ctx.beginPath();
       ctx.moveTo(f.px, f.py);
       ctx.lineTo(tip.x, tip.y);
