@@ -234,7 +234,7 @@
       <p><b>🎯 Goal.</b> Push the ball into the opponent's net. Most goals before the clock runs out wins.</p>
       <p style="margin-top:12px"><b>🕹️ Move.</b> Touch and drag anywhere on the <b>right</b> half — a joystick appears under your thumb. Drag to steer; further = faster.</p>
       <p style="margin-top:12px"><b>👟 Kick.</b> Hold the <b>KICK</b> pad (bottom-left) with your other thumb. You kick the instant you touch the ball, once per press — release and press again to kick again.</p>
-      <p style="margin-top:12px"><b>⚡ Dribble.</b> The ball sticks to your feet a little when you run without kicking, so you can carry it and line up a shot.</p>
+      <p style="margin-top:12px"><b>⚡ Dribble.</b> Nudge the ball along with your body as you run, then tap KICK to fire it — it plays like a free puck, so keep it in front of you.</p>
       <p style="margin-top:12px"><b>👥 2-Player.</b> Lay the phone flat between you. Player 1 uses the bottom controls, Player 2 the top (rotated) controls.</p>
       <p style="margin-top:12px"><b>🎮 Controllers.</b> Set <b>Input</b> to Controllers and connect gamepads (press a button to wake them). Each pad takes a seat — you first, then an opponent, then a teammate — so 2 pads is 1v1, 8 pads is a full 4v4. Left stick moves, <b>A / RT</b> kicks. Empty seats stay bots.</p>
     </div>
@@ -320,7 +320,6 @@ const STEP = 1/60;
 const PLAYER = { r:15, invMass:0.5, bCoef:0.45, damp:0.966, accel:0.19, kick:6.4, kickRange:4.2 };
 const BALL   = { r:10, invMass:1.0, bCoef:0.55, damp:0.992 };
 const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
-const DRIBBLE = { range:26, pull:0.24, ahead:6 };   // subtle "ball sticks to feet"
 
 // ---------- State
 let profile = loadProfile();
@@ -762,18 +761,8 @@ function handleBallControl(w, p, ball, ballFrozen){
     }
   }
   if (!p.kick) p.kickUsed = false;
-
-  // Subtle dribble: pull ball toward a point just ahead of the feet while running & not kicking.
-  if (!ballFrozen && !p.kick){
-    const speed = Math.hypot(p.vx,p.vy);
-    if (speed > 0.05 && dist < sum + DRIBBLE.range){
-      const fx = p.faceX, fy = p.faceY;
-      const tx = p.x + fx*(sum+DRIBBLE.ahead), ty = p.y + fy*(sum+DRIBBLE.ahead);
-      const k = DRIBBLE.pull * Math.min(1, speed/2);
-      ball.vx += (tx - ball.x) * k * 0.05;
-      ball.vy += (ty - ball.y) * k * 0.05;
-    }
-  }
+  // No ball "stickiness" — the ball is only ever moved by real collisions and
+  // kicks, so it pushes off your body like a free puck rather than clinging.
 }
 
 // Elastic disc-disc collision weighted by inverse mass (HaxBall style).
@@ -963,13 +952,23 @@ function runBot(w, p){
   if (dl > 4){ p.inX = dx/dl; p.inY = dy/dl; p.faceX = dx/dl; p.faceY = dy/dl; }
   else { p.inX = 0; p.inY = 0; }
 
-  // Face toward goal/ball when kicking
-  if (p.aiKick){
-    const kx = oppGoal.x-p.x, ky = oppGoal.y-p.y; const kl=Math.hypot(kx,ky)||1;
-    p.faceX = kx/kl; p.faceY = ky/kl;
-  }
-  p.kick = p.aiKick && Math.sqrt(dist2(p,ball)) < p.r+ball.r+10;
-  if (!p.kick) p.kickUsed = false;
+  // Kick decision is evaluated every frame from live geometry (not throttled) so
+  // it actually connects now that the ball no longer sticks. Kick when we're in
+  // range AND positioned behind the ball relative to the goal — the kick pushes
+  // the ball along the player->ball line, so that sends it goalward. Also clear
+  // when the ball is deep in our own half.
+  const dBall = Math.sqrt(dist2(p, ball));
+  const inRange = dBall < p.r + ball.r + PLAYER.kickRange + 3;
+  let ogx = oppGoal.x - ball.x, ogy = oppGoal.y - ball.y;
+  const ogl = Math.hypot(ogx,ogy)||1; ogx/=ogl; ogy/=ogl;
+  const behindBall = ((ball.x-p.x)*ogx + (ball.y-p.y)*ogy) > -1;   // ball is ahead of us toward goal
+  const nearOwnGoal = (ball.y*attackDir < -halfL*0.5);
+  const kickNow = inRange && (behindBall || nearOwnGoal);
+  // The kick is one-shot (fires on press, re-arms on release). A bot that just
+  // holds it would kick once and then only body-push the ball, so release for a
+  // frame right after a kick lands to re-arm — giving a steady tap-tap of kicks.
+  p.kick = kickNow && !p.kickUsed;
+  if (p.kick){ p.faceX = ogx; p.faceY = ogy; }
 }
 
 function dist2(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
@@ -1108,31 +1107,24 @@ function drawDiscs(w){
       ctx.beginPath(); ctx.arc(x, y, r*1.35, 0, 2*Math.PI);
       ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.lineWidth=Math.max(1.5,r*0.14); ctx.stroke();
     }
-    // facing direction (from input / velocity), normalised
-    let fx=p.faceX, fy=p.faceY, fl=Math.hypot(fx,fy);
-    if (fl < 0.01){ fx=0; fy=(p.team===0?-1:1); fl=1; }
-    fx/=fl; fy/=fl;
-
-    // cap marking — small, tucked at the back of the head so the eyes lead
+    // Fixed face — the player's look never rotates with movement direction.
+    // Cap marking pinned at the top of the head.
     const cap = CAPS[p.cap] && CAPS[p.cap].emoji;
     if (cap && r>7){
-      ctx.font = `${Math.round(r*0.8)}px sans-serif`;
+      ctx.font = `${Math.round(r*0.78)}px sans-serif`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = 0.92;
       ctx.fillStyle = pickTextColor(p.color);
-      ctx.fillText(cap, x - fx*r*0.44, y - fy*r*0.44);
+      ctx.fillText(cap, x, y - r*0.48);
       ctx.globalAlpha = 1;
     }
-
-    // eyes that look where the player is heading
+    // Two googly eyes, always in the same spot, pupils centred (no rotation).
     if (r > 5){
-      const perpX=-fy, perpY=fx;
-      const front=r*0.30, sep=r*0.36, eyeR=r*0.28, pupilR=r*0.14, look=eyeR*0.55;
+      const sep=r*0.38, eyeR=r*0.27, pupilR=r*0.13, ey=y+r*0.06;
       for (const sgn of [-1,1]){
-        const ex = x + fx*front + perpX*sgn*sep;
-        const ey = y + fy*front + perpY*sgn*sep;
+        const ex = x + sgn*sep;
         ctx.beginPath(); ctx.arc(ex,ey,eyeR,0,2*Math.PI); ctx.fillStyle='#ffffff'; ctx.fill();
-        ctx.beginPath(); ctx.arc(ex+fx*look, ey+fy*look, pupilR,0,2*Math.PI); ctx.fillStyle='#15181f'; ctx.fill();
+        ctx.beginPath(); ctx.arc(ex,ey,pupilR,0,2*Math.PI); ctx.fillStyle='#15181f'; ctx.fill();
       }
     }
     // name label
