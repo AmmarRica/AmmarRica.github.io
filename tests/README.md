@@ -21,7 +21,7 @@ distinct **mode** the demo passes through (e.g. nonogram board sizes).
 
 | Game | Hook | Demo behaviour | Metric |
 |------|------|----------------|--------|
-| pinball | `__pinball` | launches + flips to keep the ball alive | `score` |
+| pinball | `__pinball` | launches + flips to keep the ball alive, cycling through the NOVA/EMBER/TIDE tables | `score` |
 | football-cards | `__gridiron` | plays BATTLE mode, picking the winning stat | `score` |
 | crab-breed-swiper | `__crab` | auto-swipes the deck | `score` (likes) |
 | dog-swiper | `__dog` | auto-swipes the deck | `progress` |
