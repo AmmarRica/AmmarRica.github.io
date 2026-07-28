@@ -1,5 +1,5 @@
-// Thumb Haxball service worker — offline + installable.
-const CACHE = 'haxball-v2';
+// Magnetball service worker — offline + installable.
+const CACHE = 'magnetball-v1';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
