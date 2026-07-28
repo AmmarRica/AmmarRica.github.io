@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Pinball</title>
+  <title>NOVA Pinball</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#0a0e1f" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="Pinball" />
+  <meta name="apple-mobile-web-app-title" content="NOVA Pinball" />
   <link rel="apple-touch-icon" href="icon.svg" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <style>
@@ -60,6 +60,9 @@
     #hud .label { font-size: 10px; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
     #hud .value { font-size: 20px; font-weight: 700; }
     #hud .value.score { color: var(--gold); }
+    #hud .value.mult { color: var(--good); transition: transform .12s; }
+    #hud .value.mult.bump { transform: scale(1.35); }
+    #hud .sub { font-size: 10px; color: var(--muted); letter-spacing: .5px; margin-top: 2px; }
     #balls { display: flex; gap: 5px; margin-top: 2px; }
     #balls .dot {
       width: 11px; height: 11px; border-radius: 50%;
@@ -168,10 +171,11 @@
       <div class="block">
         <span class="label">Score</span>
         <span class="value score" id="score">0</span>
+        <span class="sub">Best <b id="best">0</b></span>
       </div>
       <div class="block" style="align-items:center">
-        <span class="label">Best</span>
-        <span class="value" id="best">0</span>
+        <span class="label">Multiplier</span>
+        <span class="value mult" id="mult">×1</span>
       </div>
       <div class="block" style="align-items:flex-end">
         <span class="label">Balls</span>
@@ -186,8 +190,11 @@
         <div class="zone" id="zoneR">Right ►</div>
       </div>
       <div id="overlay">
-        <h1>PINBALL</h1>
-        <p>Tap &amp; hold the <b>left</b> or <b>right</b> side of the screen to flip.<br>Pull down and release the plunger to launch. On desktop use <b>←</b> / <b>→</b> and <b>Space</b>.</p>
+        <h1>NOVA</h1>
+        <p><b>Hold</b> the left or right side to flip. <b>Charge</b> the plunger to launch.<br>
+        Light the <b style="color:var(--good)">top lanes</b> to raise your multiplier and clear the
+        <b style="color:#ff4fd8">drop targets</b> for a jackpot.<br>
+        <span style="opacity:.7">Desktop: <b>←</b>/<b>→</b> flip, <b>Space</b> launch.</span></p>
         <button class="btn" id="startBtn">Play</button>
       </div>
     </div>
@@ -228,8 +235,21 @@
     const len = (x, y) => Math.hypot(x, y);
 
     // ---------- Game objects ----------
+    let tNow = 0; // current timestamp (ms), updated each frame
+
+    // Decorative starfield (generated once).
+    const stars = [];
+    for (let i = 0; i < 70; i++) {
+      stars.push({
+        x: Math.random() * W, y: Math.random() * H,
+        r: Math.random() * 1.3 + 0.3,
+        tw: Math.random() * 0.7 + 0.3,     // twinkle amount
+        ph: Math.random() * Math.PI * 2,   // phase
+      });
+    }
+
     // Ball
-    const ball = { x: 0, y: 0, vx: 0, vy: 0, r: 9, stuck: true };
+    const ball = { x: 0, y: 0, py: 0, vx: 0, vy: 0, r: 9, stuck: true };
     const GRAV = 0.28;
     const FRICTION = 0.995;
     const MAXV = 20;
@@ -275,18 +295,34 @@
       seg(344, 446, 306, 548, 0.75);
     }
 
-    // Bumpers (circles that add score + kick)
+    // Pop bumpers — a triangle of three distinctly coloured bumpers.
     const bumpers = [
-      { x: 140, y: 210, r: 26, score: 100, hit: 0 },
-      { x: 250, y: 190, r: 26, score: 100, hit: 0 },
-      { x: 196, y: 285, r: 30, score: 150, hit: 0 },
+      { x: 150, y: 182, r: 26, score: 100, hit: 0, ring: '#2fe0ff', core: '#9ff4ff' }, // cyan
+      { x: 250, y: 182, r: 26, score: 100, hit: 0, ring: '#ff4fd8', core: '#ffb0ef' }, // magenta
+      { x: 200, y: 262, r: 29, score: 150, hit: 0, ring: '#ffb42e', core: '#ffe28f' }, // amber
     ];
-    // Slingshot-ish static pegs
+    // Small side posts flanking the lower field.
     const pegs = [
-      { x: 96, y: 350, r: 12, score: 25, hit: 0 },
-      { x: 300, y: 350, r: 12, score: 25, hit: 0 },
-      { x: 196, y: 400, r: 12, score: 25, hit: 0 },
+      { x: 72,  y: 402, r: 11, score: 25, hit: 0 },
+      { x: 328, y: 402, r: 11, score: 25, hit: 0 },
     ];
+    // Drop-target bank — knock all three down for a jackpot, then they reset.
+    const dropTargets = [
+      { x: 150, y: 344, r: 13, down: false, hit: 0 },
+      { x: 200, y: 344, r: 13, down: false, hit: 0 },
+      { x: 250, y: 344, r: 13, down: false, hit: 0 },
+    ];
+    let dropResetAt = 0; // timestamp to pop the bank back up after a jackpot
+
+    // Rollover lane lights across the top — light all three to bump the multiplier.
+    const laneLights = [
+      { x: 108, lit: false, flash: 0 },
+      { x: 200, lit: false, flash: 0 },
+      { x: 292, lit: false, flash: 0 },
+    ];
+    const LANE_Y = 128, LANE_HALF = 34;
+    let multiplier = 1;
+    let jackpotFlash = 0, comboText = '', comboFlash = 0, comboX = 0, comboY = 0;
 
     // Flippers
     // A flipper pivots around a fixed point, swinging up when active.
@@ -325,6 +361,7 @@
     const el = {
       score: document.getElementById('score'),
       best: document.getElementById('best'),
+      mult: document.getElementById('mult'),
       balls: document.getElementById('balls'),
       overlay: document.getElementById('overlay'),
       startBtn: document.getElementById('startBtn'),
@@ -332,6 +369,18 @@
       zoneR: document.getElementById('zoneR'),
     };
     el.best.textContent = best;
+
+    function setMultiplier(m) {
+      multiplier = Math.max(1, Math.min(m, 6));
+      el.mult.textContent = '×' + multiplier;
+      el.mult.classList.add('bump');
+      setTimeout(() => el.mult.classList.remove('bump'), 130);
+    }
+
+    // Show a short floating label on the playfield (jackpot / multiplier up).
+    function popText(msg, x, y) {
+      comboText = msg; comboX = x; comboY = y; comboFlash = 1;
+    }
 
     function renderBalls() {
       el.balls.innerHTML = '';
@@ -342,8 +391,9 @@
       }
     }
 
-    function addScore(n) {
-      score += n;
+    // Scores are multiplied by the current multiplier; pass raw:true to skip it.
+    function addScore(n, raw) {
+      score += raw ? n : n * multiplier;
       el.score.textContent = score;
       if (score > best) {
         best = score;
@@ -355,10 +405,16 @@
     function resetBallToLane() {
       ball.x = plungerLaneX;
       ball.y = 585;
+      ball.py = 585;
       ball.vx = 0; ball.vy = 0;
       ball.stuck = true;
       plungerPower = 0;
       plungerCharging = false;
+      // Bonus features reset with each new ball.
+      setMultiplier(1);
+      laneLights.forEach(l => { l.lit = false; l.flash = 0; });
+      dropTargets.forEach(t => { t.down = false; t.hit = 0; });
+      dropResetAt = 0;
     }
 
     function newGame() {
@@ -507,6 +563,8 @@
       const sp = len(ball.vx, ball.vy);
       if (sp > MAXV) { ball.vx = ball.vx / sp * MAXV; ball.vy = ball.vy / sp * MAXV; }
 
+      const py0 = ball.y; // for top-lane rollover detection
+
       // integrate in small substeps for stability
       const steps = 3;
       for (let s = 0; s < steps; s++) {
@@ -516,7 +574,36 @@
         for (const w of walls) reflectOffSegment(w);
         for (const b of bumpers) if (reflectOffCircle(b, 1.05, 3.2)) addScore(b.score);
         for (const p of pegs) if (reflectOffCircle(p, 0.9, 1.2)) addScore(p.score);
+        for (const t of dropTargets) {
+          if (!t.down && reflectOffCircle(t, 0.75, 0.8)) { t.down = true; t.hit = 1; addScore(200); }
+        }
         for (const f of flippers) collideFlipper(f);
+      }
+
+      // Jackpot when the whole drop-target bank is down; it pops back up shortly.
+      if (dropResetAt === 0 && dropTargets.every(t => t.down)) {
+        addScore(2500);
+        jackpotFlash = 1;
+        popText('JACKPOT!', 200, 344);
+        dropResetAt = tNow + 1300;
+      }
+      if (dropResetAt && tNow >= dropResetAt) {
+        dropTargets.forEach(t => { t.down = false; });
+        dropResetAt = 0;
+      }
+
+      // Top rollover lanes: light a lane when the ball crosses its sensor line.
+      if ((py0 - LANE_Y) * (ball.y - LANE_Y) <= 0) {
+        for (const l of laneLights) {
+          if (!l.lit && Math.abs(ball.x - l.x) < LANE_HALF) {
+            l.lit = true; l.flash = 1; addScore(150);
+          }
+        }
+        if (laneLights.every(l => l.lit)) {
+          setMultiplier(multiplier + 1);
+          popText('MULTIPLIER ×' + multiplier, 200, LANE_Y + 26);
+          laneLights.forEach(l => { l.lit = false; });
+        }
       }
 
       ball.vx *= FRICTION;
@@ -537,30 +624,58 @@
       ctx.scale(scale * dpr, scale * dpr);
       ctx.clearRect(0, 0, W, H);
 
-      // Background gradient
+      // Deep-space background gradient
       const bg = ctx.createLinearGradient(0, 0, 0, H);
-      bg.addColorStop(0, '#161d40');
-      bg.addColorStop(1, '#0a0e1f');
+      bg.addColorStop(0, '#1a2149');
+      bg.addColorStop(0.5, '#10152e');
+      bg.addColorStop(1, '#080b18');
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, W, H);
 
-      // Playfield glow
-      ctx.fillStyle = 'rgba(123,108,255,0.05)';
+      // Nebula blooms for depth
+      drawNebula(120, 150, 200, 'rgba(47,224,255,0.10)');
+      drawNebula(300, 470, 230, 'rgba(209,79,216,0.10)');
+      drawNebula(210, 300, 170, 'rgba(123,108,255,0.08)');
+
+      // Twinkling stars
+      for (const s of stars) {
+        const a = 0.35 + s.tw * 0.35 * Math.sin(tNow * 0.002 + s.ph);
+        ctx.globalAlpha = Math.max(0.05, a);
+        ctx.fillStyle = '#dfe6ff';
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Playfield vignette / border glow
+      ctx.fillStyle = 'rgba(123,108,255,0.04)';
       roundRect(10, 12, W - 20, H - 24, 16); ctx.fill();
 
-      // Pegs
+      drawTitle();
+      drawInserts();
+      drawLaneLights();
+
+      // Side posts
       for (const p of pegs) {
         drawGlowCircle(p.x, p.y, p.r, p.hit ? '#ffffff' : '#5a63a8', '#8a94e0');
         p.hit *= 0.8; if (p.hit < 0.02) p.hit = 0;
       }
-      // Bumpers
+
+      drawDropTargets();
+
+      // Pop bumpers (each its own colour)
       for (const b of bumpers) {
         const flash = b.hit;
-        drawGlowCircle(b.x, b.y, b.r, flash ? '#ffffff' : '#7b6cff', '#d16cff');
+        const pulse = 1 + 0.05 * Math.sin(tNow * 0.006 + b.x);
+        drawGlowCircle(b.x, b.y, b.r * pulse, flash ? '#ffffff' : b.core, b.ring);
         ctx.beginPath();
-        ctx.arc(b.x, b.y, b.r * 0.55, 0, Math.PI * 2);
-        ctx.fillStyle = flash ? '#fff' : '#d16cff';
-        ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.arc(b.x, b.y, b.r * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = flash ? '#fff' : b.ring;
+        ctx.globalAlpha = 0.9; ctx.fill(); ctx.globalAlpha = 1;
+        // thin outline ring
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r * pulse + 2, 0, Math.PI * 2);
+        ctx.strokeStyle = b.ring; ctx.globalAlpha = 0.5; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.globalAlpha = 1;
         b.hit *= 0.82; if (b.hit < 0.02) b.hit = 0;
       }
 
@@ -587,7 +702,126 @@
       // Ball
       if (!gameOver) drawBall();
 
+      drawPopText();
+
+      if (jackpotFlash > 0.02) {
+        ctx.fillStyle = 'rgba(255,212,95,' + (jackpotFlash * 0.18).toFixed(3) + ')';
+        ctx.fillRect(0, 0, W, H);
+        jackpotFlash *= 0.9;
+      } else jackpotFlash = 0;
+
       ctx.restore();
+    }
+
+    function drawNebula(x, y, r, col) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, col);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // Faint wordmark on the playfield.
+    function drawTitle() {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '800 40px -apple-system, "Segoe UI", Roboto, sans-serif';
+      ctx.globalAlpha = 0.10;
+      ctx.fillStyle = '#9fb4ff';
+      ctx.fillText('NOVA', 200, 470);
+      ctx.font = '600 11px -apple-system, "Segoe UI", Roboto, sans-serif';
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = '#8ff6ff';
+      ctx.fillText('★  P I N B A L L  ★', 200, 498);
+      ctx.restore();
+    }
+
+    // Decorative playfield inserts: inlane guide arrows near the flippers.
+    function drawInserts() {
+      const arrow = (x, y, col) => {
+        ctx.save();
+        ctx.strokeStyle = col; ctx.globalAlpha = 0.5; ctx.lineWidth = 3; ctx.lineCap = 'round';
+        for (let i = 0; i < 3; i++) {
+          const yy = y + i * 9;
+          ctx.beginPath();
+          ctx.moveTo(x - 7, yy); ctx.lineTo(x, yy + 6); ctx.lineTo(x + 7, yy);
+          ctx.globalAlpha = 0.5 - i * 0.13;
+          ctx.stroke();
+        }
+        ctx.restore();
+      };
+      arrow(70, 470, '#2fe0ff');
+      arrow(330, 470, '#ff4fd8');
+    }
+
+    function drawLaneLights() {
+      for (const l of laneLights) {
+        const on = l.lit || l.flash > 0.02;
+        const y = LANE_Y - 12;
+        // little rounded lamp
+        ctx.beginPath();
+        roundRect(l.x - 15, y - 7, 30, 14, 7);
+        if (on) {
+          ctx.fillStyle = 'rgba(95,208,255,0.9)';
+          ctx.shadowColor = '#5fd0ff'; ctx.shadowBlur = 14;
+        } else {
+          ctx.fillStyle = 'rgba(90,99,168,0.35)';
+          ctx.shadowBlur = 0;
+        }
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        l.flash *= 0.9; if (l.flash < 0.02) l.flash = 0;
+      }
+      // label
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.globalAlpha = 0.35;
+      ctx.font = '600 9px -apple-system, sans-serif'; ctx.fillStyle = '#8ff6ff';
+      ctx.fillText('LIGHT LANES → MULTIPLIER', 200, LANE_Y + 8);
+      ctx.restore();
+    }
+
+    function drawDropTargets() {
+      for (const t of dropTargets) {
+        ctx.save();
+        if (t.down) {
+          // knocked down — a dim slot
+          ctx.globalAlpha = 0.5;
+          ctx.strokeStyle = 'rgba(120,130,180,0.5)';
+          ctx.lineWidth = 3; ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(t.x - t.r, t.y + t.r - 2);
+          ctx.lineTo(t.x + t.r, t.y + t.r - 2);
+          ctx.stroke();
+        } else {
+          const flash = t.hit;
+          ctx.beginPath();
+          roundRect(t.x - t.r, t.y - t.r + 3, t.r * 2, t.r * 2 - 6, 4);
+          const g = ctx.createLinearGradient(t.x, t.y - t.r, t.x, t.y + t.r);
+          g.addColorStop(0, flash ? '#ffffff' : '#ffe28f');
+          g.addColorStop(1, flash ? '#ffd45f' : '#ff9d3c');
+          ctx.fillStyle = g;
+          ctx.shadowColor = '#ffb42e'; ctx.shadowBlur = 10;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        ctx.restore();
+        t.hit *= 0.8; if (t.hit < 0.02) t.hit = 0;
+      }
+    }
+
+    function drawPopText() {
+      if (comboFlash <= 0.02) { comboFlash = 0; return; }
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.globalAlpha = Math.min(1, comboFlash);
+      ctx.font = '800 22px -apple-system, "Segoe UI", Roboto, sans-serif';
+      const yy = comboY - (1 - comboFlash) * 26;
+      ctx.fillStyle = '#fff';
+      ctx.shadowColor = '#ffd45f'; ctx.shadowBlur = 16;
+      ctx.fillText(comboText, comboX, yy);
+      ctx.restore();
+      comboFlash *= 0.955;
     }
 
     function drawBall() {
@@ -792,6 +1026,7 @@
     const DT = 1000 / 60;
 
     function frame(now) {
+      tNow = now;
       let dt = now - last; last = now;
       if (dt > 100) dt = 100;
       acc += dt;
@@ -811,7 +1046,10 @@
 
     // ---------- Boot ----------
     // Minimal debug hook (harmless in production) for automated testing.
-    window.__pinball = { ball, flipL, flipR, state: () => ({ score, ballsLeft, running }) };
+    window.__pinball = {
+      ball, flipL, flipR, bumpers, dropTargets, laneLights,
+      state: () => ({ score, ballsLeft, running, multiplier }),
+    };
 
     buildWalls();
     resize();

@@ -1,7 +1,7 @@
 {
-  "name": "Pinball",
-  "short_name": "Pinball",
-  "description": "A mobile-friendly pinball game with left and right touch flippers.",
+  "name": "NOVA Pinball",
+  "short_name": "NOVA",
+  "description": "A cosmic mobile pinball game with touch flippers, drop-target jackpots and multiplier lanes.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
