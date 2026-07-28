@@ -314,7 +314,10 @@ const LENGTHS = {
 
 // ---------- Physics constants (per fixed 1/60s step)
 const STEP = 1/60;
-const PLAYER = { r:15, invMass:0.5, bCoef:0.45, damp:0.96, accel:0.60, kick:6.4, kickRange:4.2 };
+// Momentum: low acceleration + high damping give players real inertia — they
+// take ~1s to wind up to top speed and coast when you let go, so starting,
+// stopping and reversing all carry weight (close to HaxBall's feel).
+const PLAYER = { r:15, invMass:0.5, bCoef:0.45, damp:0.966, accel:0.19, kick:6.4, kickRange:4.2 };
 const BALL   = { r:10, invMass:1.0, bCoef:0.55, damp:0.992 };
 const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 const DRIBBLE = { range:26, pull:0.24, ahead:6 };   // subtle "ball sticks to feet"
