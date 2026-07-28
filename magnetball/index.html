@@ -725,16 +725,19 @@ function step(w){
 
   const active = (w.state==='play' || w.state==='kickoff');
 
-  // --- Gather controller inputs
-  for (const p of w.players){
-    if (p.ctrl==='human1') applyHumanInput(p, pads.p1);
-    else if (p.ctrl==='human2') applyHumanInput(p, pads.p2);
-    else if (p.ctrl==='gamepad') applyHumanInput(p, gamepadPad(p.padIndex));
-    else if (p.ctrl==='bot') runBot(w, p);
+  // --- Gather controller inputs (only while the ball is live or during kickoff)
+  if (active){
+    for (const p of w.players){
+      if (p.ctrl==='human1') applyHumanInput(p, pads.p1);
+      else if (p.ctrl==='human2') applyHumanInput(p, pads.p2);
+      else if (p.ctrl==='gamepad') applyHumanInput(p, gamepadPad(p.padIndex));
+      else if (p.ctrl==='bot') runBot(w, p);
+    }
   }
 
-  if (active && w.state==='play') integrate(w);
-  else if (active) integrate(w, true);   // kickoff: players can move, ball frozen-ish
+  if (w.state==='play') integrate(w, false, false);
+  else if (w.state==='kickoff') integrate(w, true, false);   // ball parked at centre, players jockey
+  else if (w.state==='goal') integrate(w, false, true);      // ball flies on into the net; players hold
 
   updateScoreUI();
 }
@@ -775,39 +778,46 @@ function btn(g,i){ const b=g.buttons[i]; return !!(b && (b.pressed || b.value>0.
 // ============================================================
 //  PHYSICS INTEGRATION
 // ============================================================
-function integrate(w, ballFrozen){
+function integrate(w, ballFrozen, playersFrozen){
   const ball = w.ball;
   const discs = w.players;
 
-  // Apply player acceleration
-  for (const p of discs){
-    p.vx += p.inX * PLAYER.accel;
-    p.vy += p.inY * PLAYER.accel;
+  if (playersFrozen){
+    // Hold the players still (e.g. during a goal celebration) but keep the ball
+    // live so it carries on into the net.
+    for (const p of discs){ p.vx = 0; p.vy = 0; }
+  } else {
+    // Apply player acceleration
+    for (const p of discs){
+      p.vx += p.inX * PLAYER.accel;
+      p.vy += p.inY * PLAYER.accel;
+    }
+    // Kicking + magnet
+    for (const p of discs){
+      handleBallControl(w, p, ball, ballFrozen);
+    }
+    // Integrate player velocities (with damping)
+    for (const p of discs){
+      p.vx *= p.damp; p.vy *= p.damp;
+      p.x += p.vx; p.y += p.vy;
+    }
   }
 
-  // Dribble stickiness + kicking
-  for (const p of discs){
-    handleBallControl(w, p, ball, ballFrozen);
-  }
-
-  // Integrate velocities (with damping)
-  for (const p of discs){
-    p.vx *= p.damp; p.vy *= p.damp;
-    p.x += p.vx; p.y += p.vy;
-  }
   if (!ballFrozen){
     ball.vx *= ball.damp; ball.vy *= ball.damp;
     ball.x += ball.vx; ball.y += ball.vy;
   }
 
   // Collisions: player-player, player-ball, disc-post, disc-wall/arc
-  for (let i=0;i<discs.length;i++){
-    for (let j=i+1;j<discs.length;j++) collideDiscs(discs[i], discs[j]);
+  if (!playersFrozen){
+    for (let i=0;i<discs.length;i++){
+      for (let j=i+1;j<discs.length;j++) collideDiscs(discs[i], discs[j]);
+    }
   }
   if (!ballFrozen){
     for (const p of discs) collideDiscs(p, ball);
   }
-  const movers = ballFrozen ? discs : discs.concat([ball]);
+  const movers = ballFrozen ? discs : (playersFrozen ? [ball] : discs.concat([ball]));
   for (const m of movers){
     for (const post of w.posts) collideDiscs(m, post);
     for (const wall of w.walls) collideWall(m, wall);
