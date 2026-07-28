@@ -68,6 +68,22 @@
     .card h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 14px; font-weight: 700; }
 
     label.field { display: block; font-size: 13px; color: var(--muted); margin: 0 0 6px; }
+
+    input[type=range].slider {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; height: 8px; border-radius: 999px; outline: none;
+      background: var(--panel-2); margin: 6px 0 2px; cursor: pointer;
+    }
+    input[type=range].slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 26px; height: 26px;
+      border-radius: 50%; background: var(--accent); border: 3px solid var(--bg);
+      box-shadow: 0 2px 8px rgba(0,0,0,.4); cursor: pointer;
+    }
+    input[type=range].slider::-moz-range-thumb {
+      width: 26px; height: 26px; border-radius: 50%; background: var(--accent);
+      border: 3px solid var(--bg); cursor: pointer;
+    }
+
     input[type=text] {
       width: 100%; background: var(--panel-2); border: 1px solid var(--line);
       color: var(--text); border-radius: 12px; padding: 13px 14px; font-size: 17px; outline: none;
@@ -220,6 +236,10 @@
       <div style="height:14px"></div>
       <label class="field">Input <small id="padInfo" style="color:var(--muted)"></small></label>
       <div class="opts" id="controllers"></div>
+      <div style="height:14px"></div>
+      <label class="field">Ball magnet <small id="magVal" style="color:var(--accent); font-weight:700">30</small></label>
+      <input id="magnet" class="slider" type="range" min="0" max="100" step="5" value="30" />
+      <div class="hint" style="text-align:left; margin-top:4px">0 = free puck · 100 = ball sticks to your feet</div>
     </div>
 
     <button class="primary" id="playBtn">KICK OFF ▶</button>
@@ -234,7 +254,7 @@
       <p><b>🎯 Goal.</b> Push the ball into the opponent's net. Most goals before the clock runs out wins.</p>
       <p style="margin-top:12px"><b>🕹️ Move.</b> Touch and drag anywhere on the <b>right</b> half — a joystick appears under your thumb. Drag to steer; further = faster.</p>
       <p style="margin-top:12px"><b>👟 Kick.</b> Hold the <b>KICK</b> pad (bottom-left) with your other thumb. You kick the instant you touch the ball, once per press — release and press again to kick again.</p>
-      <p style="margin-top:12px"><b>⚡ Dribble.</b> Nudge the ball along with your body as you run, then tap KICK to fire it — it plays like a free puck, so keep it in front of you.</p>
+      <p style="margin-top:12px"><b>⚡ Dribble.</b> Nudge the ball along with your body as you run, then tap KICK to fire it. Turn up the <b>Ball Magnet</b> in setup (0–100) to make the ball stick to your feet for easier carrying; 0 plays like a free puck.</p>
       <p style="margin-top:12px"><b>👥 2-Player.</b> Lay the phone flat between you. Player 1 uses the bottom controls, Player 2 the top (rotated) controls.</p>
       <p style="margin-top:12px"><b>🎮 Controllers.</b> Set <b>Input</b> to Controllers and connect gamepads (press a button to wake them). Each pad takes a seat — you first, then an opponent, then a teammate — so 2 pads is 1v1, 8 pads is a full 4v4. Left stick moves, <b>A / RT</b> kicks. Empty seats stay bots.</p>
     </div>
@@ -323,7 +343,7 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 
 // ---------- State
 let profile = loadProfile();
-let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off' };
+let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:30 };
 
 let cv = document.getElementById('game');
 let ctx = cv.getContext('2d');
@@ -405,6 +425,16 @@ buildOpts('fields', FIELDS, 'field');
 buildOpts('diffs', DIFF, 'diff');
 buildOpts('lengths', LENGTHS, 'length');
 buildOpts('controllers', CONTROLLERS, 'controllers');
+
+// Ball-magnet slider (0..100). Applies live if a match is already running.
+const magEl = $('magnet'), magValEl = $('magVal');
+magEl.value = sel.magnet; magValEl.textContent = sel.magnet;
+magEl.oninput = () => {
+  sel.magnet = +magEl.value; saveSel();
+  magValEl.textContent = sel.magnet;
+  if (world) world.magnet = sel.magnet;
+};
+
 updatePreview();
 updatePadInfo();
 
@@ -490,6 +520,7 @@ function startMatch(){
 
   world = {
     field, mode, len, diff: DIFF[sel.diff],
+    magnet: sel.magnet,
     players,
     ball: { x:0, y:0, vx:0, vy:0, r:BALL.r, invMass:BALL.invMass, bCoef:BALL.bCoef, damp:BALL.damp, isBall:true },
     posts: [],
@@ -761,8 +792,23 @@ function handleBallControl(w, p, ball, ballFrozen){
     }
   }
   if (!p.kick) p.kickUsed = false;
-  // No ball "stickiness" — the ball is only ever moved by real collisions and
-  // kicks, so it pushes off your body like a free puck rather than clinging.
+
+  // Ball magnet: an optional pull that holds the ball to your feet. Strength is
+  // the match's 0..100 setting (0 = free puck, no pull). While not kicking and
+  // the ball is near, spring it toward a point just ahead of the player and ease
+  // its velocity toward the player's so it travels along as you dribble. A kick
+  // is a big one-shot impulse that easily overpowers the pull, so shooting still
+  // sends the ball flying even at full magnet.
+  const mag = (w.magnet||0) / 100;
+  if (mag > 0 && !ballFrozen && !p.kick && dist < sum + 18){
+    let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
+    const hold = sum + 1;                       // rest just in front of the feet
+    const tx = p.x + fx*hold, ty = p.y + fy*hold;
+    const k = mag * 0.14;
+    ball.vx += (tx - ball.x) * k;  ball.vy += (ty - ball.y) * k;
+    ball.vx += (p.vx - ball.vx) * mag * 0.10;   // carry the ball with you
+    ball.vy += (p.vy - ball.vy) * mag * 0.10;
+  }
 }
 
 // Elastic disc-disc collision weighted by inverse mass.
