@@ -802,6 +802,22 @@
 
     // Start
     init();
+
+    // Demo / auto-play (AI tester hook)
+    (function(){
+      let demoTimer = null;
+      function tick(){
+        if (currentIndex >= deck.length) { init(); return; }  // restart when finished
+        swipe(Math.random() < 0.7 ? 'right' : 'left');
+      }
+      function startDemo(){ if (demoTimer) return; tick(); demoTimer = setInterval(tick, 480); }
+      function stopDemo(){ clearInterval(demoTimer); demoTimer = null; }
+      window.__crab = {
+        setDemo: v => v ? startDemo() : stopDemo(), startDemo, stopDemo,
+        state: () => ({ score: likes, likes, nopes, index: currentIndex,
+                        total: deck.length, mode: 'swipe', done: currentIndex >= deck.length }),
+      };
+    })();
   </script>
 </body>
 </html>
