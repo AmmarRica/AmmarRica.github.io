@@ -1,7 +1,7 @@
 {
   "name": "Thumb Haxball",
   "short_name": "Haxball",
-  "description": "A touch-first tribute to HaxBall — vertical 1v1/2v2/3v3 physics soccer with dual-thumb controls and bots.",
+  "description": "A touch-first tribute to HaxBall — vertical physics soccer with dual-thumb controls, bots for 1v1–4v4, and gamepad support.",
   "start_url": ".",
   "display": "fullscreen",
   "orientation": "portrait",

@@ -217,6 +217,9 @@
       <div style="height:14px"></div>
       <label class="field">Match length</label>
       <div class="opts" id="lengths"></div>
+      <div style="height:14px"></div>
+      <label class="field">Input <small id="padInfo" style="color:var(--muted)"></small></label>
+      <div class="opts" id="controllers"></div>
     </div>
 
     <button class="primary" id="playBtn">KICK OFF ▶</button>
@@ -233,6 +236,7 @@
       <p style="margin-top:12px"><b>👟 Kick.</b> Hold the <b>KICK</b> pad (bottom-left) with your other thumb. You kick the instant you touch the ball, once per press — release and press again to kick again.</p>
       <p style="margin-top:12px"><b>⚡ Dribble.</b> The ball sticks to your feet a little when you run without kicking, so you can carry it and line up a shot.</p>
       <p style="margin-top:12px"><b>👥 2-Player.</b> Lay the phone flat between you. Player 1 uses the bottom controls, Player 2 the top (rotated) controls.</p>
+      <p style="margin-top:12px"><b>🎮 Controllers.</b> Set <b>Input</b> to Controllers and connect gamepads (press a button to wake them). Each pad takes a seat — you first, then an opponent, then a teammate — so 2 pads is 1v1, 8 pads is a full 4v4. Left stick moves, <b>A / RT</b> kicks. Empty seats stay bots.</p>
     </div>
     <button class="ghost" id="howBack">← Back</button>
   </div>
@@ -289,7 +293,16 @@ const MODES = {
   '1v1':  { name:'1 v 1',   emoji:'👤', per:1, twoP:false, desc:'You vs bot' },
   '2v2':  { name:'2 v 2',   emoji:'👥', per:2, twoP:false, desc:'You + bot' },
   '3v3':  { name:'3 v 3',   emoji:'⚔️', per:3, twoP:false, desc:'You + 2 bots' },
+  '4v4':  { name:'4 v 4',   emoji:'🏟️', per:4, twoP:false, desc:'You + 3 bots' },
   'local':{ name:'2-Player',emoji:'🎮', per:1, twoP:true,  desc:'Same phone' },
+};
+
+// Extra human seats are filled by connected gamepads when this is on, spread
+// across both teams (you → opponent → teammate → …) so N controllers give
+// N humans; the rest are bots. Groundwork for full 4v4-with-controllers.
+const CONTROLLERS = {
+  off: { name:'Touch',       emoji:'📱' },
+  on:  { name:'Controllers', emoji:'🎮' },
 };
 
 const LENGTHS = {
@@ -308,7 +321,7 @@ const DRIBBLE = { range:26, pull:0.24, ahead:6 };   // subtle "ball sticks to fe
 
 // ---------- State
 let profile = loadProfile();
-let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5' };
+let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off' };
 
 let cv = document.getElementById('game');
 let ctx = cv.getContext('2d');
@@ -361,6 +374,7 @@ function buildOpts(containerId, obj, key, extra){
       else { sel[key] = k; saveSel(); }
       buildOpts(containerId, obj, key, extra);
       updatePreview();
+      if (key==='controllers') updatePadInfo();
     };
     wrap.appendChild(el);
   });
@@ -388,7 +402,25 @@ buildOpts('modes', MODES, 'mode', o=>o.desc);
 buildOpts('fields', FIELDS, 'field');
 buildOpts('diffs', DIFF, 'diff');
 buildOpts('lengths', LENGTHS, 'length');
+buildOpts('controllers', CONTROLLERS, 'controllers');
 updatePreview();
+updatePadInfo();
+
+// Reflect connected gamepads on the setup screen.
+function connectedGamepadIndices(){
+  const gps = (navigator.getGamepads && navigator.getGamepads()) || [];
+  const out = [];
+  for (let i=0;i<gps.length;i++){ if (gps[i] && gps[i].connected) out.push(i); }
+  return out;
+}
+function updatePadInfo(){
+  const el = $('padInfo'); if (!el) return;
+  if (sel.controllers!=='on'){ el.textContent = '(tap to steer)'; return; }
+  const n = connectedGamepadIndices().length;
+  el.textContent = n ? `(${n} controller${n>1?'s':''} detected)` : '(no controllers — connect & press a button)';
+}
+window.addEventListener('gamepadconnected', updatePadInfo);
+window.addEventListener('gamepaddisconnected', updatePadInfo);
 
 $('playBtn').onclick = startMatch;
 $('howBtn').onclick = () => { $('setup').classList.add('hidden'); $('how').classList.remove('hidden'); };
@@ -420,22 +452,38 @@ function startMatch(){
   const per = mode.per;
   const used = new Set([profile.name]);
 
-  const players = [];
+  let players = [];
   // Team 0 = you (red), attacks toward top (-y). Team 1 = blue, attacks toward bottom (+y).
   // Human 1 on team 0.
   const you = mkPlayer(0, profile.name, profile.color, profile.cap, 'human1');
-  players.push(you);
 
   if (mode.twoP){
-    // Local 2-player: 1v1 humans
-    players.push(mkPlayer(1, 'P2', '#5a7de0', 'stripe', 'human2'));
+    // Local 2-player couch: two humans on one screen, split touch controls.
+    players.push(you, mkPlayer(1, 'P2', '#5a7de0', 'stripe', 'human2'));
   } else {
-    // fill team 0 with bots
+    // Build both teams as bots, with you leading team 0.
+    const t0 = [you];
     const t0names = pickNames(per-1, used);
-    for(let i=0;i<per-1;i++) players.push(mkPlayer(0, t0names[i], teamTint(0,i+1), randCap(i), 'bot'));
-    // fill team 1 with bots
+    for(let i=0;i<per-1;i++) t0.push(mkPlayer(0, t0names[i], teamTint(0,i+1), randCap(i), 'bot'));
+    const t1 = [];
     const t1names = pickNames(per, used);
-    for(let i=0;i<per;i++) players.push(mkPlayer(1, t1names[i], teamTint(1,i), randCap(i+3), 'bot'));
+    for(let i=0;i<per;i++) t1.push(mkPlayer(1, t1names[i], teamTint(1,i), randCap(i+3), 'bot'));
+
+    // Hand connected controllers to seats in an interleaved order so each extra
+    // controller fills the next most useful slot: you → opponent → teammate → …
+    // Any seat without a controller stays a bot. (You keep touch if you have no pad.)
+    if (sel.controllers==='on'){
+      const gpads = connectedGamepadIndices();
+      const order = [];
+      for (let i=0;i<Math.max(t0.length,t1.length);i++){ if (t0[i]) order.push(t0[i]); if (t1[i]) order.push(t1[i]); }
+      let gi=0, pn=2;
+      for (const pl of order){
+        if (gi >= gpads.length) break;
+        pl.ctrl = 'gamepad'; pl.padIndex = gpads[gi++];
+        if (pl !== you){ pl.name = 'P'+pn; pn++; }   // humans get P2, P3, …
+      }
+    }
+    players = t0.concat(t1);
   }
 
   world = {
@@ -480,7 +528,7 @@ function randCap(i){ const k = Object.keys(CAPS); return k[(i+1)%k.length]; }
 
 function mkPlayer(team, name, color, cap, ctrl){
   return {
-    team, name, color, cap, ctrl,
+    team, name, color, cap, ctrl, padIndex:-1,
     x:0, y:0, vx:0, vy:0, r:PLAYER.r, invMass:PLAYER.invMass, bCoef:PLAYER.bCoef, damp:PLAYER.damp,
     inX:0, inY:0, kick:false, kickUsed:false,   // controller input
     faceX:0, faceY:team===0?-1:1,
@@ -605,6 +653,7 @@ function step(w){
   for (const p of w.players){
     if (p.ctrl==='human1') applyHumanInput(p, pads.p1);
     else if (p.ctrl==='human2') applyHumanInput(p, pads.p2);
+    else if (p.ctrl==='gamepad') applyHumanInput(p, gamepadPad(p.padIndex));
     else if (p.ctrl==='bot') runBot(w, p);
   }
 
@@ -627,6 +676,25 @@ function applyHumanInput(p, pad){
   } else { p.inX=0; p.inY=0; }
   p.kick = pad.kick;
 }
+
+// ---------- Gamepad polling (Gamepad API). Left stick = move, A/X/RB/RT = kick.
+// Returns a pad-like object so it flows through applyHumanInput unchanged.
+function gamepadPad(index){
+  const gps = (navigator.getGamepads && navigator.getGamepads()) || [];
+  const g = gps[index];
+  if (!g){ return { dx:0, dy:0, kick:false, invert:false }; }
+  let dx = g.axes[0]||0, dy = g.axes[1]||0;
+  // dpad fallback (buttons 12-15) if no stick tilt
+  if (Math.hypot(dx,dy) < 0.18){
+    dx = (btn(g,15)?1:0) - (btn(g,14)?1:0);
+    dy = (btn(g,13)?1:0) - (btn(g,12)?1:0);
+  }
+  const dead = 0.22, mag = Math.hypot(dx,dy);
+  if (mag < dead){ dx=0; dy=0; }
+  const kick = btn(g,0)||btn(g,2)||btn(g,5)||btn(g,7)||btn(g,1); // A/X/RB/RT/B
+  return { dx, dy, kick, invert:false };
+}
+function btn(g,i){ const b=g.buttons[i]; return !!(b && (b.pressed || b.value>0.4)); }
 
 // ============================================================
 //  PHYSICS INTEGRATION
@@ -1037,13 +1105,32 @@ function drawDiscs(w){
       ctx.beginPath(); ctx.arc(x, y, r*1.35, 0, 2*Math.PI);
       ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.lineWidth=Math.max(1.5,r*0.14); ctx.stroke();
     }
-    // cap emoji
+    // facing direction (from input / velocity), normalised
+    let fx=p.faceX, fy=p.faceY, fl=Math.hypot(fx,fy);
+    if (fl < 0.01){ fx=0; fy=(p.team===0?-1:1); fl=1; }
+    fx/=fl; fy/=fl;
+
+    // cap marking — small, tucked at the back of the head so the eyes lead
     const cap = CAPS[p.cap] && CAPS[p.cap].emoji;
-    if (cap){
-      ctx.font = `${Math.round(r*1.1)}px sans-serif`;
+    if (cap && r>7){
+      ctx.font = `${Math.round(r*0.8)}px sans-serif`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.globalAlpha = 0.9;
       ctx.fillStyle = pickTextColor(p.color);
-      ctx.fillText(cap, x, y+1);
+      ctx.fillText(cap, x - fx*r*0.44, y - fy*r*0.44);
+      ctx.globalAlpha = 1;
+    }
+
+    // eyes that look where the player is heading
+    if (r > 5){
+      const perpX=-fy, perpY=fx;
+      const front=r*0.30, sep=r*0.36, eyeR=r*0.28, pupilR=r*0.14, look=eyeR*0.55;
+      for (const sgn of [-1,1]){
+        const ex = x + fx*front + perpX*sgn*sep;
+        const ey = y + fy*front + perpY*sgn*sep;
+        ctx.beginPath(); ctx.arc(ex,ey,eyeR,0,2*Math.PI); ctx.fillStyle='#ffffff'; ctx.fill();
+        ctx.beginPath(); ctx.arc(ex+fx*look, ey+fy*look, pupilR,0,2*Math.PI); ctx.fillStyle='#15181f'; ctx.fill();
+      }
     }
     // name label
     if (s>0.28){
@@ -1220,14 +1307,19 @@ function pollKeys(){
 
 function drawControls(){
   if (!running || (world && world.state==='over')) return;
-  pollKeys();
-  const twoP = world && world.mode.twoP;
-  // P1 (bottom)
-  drawPad(pads.p1, false);
-  if (twoP) drawPad(pads.p2, true);
-  // Static hint pads (kick zone markers)
-  drawKickMarker(pads.p1, false);
-  if (twoP) drawKickMarker(pads.p2, true);
+  // Only show touch controls for seats actually driven by touch — a gamepad
+  // player (or a fully-controller match) gets no on-screen thumbstick.
+  const hasP1 = world && world.players.some(p=>p.ctrl==='human1');
+  const hasP2 = world && world.players.some(p=>p.ctrl==='human2');
+  if (hasP1){
+    pollKeys();
+    drawPad(pads.p1, false);
+    drawKickMarker(pads.p1, false);
+  }
+  if (hasP2){
+    drawPad(pads.p2, true);
+    drawKickMarker(pads.p2, true);
+  }
 }
 function drawPad(pad, isP2){
   if (pad.move.id === null) {
