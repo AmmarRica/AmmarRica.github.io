@@ -67,6 +67,8 @@ navigation:
     url: /nonogram/
   - title: Pinball
     url: /pinball/
+  - title: Thumb Haxball
+    url: /haxball/
 
 future: true
 
