@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Thumb Haxball</title>
+  <title>Magnetball</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#0b3d1f" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="Haxball" />
+  <meta name="apple-mobile-web-app-title" content="Magnetball" />
   <link rel="apple-touch-icon" href="icon.svg" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <style>
@@ -184,7 +184,7 @@
   <!-- ===================== SETUP SCREEN ===================== -->
   <div id="setup" class="screen">
     <div class="logo">
-      <h1>THUMB HAXBALL</h1>
+      <h1>MAGNETBALL</h1>
       <p>Right thumb moves · Left thumb kicks</p>
     </div>
 
@@ -224,7 +224,7 @@
 
     <button class="primary" id="playBtn">KICK OFF ▶</button>
     <button class="ghost" id="howBtn" style="margin-top:12px">How to play</button>
-    <div class="footlink">A tribute to <a href="https://www.haxball.com" target="_blank" rel="noopener">HaxBall</a> — built for touch.</div>
+    <div class="footlink">A fast physics soccer game — built for touch.</div>
   </div>
 
   <!-- ===================== HOW TO PLAY ===================== -->
@@ -255,7 +255,7 @@
 (function () {
 
 /* ============================================================
-   Thumb Haxball — a touch-first tribute to HaxBall.
+   Magnetball — a touch-first physics soccer game.
    Physics tuned to the real game: player r15 / ball r10,
    bounce 0.5, ball damping 0.99, player damping ~0.96,
    goals a 128-wide gap with solid posts, kick as a one-shot
@@ -264,7 +264,7 @@
    ============================================================ */
 
 // ---------- Fields (vertical). Units are "world" units; camera fits them to screen.
-// Derived from HaxBall's classic stadium (420x200 half-extents, goal ±64) rotated to portrait.
+// Derived from a classic top-down stadium (420x200 half-extents, goal ±64) rotated to portrait.
 const FIELDS = {
   classic: { name:'Classic',  emoji:'⚽', W:440, L:760, goal:150, corner:0,  net:64 },
   big:     { name:'Big',      emoji:'🏟️', W:520, L:900, goal:170, corner:0,  net:70 },
@@ -316,7 +316,7 @@ const LENGTHS = {
 const STEP = 1/60;
 // Momentum: low acceleration + high damping give players real inertia — they
 // take ~1s to wind up to top speed and coast when you let go, so starting,
-// stopping and reversing all carry weight (close to HaxBall's feel).
+// stopping and reversing all carry weight for a momentum-driven feel.
 const PLAYER = { r:15, invMass:0.5, bCoef:0.45, damp:0.966, accel:0.19, kick:6.4, kickRange:4.2 };
 const BALL   = { r:10, invMass:1.0, bCoef:0.55, damp:0.992 };
 const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
@@ -339,16 +339,16 @@ let rafId = 0;
 // ============================================================
 function loadProfile() {
   let d = {};
-  try { d = JSON.parse(localStorage.getItem('haxball.profile')||'{}'); } catch(e){}
+  try { d = JSON.parse(localStorage.getItem('magnetball.profile')||'{}'); } catch(e){}
   return {
     name: (d.name||'').slice(0,12) || 'You',
     color: d.color || '#46d17a',
     cap: d.cap || 'star',
   };
 }
-function saveProfile(){ try { localStorage.setItem('haxball.profile', JSON.stringify(profile)); } catch(e){} }
-function loadSel(){ try { Object.assign(sel, JSON.parse(localStorage.getItem('haxball.sel')||'{}')); } catch(e){} }
-function saveSel(){ try { localStorage.setItem('haxball.sel', JSON.stringify(sel)); } catch(e){} }
+function saveProfile(){ try { localStorage.setItem('magnetball.profile', JSON.stringify(profile)); } catch(e){} }
+function loadSel(){ try { Object.assign(sel, JSON.parse(localStorage.getItem('magnetball.sel')||'{}')); } catch(e){} }
+function saveSel(){ try { localStorage.setItem('magnetball.sel', JSON.stringify(sel)); } catch(e){} }
 loadSel();
 
 const $ = id => document.getElementById(id);
@@ -505,7 +505,7 @@ function startMatch(){
   };
   buildGeometry(world);
   resetKickoff(world, true);
-  if (window.__HAXDEBUG) window.__hax = { get world(){return world;}, pads };
+  if (window.__MAGNETDEBUG) window.__magnet = { get world(){return world;}, pads };
 
   // UI
   $('setup').classList.add('hidden');
@@ -549,7 +549,7 @@ function buildGeometry(w){
   w.arcs = [];
   w.posts = [];
 
-  const cB = 0.1; // wall bounce like haxball boundaries (low)
+  const cB = 0.1; // low-bounce boundary walls
   // Side walls (left & right), full length
   w.walls.push({a:{x:-halfW,y:-halfL+c}, b:{x:-halfW,y:halfL-c}, bCoef:cB});
   w.walls.push({a:{x: halfW,y:-halfL+c}, b:{x: halfW,y:halfL-c}, bCoef:cB});
@@ -765,7 +765,7 @@ function handleBallControl(w, p, ball, ballFrozen){
   // kicks, so it pushes off your body like a free puck rather than clinging.
 }
 
-// Elastic disc-disc collision weighted by inverse mass (HaxBall style).
+// Elastic disc-disc collision weighted by inverse mass.
 function collideDiscs(a, b){
   const dx = b.x - a.x, dy = b.y - a.y;
   let dist = Math.hypot(dx,dy);
