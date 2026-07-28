@@ -247,6 +247,16 @@
       <p>Right thumb moves · Left thumb kicks</p>
     </div>
 
+    <div class="card" id="recordCard">
+      <h2>Record</h2>
+      <div id="rankLine" style="display:flex;align-items:center;gap:10px;font-family:var(--pix);font-size:16px">
+        <span id="rankEmoji" style="font-size:26px">🪵</span>
+        <span id="rankName" style="color:var(--accent);text-shadow:2px 2px 0 #000">Wood</span>
+        <span id="rankPts" style="margin-left:auto;color:#cfe0ff;font-size:12px">1000 RP</span>
+      </div>
+      <div id="recLine" class="hint" style="text-align:left;margin-top:10px;font-family:var(--pix);font-size:8px;line-height:1.8"></div>
+    </div>
+
     <div class="card">
       <h2>Your Player</h2>
       <label class="field" for="pname">Name</label>
@@ -283,6 +293,19 @@
       <label class="field">Ball magnet <small id="magVal" style="color:var(--accent); font-weight:700">30</small></label>
       <input id="magnet" class="slider" type="range" min="0" max="100" step="5" value="30" />
       <div class="hint" style="text-align:left; margin-top:4px">0 = free puck · 100 = ball sticks to your feet</div>
+      <div style="height:14px"></div>
+      <label class="field">Ball</label>
+      <div class="opts" id="balls"></div>
+    </div>
+
+    <div class="card">
+      <h2>Controls</h2>
+      <label class="field">Handed</label>
+      <div class="opts" id="handed"></div>
+      <div style="height:14px"></div>
+      <label class="field">Stick sensitivity <small id="sensVal" style="color:var(--accent);font-weight:700">1.0×</small></label>
+      <input id="sens" class="slider" type="range" min="60" max="160" step="10" value="100" />
+      <div class="hint" style="text-align:left; margin-top:4px">Lower = push further for full speed</div>
     </div>
 
     <button class="primary" id="playBtn">KICK OFF ▶</button>
@@ -297,6 +320,8 @@
       <p><b>🎯 Goal.</b> Push the ball into the opponent's net. Most goals before the clock runs out wins.</p>
       <p style="margin-top:12px"><b>🕹️ Move.</b> Touch and drag anywhere on the <b>right</b> half — a joystick appears under your thumb. Drag to steer; further = faster.</p>
       <p style="margin-top:12px"><b>👟 Kick.</b> Hold the <b>KICK</b> pad (bottom-left) with your other thumb. You kick the instant you touch the ball, once per press — release and press again to kick again.</p>
+      <p style="margin-top:12px"><b>⚡ Charge shot.</b> Hold KICK <i>before</i> you reach the ball to wind up power — the yellow ring on the pad fills. A charged (or magnetised) touch launches the ball much further.</p>
+      <p style="margin-top:12px"><b>🏆 Ranked.</b> Single-player matches vs bots earn <b>RP</b> and climb the rank ladder (Wood → Legend); beating harder bots is worth more. <b>Training</b> mode is free practice with no clock. Tied timed games go to <b>sudden-death overtime</b>.</p>
       <p style="margin-top:12px"><b>⚡ Dribble.</b> Nudge the ball along with your body as you run, then tap KICK to fire it. Turn up the <b>Ball Magnet</b> in setup (0–100) to make the ball stick to your feet for easier carrying; 0 plays like a free puck.</p>
       <p style="margin-top:12px"><b>👥 2-Player.</b> Lay the phone flat between you. Player 1 uses the bottom controls, Player 2 the top (rotated) controls.</p>
       <p style="margin-top:12px"><b>🎮 Controllers.</b> Set <b>Input</b> to Controllers and connect gamepads (press a button to wake them). Each pad takes a seat — you first, then an opponent, then a teammate — so 2 pads is 1v1, 8 pads is a full 4v4. Left stick moves, <b>A / RT</b> kicks. Empty seats stay bots.</p>
@@ -358,6 +383,15 @@ const MODES = {
   '3v3':  { name:'3 v 3',   emoji:'⚔️', per:3, twoP:false, desc:'You + 2 bots' },
   '4v4':  { name:'4 v 4',   emoji:'🏟️', per:4, twoP:false, desc:'You + 3 bots' },
   'local':{ name:'2-Player',emoji:'🎮', per:1, twoP:true,  desc:'Same phone' },
+  'train':{ name:'Training',emoji:'🎯', per:0, twoP:false, train:true, desc:'Free practice' },
+};
+
+// Ball presets — objective physics changes (radius / mass via invMass / bounce / damping).
+const BALLS = {
+  normal: { name:'Normal', emoji:'⚽', r:10, invMass:1.0, bCoef:0.55, damp:0.992 },
+  big:    { name:'Big',    emoji:'🏐', r:15, invMass:1.3, bCoef:0.55, damp:0.992 },
+  heavy:  { name:'Heavy',  emoji:'🪨', r:11, invMass:0.6, bCoef:0.35, damp:0.985 },
+  bouncy: { name:'Bouncy', emoji:'🎾', r:9,  invMass:1.1, bCoef:0.92, damp:0.995 },
 };
 
 // Extra human seats are filled by connected gamepads when this is on, spread
@@ -386,7 +420,11 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 
 // ---------- State
 let profile = loadProfile();
-let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:30 };
+let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:30,
+            ball:'normal', handed:'right', sens:1.0 };
+const HANDED = { right:{ name:'Right', emoji:'👉' }, left:{ name:'Left', emoji:'👈' } };
+// Charge-kick: holding KICK winds up extra power (fires stronger the moment you touch the ball).
+const CHARGE = { max:0.6, bonus:0.9 };   // up to +90% power at 0.6s of hold
 
 let cv = document.getElementById('game');
 let ctx = cv.getContext('2d');
@@ -412,6 +450,42 @@ function loadProfile() {
 function saveProfile(){ try { localStorage.setItem('magnetball.profile', JSON.stringify(profile)); } catch(e){} }
 function loadSel(){ try { Object.assign(sel, JSON.parse(localStorage.getItem('magnetball.sel')||'{}')); } catch(e){} }
 function saveSel(){ try { localStorage.setItem('magnetball.sel', JSON.stringify(sel)); } catch(e){} }
+
+// ---------- Stats & rank (ELO-ish ladder vs bots)
+const RANKS = [
+  { min:0,    name:'Wood',     emoji:'🪵' },
+  { min:850,  name:'Bronze',   emoji:'🥉' },
+  { min:1050, name:'Silver',   emoji:'🥈' },
+  { min:1250, name:'Gold',     emoji:'🥇' },
+  { min:1450, name:'Platinum', emoji:'💎' },
+  { min:1650, name:'Diamond',  emoji:'🔷' },
+  { min:1850, name:'Legend',   emoji:'👑' },
+];
+function rankFor(points){ let r=RANKS[0]; for (const t of RANKS){ if (points>=t.min) r=t; } return r; }
+function defaultStats(){ return { points:1000, played:0, wins:0, losses:0, draws:0, gf:0, ga:0, streak:0, best:0 }; }
+function loadStats(){ let s={}; try { s=JSON.parse(localStorage.getItem('magnetball.stats')||'{}'); } catch(e){} return Object.assign(defaultStats(), s); }
+function saveStats(s){ try { localStorage.setItem('magnetball.stats', JSON.stringify(s)); } catch(e){} }
+let stats = loadStats();
+
+// Apply one match result for team 0 (you); returns the RP delta.
+function recordResult(w){
+  const diffIdx = Object.keys(DIFF).indexOf(sel.diff);          // 0..3 (easy..pro)
+  const my = w.score[0], opp = w.score[1];
+  let delta;
+  if (my > opp)      delta = 12 + diffIdx*8;                    // beat harder bots for more
+  else if (my < opp) delta = -(24 - diffIdx*5);                 // losing to easy bots hurts more
+  else               delta = (diffIdx - 1) * 3;                 // draws: small, sign by difficulty
+  stats.points = Math.max(0, stats.points + delta);
+  stats.played++;
+  if (my > opp){ stats.wins++; stats.streak = Math.max(1, stats.streak+1); }
+  else if (my < opp){ stats.losses++; stats.streak = Math.min(-1, stats.streak-1); }
+  else { stats.draws++; stats.streak = 0; }
+  stats.best = Math.max(stats.best, stats.streak);
+  stats.gf += my; stats.ga += opp;
+  saveStats(stats);
+  renderStats();
+  return delta;
+}
 loadSel();
 
 const $ = id => document.getElementById(id);
@@ -468,6 +542,26 @@ buildOpts('fields', FIELDS, 'field');
 buildOpts('diffs', DIFF, 'diff');
 buildOpts('lengths', LENGTHS, 'length');
 buildOpts('controllers', CONTROLLERS, 'controllers');
+buildOpts('balls', BALLS, 'ball');
+buildOpts('handed', HANDED, 'handed');
+
+// Stick sensitivity slider (0.6×..1.6×).
+const sensEl = $('sens'), sensValEl = $('sensVal');
+sensEl.value = Math.round(sel.sens*100); sensValEl.textContent = sel.sens.toFixed(1)+'×';
+sensEl.oninput = () => { sel.sens = +sensEl.value/100; saveSel(); sensValEl.textContent = sel.sens.toFixed(1)+'×'; };
+
+// Record / rank panel
+function renderStats(){
+  const r = rankFor(stats.points);
+  $('rankEmoji').textContent = r.emoji;
+  $('rankName').textContent = r.name;
+  $('rankPts').textContent = stats.points + ' RP';
+  const gd = stats.gf - stats.ga;
+  const streakTxt = stats.streak>0 ? ('W'+stats.streak) : stats.streak<0 ? ('L'+(-stats.streak)) : '—';
+  $('recLine').innerHTML = `${stats.wins}W · ${stats.losses}L · ${stats.draws}D  (${stats.played} played)<br>`
+    + `goals ${stats.gf}-${stats.ga} (${gd>=0?'+':''}${gd}) · streak ${streakTxt} · best W${Math.max(0,stats.best)}`;
+}
+renderStats();
 
 // Ball-magnet slider (0..100). Applies live if a match is already running.
 const magEl = $('magnet'), magValEl = $('magVal');
@@ -532,7 +626,10 @@ function startMatch(){
   // Human 1 on team 0.
   const you = mkPlayer(0, profile.name, profile.color, profile.cap, 'human1');
 
-  if (mode.twoP){
+  if (mode.train){
+    // Free practice: just you and the ball, no opponents, no clock.
+    players.push(you);
+  } else if (mode.twoP){
     // Local 2-player couch: two humans on one screen, split touch controls.
     players.push(you, mkPlayer(1, 'P2', '#5a7de0', 'stripe', 'human2'));
   } else {
@@ -561,17 +658,22 @@ function startMatch(){
     players = t0.concat(t1);
   }
 
+  const bp = BALLS[sel.ball] || BALLS.normal;
   world = {
     field, mode, len, diff: DIFF[sel.diff],
     magnet: sel.magnet,
+    train: !!mode.train,
     players,
-    ball: { x:0, y:0, vx:0, vy:0, r:BALL.r, invMass:BALL.invMass, bCoef:BALL.bCoef, damp:BALL.damp, isBall:true },
+    ball: { x:0, y:0, vx:0, vy:0, r:bp.r, invMass:bp.invMass, bCoef:bp.bCoef, damp:bp.damp, isBall:true },
     posts: [],
     walls: [],           // {a:{x,y}, b:{x,y}, bCoef}
     arcs:  [],           // rounded corners {cx,cy,r,a0,a1,bCoef}
     score: [0,0],
-    timeLeft: len.secs || 0,
-    goalsTarget: len.goals || 0,
+    // Training has no clock or target; timed games get sudden-death overtime if level.
+    timeLeft: mode.train ? 0 : (len.secs || 0),
+    goalsTarget: mode.train ? 0 : (len.goals || 0),
+    overtime: false,
+    practiceGoals: 0,
     state: 'kickoff',    // kickoff | play | goal | over
     stateT: 0,
     kickTeam: 1,         // which team kicks off (loser)
@@ -606,7 +708,7 @@ function mkPlayer(team, name, color, cap, ctrl){
   return {
     team, name, color, cap, ctrl, padIndex:-1,
     x:0, y:0, vx:0, vy:0, r:PLAYER.r, invMass:PLAYER.invMass, bCoef:PLAYER.bCoef, damp:PLAYER.damp,
-    inX:0, inY:0, kick:false, kickUsed:false,   // controller input
+    inX:0, inY:0, kick:false, kickUsed:false, chargeT:0,   // controller input + kick charge
     faceX:0, faceY:team===0?-1:1,
     aiT:0, aiTarget:{x:0,y:0}, aiKick:false,
   };
@@ -709,17 +811,25 @@ function step(w){
 
   // Timing / state machine
   if (w.state === 'goal'){
-    if (w.stateT > 1.8){ resetKickoff(w); w.state='kickoff'; w.stateT=0; }
+    if (w.stateT > 1.8){
+      if (w.overtime) endMatch(w);                 // golden goal — first goal in OT wins
+      else { resetKickoff(w); w.state='kickoff'; w.stateT=0; }
+    }
   } else if (w.state === 'kickoff'){
     if (w.stateT > 0.9){ w.state='play'; w.stateT=0; }
   } else if (w.state === 'over'){
     // frozen
   }
 
-  // Clock (only during play)
-  if (w.state==='play' && w.len.secs){
+  // Clock (only during play, and not in training). At 0: if level, go to
+  // sudden-death overtime; otherwise end the match.
+  if (w.state==='play' && w.len.secs && !w.overtime){
     w.timeLeft -= STEP;
-    if (w.timeLeft <= 0){ w.timeLeft = 0; endMatch(w); }
+    if (w.timeLeft <= 0){
+      w.timeLeft = 0;
+      if (w.score[0] === w.score[1]){ w.overtime = true; showBanner('OVERTIME!', 'var(--accent)'); }
+      else endMatch(w);
+    }
     updateClock(w);
   }
 
@@ -732,6 +842,11 @@ function step(w){
       else if (p.ctrl==='human2') applyHumanInput(p, pads.p2);
       else if (p.ctrl==='gamepad') applyHumanInput(p, gamepadPad(p.padIndex));
       else if (p.ctrl==='bot') runBot(w, p);
+    }
+    // Kick charge: holding KICK winds up power; released or idle resets.
+    for (const p of w.players){
+      if (p.kick) p.chargeT = Math.min(CHARGE.max, p.chargeT + STEP);
+      else p.chargeT = 0;
     }
   }
 
@@ -839,10 +954,13 @@ function handleBallControl(w, p, ball, ballFrozen){
       if (dist > 0.001){ nx = dx/dist; ny = dy/dist; }
       else { nx = p.faceX; ny = p.faceY; }
       let power = PLAYER.kick * (p.ctrl==='bot' ? (w.diff.power) : 1);
+      // Hold-charge: the longer KICK was held before contact, the stronger the shot.
+      power *= 1 + (p.chargeT / CHARGE.max) * CHARGE.bonus;
       // Magnet charge: a ball held close by the magnet launches further when
       // kicked, scaling with the magnet strength (up to +70% at magnet 100).
       if (w.magnet > 0 && dist < sum + 22) power *= 1 + (w.magnet/100) * 0.7;
       ball.vx += nx * power; ball.vy += ny * power;
+      p.chargeT = 0;
       p.kickUsed = true;
       spawnKickFx(ball.x, ball.y, nx, ny);
     }
@@ -941,13 +1059,19 @@ function collideArc(d, arc){
 
 function checkGoal(w){
   const ball = w.ball, halfL = w.field.L/2, gh = w.field.goal/2;
-  // top goal (y < -halfL): scored by team 0 (attacks up)
-  if (ball.y < -halfL + ball.r*0.4 && Math.abs(ball.x) < gh){
-    scoreGoal(w, 0); return;
+  const inTop = ball.y < -halfL + ball.r*0.4 && Math.abs(ball.x) < gh;
+  const inBot = ball.y > halfL - ball.r*0.4 && Math.abs(ball.x) < gh;
+  if (!inTop && !inBot) return;
+  if (w.train){
+    // Practice: count the goal, flash the banner, and re-serve the ball at centre.
+    w.practiceGoals++;
+    showBanner('GOAL!', 'var(--accent)');
+    fx.length = 0; for (let i=0;i<20;i++) spawnConfetti(ball.x, ball.y);
+    ball.x = 0; ball.y = 0; ball.vx = 0; ball.vy = 0;
+    updateScoreUI();
+    return;
   }
-  if (ball.y > halfL - ball.r*0.4 && Math.abs(ball.x) < gh){
-    scoreGoal(w, 1); return;
-  }
+  scoreGoal(w, inTop ? 0 : 1);
 }
 function scoreGoal(w, team){
   w.score[team]++;
@@ -972,6 +1096,12 @@ function endMatch(w){
   if (w.mode.twoP){
     if (w.score[0]>w.score[1]) title='PLAYER 1 WINS 🏆';
     else if (w.score[1]>w.score[0]) title='PLAYER 2 WINS 🏆';
+  }
+  // Record ranked stats for single-player matches vs bots (not couch or training).
+  if (!w.mode.twoP && !w.train){
+    const delta = recordResult(w);
+    const sign = delta>0 ? '+' : '';
+    sub += `   ·   ${sign}${delta} RP`;
   }
   showResult(title, sub);
 }
@@ -1329,7 +1459,10 @@ function zoneForTouch(x, y){
       return { pad:'p2', kind: rightHalf ? 'kick' : 'move' };
     }
   } else {
-    return { pad:'p1', kind: rightHalf ? 'move' : 'kick' };
+    // Left-handed swaps the move/kick sides.
+    const moveOnRight = sel.handed !== 'left';
+    const isMove = moveOnRight ? rightHalf : !rightHalf;
+    return { pad:'p1', kind: isMove ? 'move' : 'kick' };
   }
 }
 
@@ -1344,13 +1477,15 @@ function onDown(id, x, y){
   }
 }
 function onMove(id, x, y){
+  // Sensitivity shrinks the effective joystick radius, so a shorter drag reaches full tilt.
+  const R = JOY_R / (sel.sens || 1);
   for (const key of ['p1','p2']){
     const pad = pads[key];
     if (pad.move.id === id){
       let dx = x - pad.move.cx, dy = y - pad.move.cy;
       const mag = Math.hypot(dx,dy);
-      if (mag > JOY_R){ dx = dx/mag*JOY_R; dy = dy/mag*JOY_R; }
-      pad.dx = dx/JOY_R; pad.dy = dy/JOY_R;
+      if (mag > R){ dx = dx/mag*R; dy = dy/mag*R; }
+      pad.dx = dx/R; pad.dy = dy/R;
     }
   }
 }
@@ -1439,17 +1574,26 @@ function drawPad(pad, isP2){
 }
 function restingJoyPos(isP2){
   const m = 70;
-  if (!isP2) return { jx: cw - m, jy: ch - m };       // p1 bottom-right
-  return { jx: m, jy: m };                              // p2 top-left (their right)
+  if (isP2) return { jx: m, jy: m };                   // p2 top-left (their right)
+  // p1: bottom-right for right-handed, bottom-left for left-handed
+  return sel.handed==='left' ? { jx: m, jy: ch - m } : { jx: cw - m, jy: ch - m };
 }
 function drawKickMarker(pad, isP2){
   const m = 70;
   let kx, ky;
-  if (!isP2){ kx = m; ky = ch - m; }                    // p1 bottom-left
-  else { kx = cw - m; ky = m; }                         // p2 top-right
+  if (isP2){ kx = cw - m; ky = m; }                     // p2 top-right
+  else if (sel.handed==='left'){ kx = cw - m; ky = ch - m; }  // p1 left-handed → kick bottom-right
+  else { kx = m; ky = ch - m; }                         // p1 bottom-left
   ctx.globalAlpha = pad.kick ? 0.6 : 0.3;
   dot(kx,ky,KICK_R,'#35dd66');
   ctx.globalAlpha = 1;
+  // Charge ring: grows as the human holds KICK before contact.
+  const owner = world && world.players.find(p => p.ctrl === (isP2 ? 'human2' : 'human1'));
+  if (owner && owner.chargeT > 0.01){
+    const frac = Math.min(1, owner.chargeT / CHARGE.max);
+    ctx.beginPath(); ctx.arc(kx, ky, KICK_R*0.78, -Math.PI/2, -Math.PI/2 + frac*2*Math.PI);
+    ctx.strokeStyle = '#ffd400'; ctx.lineWidth = 5; ctx.stroke();
+  }
   ctx.fillStyle = '#04220f';
   ctx.font=`10px 'PixAmiga', monospace`;
   ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -1465,10 +1609,17 @@ function dot(x,y,r,c){ ctx.beginPath(); ctx.arc(x,y,r,0,2*Math.PI); ctx.fillStyl
 // ============================================================
 function updateScoreUI(){
   if (!world) return;
+  if (world.train){
+    $('scoreR').textContent = '';
+    $('scoreB').textContent = world.practiceGoals;
+    return;
+  }
   $('scoreR').textContent = world.score[0];
   $('scoreB').textContent = world.score[1];
 }
 function updateClock(w){
+  if (w.train){ $('clock').textContent = '🎯'; return; }
+  if (w.overtime){ $('clock').textContent = 'OT'; return; }
   if (!w.len.secs){ $('clock').textContent = w.goalsTarget ? `to ${w.goalsTarget}` : '∞'; return; }
   const s = Math.max(0, Math.ceil(w.timeLeft));
   const m = Math.floor(s/60), ss = s%60;

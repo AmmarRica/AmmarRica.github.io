@@ -9,6 +9,14 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 
 ---
 
+## ✅ Shipped in the latest update
+- **Charge-kick power meter** (#1) — hold KICK to wind up power (pad ring fills)
+- **Local stats + Rank/ELO ladder** (#3, #8) — RP, Wood→Legend ranks, W/L/D, goals, streaks
+- **Golden-goal overtime** (#5) — tied timed matches go to sudden death
+- **Training mode** (#11) — free practice, no clock/opponents
+- **Control tuning** (#6) — left-handed swap + stick sensitivity
+- **Ball presets** (#17) — Normal / Big / Heavy / Bouncy
+
 ## ✅ Already in Magnetball
 - Mobile-native, touch dual-thumb controls — *the single most-requested platform gap*
 - 1v1 / 2v2 / 3v3 / 4v4 vs bots, difficulty tiers
