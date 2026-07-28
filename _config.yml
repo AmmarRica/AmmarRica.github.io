@@ -81,3 +81,4 @@ exclude:
   - .bundle
   - .jekyll-cache
   - README.md
+  - tests
