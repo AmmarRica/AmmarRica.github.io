@@ -288,9 +288,9 @@
       <label class="field">Input <small id="padInfo" style="color:var(--muted)"></small></label>
       <div class="opts" id="controllers"></div>
       <div style="height:14px"></div>
-      <label class="field">Ball magnet <small id="magVal" style="color:var(--accent); font-weight:700">30</small></label>
-      <input id="magnet" class="slider" type="range" min="0" max="100" step="5" value="30" />
-      <div class="hint" style="text-align:left; margin-top:4px">0 = free puck · 100 = ball sticks to your feet</div>
+      <label class="field">Ball magnet <small id="magVal" style="color:var(--accent); font-weight:700">0</small></label>
+      <input id="magnet" class="slider" type="range" min="0" max="100" step="5" value="0" />
+      <div class="hint" style="text-align:left; margin-top:4px">Hold KICK to trap the ball, release to shoot. Magnet 0 = off; higher = passive stick while dribbling.</div>
       <div style="height:14px"></div>
       <label class="field">Ball</label>
       <div class="opts" id="balls"></div>
@@ -326,8 +326,8 @@
     <div class="card" style="line-height:1.6; font-size:15px; color:#cdd5ee">
       <p><b>🎯 Goal.</b> Push the ball into the opponent's net. Most goals before the clock runs out wins.</p>
       <p style="margin-top:12px"><b>🕹️ Move.</b> Touch and drag anywhere on the <b>right</b> half — a joystick appears under your thumb. Drag to steer; further = faster.</p>
-      <p style="margin-top:12px"><b>👟 Kick.</b> Hold the <b>KICK</b> pad (bottom-left) with your other thumb. You kick the instant you touch the ball, once per press — release and press again to kick again.</p>
-      <p style="margin-top:12px"><b>⚡ Charge shot.</b> Hold KICK <i>before</i> you reach the ball to wind up power — the yellow ring on the pad fills. A charged (or magnetised) touch launches the ball much further.</p>
+      <p style="margin-top:12px"><b>👟 Trap &amp; shoot.</b> Hold the <b>KICK</b> pad and run into the ball — it sticks to your feet for up to half a second so you can line up. <b>Let go to kick or pass</b> in the way you're facing. The longer you hold, the harder the shot (the yellow ring shows the charge).</p>
+      <p style="margin-top:12px"><b>🧲 Magnet.</b> By default the ball is free once you release. Turn up <b>Ball Magnet</b> in setup for a passive stick that keeps the ball at your feet even without holding KICK.</p>
       <p style="margin-top:12px"><b>🏆 Ranked.</b> Single-player matches vs bots earn <b>RP</b> and climb the rank ladder (Wood → Legend); beating harder bots is worth more. <b>Training</b> mode is free practice with no clock. Tied timed games go to <b>sudden-death overtime</b>.</p>
       <p style="margin-top:12px"><b>⚡ Dribble.</b> Nudge the ball along with your body as you run, then tap KICK to fire it. Turn up the <b>Ball Magnet</b> in setup (0–100) to make the ball stick to your feet for easier carrying; 0 plays like a free puck.</p>
       <p style="margin-top:12px"><b>👥 2-Player.</b> Lay the phone flat between you. Player 1 uses the bottom controls, Player 2 the top (rotated) controls.</p>
@@ -389,6 +389,7 @@ const MODES = {
   '2v2':  { name:'2 v 2',   emoji:'👥', per:2, twoP:false, desc:'You + bot' },
   '3v3':  { name:'3 v 3',   emoji:'⚔️', per:3, twoP:false, desc:'You + 2 bots' },
   '4v4':  { name:'4 v 4',   emoji:'🏟️', per:4, twoP:false, desc:'You + 3 bots' },
+  'duo':  { name:'Duo',     emoji:'👯', per:2, twoP:false, duo:true, desc:'Steer 2 at once' },
   'local':{ name:'2-Player',emoji:'🎮', per:1, twoP:true,  desc:'Same phone' },
   'train':{ name:'Training',emoji:'🎯', per:0, twoP:false, train:true, desc:'Free practice' },
 };
@@ -437,11 +438,13 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 
 // ---------- State
 let profile = loadProfile();
-let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:30,
+let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
             ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off' };
 const HANDED = { right:{ name:'Right', emoji:'👉' }, left:{ name:'Left', emoji:'👈' } };
 // Charge-kick: holding KICK winds up extra power (fires stronger the moment you touch the ball).
 const CHARGE = { max:0.6, bonus:0.9 };   // up to +90% power at 0.6s of hold
+// Trap-and-release: humans hold KICK to stick the ball to their feet, then let go to shoot.
+const TRAP = { max:0.5 };                // ball stays stuck for at most half a second
 
 let cv = document.getElementById('game');
 let ctx = cv.getContext('2d');
@@ -661,6 +664,9 @@ function startMatch(){
     const t1names = pickNames(per, used);
     for(let i=0;i<per;i++) t1.push(mkPlayer(1, t1names[i], teamTint(1,i), randCap(i+3), 'bot'));
 
+    // Duo mode: you steer BOTH of your players at once (same joystick + KICK).
+    if (mode.duo){ for (const pl of t0){ pl.ctrl = 'human1'; pl.color = profile.color; } }
+
     // Hand connected controllers to seats in an interleaved order so each extra
     // controller fills the next most useful slot: you → opponent → teammate → …
     // Any seat without a controller stays a bot. (You keep touch if you have no pad.)
@@ -736,6 +742,7 @@ function mkPlayer(team, name, color, cap, ctrl){
     team, name, color, cap, ctrl, padIndex:-1,
     x:0, y:0, vx:0, vy:0, r:PLAYER.r, invMass:PLAYER.invMass, bCoef:PLAYER.bCoef, damp:PLAYER.damp,
     inX:0, inY:0, kick:false, kickUsed:false, chargeT:0,   // controller input + kick charge
+    trap:false, trapT:0, trapUsed:false,                   // human trap-and-release state
     faceX:0, faceY:team===0?-1:1,
     aiT:0, aiTarget:{x:0,y:0}, aiKick:false,
   };
@@ -796,7 +803,7 @@ function resetKickoff(w, initial){
   layTeam(t0, +1, halfL);   // team0 attacks up, starts on bottom half (+y)
   layTeam(t1, -1, halfL);   // team1 on top half (-y)
 
-  for (const p of w.players){ p.kickUsed=false; p.kick=false; p.inX=0; p.inY=0; }
+  for (const p of w.players){ p.kickUsed=false; p.kick=false; p.inX=0; p.inY=0; p.trap=false; p.trapT=0; p.trapUsed=false; p.chargeT=0; }
   w.state = 'kickoff'; w.stateT = 0;
 }
 function layTeam(list, side, halfL){
@@ -998,25 +1005,39 @@ function handleBallControl(w, p, ball, ballFrozen){
   const dx = ball.x - p.x, dy = ball.y - p.y;
   const dist = Math.hypot(dx,dy);
   const sum = p.r + ball.r;
-  // Kick: one-shot per press, fires the instant ball is in range
-  if (p.kick && !p.kickUsed){
-    if (dist < sum + PLAYER.kickRange){
+
+  if (p.ctrl === 'bot'){
+    // Bots keep the instant one-shot kick (fires the moment they touch the ball).
+    if (p.kick && !p.kickUsed && dist < sum + PLAYER.kickRange){
       let nx, ny;
-      if (dist > 0.001){ nx = dx/dist; ny = dy/dist; }
-      else { nx = p.faceX; ny = p.faceY; }
-      let power = PLAYER.kick * (p.ctrl==='bot' ? (w.diff.power) : 1);
-      // Hold-charge: the longer KICK was held before contact, the stronger the shot.
-      power *= 1 + (p.chargeT / CHARGE.max) * CHARGE.bonus;
-      // Magnet charge: a ball held close by the magnet launches further when
-      // kicked, scaling with the magnet strength (up to +70% at magnet 100).
+      if (dist > 0.001){ nx = dx/dist; ny = dy/dist; } else { nx = p.faceX; ny = p.faceY; }
+      let power = PLAYER.kick * w.diff.power;
       if (w.magnet > 0 && dist < sum + 22) power *= 1 + (w.magnet/100) * 0.7;
       ball.vx += nx * power; ball.vy += ny * power;
-      p.chargeT = 0;
       p.kickUsed = true;
       spawnKickFx(ball.x, ball.y, nx, ny);
     }
+    if (!p.kick) p.kickUsed = false;
+  } else if (!ballFrozen){
+    // Humans: hold KICK to TRAP the ball to your feet (max 0.5s), release to
+    // kick/pass in the facing direction. Holding longer charges a stronger shot.
+    if (p.kick){
+      if (!p.trap && !p.trapUsed && dist < sum + PLAYER.kickRange){
+        p.trap = true; p.trapT = 0;                       // ball just touched — grab it
+      }
+      if (p.trap){
+        p.trapT += STEP;
+        let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
+        const hold = sum + 1;
+        ball.x = p.x + fx*hold; ball.y = p.y + fy*hold;   // glued just ahead of the feet
+        ball.vx = p.vx; ball.vy = p.vy;                    // travels with you
+        if (p.trapT >= TRAP.max) releaseTrap(w, p, ball);  // can't hold longer than 0.5s
+      }
+    } else {
+      if (p.trap) releaseTrap(w, p, ball);                 // let go → kick / pass
+      p.trap = false; p.trapUsed = false;
+    }
   }
-  if (!p.kick) p.kickUsed = false;
 
   // Ball magnet: an optional pull that holds the ball to your feet. Strength is
   // the match's 0..100 setting (0 = free puck, no pull). While not kicking and
@@ -1024,7 +1045,10 @@ function handleBallControl(w, p, ball, ballFrozen){
   // its velocity toward the player's so it travels along as you dribble. A kick
   // is a big one-shot impulse that easily overpowers the pull, so shooting still
   // sends the ball flying even at full magnet.
-  const mag = (w.magnet||0) / 100;
+  let mag = (w.magnet||0) / 100;
+  // Bots always get a light stick so they can control and finish even when the
+  // player's magnet is 0 (they can't "trap" like humans do).
+  if (p.ctrl === 'bot') mag = Math.max(mag, 0.4);
   if (mag > 0 && !ballFrozen && !p.kick && dist < sum + 18){
     let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
     const hold = sum + 1;                       // rest just in front of the feet
@@ -1034,6 +1058,17 @@ function handleBallControl(w, p, ball, ballFrozen){
     ball.vx += (p.vx - ball.vx) * mag * 0.10;   // carry the ball with you
     ball.vy += (p.vy - ball.vy) * mag * 0.10;
   }
+}
+
+// Release a trapped ball as a kick/pass in the player's facing direction. Power
+// scales with how long KICK was held (charge) and adds the player's momentum.
+function releaseTrap(w, p, ball){
+  let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
+  let power = PLAYER.kick * (1 + (p.chargeT / CHARGE.max) * CHARGE.bonus);
+  if (w.magnet > 0) power *= 1 + (w.magnet/100) * 0.7;
+  ball.vx = fx*power + p.vx; ball.vy = fy*power + p.vy;
+  p.trap = false; p.trapUsed = true; p.chargeT = 0;
+  spawnKickFx(ball.x, ball.y, fx, fy);
 }
 
 // Elastic disc-disc collision weighted by inverse mass.
@@ -1240,17 +1275,21 @@ function runBot(w, p){
   // range AND positioned behind the ball relative to the goal — the kick pushes
   // the ball along the player->ball line, so that sends it goalward. Also clear
   // when the ball is deep in our own half.
+  // Kick ONLY when near-touching AND genuinely behind the ball relative to the
+  // opponent goal, so the player->ball kick always sends it goalward. (Kicking
+  // from far or the wrong side used to knock it into our own net now that the
+  // ball no longer sticks to the bot's feet.)
   const dBall = Math.sqrt(dist2(p, ball));
-  const inRange = dBall < p.r + ball.r + PLAYER.kickRange + 3;
+  const inRange = dBall < p.r + ball.r + 9;
   let ogx = oppGoal.x - ball.x, ogy = oppGoal.y - ball.y;
   const ogl = Math.hypot(ogx,ogy)||1; ogx/=ogl; ogy/=ogl;
-  const behindBall = ((ball.x-p.x)*ogx + (ball.y-p.y)*ogy) > -1;   // ball is ahead of us toward goal
-  const nearOwnGoal = (ball.y*attackDir < -halfL*0.5);
-  const kickNow = inRange && (behindBall || nearOwnGoal);
+  let pbx = ball.x-p.x, pby = ball.y-p.y; const pbl = Math.hypot(pbx,pby)||1; pbx/=pbl; pby/=pbl;
+  const align = pbx*ogx + pby*ogy;                 // how well player->ball points at the goal
+  const behindBall = align > 0.2;                  // forward-only: never kicks toward our own net
   // The kick is one-shot (fires on press, re-arms on release). A bot that just
   // holds it would kick once and then only body-push the ball, so release for a
   // frame right after a kick lands to re-arm — giving a steady tap-tap of kicks.
-  p.kick = kickNow && !p.kickUsed;
+  p.kick = inRange && behindBall && !p.kickUsed;
   if (p.kick){ p.faceX = ogx; p.faceY = ogy; }
 }
 
