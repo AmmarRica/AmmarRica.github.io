@@ -1743,6 +1743,39 @@
   if ('serviceWorker' in navigator && location.protocol === 'https:'){
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+
+  // Demo / auto-play (AI tester hook) — auto-solves and cycles through sizes.
+  (function(){
+    let demoTimer = null, sizeIdx = 0;
+    function progressPct(){
+      if (!cur) return 0;
+      let need = 0, have = 0;
+      for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++){
+        if (cur.sol[r][c]) { need++; if (cur.state[r * cur.W + c] === FILL) have++; }
+      }
+      return need ? Math.round(have / need * 100) : 0;
+    }
+    function nextCell(){ // first still-needed FILL cell
+      for (let r = 0; r < cur.H; r++) for (let c = 0; c < cur.W; c++){
+        if (cur.sol[r][c] && cur.state[r * cur.W + c] !== FILL) return [r, c];
+      }
+      return null;
+    }
+    function tick(){
+      if (!cur) { startPuzzle(SIZE_ORDER[0], 0); return; }
+      const nc = nextCell();
+      if (nc) { applyCell(nc[0], nc[1], FILL); if (checkWin()) onWin(); }
+      else { sizeIdx = (sizeIdx + 1) % SIZE_ORDER.length; startPuzzle(SIZE_ORDER[sizeIdx], 0); } // next mode
+    }
+    function startDemo(){ if (demoTimer) return; if (!cur) startPuzzle(SIZE_ORDER[0], 0); tick(); demoTimer = setInterval(tick, 110); }
+    function stopDemo(){ clearInterval(demoTimer); demoTimer = null; }
+    window.__nonogram = {
+      setDemo: v => v ? startDemo() : stopDemo(), startDemo, stopDemo,
+      state: () => ({ progress: progressPct(), score: progressPct(),
+                      size: cur ? cur.size : null, mode: cur ? cur.size : null,
+                      solved: cur ? checkWin() : false }),
+    };
+  })();
   </script>
 </body>
 </html>

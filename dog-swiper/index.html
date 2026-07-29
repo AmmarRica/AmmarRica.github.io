@@ -642,6 +642,23 @@ function showResults() {
 
 // ── Start ────────────────────────────────────────────────
 init();
+
+// ── Demo / auto-play (AI tester hook) ─────────────────────
+(function(){
+  let demoTimer = null, moves = 0;
+  function tick(){
+    if (deck.length === 0) { init(); return; }          // restart when the deck empties
+    const top = document.querySelector('.card--top');
+    if (top) { flyOff(top, Math.random() < 0.6 ? 'yes' : 'no'); moves++; }
+  }
+  function startDemo(){ if (demoTimer) return; tick(); demoTimer = setInterval(tick, 620); }
+  function stopDemo(){ clearInterval(demoTimer); demoTimer = null; }
+  window.__dog = {
+    setDemo: v => v ? startDemo() : stopDemo(), startDemo, stopDemo,
+    state: () => ({ score: liked.length, progress: moves, seen: BREEDS.length - deck.length,
+                    total: BREEDS.length, mode: 'swipe', done: deck.length === 0 }),
+  };
+})();
 </script>
 </body>
 </html>

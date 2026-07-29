@@ -1502,6 +1502,31 @@ modeBattleBtn.addEventListener('click', () => setMode('battle'));
 
 /* Update collection counter to reflect dynamic roster size */
 counter.textContent = `1 / ${PLAYERS.length}`;
+
+/* Demo / auto-play (AI tester hook) — plays the BATTLE mode optimally. */
+(function(){
+  let demoTimer = null;
+  const STATS = ['speed', 'power', 'hands', 'awareness'];
+  function bestStat(){
+    const you = PLAYERS[battleState.youCard], cpu = PLAYERS[battleState.cpuCard];
+    let best = STATS[0], bestMargin = -Infinity;
+    for (const k of STATS){ const m = (you[k] || 0) - (cpu[k] || 0); if (m > bestMargin){ bestMargin = m; best = k; } }
+    return best;
+  }
+  function tick(){
+    if (battleState.youCard === null) { initBattle(); return; }
+    if (!battleState.resolved) handleStatPick(bestStat());  // pick the winning stat
+    else newBattleRound();
+  }
+  function startDemo(){ setMode('battle'); if (demoTimer) return; tick(); demoTimer = setInterval(tick, 800); }
+  function stopDemo(){ clearInterval(demoTimer); demoTimer = null; }
+  window.__gridiron = {
+    setDemo: v => v ? startDemo() : stopDemo(), startDemo, stopDemo,
+    state: () => ({ score: battleState.you, you: battleState.you, cpu: battleState.cpu,
+                    round: battleState.round, resolved: battleState.resolved,
+                    mode: battleView.classList.contains('active') ? 'battle' : 'collection' }),
+  };
+})();
 </script>
 </body>
 </html>
