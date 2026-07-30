@@ -184,10 +184,10 @@
     .scorebug .rd { color: var(--red); text-shadow: 0 0 10px rgba(255,59,107,.6); }
     .scorebug .bl { color: var(--cyan); text-shadow: 0 0 10px rgba(33,230,255,.6); }
     .scorebug .tm { font-size: 11px; color: var(--yellow); min-width: 46px; text-align:center; }
-    #pauseBtn {
+    #pauseBtn, #resetBtn {
       pointer-events: auto; background: rgba(6,8,16,.7); border: 1px solid var(--edge);
       backdrop-filter: blur(6px);
-      color: var(--text); width: 40px; height: 40px; border-radius: 50%; font-size: 15px; cursor: pointer;
+      color: var(--text); width: 40px; height: 40px; border-radius: 50%; font-size: 18px; cursor: pointer;
     }
 
     /* Toast / goal banner — glows in its own colour */
@@ -229,7 +229,8 @@
   <!-- HUD -->
   <div id="hud" class="hidden">
     <button id="pauseBtn" aria-label="Pause">⏸</button>
-    <div class="scorebug">
+    <button id="resetBtn" aria-label="Reset" style="display:none">↺</button>
+    <div class="scorebug" id="scorebug">
       <span class="sc rd" id="scoreR">0</span>
       <span class="tm" id="clock">5:00</span>
       <span class="sc bl" id="scoreB">0</span>
@@ -316,8 +317,19 @@
     </div>
 
     <button class="primary" id="playBtn">KICK OFF ▶</button>
+    <button class="ghost" id="drillsBtn" style="margin-top:12px">🎯 Practice Drills</button>
     <button class="ghost" id="howBtn" style="margin-top:12px">How to play</button>
     <div class="footlink">A fast physics soccer game — built for touch.</div>
+  </div>
+
+  <!-- ===================== DRILLS LIST ===================== -->
+  <div id="drills" class="screen hidden">
+    <div class="logo"><h1 style="font-size:30px">DRILLS</h1><p>Skill challenges · beat your best time</p></div>
+    <div class="card">
+      <h2>Choose a drill</h2>
+      <div class="opts" id="drillList"></div>
+    </div>
+    <button class="ghost" id="drillsBack">← Back</button>
   </div>
 
   <!-- ===================== HOW TO PLAY ===================== -->
@@ -617,12 +629,30 @@ window.addEventListener('gamepaddisconnected', updatePadInfo);
 $('playBtn').onclick = startMatch;
 $('howBtn').onclick = () => { $('setup').classList.add('hidden'); $('how').classList.remove('hidden'); };
 $('howBack').onclick = () => { $('how').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+$('drillsBtn').onclick = openDrills;
+$('drillsBack').onclick = () => { $('drills').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 
 // Overlay buttons
 $('pauseBtn').onclick = () => togglePause(true);
+$('resetBtn').onclick = () => { if (world && world.drillMode) resetDrill(); };
 $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
+
+function hideScreens(){ ['setup','how','drills'].forEach(id=>$(id).classList.add('hidden')); }
+function openDrills(){
+  hideScreens(); $('hud').classList.add('hidden'); hideOverlay();
+  $('drills').classList.remove('hidden');
+  const wrap = $('drillList'); wrap.innerHTML='';
+  DRILL_KEYS.forEach(key=>{
+    const dl = DRILLS[key]; const best = drillBest[key];
+    const el = document.createElement('div'); el.className='opt';
+    el.innerHTML = `<span class="emoji">${dl.emoji}</span><span>${dl.name}</span>`+
+      `<small>${best!=null?('best '+best.toFixed(2)+'s'):dl.desc.slice(0,22)}</small>`;
+    el.onclick = () => startDrill(key);
+    wrap.appendChild(el);
+  });
+}
 
 // ============================================================
 //  NAME POOL for bots
@@ -717,9 +747,11 @@ function startMatch(){
   if (window.__MAGNETDEBUG) window.__magnet = { get world(){return world;}, pads };
 
   // UI
-  $('setup').classList.add('hidden');
-  $('how').classList.add('hidden');
+  drillKey = null;
+  hideScreens();
   $('hud').classList.remove('hidden');
+  $('scorebug').style.display='';
+  $('resetBtn').style.display='none';
   hideOverlay();
   $('ovRematch').style.display='none';
   running = true; paused = false;
@@ -842,6 +874,7 @@ function loop(t){
 }
 
 function step(w){
+  if (w.drillMode){ stepDrill(w); return; }
   w.stateT += STEP;
 
   // Timing / state machine
@@ -992,7 +1025,8 @@ function integrate(w, ballFrozen, playersFrozen){
 // net pocket only through the goal mouth. Backstop for any collision that slips.
 function clampBallInside(w){
   const b = w.ball, r = b.r;
-  const halfW = w.field.W/2, halfL = w.field.L/2, gh = w.field.goal/2, net = w.field.net;
+  const halfW = w.field.W/2, halfL = w.field.L/2;
+  const gh = w.drillMode ? -1 : w.field.goal/2, net = w.drillMode ? 0 : w.field.net;
   if (b.x < -halfW + r){ b.x = -halfW + r; if (b.vx < 0) b.vx = -b.vx*0.3; }
   if (b.x >  halfW - r){ b.x =  halfW - r; if (b.vx > 0) b.vx = -b.vx*0.3; }
   const inGoalX = Math.abs(b.x) < gh - r*0.5;
@@ -1337,8 +1371,228 @@ function computeCam(){
 function wx(x){ return cam.ox + x*cam.s; }
 function wy(y){ return cam.oy + y*cam.s; }
 
+// ============================================================
+//  PRACTICE DRILLS  (challenge mode)
+// ============================================================
+let drillKey = null;
+
+function loadDrillBest(){ try { return JSON.parse(localStorage.getItem('magnetball.drills')||'{}'); } catch(e){ return {}; } }
+function saveDrillBest(o){ try { localStorage.setItem('magnetball.drills', JSON.stringify(o)); } catch(e){} }
+let drillBest = loadDrillBest();
+
+// ---- primitives (populate a drill world)
+function dGate(w,x,y,gw,angDeg,opts){
+  opts=opts||{}; const a=angDeg*Math.PI/180, dx=Math.cos(a), dy=Math.sin(a), h=gw/2;
+  const p0={x:x-dx*h,y:y-dy*h}, p1={x:x+dx*h,y:y+dy*h};
+  const g={x,y,dx,dy,w:gw,p0,p1,done:false,solid:!!opts.solid};
+  const po0={x:p0.x,y:p0.y,vx:0,vy:0,r:7,invMass:0,bCoef:0.5,isPost:true};
+  const po1={x:p1.x,y:p1.y,vx:0,vy:0,r:7,invMass:0,bCoef:0.5,isPost:true};
+  w.posts.push(po0,po1); g.po0=po0; g.po1=po1;
+  if(opts.solid){ const len=opts.len||440;
+    g.wa0={a:{x:p0.x,y:p0.y},b:{x:p0.x-dx*len,y:p0.y-dy*len},bCoef:0.4};
+    g.wa1={a:{x:p1.x,y:p1.y},b:{x:p1.x+dx*len,y:p1.y+dy*len},bCoef:0.4};
+    w.walls.push(g.wa0,g.wa1);
+  }
+  w.gates.push(g); return g;
+}
+function dZone(w,x,y,r,kind){ const z={x,y,r,kind:kind||'reach',done:false,tin:0}; w.zones.push(z); return z; }
+function dCone(w,x,y){ w.cones.push({x,y}); w.posts.push({x,y,vx:0,vy:0,r:9,invMass:0,bCoef:0.6,isPost:true,isCone:true}); }
+function dWall(w,x1,y1,x2,y2){ w.walls.push({a:{x:x1,y:y1},b:{x:x2,y:y2},bCoef:0.4}); }
+function dSet(w,px,py,bx,by,bvx,bvy){ const p=w.players[0]; p.x=px;p.y=py;p.vx=0;p.vy=0;p.faceX=0;p.faceY=-1;p.trap=false;p.trapUsed=false;p.kick=false;p.kickUsed=false;p.chargeT=0;
+  w.ball.x=bx;w.ball.y=by;w.ball.vx=bvx||0;w.ball.vy=bvy||0; w.ball.px=bx; w.ball.py=by; }
+function drillBoundary(w){ const hw=w.field.W/2, hl=w.field.L/2, b=0.3;
+  w.walls.push({a:{x:-hw,y:-hl},b:{x:hw,y:-hl},bCoef:b},{a:{x:hw,y:-hl},b:{x:hw,y:hl},bCoef:b},
+               {a:{x:hw,y:hl},b:{x:-hw,y:hl},bCoef:b},{a:{x:-hw,y:hl},b:{x:-hw,y:-hl},bCoef:b});
+  w.bounds={halfW:hw,halfL:hl,gh:0,net:0}; }
+
+// ---- the 12+ drills. Each build() lays out gates / zones / cones on a fresh world.
+const DRILLS = {
+  y_pass:{ name:'Y-Passing', emoji:'🔱', unit:'s', desc:'Thread the three gates of the Y, in order', seq:true,
+    build(w){ drillBoundary(w); dSet(w,0,300,0,250); dGate(w,0,150,74,0); dGate(w,-120,-30,58,60); dGate(w,120,-30,58,-60); } },
+  free_kick:{ name:'Free Kick', emoji:'🧱', unit:'s', desc:'Run to the ball and angle it through the gap in the wall',
+    build(w){ drillBoundary(w); dSet(w,-130,320,-55,250); dGate(w,55,10,40,0,{solid:true,len:440}); } },
+  corners:{ name:'Corner Sniper', emoji:'🎯', unit:'s', desc:'Fire the ball through both top-corner gates',
+    build(w){ drillBoundary(w); dSet(w,0,300,0,215); dGate(w,-150,-330,58,60); dGate(w,150,-330,58,-60); } },
+  slalom:{ name:'Slalom', emoji:'⛷️', unit:'s', desc:'Weave the ball through every gate, in order', seq:true,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dCone(w,0,120); dCone(w,0,0); dCone(w,0,-120);
+      dGate(w,-72,180,50,70); dGate(w,72,60,50,-70); dGate(w,-72,-60,50,70); dGate(w,72,-180,50,-70); } },
+  long_ball:{ name:'Long Ball', emoji:'🎈', unit:'s', desc:'Pass it so it comes to REST inside the far circle',
+    build(w){ drillBoundary(w); dSet(w,0,320,0,300); dZone(w,0,-250,44,'settle'); } },
+  needles:{ name:'Threading Needles', emoji:'🪡', unit:'s', desc:'Thread three gates that keep getting narrower', seq:true,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,275); dGate(w,0,150,66,0); dGate(w,0,0,46,0); dGate(w,0,-150,30,0); } },
+  gate_rush:{ name:'Gate Rush', emoji:'⏱️', unit:'t', desc:'Thread all five scattered gates before time runs out', timed:22,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dGate(w,-130,175,48,80); dGate(w,140,70,48,-70);
+      dGate(w,-100,-45,48,60); dGate(w,120,-165,48,-60); dGate(w,-25,-305,48,10); } },
+  bank:{ name:'Bank Shot', emoji:'🎱', unit:'s', desc:'A wall blocks the way — bank the ball into the gate',
+    build(w){ drillBoundary(w); dSet(w,-130,300,-130,250); dWall(w,-30,90,-30,-380); dGate(w,110,-150,58,0); } },
+  trap_finish:{ name:'Trap & Finish', emoji:'🧤', unit:'s', desc:'Trap the incoming ball (hold KICK), then shoot the gate',
+    build(w){ drillBoundary(w); dSet(w,0,210,0,-110,0,6.5); dGate(w,0,-320,60,0); } },
+  precision:{ name:'Precision Touch', emoji:'🥅', unit:'s', desc:'Stop the ball inside each circle, in order', seq:true,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,295); dZone(w,-120,120,40,'settle'); dZone(w,120,-20,40,'settle'); dZone(w,0,-210,40,'settle'); } },
+  around_wall:{ name:'Around the Wall', emoji:'🧗', unit:'s', desc:'Work the ball around the wall and into the gate',
+    build(w){ drillBoundary(w); dSet(w,0,300,0,250); dWall(w,-125,60,125,60); dGate(w,0,-150,64,0); } },
+  power_alley:{ name:'Power Alley', emoji:'💥', unit:'s', desc:'Fire the ball straight down the corridor into the far gate',
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dWall(w,-42,250,-42,-250); dWall(w,42,250,42,-250); dGate(w,0,-300,58,0); } },
+  moving_gate:{ name:'Moving Gate', emoji:'↔️', unit:'s', desc:'Time your shot — the gate slides side to side', moving:true,
+    build(w){ drillBoundary(w); dSet(w,0,300,0,255); const g=dGate(w,0,-150,54,0); w.drill.mg={g,amp:135,spd:1.4,t:0}; } },
+};
+const DRILL_KEYS = Object.keys(DRILLS);
+
+function startDrill(key){
+  drillKey = key; const def = DRILLS[key];
+  world = {
+    field: FIELDS.classic, drillMode:true, magnet:0,
+    pAccel: PITCH.normal.accel, pDamp: PITCH.normal.damp,
+    players: [ mkPlayer(0, profile.name, profile.color, profile.cap, 'human1') ],
+    ball: { x:0,y:0,vx:0,vy:0,px:0,py:0, r:BALL.r, invMass:BALL.invMass, bCoef:BALL.bCoef, damp:BALL.damp, isBall:true },
+    walls:[], posts:[], arcs:[], gates:[], zones:[], cones:[],
+    state:'drill', stateT:0,
+    drill: { key, def, elapsed:0, complete:false, failed:false, timed:def.timed||0, timeLeft:def.timed||0 },
+  };
+  def.build(world);
+  world.drill.total = world.gates.length + world.zones.length;
+  if (window.__MAGNETDEBUG) window.__magnet = { get world(){return world;}, pads };
+
+  hideScreens();
+  $('hud').classList.remove('hidden');
+  $('scorebug').style.display='none';
+  $('resetBtn').style.display='';
+  hideOverlay();
+  running = true; paused = false; resize(); lastT=0; acc=0;
+  cancelAnimationFrame(rafId); rafId = requestAnimationFrame(loop);
+}
+function resetDrill(){ if (drillKey) startDrill(drillKey); }
+
+function stepDrill(w){
+  const d = w.drill;
+  if (d.complete || d.failed) return;                 // frozen — waiting for reset/next
+  d.elapsed += STEP;
+  if (d.moving) {} // handled below in mg
+  // moving gate
+  if (w.drill.mg){ const m=w.drill.mg; m.t+=STEP; const nx=Math.sin(m.t*m.spd)*m.amp; const g=m.g;
+    const ddx=nx-g.x; g.x=nx; g.p0.x+=ddx; g.p1.x+=ddx; g.po0.x+=ddx; g.po1.x+=ddx; }
+  // input + charge
+  const p = w.players[0];
+  applyHumanInput(p, pads.p1);
+  if (p.kick) p.chargeT = Math.min(CHARGE.max, p.chargeT + STEP); else p.chargeT = 0;
+  // physics (no goals; checkGoal is skipped because state!=='play')
+  integrate(w, false, false);
+  updateDrill(w);
+}
+
+// segment (a->b) vs (c->d) intersection
+function segCross(ax,ay,bx,by,cx,cy,dx,dy){
+  const r1=(bx-ax), r2=(by-ay), s1=(dx-cx), s2=(dy-cy);
+  const den = r1*s2 - r2*s1; if (Math.abs(den)<1e-9) return false;
+  const t = ((cx-ax)*s2 - (cy-ay)*s1)/den;
+  const u = ((cx-ax)*r2 - (cy-ay)*r1)/den;
+  return t>=0 && t<=1 && u>=0 && u<=1;
+}
+
+function updateDrill(w){
+  const d = w.drill, b = w.ball;
+  const speed = Math.hypot(b.vx,b.vy);
+  // active gates: for sequence, only the first undone; else all undone
+  const gates = w.gates, zones = w.zones;
+  const firstUndoneG = gates.findIndex(g=>!g.done);
+  gates.forEach((g,i)=>{
+    if (g.done) return;
+    if (d.def.seq && i!==firstUndoneG) return;
+    if (segCross(b.px,b.py,b.x,b.y, g.p0.x,g.p0.y, g.p1.x,g.p1.y)){
+      g.done=true; spawnConfetti(g.x,g.y); for(let k=0;k<10;k++) spawnConfetti(g.x,g.y);
+    }
+  });
+  const firstUndoneZ = zones.findIndex(z=>!z.done);
+  zones.forEach((z,i)=>{
+    if (z.done) return;
+    if (d.def.seq && i!==firstUndoneZ) return;
+    const inside = Math.hypot(b.x-z.x,b.y-z.y) < z.r;
+    if (z.kind==='settle'){
+      if (inside && speed < 0.6){ z.tin += STEP; if (z.tin > 0.35){ z.done=true; for(let k=0;k<12;k++) spawnConfetti(z.x,z.y); } }
+      else if (!inside) z.tin = 0;
+    } else if (inside){ z.done=true; for(let k=0;k<12;k++) spawnConfetti(z.x,z.y); }
+  });
+  b.px = b.x; b.py = b.y;
+
+  const doneCount = gates.filter(g=>g.done).length + zones.filter(z=>z.done).length;
+  d.doneCount = doneCount;
+  if (d.timed){ d.timeLeft = Math.max(0, d.timed - d.elapsed);
+    if (d.timeLeft<=0 && doneCount<d.total){ drillFail(w); return; } }
+  if (doneCount >= d.total && !d.complete) drillDone(w);
+}
+
+function drillDone(w){
+  const d = w.drill; d.complete = true;
+  // score: timed drills score = gates done? all done here; use time either way (lower is better)
+  const t = d.elapsed;
+  const prev = drillBest[d.key];
+  const isBest = prev==null || t < prev;
+  if (isBest){ drillBest[d.key] = +t.toFixed(2); saveDrillBest(drillBest); }
+  showBanner('COMPLETE!', 'var(--green)');
+  showDrillResult('COMPLETE! ✅', `Time ${t.toFixed(2)}s` + (isBest?'   ·   NEW BEST 🏆':(prev!=null?`   ·   best ${prev.toFixed(2)}s`:'')));
+}
+function drillFail(w){
+  w.drill.failed = true;
+  showBanner("TIME'S UP", 'var(--red)');
+  const done = w.drill.doneCount, tot = w.drill.total;
+  showDrillResult("TIME'S UP ⏱️", `${done}/${tot} gates — try again`);
+}
+function showDrillResult(title, sub){
+  paused = true;
+  $('ovTitle').textContent = title; $('ovSub').textContent = sub;
+  $('ovResume').textContent = 'Retry'; $('ovResume').style.display='';
+  $('ovRematch').textContent = 'Drills'; $('ovRematch').style.display='';
+  $('ovMenu').textContent = 'Main Menu';
+  $('ovResume').onclick = () => { hideOverlay(); resetDrill(); };
+  $('ovRematch').onclick = () => { hideOverlay(); openDrills(); };
+  $('overlay').classList.add('show');
+}
+
+// ---- drill rendering
+function renderDrill(){
+  const w = world;
+  ctx.clearRect(0,0,cw,ch); ctx.fillStyle='#04040a'; ctx.fillRect(0,0,cw,ch);
+  const b=w.bounds, s=cam.s;
+  // court
+  ctx.fillStyle='#0a1622';
+  ctx.fillRect(wx(-b.halfW),wy(-b.halfL),(b.halfW*2)*s,(b.halfL*2)*s);
+  ctx.strokeStyle='rgba(120,240,255,0.5)'; ctx.lineWidth=Math.max(2,3*s);
+  ctx.strokeRect(wx(-b.halfW),wy(-b.halfL),(b.halfW*2)*s,(b.halfL*2)*s);
+  // solid walls (obstacles) — draw the non-boundary ones
+  ctx.strokeStyle='#ff7ad0'; ctx.lineWidth=Math.max(3,4*s);
+  for (const g of w.gates){ if(g.solid){ for(const wl of [g.wa0,g.wa1]){ ctx.beginPath(); ctx.moveTo(wx(wl.a.x),wy(wl.a.y)); ctx.lineTo(wx(wl.b.x),wy(wl.b.y)); ctx.stroke(); } } }
+  drawFx(); drawBallTrail(w);
+  // zones
+  for (const z of w.zones){
+    ctx.beginPath(); ctx.arc(wx(z.x),wy(z.y),z.r*s,0,2*Math.PI);
+    ctx.strokeStyle = z.done ? '#35ff87' : '#ffe23d'; ctx.lineWidth=Math.max(2,3*s); ctx.setLineDash(z.done?[]:[8,7]); ctx.stroke(); ctx.setLineDash([]);
+    if (z.done){ ctx.fillStyle='rgba(53,255,135,0.14)'; ctx.fill(); }
+  }
+  // gates
+  const active = w.drill.def.seq ? w.gates.findIndex(g=>!g.done) : -1;
+  w.gates.forEach((g,i)=>{
+    const col = g.done ? '#35ff87' : (w.drill.def.seq && i!==active ? '#3a5878' : '#ffe23d');
+    ctx.beginPath(); ctx.moveTo(wx(g.p0.x),wy(g.p0.y)); ctx.lineTo(wx(g.p1.x),wy(g.p1.y));
+    ctx.strokeStyle=col; ctx.lineWidth=Math.max(3,5*s); ctx.stroke();
+    for(const po of [g.po0,g.po1]){ ctx.beginPath(); ctx.arc(wx(po.x),wy(po.y),po.r*s,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=Math.max(1,2*s); ctx.strokeStyle=col; ctx.stroke(); }
+  });
+  // cones
+  for (const ccn of w.cones){ ctx.beginPath(); ctx.arc(wx(ccn.x),wy(ccn.y),9*s,0,2*Math.PI); ctx.fillStyle='#ff8a1e'; ctx.fill(); ctx.strokeStyle='#000'; ctx.lineWidth=Math.max(1,2*s); ctx.stroke(); }
+  drawDiscs(w); drawBall(w);
+  // drill HUD text
+  const d=w.drill; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillStyle='#eaf2ff';
+  ctx.font=`12px 'PixAmiga', monospace`;
+  ctx.fillText(d.def.name.toUpperCase(), cw/2, 54);
+  ctx.font=`10px 'PixAmiga', monospace`; ctx.fillStyle='#9fe9ff';
+  const prog = `${d.doneCount||0}/${d.total}`;
+  const time = d.timed ? `${Math.ceil(d.timeLeft)}s` : `${d.elapsed.toFixed(1)}s`;
+  ctx.fillText(prog + '   ' + time, cw/2, 74);
+  drawControls();
+}
+
 function render(){
   if (!world) return;
+  if (world.drillMode){ renderDrill(); return; }
   ctx.clearRect(0,0,cw,ch);
   ctx.fillStyle = '#0a0d14';
   ctx.fillRect(0,0,cw,ch);
@@ -1745,6 +1999,7 @@ function showBanner(text, color){
 }
 function togglePause(p){
   if (!running || (world&&world.state==='over')) return;
+  if (world && world.drillMode && (world.drill.complete || world.drill.failed)) return;
   paused = p;
   if (p){ showOverlay('Paused','', true); }
   else hideOverlay();
@@ -1752,6 +2007,10 @@ function togglePause(p){
 function showOverlay(title, sub, resumable){
   $('ovTitle').textContent = title;
   $('ovSub').textContent = sub;
+  // Restore the standard match/pause buttons (the drill result repurposes them).
+  $('ovResume').textContent = 'Resume'; $('ovResume').onclick = () => togglePause(false);
+  $('ovRematch').textContent = 'Rematch'; $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
+  $('ovMenu').textContent = 'Main Menu';
   $('ovResume').style.display = resumable ? '' : 'none';
   $('ovRematch').style.display = resumable ? 'none' : '';
   $('overlay').classList.add('show');
@@ -1762,11 +2021,14 @@ function showResult(title, sub){
 }
 function hideOverlay(){ $('overlay').classList.remove('show'); }
 function toMenu(){
-  running=false; paused=false; world=null;
+  running=false; paused=false; world=null; drillKey=null;
   cancelAnimationFrame(rafId);
   ballTrail=[]; fx=[];
   $('hud').classList.add('hidden');
+  $('scorebug').style.display='';       // restore match scorebug
+  $('resetBtn').style.display='none';
   hideOverlay();
+  hideScreens();
   $('setup').classList.remove('hidden');
 }
 
