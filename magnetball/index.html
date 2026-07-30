@@ -396,18 +396,18 @@ const MODES = {
 
 // Ball presets — objective physics changes (radius / mass via invMass / bounce / damping).
 const BALLS = {
-  normal: { name:'Normal', emoji:'⚽', r:10, invMass:1.0, bCoef:0.55, damp:0.992 },
-  big:    { name:'Big',    emoji:'🏐', r:15, invMass:1.3, bCoef:0.55, damp:0.992 },
-  heavy:  { name:'Heavy',  emoji:'🪨', r:11, invMass:0.6, bCoef:0.35, damp:0.985 },
-  bouncy: { name:'Bouncy', emoji:'🎾', r:9,  invMass:1.1, bCoef:0.92, damp:0.995 },
+  normal: { name:'Normal', emoji:'⚽', r:10, invMass:1.0, bCoef:0.55, damp:0.990 },
+  big:    { name:'Big',    emoji:'🏐', r:15, invMass:1.3, bCoef:0.55, damp:0.990 },
+  heavy:  { name:'Heavy',  emoji:'🪨', r:11, invMass:0.6, bCoef:0.35, damp:0.984 },
+  bouncy: { name:'Bouncy', emoji:'🎾', r:9,  invMass:1.1, bCoef:0.92, damp:0.992 },
 };
 
 // Pitch surface — scales player grip: how quickly they accelerate and how much
 // they glide. Ice = slide a lot / low grip; Mud = sluggish / stops fast.
 const PITCH = {
-  normal: { name:'Grass', emoji:'🟩', accel:0.19,  damp:0.966 },
-  ice:    { name:'Ice',   emoji:'🧊', accel:0.135, damp:0.986 },
-  mud:    { name:'Mud',   emoji:'🟤', accel:0.165, damp:0.930 },
+  normal: { name:'Grass', emoji:'🟩', accel:0.40, damp:0.905 },
+  ice:    { name:'Ice',   emoji:'🧊', accel:0.26, damp:0.955 },   // slidey, floaty
+  mud:    { name:'Mud',   emoji:'🟤', accel:0.34, damp:0.86 },    // sluggish, stops fast
 };
 const SPECT = { play:{ name:'Play', emoji:'🎮' }, watch:{ name:'Watch', emoji:'👀' } };
 const CB    = { off:{ name:'Off', emoji:'🎨' }, on:{ name:'On', emoji:'🔶' } };
@@ -429,11 +429,11 @@ const LENGTHS = {
 
 // ---------- Physics constants (per fixed 1/60s step)
 const STEP = 1/60;
-// Momentum: low acceleration + high damping give players real inertia — they
-// take ~1s to wind up to top speed and coast when you let go, so starting,
-// stopping and reversing all carry weight for a momentum-driven feel.
-const PLAYER = { r:15, invMass:0.5, bCoef:0.45, damp:0.966, accel:0.19, kick:7.0, kickRange:14 };
-const BALL   = { r:10, invMass:1.0, bCoef:0.55, damp:0.992 };
+// Movement feel: snappier than before — reach a (lower) top speed in ~0.4s and
+// stop quickly when you let go (little float), while still carrying some weight.
+// terminal ≈ accel/(1-damp) ≈ 4.2 u/frame; ~0.38s to 90%; glide half-life ~0.12s.
+const PLAYER = { r:15, invMass:0.5, bCoef:0.45, damp:0.905, accel:0.40, kick:5.5, kickRange:14 };
+const BALL   = { r:10, invMass:1.0, bCoef:0.55, damp:0.990 };
 const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 
 // ---------- State
@@ -815,6 +815,7 @@ function layTeam(list, side, halfL){
     const depth = i===0 ? 0.30 : 0.55;
     p.x = off;
     p.y = side * halfL * depth;
+    p.homeX = p.x; p.homeY = p.y;              // formation spot (used to hold at kickoff)
     p.vx = 0; p.vy = 0;
     p.faceY = -side; p.faceX = 0;
   });
@@ -969,7 +970,7 @@ function integrate(w, ballFrozen, playersFrozen){
   // them escape the field). Collide vs players + posts + walls each substep.
   if (!ballFrozen){
     ball.vx *= ball.damp; ball.vy *= ball.damp;
-    const cap = 60, sp0 = Math.hypot(ball.vx, ball.vy);
+    const cap = 32, sp0 = Math.hypot(ball.vx, ball.vy);   // lower max ball speed
     if (sp0 > cap){ const k = cap/sp0; ball.vx *= k; ball.vy *= k; }
     const speed = Math.hypot(ball.vx, ball.vy);
     const n = Math.max(1, Math.min(20, Math.ceil(speed / (ball.r*0.5))));
@@ -1203,6 +1204,16 @@ function runBot(w, p){
   const ownGoal = { x:0, y: -attackDir*halfL };
   const oppGoal = { x:0, y:  attackDir*halfL };
 
+  // At kickoff, hold your formation spot instead of stampeding the centre. Ease
+  // back toward your spawn if nudged; don't chase or kick until play starts.
+  if (w.state === 'kickoff'){
+    const hx = p.homeX!=null ? p.homeX : p.x, hy = p.homeY!=null ? p.homeY : p.y;
+    let dx = hx - p.x, dy = hy - p.y, dl = Math.hypot(dx,dy);
+    if (dl > 8){ p.inX = dx/dl; p.inY = dy/dl; } else { p.inX = 0; p.inY = 0; }
+    p.kick = false; p.kickUsed = false;
+    return;
+  }
+
   // reaction throttle
   p.aiT -= STEP;
   const recompute = p.aiT <= 0;
@@ -1241,16 +1252,18 @@ function runBot(w, p){
       if (lined || nearOwn) wantKick = true;
     }
   } else {
-    // Support / defend. In multi-player, hold a zone.
+    // Not the chaser — take up a useful position instead of crowding the ball.
     const idx = mates.indexOf(p);
     if (idx % 2 === 0){
-      // defender: sit between ball and own goal
-      target = { x: (bx+ownGoal.x)/2 * 0.6, y: (by + ownGoal.y*1.6)/2.6 };
+      // Defender: sit on the line between our goal and the ball, goal-side.
+      target = { x: ownGoal.x + (bx - ownGoal.x)*0.35, y: ownGoal.y + (by - ownGoal.y)*0.38 };
     } else {
-      // attacker support: advance toward opp half, mirror ball x offset
-      target = { x: clamp(bx*0.7 + (idx%2?60:-60), -w.field.W/2+30, w.field.W/2-30), y: by + attackDir*120 };
+      // Attacker support: push ahead of the ball toward the opponent goal,
+      // staying out wide on the opposite side from the ball.
+      const wide = (bx >= 0 ? -1 : 1) * (w.field.W*0.28);
+      target = { x: clamp(wide, -w.field.W/2+30, w.field.W/2-30), y: by + attackDir*150 };
     }
-    // stay onside-ish within field
+    // keep clear of the chaser and stay in the field
     target.y = clamp(target.y, -halfL+40, halfL-40);
   }
 
