@@ -10,6 +10,10 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Goal replay + clip share** (#9) — a rolling 6-second snapshot buffer is frozen on every
+  goal and re-rendered as an instant replay (offline, theme-aware). A **Save clip** button
+  records that playback with `MediaRecorder` and opens the native share sheet
+  (`navigator.share`), falling back to a file download. No external libraries.
 - **Kick feel + Pro preset** — one-shot kicks now carry the striker's momentum, so a
   running shot is stronger and more directional than a standing one (HaxBall-like). New
   **Casual / Pro** feel presets in Settings: Pro is authentic — no magnet, no trap (instant
