@@ -362,6 +362,9 @@
     </div>
     <div class="card">
       <h2>Game Feel</h2>
+      <label class="field">Preset</label>
+      <div class="opts" id="feelPresets"></div>
+      <div style="height:8px"></div>
       <div id="feelSliders"></div>
       <button class="ghost" id="feelReset" style="margin-top:10px">Reset to defaults</button>
     </div>
@@ -504,7 +507,7 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 let profile = loadProfile();
 let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
             ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
-            theme:'neon',
+            theme:'neon', trapOff:false,
             snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
             // "Game feel" — adjustable physics (defaults mirror the current tuning).
             feel: { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 } };
@@ -709,10 +712,14 @@ function feelVals(){ const f=sel.feel||{}; return {
   ballcap: +(f.ballcap!=null?f.ballcap:32), kick: (f.kick!=null?f.kick:55)/10, bdamp: (f.bdamp!=null?f.bdamp:990)/1000 }; }
 function applyFeel(){ if(!world || world.drillMode) return; const v=feelVals();
   if (sel.pitch==='normal'){ world.pAccel=v.accel; world.pDamp=v.pdamp; }
-  world.ballCap=v.ballcap; world.kickPower=v.kick; if(world.ball) world.ball.damp=v.bdamp; world.magnet=sel.magnet; }
+  world.ballCap=v.ballcap; world.kickPower=v.kick; if(world.ball) world.ball.damp=v.bdamp; world.magnet=sel.magnet;
+  world.trapOff=!!sel.trapOff; }
 const HANDED = { right:{ name:'Right', emoji:'👉' }, left:{ name:'Left', emoji:'👈' } };
 // Charge-kick: holding KICK winds up extra power (fires stronger the moment you touch the ball).
 const CHARGE = { max:0.6, bonus:0.9 };   // up to +90% power at 0.6s of hold
+// Fraction of the striker's velocity a one-shot kick carries into the ball, so a
+// running shot is more powerful and directional than a standing one (HaxBall-like).
+const KICK_CARRY = 0.5;
 // Trap-and-release: humans hold KICK to stick the ball to their feet, then let go to shoot.
 const TRAP = { max:0.5 };                // ball stays stuck for at most half a second
 
@@ -905,7 +912,7 @@ let settingsFromGame = false;
 $('settingsBtn').onclick = () => openSettings(false);
 $('gearBtn').onclick = () => openSettings(true);
 $('settingsBack').onclick = closeSettings;
-$('feelReset').onclick = () => { sel.feel = { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 }; sel.magnet=0; sel.sens=1.0; saveSel(); applyFeel(); buildFeelSliders(); };
+$('feelReset').onclick = () => { sel.feel = { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 }; sel.magnet=0; sel.sens=1.0; sel.trapOff=false; saveSel(); applyFeel(); buildSettings(); };
 
 const SFX_CATS = [['whistle','Whistle (kickoff / reset)'],['crowd','Crowd (goal)'],['kick','Pass / kick'],['wall','Wall bounce'],['net','Net']];
 const FEEL_SLIDERS = [
@@ -960,7 +967,37 @@ function buildSettings(){
     });
     cc.appendChild(row);
   }
+  buildFeelPresets();
   buildFeelSliders();
+}
+// One-tap feel presets. "Casual" = the friendly default (magnet-assisted, snappy).
+// "Pro" = HaxBall-authentic — no magnet, no trap (instant one-shot kick), floatier
+// acceleration and a higher ball speed cap for a raw, high-skill feel.
+const FEEL_PRESETS = {
+  casual: { label:'Casual', emoji:'😊', magnet:0,  trapOff:false, accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990, sens:1.0 },
+  pro:    { label:'Pro',    emoji:'🏆', magnet:0,  trapOff:true,  accel:12, pdamp:960, ballcap:46, kick:55, bdamp:992, sens:1.0 },
+};
+function presetMatches(p){
+  const f=sel.feel||{};
+  return !!sel.trapOff===p.trapOff && +sel.magnet===p.magnet && f.accel===p.accel &&
+         f.pdamp===p.pdamp && f.ballcap===p.ballcap && f.kick===p.kick && f.bdamp===p.bdamp;
+}
+function applyPreset(key){
+  const p=FEEL_PRESETS[key]; if(!p) return;
+  sel.magnet=p.magnet; sel.trapOff=p.trapOff; sel.sens=p.sens;
+  sel.feel={ accel:p.accel, pdamp:p.pdamp, ballcap:p.ballcap, kick:p.kick, bdamp:p.bdamp };
+  saveSel(); applyFeel(); buildSettings();
+}
+function buildFeelPresets(){
+  const wrap=$('feelPresets'); wrap.innerHTML='';
+  for(const key of Object.keys(FEEL_PRESETS)){
+    const p=FEEL_PRESETS[key];
+    const el=document.createElement('div'); el.className='opt'+(presetMatches(p)?' sel':'');
+    el.innerHTML=`<span class="emoji">${p.emoji}</span><span>${p.label}</span>`+
+      `<small>${key==='pro'?'authentic · no magnet':'assisted · snappy'}</small>`;
+    el.onclick=()=>applyPreset(key);
+    wrap.appendChild(el);
+  }
 }
 function buildFeelSliders(){
   const wrap=$('feelSliders'); wrap.innerHTML='';
@@ -1082,6 +1119,7 @@ function startMatch(){
     stateT: 0,
     kickTeam: 1,         // which team kicks off (loser)
     lastScorer: -1,
+    trapOff: !!sel.trapOff,   // Pro mode: instant one-shot kick instead of trap
   };
   buildGeometry(world);
   resetKickoff(world, true);
@@ -1414,7 +1452,19 @@ function handleBallControl(w, p, ball, ballFrozen){
       if (dist > 0.001){ nx = dx/dist; ny = dy/dist; } else { nx = p.faceX; ny = p.faceY; }
       let power = (w.kickPower||PLAYER.kick) * w.diff.power;
       if (w.magnet > 0 && dist < sum + 22) power *= 1 + (w.magnet/100) * 0.7;
-      ball.vx += nx * power; ball.vy += ny * power;
+      ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
+      p.kickUsed = true;
+      spawnKickFx(ball.x, ball.y, nx, ny); playSfx('kick');
+    }
+    if (!p.kick) p.kickUsed = false;
+  } else if (w.trapOff && !ballFrozen){
+    // "Pro" mode: authentic one-shot kick — the ball fires the instant you touch
+    // it (no trap/glue), carrying your momentum. Holding KICK still charges power.
+    if (p.kick && !p.kickUsed && dist < sum + PLAYER.kickRange){
+      let nx, ny;
+      if (dist > 0.001){ nx = dx/dist; ny = dy/dist; } else { nx = p.faceX; ny = p.faceY; }
+      const power = (w.kickPower||PLAYER.kick) * (1 + (p.chargeT / CHARGE.max) * CHARGE.bonus);
+      ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
       p.kickUsed = true;
       spawnKickFx(ball.x, ball.y, nx, ny); playSfx('kick');
     }
@@ -2424,8 +2474,8 @@ if ('serviceWorker' in navigator) {
 if (window.__MAGNETDEBUG) {
   window.__magnet = {
     get world(){ return world; }, get TH(){ return TH; }, pads, sel, FIELDS, SFX, THEMES,
-    startMatch, step, applyFeel, feelVals, playSfx, applyTheme,
-    openSettings, closeSettings,
+    startMatch, step, applyFeel, feelVals, playSfx, applyTheme, applyPreset,
+    handleBallControl, openSettings, closeSettings,
   };
 }
 })();

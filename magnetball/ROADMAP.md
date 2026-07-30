@@ -10,6 +10,10 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Kick feel + Pro preset** — one-shot kicks now carry the striker's momentum, so a
+  running shot is stronger and more directional than a standing one (HaxBall-like). New
+  **Casual / Pro** feel presets in Settings: Pro is authentic — no magnet, no trap (instant
+  kick), floatier acceleration and a higher ball-speed cap for a raw, high-skill feel.
 - **Themes** (#17) — a full theme engine: palettes drive both the CSS and the canvas, so a
   theme reskins the entire game. 6 built-in looks — **Neon** (the CRT default), **Flat**,
   **Grass**, **Mono**, **Paper** (light), **Videoball** (flat vivid, geometric) — picked live
