@@ -10,6 +10,18 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Sound & SFX** (#2) — programmatic Web Audio (no files): whistle on kickoff/reset, crowd on
+  goal, pass/kick, wall-bounce and net sounds. **3 selectable variants per sound**, tap-to-hear,
+  master mute + volume — all in an in-game **Settings** screen (⚙ in the HUD).
+- **Game-feel sliders** (#17-ish) — live-tunable player acceleration, player float, kick power,
+  max ball speed, ball glide, ball magnet, and stick sensitivity. Reset-to-default button.
+- **Field variety** — 10 pitch shapes/sizes (Classic, Big, Small, Wide, Long, Huge, Rounded,
+  Stadium, **Octagon** (chamfered corners), Futsal).
+- **Net physics** — the ball loses momentum (halved) hitting the net so it settles inside the goal.
+- **Kickoff hold** — the ball stays on the spot until a human actually kicks near it (bots hold
+  their formation), so play only starts when you touch it.
+- **Practice / drills challenge mode** — 12+ drills (incl. Y-passing and an angled free-kick
+  through a wall gap) with best-time tracking and a quick reset.
 - **Pitch surface** (#18) — Grass / Ice (slide) / Mud (sluggish), scaling player grip
 - **Spectator / Watch** (#15) — hand your seat to the AI and watch
 - **Colour-blind team markers** (#7) — solid vs dashed white rings, hue-independent

@@ -184,7 +184,7 @@
     .scorebug .rd { color: var(--red); text-shadow: 0 0 10px rgba(255,59,107,.6); }
     .scorebug .bl { color: var(--cyan); text-shadow: 0 0 10px rgba(33,230,255,.6); }
     .scorebug .tm { font-size: 11px; color: var(--yellow); min-width: 46px; text-align:center; }
-    #pauseBtn, #resetBtn {
+    #pauseBtn, #resetBtn, #gearBtn {
       pointer-events: auto; background: rgba(6,8,16,.7); border: 1px solid var(--edge);
       backdrop-filter: blur(6px);
       color: var(--text); width: 40px; height: 40px; border-radius: 50%; font-size: 18px; cursor: pointer;
@@ -229,6 +229,7 @@
   <!-- HUD -->
   <div id="hud" class="hidden">
     <button id="pauseBtn" aria-label="Pause">⏸</button>
+    <button id="gearBtn" aria-label="Settings">⚙</button>
     <button id="resetBtn" aria-label="Reset" style="display:none">↺</button>
     <div class="scorebug" id="scorebug">
       <span class="sc rd" id="scoreR">0</span>
@@ -318,8 +319,29 @@
 
     <button class="primary" id="playBtn">KICK OFF ▶</button>
     <button class="ghost" id="drillsBtn" style="margin-top:12px">🎯 Practice Drills</button>
+    <button class="ghost" id="settingsBtn" style="margin-top:12px">⚙ Sound &amp; Game Feel</button>
     <button class="ghost" id="howBtn" style="margin-top:12px">How to play</button>
     <div class="footlink">A fast physics soccer game — built for touch.</div>
+  </div>
+
+  <!-- ===================== SETTINGS ===================== -->
+  <div id="settings" class="screen hidden">
+    <div class="logo"><h1 style="font-size:28px">SETTINGS</h1><p>Tune the sound and the game feel · changes apply live</p></div>
+    <div class="card">
+      <h2>Sound</h2>
+      <label class="field">Master</label>
+      <div class="opts" id="sndMaster"></div>
+      <div style="height:12px"></div>
+      <label class="field">Volume <small id="volVal" style="color:var(--accent)"></small></label>
+      <input id="vol" class="slider" type="range" min="0" max="100" step="5" />
+      <div id="sndCats"></div>
+    </div>
+    <div class="card">
+      <h2>Game Feel</h2>
+      <div id="feelSliders"></div>
+      <button class="ghost" id="feelReset" style="margin-top:10px">Reset to defaults</button>
+    </div>
+    <button class="ghost" id="settingsBack">← Back</button>
   </div>
 
   <!-- ===================== DRILLS LIST ===================== -->
@@ -373,10 +395,16 @@
 // ---------- Fields (vertical). Units are "world" units; camera fits them to screen.
 // Derived from a classic top-down stadium (420x200 half-extents, goal ±64) rotated to portrait.
 const FIELDS = {
-  classic: { name:'Classic',  emoji:'⚽', W:440, L:760, goal:150, corner:0,  net:64 },
-  big:     { name:'Big',      emoji:'🏟️', W:520, L:900, goal:170, corner:0,  net:70 },
-  small:   { name:'Small',    emoji:'🤾', W:360, L:600, goal:170, corner:0,  net:60 },
-  rounded: { name:'Rounded',  emoji:'🎱', W:420, L:700, goal:150, corner:120, net:64 },
+  classic: { name:'Classic',  emoji:'⚽',  W:440, L:760,  goal:150, corner:0,   net:64 },
+  big:     { name:'Big',      emoji:'🏟️', W:520, L:900,  goal:170, corner:0,   net:70 },
+  small:   { name:'Small',    emoji:'🤾', W:360, L:600,  goal:170, corner:0,   net:60 },
+  wide:    { name:'Wide',     emoji:'↔️', W:560, L:640,  goal:190, corner:0,   net:64 },
+  long:    { name:'Long',     emoji:'↕️', W:360, L:940,  goal:150, corner:0,   net:64 },
+  huge:    { name:'Huge',     emoji:'🌌', W:600, L:1040, goal:200, corner:0,   net:76 },
+  rounded: { name:'Rounded',  emoji:'🎱', W:420, L:700,  goal:150, corner:120, net:64 },
+  stadium: { name:'Stadium',  emoji:'🏟️', W:520, L:880,  goal:180, corner:150, net:70 },
+  octagon: { name:'Octagon',  emoji:'⬢',  W:460, L:760,  goal:150, corner:110, net:64, cut:true },
+  futsal:  { name:'Futsal',   emoji:'🥅', W:340, L:520,  goal:150, corner:70,  net:52 },
 };
 
 const CAPS = {
@@ -451,7 +479,84 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 // ---------- State
 let profile = loadProfile();
 let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
-            ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off' };
+            ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
+            snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
+            // "Game feel" — adjustable physics (defaults mirror the current tuning).
+            feel: { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 } };
+
+// ============================================================
+//  AUDIO — everything synthesised at runtime (Web Audio, no files)
+// ============================================================
+const Aud = (function(){
+  let AC=null, master=null;
+  function ensure(){
+    if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); master=AC.createGain();
+      master.gain.value=(sel.snd.vol||40)/100; master.connect(AC.destination); }catch(e){ return false; } }
+    if(AC.state==='suspended') AC.resume();
+    return true;
+  }
+  const on = ()=> sel.snd && !sel.snd.muted;
+  function tone(f,dur,type,o){ if(!ensure()||!on())return; o=o||{}; const t=AC.currentTime+(o.delay||0);
+    const osc=AC.createOscillator(), g=AC.createGain(); osc.type=type||'square'; osc.frequency.setValueAtTime(f,t);
+    if(o.to) osc.frequency.exponentialRampToValueAtTime(Math.max(1,o.to),t+dur);
+    if(o.vib){ const lfo=AC.createOscillator(), lg=AC.createGain(); lfo.frequency.value=o.vib; lg.gain.value=o.vibA||30;
+      lfo.connect(lg); lg.connect(osc.frequency); lfo.start(t); lfo.stop(t+dur+0.02); }
+    const v=o.vol!=null?o.vol:0.4; g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(v,t+(o.atk||0.005)); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    let last=osc; if(o.lp){ const fl=AC.createBiquadFilter(); fl.type='lowpass'; fl.frequency.value=o.lp; osc.connect(fl); last=fl; }
+    last.connect(g); g.connect(master); osc.start(t); osc.stop(t+dur+0.03);
+  }
+  function noise(dur,o){ if(!ensure()||!on())return; o=o||{}; const t=AC.currentTime+(o.delay||0);
+    const n=Math.max(1,Math.floor(AC.sampleRate*dur)); const buf=AC.createBuffer(1,n,AC.sampleRate);
+    const d=buf.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+    const src=AC.createBufferSource(); src.buffer=buf; const g=AC.createGain(); const v=o.vol!=null?o.vol:0.3;
+    g.gain.setValueAtTime(o.swell?0.0001:v,t); if(o.swell) g.gain.exponentialRampToValueAtTime(v,t+dur*0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    let last=src; const bt=o.bp?'bandpass':o.hp?'highpass':o.lp?'lowpass':null;
+    if(bt){ const f=AC.createBiquadFilter(); f.type=bt; f.frequency.value=o.bp||o.hp||o.lp; if(o.Q)f.Q.value=o.Q; src.connect(f); last=f; }
+    last.connect(g); g.connect(master); src.start(t); src.stop(t+dur+0.03);
+  }
+  return { ensure, tone, noise, setVol:(v)=>{ if(master) master.gain.value=v/100; } };
+})();
+
+// 3 variants per category — designed to be previewed and picked.
+const SFX = {
+  whistle: [
+    ()=>{ Aud.tone(2100,0.16,'triangle',{vib:26,vibA:70,vol:0.35}); Aud.tone(2100,0.15,'triangle',{delay:0.2,vib:26,vibA:70,vol:0.35}); },
+    ()=>{ Aud.noise(0.4,{bp:2200,Q:9,vol:0.4,swell:true}); Aud.tone(2050,0.34,'sine',{vol:0.14,vib:18,vibA:45}); },
+    ()=>{ Aud.tone(1500,0.5,'triangle',{to:2350,vol:0.3,vib:10,vibA:22}); },
+  ],
+  crowd: [
+    ()=>{ Aud.noise(0.9,{bp:800,Q:0.7,vol:0.5,swell:true}); },
+    ()=>{ for(let i=0;i<9;i++) Aud.noise(0.05,{hp:1600,vol:0.22,delay:i*0.055}); Aud.noise(0.7,{bp:720,Q:0.6,vol:0.32,swell:true}); },
+    ()=>{ Aud.noise(1.1,{bp:600,Q:0.5,vol:0.45,swell:true}); Aud.tone(300,0.8,'sawtooth',{to:520,vol:0.07}); },
+  ],
+  kick: [
+    ()=>{ Aud.tone(320,0.09,'square',{to:120,vol:0.5}); },
+    ()=>{ Aud.noise(0.05,{lp:1200,vol:0.5}); Aud.tone(200,0.06,'triangle',{to:90,vol:0.3}); },
+    ()=>{ Aud.tone(520,0.08,'triangle',{to:260,vol:0.45}); },
+  ],
+  wall: [
+    ()=>{ Aud.tone(230,0.05,'square',{to:150,vol:0.32}); },
+    ()=>{ Aud.noise(0.03,{lp:2200,vol:0.4}); },
+    ()=>{ Aud.tone(160,0.07,'triangle',{to:110,vol:0.33}); },
+  ],
+  net: [
+    ()=>{ Aud.noise(0.18,{lp:900,vol:0.3}); },
+    ()=>{ Aud.tone(180,0.12,'triangle',{to:120,vol:0.2}); Aud.noise(0.1,{lp:700,vol:0.16,delay:0.02}); },
+    ()=>{ Aud.noise(0.13,{bp:520,Q:1.6,vol:0.28}); },
+  ],
+};
+const SFX_LABELS = { whistle:['Pea','Airy','Rising'], crowd:['Roar','Applause','Swell'], kick:['Thock','Punch','Pluck'], wall:['Tick','Click','Bonk'], net:['Swish','Thud','Rustle'] };
+function playSfx(cat){ const arr=SFX[cat]; if(!arr||!sel.snd)return; const i=Math.min(sel.snd[cat]||0, arr.length-1); try{ arr[i](); }catch(e){} }
+
+// ---- Game feel: adjustable physics from the sliders. Stored as ints (slider-friendly).
+function feelVals(){ const f=sel.feel||{}; return {
+  accel: (f.accel!=null?f.accel:40)/100, pdamp: (f.pdamp!=null?f.pdamp:905)/1000,
+  ballcap: +(f.ballcap!=null?f.ballcap:32), kick: (f.kick!=null?f.kick:55)/10, bdamp: (f.bdamp!=null?f.bdamp:990)/1000 }; }
+function applyFeel(){ if(!world || world.drillMode) return; const v=feelVals();
+  if (sel.pitch==='normal'){ world.pAccel=v.accel; world.pDamp=v.pdamp; }
+  world.ballCap=v.ballcap; world.kickPower=v.kick; if(world.ball) world.ball.damp=v.bdamp; world.magnet=sel.magnet; }
 const HANDED = { right:{ name:'Right', emoji:'👉' }, left:{ name:'Left', emoji:'👈' } };
 // Charge-kick: holding KICK winds up extra power (fires stronger the moment you touch the ball).
 const CHARGE = { max:0.6, bonus:0.9 };   // up to +90% power at 0.6s of hold
@@ -639,7 +744,76 @@ $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
 
-function hideScreens(){ ['setup','how','drills'].forEach(id=>$(id).classList.add('hidden')); }
+function hideScreens(){ ['setup','how','drills','settings'].forEach(id=>$(id).classList.add('hidden')); }
+
+// ---- Settings (sound + game feel), openable from the menu and mid-game
+let settingsFromGame = false;
+$('settingsBtn').onclick = () => openSettings(false);
+$('gearBtn').onclick = () => openSettings(true);
+$('settingsBack').onclick = closeSettings;
+$('feelReset').onclick = () => { sel.feel = { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 }; sel.magnet=0; sel.sens=1.0; saveSel(); applyFeel(); buildFeelSliders(); };
+
+const SFX_CATS = [['whistle','Whistle (kickoff / reset)'],['crowd','Crowd (goal)'],['kick','Pass / kick'],['wall','Wall bounce'],['net','Net']];
+const FEEL_SLIDERS = [
+  {label:'Player acceleration', get:()=>sel.feel.accel, set:v=>sel.feel.accel=v, min:10,max:90,step:2, fmt:v=>(v/100).toFixed(2)},
+  {label:'Player float (more glide →)', get:()=>sel.feel.pdamp, set:v=>sel.feel.pdamp=v, min:850,max:985,step:5, fmt:v=>(v/1000).toFixed(3)},
+  {label:'Kick power', get:()=>sel.feel.kick, set:v=>sel.feel.kick=v, min:25,max:120,step:5, fmt:v=>(v/10).toFixed(1)},
+  {label:'Max ball speed', get:()=>sel.feel.ballcap, set:v=>sel.feel.ballcap=v, min:12,max:60,step:2, fmt:v=>''+v},
+  {label:'Ball glide', get:()=>sel.feel.bdamp, set:v=>sel.feel.bdamp=v, min:970,max:998,step:2, fmt:v=>(v/1000).toFixed(3)},
+  {label:'Ball magnet', get:()=>sel.magnet, set:v=>sel.magnet=v, min:0,max:100,step:5, fmt:v=>''+v},
+  {label:'Stick sensitivity', get:()=>Math.round(sel.sens*100), set:v=>sel.sens=v/100, min:60,max:160,step:10, fmt:v=>(v/100).toFixed(1)+'×'},
+];
+function openSettings(fromGame){
+  settingsFromGame = fromGame; if (fromGame) paused = true;
+  hideScreens(); $('hud').classList.add('hidden'); hideOverlay();
+  buildSettings(); $('settings').classList.remove('hidden');
+}
+function closeSettings(){
+  $('settings').classList.add('hidden');
+  if (settingsFromGame && world){ $('hud').classList.remove('hidden'); paused=false; }
+  else $('setup').classList.remove('hidden');
+  settingsFromGame=false;
+}
+function buildSettings(){
+  Aud.ensure();
+  const mm=$('sndMaster'); mm.innerHTML='';
+  [['on','🔊 On'],['off','🔇 Muted']].forEach(([k,lab])=>{
+    const el=document.createElement('div'); const isSel=(k==='off')===!!sel.snd.muted;
+    el.className='opt'+(isSel?' sel':''); el.innerHTML=`<span>${lab}</span>`;
+    el.onclick=()=>{ sel.snd.muted=(k==='off'); saveSel(); buildSettings(); if(!sel.snd.muted) playSfx('whistle'); };
+    mm.appendChild(el);
+  });
+  $('vol').value=sel.snd.vol; $('volVal').textContent=sel.snd.vol+'%';
+  $('vol').oninput=()=>{ sel.snd.vol=+$('vol').value; $('volVal').textContent=sel.snd.vol+'%'; Aud.setVol(sel.snd.vol); saveSel(); };
+  const cc=$('sndCats'); cc.innerHTML='';
+  for(const [cat,label] of SFX_CATS){
+    const lab=document.createElement('label'); lab.className='field'; lab.style.marginTop='14px'; lab.textContent=label; cc.appendChild(lab);
+    const row=document.createElement('div'); row.className='opts';
+    SFX_LABELS[cat].forEach((nm,idx)=>{
+      const el=document.createElement('div'); el.className='opt'+(sel.snd[cat]===idx?' sel':'');
+      el.innerHTML=`<span>${nm}</span><small>tap to hear</small>`;
+      el.onclick=()=>{ sel.snd[cat]=idx; saveSel(); buildSettings(); playSfx(cat); };
+      row.appendChild(el);
+    });
+    cc.appendChild(row);
+  }
+  buildFeelSliders();
+}
+function buildFeelSliders(){
+  const wrap=$('feelSliders'); wrap.innerHTML='';
+  FEEL_SLIDERS.forEach(s=>{
+    const lab=document.createElement('label'); lab.className='field'; lab.style.marginTop='12px'; lab.textContent=s.label+'  ';
+    const val=document.createElement('small'); val.style.color='var(--accent)'; val.style.fontWeight='700'; val.textContent=s.fmt(s.get());
+    lab.appendChild(val);
+    const inp=document.createElement('input'); inp.type='range'; inp.className='slider'; inp.min=s.min; inp.max=s.max; inp.step=s.step; inp.value=s.get();
+    inp.oninput=()=>{ s.set(+inp.value); val.textContent=s.fmt(+inp.value); saveSel(); applyFeel();
+      if (world && !world.drillMode && world.magnet!=null) world.magnet=sel.magnet; };
+    wrap.appendChild(lab); wrap.appendChild(inp);
+  });
+}
+// Unlock audio on the first user gesture (autoplay policy).
+['pointerdown','touchstart','keydown'].forEach(ev=> window.addEventListener(ev, ()=>Aud.ensure(), {once:true, passive:true}));
+
 function openDrills(){
   hideScreens(); $('hud').classList.add('hidden'); hideOverlay();
   $('drills').classList.remove('hidden');
@@ -720,14 +894,18 @@ function startMatch(){
 
   const bp = BALLS[sel.ball] || BALLS.normal;
   const pt = PITCH[sel.pitch] || PITCH.normal;
+  const fv = feelVals();
+  const usePitchGrip = sel.pitch !== 'normal';   // Grass grip comes from the feel sliders
   world = {
     field, mode, len, diff: DIFF[sel.diff],
     magnet: sel.magnet,
     train: !!mode.train,
     watch, cb: sel.cb==='on',
-    pAccel: pt.accel, pDamp: pt.damp,
+    pAccel: usePitchGrip ? pt.accel : fv.accel,
+    pDamp:  usePitchGrip ? pt.damp  : fv.pdamp,
+    ballCap: fv.ballcap, kickPower: fv.kick, kickRange: PLAYER.kickRange,
     players,
-    ball: { x:0, y:0, vx:0, vy:0, r:bp.r, invMass:bp.invMass, bCoef:bp.bCoef, damp:bp.damp, isBall:true },
+    ball: { x:0, y:0, vx:0, vy:0, r:bp.r, invMass:bp.invMass, bCoef:bp.bCoef, damp:fv.bdamp, isBall:true },
     posts: [],
     walls: [],           // {a:{x,y}, b:{x,y}, bCoef}
     arcs:  [],           // rounded corners {cx,cy,r,a0,a1,bCoef}
@@ -744,7 +922,6 @@ function startMatch(){
   };
   buildGeometry(world);
   resetKickoff(world, true);
-  if (window.__MAGNETDEBUG) window.__magnet = { get world(){return world;}, pads };
 
   // UI
   drillKey = null;
@@ -808,20 +985,27 @@ function buildGeometry(w){
     w.posts.push({x: gh, y, vx:0, vy:0, r:POST.r, invMass:0, bCoef:POST.bCoef, isPost:true, team: sign<0?1:0});
     // Net: box behind goal (walls). Depth = net
     const ny = y + sign*f.net;
-    w.walls.push({a:{x:-gh,y}, b:{x:-gh,y:ny}, bCoef:0.2}); // left net wall
-    w.walls.push({a:{x: gh,y}, b:{x: gh,y:ny}, bCoef:0.2}); // right net wall
-    w.walls.push({a:{x:-gh,y:ny}, b:{x: gh,y:ny}, bCoef:0.2}); // back net wall
+    w.walls.push({a:{x:-gh,y}, b:{x:-gh,y:ny}, bCoef:0.2, isNet:true}); // left net wall
+    w.walls.push({a:{x: gh,y}, b:{x: gh,y:ny}, bCoef:0.2, isNet:true}); // right net wall
+    w.walls.push({a:{x:-gh,y:ny}, b:{x: gh,y:ny}, bCoef:0.2, isNet:true}); // back net wall
   }
 
-  // Rounded corners as arcs (Rounded field)
+  // Corners: either chamfered (cut = straight diagonal → octagon) or rounded (arc).
   if (c > 0){
-    const corners = [
-      {cx:-halfW+c, cy:-halfL+c, a0:Math.PI, a1:1.5*Math.PI},
-      {cx: halfW-c, cy:-halfL+c, a0:1.5*Math.PI, a1:2*Math.PI},
-      {cx: halfW-c, cy: halfL-c, a0:0, a1:0.5*Math.PI},
-      {cx:-halfW+c, cy: halfL-c, a0:0.5*Math.PI, a1:Math.PI},
-    ];
-    for (const co of corners) w.arcs.push({cx:co.cx, cy:co.cy, r:c, a0:co.a0, a1:co.a1, bCoef:cB});
+    if (f.cut){
+      w.walls.push({a:{x:-halfW,y:-halfL+c}, b:{x:-halfW+c,y:-halfL}, bCoef:cB});
+      w.walls.push({a:{x: halfW-c,y:-halfL}, b:{x: halfW,y:-halfL+c}, bCoef:cB});
+      w.walls.push({a:{x: halfW,y: halfL-c}, b:{x: halfW-c,y: halfL}, bCoef:cB});
+      w.walls.push({a:{x:-halfW+c,y: halfL}, b:{x:-halfW,y: halfL-c}, bCoef:cB});
+    } else {
+      const corners = [
+        {cx:-halfW+c, cy:-halfL+c, a0:Math.PI, a1:1.5*Math.PI},
+        {cx: halfW-c, cy:-halfL+c, a0:1.5*Math.PI, a1:2*Math.PI},
+        {cx: halfW-c, cy: halfL-c, a0:0, a1:0.5*Math.PI},
+        {cx:-halfW+c, cy: halfL-c, a0:0.5*Math.PI, a1:Math.PI},
+      ];
+      for (const co of corners) w.arcs.push({cx:co.cx, cy:co.cy, r:c, a0:co.a0, a1:co.a1, bCoef:cB});
+    }
   }
 }
 
@@ -837,6 +1021,8 @@ function resetKickoff(w, initial){
 
   for (const p of w.players){ p.kickUsed=false; p.kick=false; p.inX=0; p.inY=0; p.trap=false; p.trapT=0; p.trapUsed=false; p.chargeT=0; }
   w.state = 'kickoff'; w.stateT = 0;
+  w.kickedOff = false;
+  playSfx('whistle');            // referee whistle at match start / after a reset to centre
 }
 function layTeam(list, side, halfL){
   const n = list.length;
@@ -884,7 +1070,16 @@ function step(w){
       else { resetKickoff(w); w.state='kickoff'; w.stateT=0; }
     }
   } else if (w.state === 'kickoff'){
-    if (w.stateT > 0.9){ w.state='play'; w.stateT=0; }
+    // Ball stays parked at centre while players get into position; it only goes
+    // live once a human kicks near it (or a short fallback for bot-only games).
+    if (w.stateT > 0.5){
+      const b=w.ball; let go=false;
+      for (const p of w.players){
+        if (p.ctrl!=='bot' && p.kick && Math.hypot(b.x-p.x,b.y-p.y) < p.r+b.r+(w.kickRange||PLAYER.kickRange)+2){ go=true; break; }
+      }
+      const anyHuman = w.players.some(p=>p.ctrl!=='bot');
+      if (go || w.stateT > (anyHuman ? 6 : 1.6)){ w.state='play'; w.stateT=0; }
+    }
   } else if (w.state === 'over'){
     // frozen
   }
@@ -921,8 +1116,16 @@ function step(w){
   if (w.state==='play') integrate(w, false, false);
   else if (w.state==='kickoff') integrate(w, true, false);   // ball parked at centre, players jockey
   else if (w.state==='goal') integrate(w, false, true);      // ball flies on into the net; players hold
+  ballSounds(w);
 
   updateScoreUI();
+}
+
+// Play a wall/net sound once per frame when the ball bounces (flags set in collideWall).
+function ballSounds(w){
+  const b = w.ball;
+  if (b._hitNet){ playSfx('net'); b._hitNet=false; b._hitWall=false; }
+  else if (b._hitWall){ playSfx('wall'); b._hitWall=false; }
 }
 
 // ---------- Human input mapping from a pad
@@ -1003,7 +1206,7 @@ function integrate(w, ballFrozen, playersFrozen){
   // them escape the field). Collide vs players + posts + walls each substep.
   if (!ballFrozen){
     ball.vx *= ball.damp; ball.vy *= ball.damp;
-    const cap = 32, sp0 = Math.hypot(ball.vx, ball.vy);   // lower max ball speed
+    const cap = w.ballCap || 32, sp0 = Math.hypot(ball.vx, ball.vy);
     if (sp0 > cap){ const k = cap/sp0; ball.vx *= k; ball.vy *= k; }
     const speed = Math.hypot(ball.vx, ball.vy);
     const n = Math.max(1, Math.min(20, Math.ceil(speed / (ball.r*0.5))));
@@ -1046,11 +1249,11 @@ function handleBallControl(w, p, ball, ballFrozen){
     if (p.kick && !p.kickUsed && dist < sum + PLAYER.kickRange){
       let nx, ny;
       if (dist > 0.001){ nx = dx/dist; ny = dy/dist; } else { nx = p.faceX; ny = p.faceY; }
-      let power = PLAYER.kick * w.diff.power;
+      let power = (w.kickPower||PLAYER.kick) * w.diff.power;
       if (w.magnet > 0 && dist < sum + 22) power *= 1 + (w.magnet/100) * 0.7;
       ball.vx += nx * power; ball.vy += ny * power;
       p.kickUsed = true;
-      spawnKickFx(ball.x, ball.y, nx, ny);
+      spawnKickFx(ball.x, ball.y, nx, ny); playSfx('kick');
     }
     if (!p.kick) p.kickUsed = false;
   } else if (!ballFrozen){
@@ -1099,11 +1302,11 @@ function handleBallControl(w, p, ball, ballFrozen){
 // scales with how long KICK was held (charge) and adds the player's momentum.
 function releaseTrap(w, p, ball){
   let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
-  let power = PLAYER.kick * (1 + (p.chargeT / CHARGE.max) * CHARGE.bonus);
+  let power = (w.kickPower||PLAYER.kick) * (1 + (p.chargeT / CHARGE.max) * CHARGE.bonus);
   if (w.magnet > 0) power *= 1 + (w.magnet/100) * 0.7;
   ball.vx = fx*power + p.vx; ball.vy = fy*power + p.vy;
   p.trap = false; p.trapUsed = true; p.chargeT = 0;
-  spawnKickFx(ball.x, ball.y, fx, fy);
+  spawnKickFx(ball.x, ball.y, fx, fy); playSfx('kick');
 }
 
 // Elastic disc-disc collision weighted by inverse mass.
@@ -1155,6 +1358,12 @@ function collideWall(d, seg){
   if (vn < 0){
     const e = seg.bCoef!=null ? seg.bCoef : 0.3;
     d.vx -= (1+e)*vn*nx; d.vy -= (1+e)*vn*ny;
+    if (d.isBall){
+      if (seg.isNet){
+        d.vx *= 0.5; d.vy *= 0.5;           // net kills momentum
+        if (-vn > 1) d._hitNet = true;
+      } else if (-vn > 1.5) d._hitWall = true;
+    }
   }
 }
 
@@ -1200,6 +1409,7 @@ function scoreGoal(w, team){
   w.kickTeam = team===0 ? 1 : 0;
   w.state='goal'; w.stateT=0;
   updateScoreUI();
+  playSfx('crowd');              // crowd cheer on a goal
   showBanner('GOAL!', team===0?'var(--red)':'var(--cyan)');
   fx.length = 0;
   for (let i=0;i<26;i++) spawnConfetti(ball_x(w), ball_y(w));
@@ -1451,7 +1661,6 @@ function startDrill(key){
   };
   def.build(world);
   world.drill.total = world.gates.length + world.zones.length;
-  if (window.__MAGNETDEBUG) window.__magnet = { get world(){return world;}, pads };
 
   hideScreens();
   $('hud').classList.remove('hidden');
@@ -1477,6 +1686,7 @@ function stepDrill(w){
   if (p.kick) p.chargeT = Math.min(CHARGE.max, p.chargeT + STEP); else p.chargeT = 0;
   // physics (no goals; checkGoal is skipped because state!=='play')
   integrate(w, false, false);
+  ballSounds(w);
   updateDrill(w);
 }
 
@@ -1627,11 +1837,14 @@ function drawPitch(w){
   ctx.strokeStyle = 'rgba(120,240,255,0.7)';
   ctx.lineWidth = Math.max(2, 3*s);
   ctx.lineJoin='miter'; ctx.lineCap='butt';
-  // outer boundary (respect rounded corners)
+  // outer boundary (respect rounded / chamfered corners)
   ctx.beginPath();
-  if (f.corner>0){
-    const c=f.corner;
-    roundRectPath(L, T, R-L, B-T, c*s);
+  if (f.corner>0 && f.cut){
+    const cc=f.corner*s;
+    ctx.moveTo(L+cc,T); ctx.lineTo(R-cc,T); ctx.lineTo(R,T+cc); ctx.lineTo(R,B-cc);
+    ctx.lineTo(R-cc,B); ctx.lineTo(L+cc,B); ctx.lineTo(L,B-cc); ctx.lineTo(L,T+cc); ctx.closePath();
+  } else if (f.corner>0){
+    roundRectPath(L, T, R-L, B-T, f.corner*s);
   } else {
     ctx.rect(L, T, R-L, B-T);
   }
@@ -2044,6 +2257,14 @@ if ('serviceWorker' in navigator) {
 }
 
 // initialize clock label pre-match not needed
+
+if (window.__MAGNETDEBUG) {
+  window.__magnet = {
+    get world(){ return world; }, pads, sel, FIELDS, SFX,
+    startMatch, step, applyFeel, feelVals, playSfx,
+    openSettings, closeSettings,
+  };
+}
 })();
 </script>
 </body>
