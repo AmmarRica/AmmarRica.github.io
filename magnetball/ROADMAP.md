@@ -10,6 +10,10 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Themes** (#17) — a full theme engine: palettes drive both the CSS and the canvas, so a
+  theme reskins the entire game. 5 built-in looks — **Neon** (the CRT default), **Flat**,
+  **Grass**, **Mono**, **Paper** (light) — picked live from Settings. Player colours still
+  customise the disc core on top of any theme.
 - **Sound & SFX** (#2) — programmatic Web Audio (no files): whistle on kickoff/reset, crowd on
   goal, pass/kick, wall-bounce and net sounds. **3 selectable variants per sound**, tap-to-hear,
   master mute + volume — all in an in-game **Settings** screen (⚙ in the HUD).

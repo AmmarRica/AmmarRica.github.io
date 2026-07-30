@@ -35,24 +35,41 @@
       --accent:  #21e6ff;   /* primary = neon cyan */
       --go:      #35ff87;   /* action green */
       --pix: 'PixAmiga', 'Courier New', monospace;
+      /* Page backdrop — overridden per theme by applyTheme(). */
+      --bg-grad: radial-gradient(120% 90% at 50% -12%, #0c1236 0%, #05060f 52%, #000000 100%);
     }
 
     html, body {
       height: 100%;
-      background:
-        radial-gradient(120% 90% at 50% -12%, #0c1236 0%, #05060f 52%, #000000 100%) fixed;
+      background: var(--bg-grad) fixed;
       color: var(--text);
       font-family: ui-monospace, 'Courier New', monospace;
       overflow: hidden;
       overscroll-behavior: none;
       touch-action: none;
+      transition: background-color .2s ease, color .2s ease;
     }
-    /* very faint CRT scanlines */
-    body::after {
+    /* very faint CRT scanlines — only on the neon theme (body.scan) */
+    body.scan::after {
       content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 60;
       background: repeating-linear-gradient(0deg, rgba(0,0,0,0.22) 0 1px, transparent 1px 3px);
       opacity: .28;
     }
+    /* Flat themes (anything that isn't the neon "scan" look): drop the glows so
+       the UI reads as clean, solid colour instead of CRT neon. */
+    body:not(.scan) h1,
+    body:not(.scan) h2 { text-shadow: 3px 3px 0 var(--edge) !important; }
+    body:not(.scan) .scorebug .rd,
+    body:not(.scan) .scorebug .bl,
+    body:not(.scan) .banner { text-shadow: none !important; }
+    body:not(.scan) button,
+    body:not(.scan) .opt,
+    body:not(.scan) .swatch,
+    body:not(.scan) input[type=text],
+    body:not(.scan) input[type=range]::-webkit-slider-thumb { box-shadow: none !important; }
+    body:not(.scan) .opt.sel,
+    body:not(.scan) .swatch.sel { box-shadow: 0 0 0 2px var(--accent) !important; }
+    body:not(.scan) button.primary { box-shadow: 0 4px 14px rgba(0,0,0,.30) !important; }
 
     #game { position: fixed; inset: 0; display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 
@@ -62,7 +79,9 @@
       display: flex; flex-direction: column;
       align-items: center; justify-content: flex-start;
       padding: max(26px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom));
-      background: transparent;
+      /* Opaque themed backdrop so a menu (e.g. Settings opened mid-match) fully
+         covers the running pitch instead of letting it bleed through. */
+      background: var(--bg-grad) fixed;
       overflow-y: auto;
       z-index: 20;
     }
@@ -326,7 +345,12 @@
 
   <!-- ===================== SETTINGS ===================== -->
   <div id="settings" class="screen hidden">
-    <div class="logo"><h1 style="font-size:28px">SETTINGS</h1><p>Tune the sound and the game feel · changes apply live</p></div>
+    <div class="logo"><h1 style="font-size:28px">SETTINGS</h1><p>Tune the look, sound and game feel · changes apply live</p></div>
+    <div class="card">
+      <h2>Theme</h2>
+      <label class="field">Visual style</label>
+      <div class="opts" id="themePick"></div>
+    </div>
     <div class="card">
       <h2>Sound</h2>
       <label class="field">Master</label>
@@ -480,9 +504,120 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 let profile = loadProfile();
 let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
             ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
+            theme:'neon',
             snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
             // "Game feel" — adjustable physics (defaults mirror the current tuning).
             feel: { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 } };
+
+// ============================================================
+//  THEMES — palettes that drive BOTH the CSS (via custom properties)
+//  and the canvas render (via the live `TH` object below).
+//  ui   → CSS variables + page gradient + whether the CRT scanline overlay shows
+//  pitch→ every colour the canvas draws with, so a theme fully reskins the game
+// ============================================================
+const THEMES = {
+  neon: {
+    name: 'Neon', emoji: '🌃',
+    ui: { scan:true,
+      grad:'radial-gradient(120% 90% at 50% -12%, #0c1236 0%, #05060f 52%, #000000 100%)',
+      bg:'#04040a', panel:'rgba(12,14,26,0.55)', edge:'#1c2444', text:'#eaf2ff', muted:'#7d88a6',
+      red:'#ff3b6b', blue:'#4d7bff', cyan:'#21e6ff', magenta:'#ff35c8', green:'#35ff87', yellow:'#ffe23d',
+      accent:'#21e6ff', go:'#35ff87' },
+    pitch: { glow:true, fieldBg:'#0a0d14', court:'#0a1622', stripeA:'#0c2016', stripeB:'#0a1a12',
+      netPocket:'rgba(255,255,255,0.05)', line:'rgba(120,240,255,0.7)', centerDot:'rgba(255,255,255,.6)',
+      netMesh:'rgba(255,255,255,0.18)', post:'#ffffff', teamRed:'#ff3b6b', teamBlue:'#21e6ff',
+      discRim:'#000000', kickRing:'#ffe23d', kickText:'#02121a', cbRing:'#ffffff',
+      eyeWhite:'#ffffff', eyePupil:'#15181f', nameBg:'#000000', nameText:'#ffffff',
+      shadow:'rgba(0,0,0,0.30)', ballRim:'#000000', ball:'#ffffff', ballSpot:'#111111', trailRGB:'255,255,255',
+      obstacle:'#ff7ad0', good:'#35ff87', warn:'#ffe23d', dim:'#3a5878', cone:'#ff8a1e',
+      hudText:'#eaf2ff', hudSub:'#9fe9ff', accent:'#21e6ff', padRing:'rgba(255,255,255,0.5)' },
+  },
+  flat: {
+    name: 'Flat', emoji: '🟦',
+    ui: { scan:false,
+      grad:'linear-gradient(180deg, #223243 0%, #17222e 100%)',
+      bg:'#17222e', panel:'rgba(40,56,73,0.92)', edge:'#3a5068', text:'#eef3f8', muted:'#8ea3b8',
+      red:'#ef5350', blue:'#42a5f5', cyan:'#26c6da', magenta:'#ec407a', green:'#66bb6a', yellow:'#ffca28',
+      accent:'#42a5f5', go:'#66bb6a' },
+    pitch: { glow:false, fieldBg:'#1b2b25', court:'#25463a', stripeA:'#2f9e78', stripeB:'#2b9370',
+      netPocket:'rgba(255,255,255,0.08)', line:'rgba(255,255,255,0.9)', centerDot:'rgba(255,255,255,.8)',
+      netMesh:'rgba(255,255,255,0.22)', post:'#ffffff', teamRed:'#ef5350', teamBlue:'#42a5f5',
+      discRim:'#12212e', kickRing:'#ffca28', kickText:'#0b1922', cbRing:'#ffffff',
+      eyeWhite:'#ffffff', eyePupil:'#1b2530', nameBg:'#12212e', nameText:'#ffffff',
+      shadow:'rgba(0,0,0,0.24)', ballRim:'#12212e', ball:'#ffffff', ballSpot:'#20303c', trailRGB:'255,255,255',
+      obstacle:'#ec407a', good:'#66bb6a', warn:'#ffca28', dim:'#4a6076', cone:'#ff8a1e',
+      hudText:'#eef3f8', hudSub:'#a9c2d6', accent:'#42a5f5', padRing:'rgba(255,255,255,0.55)' },
+  },
+  grass: {
+    name: 'Grass', emoji: '🟢',
+    ui: { scan:false,
+      grad:'linear-gradient(180deg, #1e3a2a 0%, #12241b 100%)',
+      bg:'#12241b', panel:'rgba(22,44,30,0.92)', edge:'#2f5a3f', text:'#eefaf0', muted:'#8fb89b',
+      red:'#e23c3c', blue:'#2b6fdb', cyan:'#28c0c0', magenta:'#d94fa0', green:'#3ec06a', yellow:'#f2c53d',
+      accent:'#3ec06a', go:'#3ec06a' },
+    pitch: { glow:false, fieldBg:'#12281b', court:'#1c3a26', stripeA:'#2f9e52', stripeB:'#2a8f49',
+      netPocket:'rgba(255,255,255,0.08)', line:'rgba(255,255,255,0.95)', centerDot:'rgba(255,255,255,.85)',
+      netMesh:'rgba(255,255,255,0.24)', post:'#ffffff', teamRed:'#e23c3c', teamBlue:'#2b6fdb',
+      discRim:'#0f2417', kickRing:'#f2c53d', kickText:'#0f2417', cbRing:'#ffffff',
+      eyeWhite:'#ffffff', eyePupil:'#1a2a20', nameBg:'#0f2417', nameText:'#ffffff',
+      shadow:'rgba(0,0,0,0.26)', ballRim:'#0f2417', ball:'#ffffff', ballSpot:'#1c2b22', trailRGB:'255,255,255',
+      obstacle:'#d94fa0', good:'#3ec06a', warn:'#f2c53d', dim:'#3f6a4f', cone:'#ff8a1e',
+      hudText:'#eefaf0', hudSub:'#aee0bd', accent:'#3ec06a', padRing:'rgba(255,255,255,0.6)' },
+  },
+  mono: {
+    name: 'Mono', emoji: '⬜',
+    ui: { scan:false,
+      grad:'linear-gradient(180deg, #17181a 0%, #0b0c0d 100%)',
+      bg:'#0b0c0d', panel:'rgba(30,32,34,0.92)', edge:'#3a3d40', text:'#f2f4f6', muted:'#9aa0a6',
+      red:'#f2f4f6', blue:'#9aa0a6', cyan:'#ffffff', magenta:'#cccccc', green:'#d0d0d0', yellow:'#f2f4f6',
+      accent:'#f2f4f6', go:'#d0d0d0' },
+    pitch: { glow:false, fieldBg:'#0c0d0e', court:'#1c1f22', stripeA:'#232629', stripeB:'#1b1e21',
+      netPocket:'rgba(255,255,255,0.07)', line:'rgba(255,255,255,0.85)', centerDot:'rgba(255,255,255,.8)',
+      netMesh:'rgba(255,255,255,0.2)', post:'#ffffff', teamRed:'#f5f5f5', teamBlue:'#565b60',
+      discRim:'#000000', kickRing:'#e8e8e8', kickText:'#111111', cbRing:'#ffffff',
+      eyeWhite:'#ffffff', eyePupil:'#111111', nameBg:'#000000', nameText:'#ffffff',
+      shadow:'rgba(0,0,0,0.35)', ballRim:'#000000', ball:'#ffffff', ballSpot:'#111111', trailRGB:'255,255,255',
+      obstacle:'#c8c8c8', good:'#e8e8e8', warn:'#9a9a9a', dim:'#3a3d40', cone:'#cfcfcf',
+      hudText:'#f2f4f6', hudSub:'#b8bcc0', accent:'#f2f4f6', padRing:'rgba(255,255,255,0.5)' },
+  },
+  light: {
+    name: 'Paper', emoji: '📄',
+    ui: { scan:false,
+      grad:'linear-gradient(180deg, #eef2f6 0%, #dbe3ec 100%)',
+      bg:'#eef2f6', panel:'rgba(255,255,255,0.9)', edge:'#c2ccd6', text:'#1a2430', muted:'#5a6b7b',
+      red:'#d64545', blue:'#2f6fd0', cyan:'#1c9bb0', magenta:'#c23c8f', green:'#2fa35a', yellow:'#c98a12',
+      accent:'#2f6fd0', go:'#2fa35a' },
+    pitch: { glow:false, fieldBg:'#dbe3ec', court:'#cfe6d6', stripeA:'#cfe6d6', stripeB:'#c4ddcc',
+      netPocket:'rgba(0,0,0,0.05)', line:'rgba(28,52,40,0.55)', centerDot:'rgba(28,52,40,.6)',
+      netMesh:'rgba(0,0,0,0.16)', post:'#33404d', teamRed:'#d64545', teamBlue:'#2f6fd0',
+      discRim:'#12305a', kickRing:'#c98a12', kickText:'#ffffff', cbRing:'#1a2430',
+      eyeWhite:'#ffffff', eyePupil:'#1a2430', nameBg:'#1a2430', nameText:'#ffffff',
+      shadow:'rgba(0,0,0,0.18)', ballRim:'#12212e', ball:'#ffffff', ballSpot:'#33404d', trailRGB:'40,60,50',
+      obstacle:'#c23c8f', good:'#2fa35a', warn:'#c98a12', dim:'#9fb0bf', cone:'#e07a1e',
+      hudText:'#1a2430', hudSub:'#3a566b', accent:'#2f6fd0', padRing:'rgba(30,50,40,0.45)' },
+  },
+};
+// Live canvas palette — always points at the active theme's `pitch` block.
+let TH = THEMES.neon.pitch;
+function applyTheme(key){
+  const t = THEMES[key] || THEMES.neon;
+  TH = t.pitch;
+  const r = document.documentElement.style, u = t.ui;
+  r.setProperty('--bg-grad', u.grad);
+  for (const k of ['bg','panel','edge','text','muted','red','blue','cyan','magenta','green','yellow','accent','go'])
+    r.setProperty('--'+k, u[k]);
+  document.body.classList.toggle('scan', !!u.scan);
+}
+// Turn a #hex colour into an rgba() string at the given alpha (for fills/tints).
+function rgba(col, a){
+  let c = (col||'').trim();
+  if (c[0] === '#'){
+    if (c.length === 4) c = '#'+c[1]+c[1]+c[2]+c[2]+c[3]+c[3];
+    const n = parseInt(c.slice(1), 16);
+    return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+  }
+  return c;
+}
 
 // ============================================================
 //  AUDIO — everything synthesised at runtime (Web Audio, no files)
@@ -624,6 +759,7 @@ function recordResult(w){
   return delta;
 }
 loadSel();
+applyTheme(sel.theme);
 
 const $ = id => document.getElementById(id);
 
@@ -776,6 +912,15 @@ function closeSettings(){
 }
 function buildSettings(){
   Aud.ensure();
+  // Theme picker — each tile switches the whole look instantly.
+  const tp=$('themePick'); tp.innerHTML='';
+  for(const key of Object.keys(THEMES)){
+    const t=THEMES[key];
+    const el=document.createElement('div'); el.className='opt'+(sel.theme===key?' sel':'');
+    el.innerHTML=`<span class="emoji">${t.emoji}</span><span>${t.name}</span>`;
+    el.onclick=()=>{ sel.theme=key; saveSel(); applyTheme(key); buildSettings(); };
+    tp.appendChild(el);
+  }
   const mm=$('sndMaster'); mm.innerHTML='';
   [['on','🔊 On'],['off','🔇 Muted']].forEach(([k,lab])=>{
     const el=document.createElement('div'); const isSel=(k==='off')===!!sel.snd.muted;
@@ -1761,39 +1906,39 @@ function showDrillResult(title, sub){
 // ---- drill rendering
 function renderDrill(){
   const w = world;
-  ctx.clearRect(0,0,cw,ch); ctx.fillStyle='#04040a'; ctx.fillRect(0,0,cw,ch);
+  ctx.clearRect(0,0,cw,ch); ctx.fillStyle=TH.fieldBg; ctx.fillRect(0,0,cw,ch);
   const b=w.bounds, s=cam.s;
   // court
-  ctx.fillStyle='#0a1622';
+  ctx.fillStyle=TH.court;
   ctx.fillRect(wx(-b.halfW),wy(-b.halfL),(b.halfW*2)*s,(b.halfL*2)*s);
-  ctx.strokeStyle='rgba(120,240,255,0.5)'; ctx.lineWidth=Math.max(2,3*s);
+  ctx.strokeStyle=TH.line; ctx.lineWidth=Math.max(2,3*s);
   ctx.strokeRect(wx(-b.halfW),wy(-b.halfL),(b.halfW*2)*s,(b.halfL*2)*s);
   // solid walls (obstacles) — draw the non-boundary ones
-  ctx.strokeStyle='#ff7ad0'; ctx.lineWidth=Math.max(3,4*s);
+  ctx.strokeStyle=TH.obstacle; ctx.lineWidth=Math.max(3,4*s);
   for (const g of w.gates){ if(g.solid){ for(const wl of [g.wa0,g.wa1]){ ctx.beginPath(); ctx.moveTo(wx(wl.a.x),wy(wl.a.y)); ctx.lineTo(wx(wl.b.x),wy(wl.b.y)); ctx.stroke(); } } }
   drawFx(); drawBallTrail(w);
   // zones
   for (const z of w.zones){
     ctx.beginPath(); ctx.arc(wx(z.x),wy(z.y),z.r*s,0,2*Math.PI);
-    ctx.strokeStyle = z.done ? '#35ff87' : '#ffe23d'; ctx.lineWidth=Math.max(2,3*s); ctx.setLineDash(z.done?[]:[8,7]); ctx.stroke(); ctx.setLineDash([]);
-    if (z.done){ ctx.fillStyle='rgba(53,255,135,0.14)'; ctx.fill(); }
+    ctx.strokeStyle = z.done ? TH.good : TH.warn; ctx.lineWidth=Math.max(2,3*s); ctx.setLineDash(z.done?[]:[8,7]); ctx.stroke(); ctx.setLineDash([]);
+    if (z.done){ ctx.fillStyle=rgba(TH.good,0.14); ctx.fill(); }
   }
   // gates
   const active = w.drill.def.seq ? w.gates.findIndex(g=>!g.done) : -1;
   w.gates.forEach((g,i)=>{
-    const col = g.done ? '#35ff87' : (w.drill.def.seq && i!==active ? '#3a5878' : '#ffe23d');
+    const col = g.done ? TH.good : (w.drill.def.seq && i!==active ? TH.dim : TH.warn);
     ctx.beginPath(); ctx.moveTo(wx(g.p0.x),wy(g.p0.y)); ctx.lineTo(wx(g.p1.x),wy(g.p1.y));
     ctx.strokeStyle=col; ctx.lineWidth=Math.max(3,5*s); ctx.stroke();
-    for(const po of [g.po0,g.po1]){ ctx.beginPath(); ctx.arc(wx(po.x),wy(po.y),po.r*s,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=Math.max(1,2*s); ctx.strokeStyle=col; ctx.stroke(); }
+    for(const po of [g.po0,g.po1]){ ctx.beginPath(); ctx.arc(wx(po.x),wy(po.y),po.r*s,0,2*Math.PI); ctx.fillStyle=TH.post; ctx.fill(); ctx.lineWidth=Math.max(1,2*s); ctx.strokeStyle=col; ctx.stroke(); }
   });
   // cones
-  for (const ccn of w.cones){ ctx.beginPath(); ctx.arc(wx(ccn.x),wy(ccn.y),9*s,0,2*Math.PI); ctx.fillStyle='#ff8a1e'; ctx.fill(); ctx.strokeStyle='#000'; ctx.lineWidth=Math.max(1,2*s); ctx.stroke(); }
+  for (const ccn of w.cones){ ctx.beginPath(); ctx.arc(wx(ccn.x),wy(ccn.y),9*s,0,2*Math.PI); ctx.fillStyle=TH.cone; ctx.fill(); ctx.strokeStyle=TH.discRim; ctx.lineWidth=Math.max(1,2*s); ctx.stroke(); }
   drawDiscs(w); drawBall(w);
   // drill HUD text
-  const d=w.drill; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillStyle='#eaf2ff';
+  const d=w.drill; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillStyle=TH.hudText;
   ctx.font=`12px 'PixAmiga', monospace`;
   ctx.fillText(d.def.name.toUpperCase(), cw/2, 54);
-  ctx.font=`10px 'PixAmiga', monospace`; ctx.fillStyle='#9fe9ff';
+  ctx.font=`10px 'PixAmiga', monospace`; ctx.fillStyle=TH.hudSub;
   const prog = `${d.doneCount||0}/${d.total}`;
   const time = d.timed ? `${Math.ceil(d.timeLeft)}s` : `${d.elapsed.toFixed(1)}s`;
   ctx.fillText(prog + '   ' + time, cw/2, 74);
@@ -1804,7 +1949,7 @@ function render(){
   if (!world) return;
   if (world.drillMode){ renderDrill(); return; }
   ctx.clearRect(0,0,cw,ch);
-  ctx.fillStyle = '#0a0d14';
+  ctx.fillStyle = TH.fieldBg;
   ctx.fillRect(0,0,cw,ch);
   drawPitch(world);
   drawFx();
@@ -1824,17 +1969,17 @@ function drawPitch(w){
   for (let i=0;i<stripes;i++){
     const y0 = -b.halfL + (i/stripes)*(b.halfL*2);
     const y1 = -b.halfL + ((i+1)/stripes)*(b.halfL*2);
-    ctx.fillStyle = i%2 ? '#0c2016' : '#0a1a12';   // dark pitch (Spectrum/MSX: neon on near-black)
+    ctx.fillStyle = i%2 ? TH.stripeA : TH.stripeB;
     ctx.fillRect(L, wy(y0), R-L, wy(y1)-wy(y0)+1);
   }
   // Net pockets background
-  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.fillStyle = TH.netPocket;
   const gh = f.goal/2;
   ctx.fillRect(wx(-gh), wy(-b.halfL-b.net), (gh*2)*s, b.net*s);
   ctx.fillRect(wx(-gh), wy(b.halfL), (gh*2)*s, b.net*s);
 
-  // Field lines — neon cyan glow on the dark pitch
-  ctx.strokeStyle = 'rgba(120,240,255,0.7)';
+  // Field lines
+  ctx.strokeStyle = TH.line;
   ctx.lineWidth = Math.max(2, 3*s);
   ctx.lineJoin='miter'; ctx.lineCap='butt';
   // outer boundary (respect rounded / chamfered corners)
@@ -1853,7 +1998,7 @@ function drawPitch(w){
   ctx.beginPath(); ctx.moveTo(L, wy(0)); ctx.lineTo(R, wy(0)); ctx.stroke();
   // center circle
   ctx.beginPath(); ctx.arc(wx(0), wy(0), 75*s*0.6, 0, 2*Math.PI); ctx.stroke();
-  ctx.beginPath(); ctx.arc(wx(0), wy(0), 3, 0, 2*Math.PI); ctx.fillStyle='rgba(255,255,255,.6)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(wx(0), wy(0), 3, 0, 2*Math.PI); ctx.fillStyle=TH.centerDot; ctx.fill();
 
   // Goal nets (crosshatch) + goal line coloring
   drawGoal(w, -1); drawGoal(w, 1);
@@ -1869,7 +2014,7 @@ function drawGoal(w, sign){
   const f=w.field, b=w.bounds, s=cam.s, gh=f.goal/2;
   const y = sign*b.halfL, ny = y + sign*b.net;
   // Colour each goal by the team that DEFENDS it: team0 (red) defends the bottom, team1 (blue) the top.
-  const col = sign<0 ? '#21e6ff' : '#ff3b6b';
+  const col = sign<0 ? TH.teamBlue : TH.teamRed;
   // frame
   ctx.strokeStyle = col;
   ctx.lineWidth = Math.max(2, 3*s);
@@ -1878,7 +2023,7 @@ function drawGoal(w, sign){
   ctx.lineTo(wx(gh), wy(ny)); ctx.lineTo(wx(gh), wy(y));
   ctx.stroke();
   // net mesh
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.strokeStyle = TH.netMesh;
   ctx.lineWidth = 1;
   const step = 10*s;
   ctx.beginPath();
@@ -1888,7 +2033,7 @@ function drawGoal(w, sign){
   // posts
   for (const px of [-gh, gh]){
     ctx.beginPath(); ctx.arc(wx(px), wy(y), POST.r*s, 0, 2*Math.PI);
-    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.fillStyle = TH.post; ctx.fill();
     ctx.lineWidth=Math.max(1,1.5*s); ctx.strokeStyle=col; ctx.stroke();
   }
 }
@@ -1899,11 +2044,11 @@ function drawDiscs(w){
     const x=wx(p.x), y=wy(p.y), r=p.r*s;
     // shadow
     ctx.beginPath(); ctx.arc(x, y+r*0.28, r*0.95, 0, 2*Math.PI);
-    ctx.fillStyle='rgba(0,0,0,0.30)'; ctx.fill();
-    // Flat neon sprite: black rim, team-colour ring, custom-colour core.
-    const teamCol = p.team===0 ? '#ff3b6b' : '#21e6ff';
+    ctx.fillStyle=TH.shadow; ctx.fill();
+    // Flat sprite: rim, team-colour ring, custom-colour core.
+    const teamCol = p.team===0 ? TH.teamRed : TH.teamBlue;
     ctx.beginPath(); ctx.arc(x, y, r+Math.max(2, r*0.16), 0, 2*Math.PI);
-    ctx.fillStyle = '#000'; ctx.fill();
+    ctx.fillStyle = TH.discRim; ctx.fill();
     ctx.beginPath(); ctx.arc(x, y, r, 0, 2*Math.PI);
     ctx.fillStyle = teamCol; ctx.fill();
     ctx.beginPath(); ctx.arc(x, y, r*0.64, 0, 2*Math.PI);
@@ -1912,7 +2057,7 @@ function drawDiscs(w){
     // team 1 dashed white ring (readable regardless of hue).
     if (w.cb){
       ctx.save();
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(2, r*0.16);
+      ctx.strokeStyle = TH.cbRing; ctx.lineWidth = Math.max(2, r*0.16);
       if (p.team===1) ctx.setLineDash([r*0.55, r*0.42]);
       ctx.beginPath(); ctx.arc(x, y, r*1.28, 0, 2*Math.PI); ctx.stroke();
       ctx.restore();
@@ -1920,7 +2065,7 @@ function drawDiscs(w){
     // kick indicator ring (charged/ready) — neon yellow
     if (p.kick){
       ctx.beginPath(); ctx.arc(x, y, r*1.42, 0, 2*Math.PI);
-      ctx.strokeStyle='#ffe23d'; ctx.lineWidth=Math.max(2,r*0.16); ctx.stroke();
+      ctx.strokeStyle=TH.kickRing; ctx.lineWidth=Math.max(2,r*0.16); ctx.stroke();
     }
     // Fixed face — the player's look never rotates with movement direction.
     // Cap marking pinned at the top of the head.
@@ -1938,8 +2083,8 @@ function drawDiscs(w){
       const sep=r*0.38, eyeR=r*0.27, pupilR=r*0.13, ey=y+r*0.06;
       for (const sgn of [-1,1]){
         const ex = x + sgn*sep;
-        ctx.beginPath(); ctx.arc(ex,ey,eyeR,0,2*Math.PI); ctx.fillStyle='#ffffff'; ctx.fill();
-        ctx.beginPath(); ctx.arc(ex,ey,pupilR,0,2*Math.PI); ctx.fillStyle='#15181f'; ctx.fill();
+        ctx.beginPath(); ctx.arc(ex,ey,eyeR,0,2*Math.PI); ctx.fillStyle=TH.eyeWhite; ctx.fill();
+        ctx.beginPath(); ctx.arc(ex,ey,pupilR,0,2*Math.PI); ctx.fillStyle=TH.eyePupil; ctx.fill();
       }
     }
     // name label — pixel font in a solid black plate
@@ -1948,8 +2093,8 @@ function drawDiscs(w){
       ctx.textAlign='center'; ctx.textBaseline='alphabetic';
       const label = p.name;
       const tw = ctx.measureText(label).width;
-      ctx.fillStyle='#000'; ctx.fillRect(x-tw/2-4, y-r-21, tw+8, 15);
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle=TH.nameBg; ctx.fillRect(x-tw/2-4, y-r-21, tw+8, 15);
+      ctx.fillStyle = TH.nameText;
       ctx.fillText(label, x, y-r-10);
     }
   }
@@ -1968,16 +2113,16 @@ function drawBallTrail(w){
   for (let i=0;i<ballTrail.length;i++){
     const t=ballTrail[i]; const a=i/ballTrail.length;
     ctx.beginPath(); ctx.arc(wx(t.x), wy(t.y), w.ball.r*s*a*0.8, 0, 2*Math.PI);
-    ctx.fillStyle=`rgba(255,255,255,${a*0.12})`; ctx.fill();
+    ctx.fillStyle=`rgba(${TH.trailRGB},${a*0.12})`; ctx.fill();
   }
 }
 function drawBall(w){
   const s=cam.s, b=w.ball, x=wx(b.x), y=wy(b.y), r=b.r*s;
-  ctx.beginPath(); ctx.arc(x, y+r*0.3, r*0.9, 0, 2*Math.PI); ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.fill();
-  // hard black rim + flat white ball with a solid black spot (chunky sprite)
-  ctx.beginPath(); ctx.arc(x, y, r+Math.max(2,r*0.22), 0, 2*Math.PI); ctx.fillStyle='#000'; ctx.fill();
-  ctx.beginPath(); ctx.arc(x, y, r, 0, 2*Math.PI); ctx.fillStyle='#ffffff'; ctx.fill();
-  ctx.beginPath(); ctx.arc(x,y,r*0.4,0,2*Math.PI); ctx.fillStyle='#111111'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y+r*0.3, r*0.9, 0, 2*Math.PI); ctx.fillStyle=TH.shadow; ctx.fill();
+  // hard rim + flat ball with a solid spot (chunky sprite)
+  ctx.beginPath(); ctx.arc(x, y, r+Math.max(2,r*0.22), 0, 2*Math.PI); ctx.fillStyle=TH.ballRim; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 2*Math.PI); ctx.fillStyle=TH.ball; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,r*0.4,0,2*Math.PI); ctx.fillStyle=TH.ballSpot; ctx.fill();
 }
 function drawKickoffHint(w){
   const s=cam.s;
@@ -2147,9 +2292,9 @@ function drawPad(pad, isP2){
   }
   const bx = pad.move.cx, by = pad.move.cy;
   ctx.globalAlpha = 0.22; dot(bx,by,JOY_R,'#000'); ctx.globalAlpha=1;
-  ring(bx,by,JOY_R,'rgba(255,255,255,0.5)',2);
+  ring(bx,by,JOY_R,TH.padRing,2);
   const kx = bx + pad.dx*JOY_R, ky = by + pad.dy*JOY_R;
-  dot(kx,ky,JOY_R*0.42,'rgba(255,255,255,0.9)');
+  dot(kx,ky,JOY_R*0.42,TH.padRing);
 }
 function restingJoyPos(isP2){
   const m = 70;
@@ -2164,16 +2309,16 @@ function drawKickMarker(pad, isP2){
   else if (sel.handed==='left'){ kx = cw - m; ky = ch - m; }  // p1 left-handed → kick bottom-right
   else { kx = m; ky = ch - m; }                         // p1 bottom-left
   ctx.globalAlpha = pad.kick ? 0.6 : 0.3;
-  dot(kx,ky,KICK_R,'#21e6ff');
+  dot(kx,ky,KICK_R,TH.accent);
   ctx.globalAlpha = 1;
   // Charge ring: grows as the human holds KICK before contact.
   const owner = world && world.players.find(p => p.ctrl === (isP2 ? 'human2' : 'human1'));
   if (owner && owner.chargeT > 0.01){
     const frac = Math.min(1, owner.chargeT / CHARGE.max);
     ctx.beginPath(); ctx.arc(kx, ky, KICK_R*0.78, -Math.PI/2, -Math.PI/2 + frac*2*Math.PI);
-    ctx.strokeStyle = '#ffd400'; ctx.lineWidth = 5; ctx.stroke();
+    ctx.strokeStyle = TH.kickRing; ctx.lineWidth = 5; ctx.stroke();
   }
-  ctx.fillStyle = '#02121a';
+  ctx.fillStyle = TH.kickText;
   ctx.font=`10px 'PixAmiga', monospace`;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.save();
@@ -2260,8 +2405,8 @@ if ('serviceWorker' in navigator) {
 
 if (window.__MAGNETDEBUG) {
   window.__magnet = {
-    get world(){ return world; }, pads, sel, FIELDS, SFX,
-    startMatch, step, applyFeel, feelVals, playSfx,
+    get world(){ return world; }, get TH(){ return TH; }, pads, sel, FIELDS, SFX, THEMES,
+    startMatch, step, applyFeel, feelVals, playSfx, applyTheme,
     openSettings, closeSettings,
   };
 }
