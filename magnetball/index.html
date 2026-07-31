@@ -2543,22 +2543,33 @@ function drillDone(w){
   const isBest = prev==null || t < prev;
   if (isBest){ drillBest[d.key] = +t.toFixed(2); saveDrillBest(drillBest); }
   showBanner('COMPLETE!', 'var(--green)');
-  showDrillResult('COMPLETE! ✅', `Time ${t.toFixed(2)}s` + (isBest?'   ·   NEW BEST 🏆':(prev!=null?`   ·   best ${prev.toFixed(2)}s`:'')));
+  showDrillResult('COMPLETE! ✅', `Time ${t.toFixed(2)}s` + (isBest?'   ·   NEW BEST 🏆':(prev!=null?`   ·   best ${prev.toFixed(2)}s`:'')), true);
 }
 function drillFail(w){
   w.drill.failed = true;
   showBanner("TIME'S UP", 'var(--red)');
   const done = w.drill.doneCount, tot = w.drill.total;
-  showDrillResult("TIME'S UP ⏱️", `${done}/${tot} gates — try again`);
+  showDrillResult("TIME'S UP ⏱️", `${done}/${tot} gates — try again`, false);
 }
-function showDrillResult(title, sub){
+function nextDrillKey(){ const i = DRILL_KEYS.indexOf(drillKey); return DRILL_KEYS[(i+1) % DRILL_KEYS.length]; }
+function showDrillResult(title, sub, completed){
   paused = true;
   $('ovTitle').textContent = title; $('ovSub').textContent = sub;
-  $('ovResume').textContent = 'Retry'; $('ovResume').style.display='';
-  $('ovRematch').textContent = 'Drills'; $('ovRematch').style.display='';
-  $('ovMenu').textContent = 'Main Menu';
-  $('ovResume').onclick = () => { hideOverlay(); resetDrill(); };
-  $('ovRematch').onclick = () => { hideOverlay(); openDrills(); };
+  if (completed){
+    // Finished a drill → offer the next one, retry, or the menu.
+    const nk = nextDrillKey();
+    $('ovResume').textContent = 'Next drill ▶';
+    $('ovResume').onclick = () => { hideOverlay(); startDrill(nk); };
+    $('ovRematch').textContent = 'Retry';
+    $('ovRematch').onclick = () => { hideOverlay(); resetDrill(); };
+  } else {
+    $('ovResume').textContent = 'Retry';
+    $('ovResume').onclick = () => { hideOverlay(); resetDrill(); };
+    $('ovRematch').textContent = 'Drills';
+    $('ovRematch').onclick = () => { hideOverlay(); openDrills(); };
+  }
+  $('ovResume').style.display=''; $('ovRematch').style.display='';
+  $('ovMenu').textContent = 'Main Menu'; $('ovMenu').onclick = toMenu;
   $('overlay').classList.add('show');
 }
 
