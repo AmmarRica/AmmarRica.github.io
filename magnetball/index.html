@@ -466,6 +466,9 @@
       <label class="field">Screen shake &amp; effects</label>
       <div class="opts" id="juicePick"></div>
       <div style="height:10px"></div>
+      <label class="field">Auto-replay goals</label>
+      <div class="opts" id="autoReplayPick"></div>
+      <div style="height:10px"></div>
       <label class="field">Preset</label>
       <div class="opts" id="feelPresets"></div>
       <div style="height:8px"></div>
@@ -753,7 +756,7 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 let profile = loadProfile();
 let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
             ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
-            theme:'neon', trapOff:false, juice:true,
+            theme:'neon', trapOff:false, juice:true, autoReplay:true,
             snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
             // "Game feel" — adjustable physics (defaults mirror the current tuning).
             feel: { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 } };
@@ -951,6 +954,23 @@ const SFX = {
 };
 const SFX_LABELS = { whistle:['Pea','Airy','Rising'], crowd:['Roar','Applause','Swell'], kick:['Thock','Punch','Pluck'], wall:['Tick','Click','Bonk'], net:['Swish','Thud','Rustle'] };
 function playSfx(cat){ const arr=SFX[cat]; if(!arr||!sel.snd)return; const i=Math.min(sel.snd[cat]||0, arr.length-1); try{ arr[i](); }catch(e){} }
+// Crowd reactions (SFX, not music): a rising "oooh" on a shot toward goal, a
+// falling "aww" on a near miss / post.
+function sfxSwell(){ try{ Aud.noise(0.55,{bp:720,Q:0.7,vol:0.34,swell:true}); Aud.tone(200,0.5,'sawtooth',{to:360,vol:0.05}); }catch(e){} }
+function sfxGroan(){ try{ Aud.noise(0.5,{bp:420,Q:0.6,vol:0.28,swell:true}); Aud.tone(280,0.45,'sawtooth',{to:150,vol:0.06}); }catch(e){} }
+function crowdReact(w){
+  const b=w.ball;
+  w._crowdCd = Math.max(0, (w._crowdCd||0) - STEP);
+  if (b._hitPost){ b._hitPost=false; if (w._crowdCd<=0){ sfxGroan(); spawnTouchFx(b.x,b.y,'#ffd23d',30); w._crowdCd=1.0; } return; }
+  if (w.state!=='play') return;
+  const halfL=w.field.L/2, gh=w.field.goal/2, sp=Math.hypot(b.vx,b.vy);
+  if (sp < 7 || w._crowdCd>0) return;
+  for (const sign of [-1,1]){
+    const towardGoal = (sign<0 ? b.vy < -6 : b.vy > 6);
+    const inThird = (sign<0 ? b.y < -halfL*0.45 : b.y > halfL*0.45);
+    if (towardGoal && inThird && Math.abs(b.x) < gh + 80){ sfxSwell(); w._crowdCd=1.4; break; }
+  }
+}
 
 // ---- Game feel: adjustable physics from the sliders. Stored as ints (slider-friendly).
 function feelVals(){ const f=sel.feel||{}; return {
@@ -1314,6 +1334,16 @@ function buildSettings(){
       const el=document.createElement('div'); el.className='opt'+(on?' sel':''); el.innerHTML=`<span>${lab}</span>`;
       el.onclick=()=>{ sel.juice=(k==='on'); saveSel(); buildSettings(); if(sel.juice) addShake(6); };
       jp.appendChild(el);
+    });
+  }
+  // Auto-replay-goals toggle.
+  const ar=$('autoReplayPick');
+  if (ar){ ar.innerHTML='';
+    [['on','▶ On'],['off','⊘ Off']].forEach(([k,lab])=>{
+      const on=(k==='on')===(sel.autoReplay!==false);
+      const el=document.createElement('div'); el.className='opt'+(on?' sel':''); el.innerHTML=`<span>${lab}</span>`;
+      el.onclick=()=>{ sel.autoReplay=(k==='on'); saveSel(); buildSettings(); };
+      ar.appendChild(el);
     });
   }
   const mm=$('sndMaster'); mm.innerHTML='';
@@ -1901,8 +1931,13 @@ function step(w){
   // Timing / state machine
   if (w.state === 'goal'){
     if (w.stateT > 1.8){
+      const ending = w.goalsTarget && Math.max(w.score[0],w.score[1]) >= w.goalsTarget;
       if (w.overtime) endMatch(w);                 // golden goal — first goal in OT wins
-      else { resetKickoff(w); w.state='kickoff'; w.stateT=0; }
+      else if (sel.autoReplay && !ending && lastReplay && lastReplay.frames && lastReplay.frames.length
+               && lastReplay.players === w.players.length && !w._autoReplayed){
+        w._autoReplayed = true;                    // slow-mo instant replay, then kick off
+        playReplay(0.5).then(()=>{ if (world===w){ resetKickoff(w); w.state='kickoff'; w.stateT=0; w._autoReplayed=false; } });
+      } else { resetKickoff(w); w.state='kickoff'; w.stateT=0; w._autoReplayed=false; }
     }
   } else if (w.state === 'kickoff'){
     // Ball stays parked at centre while players get into position; it only goes
@@ -1952,6 +1987,7 @@ function step(w){
   else if (w.state==='kickoff') integrate(w, true, false);   // ball parked at centre, players jockey
   else if (w.state==='goal') integrate(w, false, true);      // ball flies on into the net; players hold
   ballSounds(w);
+  crowdReact(w);   // crowd swell on shots / groan on near-misses
   // Visual ball spin — rolls while moving, plus any spin from carrying/redirecting; decays.
   { const bl=w.ball, sp=Math.hypot(bl.vx,bl.vy);
     bl.rot = (bl.rot||0) + (bl.spin||0) + sp*0.03;
@@ -2119,14 +2155,16 @@ function handleBallControl(w, p, ball, ballFrozen){
         if (near){
           if (!p.tapArmed){ p.tapArmed = true; p.tapT = 0; }
           p.tapT += STEP;
-          if (p.tapT >= TAP_HOLD){ p.trap = true; p.trapT = 0; p.tapArmed = false; p._pfx = null; }  // held → trap
+          if (p.tapT >= TAP_HOLD){ p.trap = true; p.trapT = 0; p.tapArmed = false; p._pfx = null; spawnTouchFx(ball.x,ball.y,TH.accent,26); }  // held → trap (first-touch cue)
         } else { p.tapArmed = false; }
       }
       if (p.trap){
         p.trapT += STEP;
         let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
-        // Redirecting while carrying imparts spin (CW / CCW by turn direction).
-        if (p._pfx != null){ const cross = p._pfx*fy - p._pfy*fx; ball.spin = (ball.spin||0) + cross*0.6; }
+        // Redirecting while carrying imparts spin (CW / CCW by turn direction) — a
+        // sharp turn flashes a "clean touch" ring.
+        if (p._pfx != null){ const cross = p._pfx*fy - p._pfy*fx; ball.spin = (ball.spin||0) + cross*0.6;
+          if (Math.abs(cross) > 0.5) spawnTouchFx(ball.x,ball.y,TH.accent,22); }
         p._pfx = fx; p._pfy = fy;
         const hold = sum + 2;                              // just outside the body — never clips through
         ball.x = p.x + fx*hold; ball.y = p.y + fy*hold;
@@ -2190,6 +2228,8 @@ function collideDiscs(a, b){
   let dist = Math.hypot(dx,dy);
   const min = a.r + b.r;
   if (dist >= min || dist === 0) return;
+  // Ball off a goal post — flags a near-miss for the crowd groan.
+  if ((a.isBall && b.isPost) || (b.isBall && a.isPost)){ (a.isBall?a:b)._hitPost = true; }
   const nx = dx/dist, ny = dy/dist;
   const im = a.invMass + b.invMass;
   if (im === 0) return;
@@ -2795,6 +2835,31 @@ function renderDrill(){
   drawControls();
 }
 
+// Charge / aim indicator — a directional arrow that grows with kick charge while
+// a human is trapping or winding up, so shot power & direction are readable.
+function drawAim(w){
+  const s=cam.s;
+  for (const p of w.players){
+    if (p.ctrl==='bot') continue;
+    const charging = p.trap || (p.kick && p.chargeT>0.06);
+    if (!charging) continue;
+    let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
+    const frac = Math.min(1, (p.chargeT||0)/CHARGE.max);
+    const x=wx(p.x), y=wy(p.y), r=p.r*s;
+    const len = r*1.5 + frac*r*3.4;
+    const ex=x+fx*len, ey=y+fy*len;
+    const col = frac>0.66 ? TH.warn : TH.accent;
+    ctx.globalAlpha=0.9; ctx.strokeStyle=col; ctx.lineWidth=Math.max(2,3*s);
+    ctx.beginPath(); ctx.moveTo(x+fx*r*1.2, y+fy*r*1.2); ctx.lineTo(ex,ey); ctx.stroke();
+    const ang=Math.atan2(fy,fx), ah=6*s+frac*5*s;
+    ctx.beginPath(); ctx.moveTo(ex,ey);
+    ctx.lineTo(ex-Math.cos(ang-0.42)*ah, ey-Math.sin(ang-0.42)*ah);
+    ctx.lineTo(ex-Math.cos(ang+0.42)*ah, ey-Math.sin(ang+0.42)*ah);
+    ctx.closePath(); ctx.fillStyle=col; ctx.fill();
+    ctx.globalAlpha=1;
+  }
+}
+
 function render(){
   if (!world) return;
   if (world.drillMode){ renderDrill(); return; }
@@ -2809,6 +2874,7 @@ function render(){
   drawFx();
   drawBallTrail(world);
   drawDiscs(world);
+  drawAim(world);
   drawBall(world);
   if (world.state==='kickoff') drawKickoffHint(world);
   ctx.restore();
@@ -3012,14 +3078,25 @@ function spawnConfetti(x,y){
   const a=Math.random()*Math.PI*2, sp=1+Math.random()*4;
   fx.push({x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-1, life:1.2, max:1.2, c:cols[(Math.random()*cols.length)|0], r:2+Math.random()*2.5, grav:0.06});
 }
+// A quick expanding ring — used for first-touch / clean-control feedback.
+function spawnTouchFx(x,y,col,r1){
+  if (!sel.juice) return;
+  fx.push({ring:true, x,y, life:0.34, max:0.34, r0:6, r1:r1||28, c:col||'#ffffff'});
+}
 function drawFx(){
   const s=cam.s;
   for (let i=fx.length-1;i>=0;i--){
     const p=fx[i];
     p.life-=STEP;
     if (p.life<=0){ fx.splice(i,1); continue; }
-    p.x+=p.vx; p.y+=p.vy; if(p.grav) p.vy+=p.grav;
     const a=p.life/p.max;
+    if (p.ring){
+      const rr = (p.r0 + (p.r1-p.r0)*(1-a)) * Math.max(s,0.6);
+      ctx.globalAlpha=a*0.9; ctx.strokeStyle=p.c; ctx.lineWidth=Math.max(1.5, 2.4*s);
+      ctx.beginPath(); ctx.arc(wx(p.x), wy(p.y), rr, 0, 2*Math.PI); ctx.stroke();
+      ctx.globalAlpha=1; continue;
+    }
+    p.x+=p.vx; p.y+=p.vy; if(p.grav) p.vy+=p.grav;
     ctx.globalAlpha=a;
     ctx.fillStyle=p.c;
     ctx.beginPath(); ctx.arc(wx(p.x), wy(p.y), p.r*Math.max(s,0.6)*0.8, 0, 2*Math.PI); ctx.fill();

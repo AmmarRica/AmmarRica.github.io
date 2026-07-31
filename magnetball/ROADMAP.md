@@ -10,6 +10,11 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Polish pass** — HaxBall-feel refinements: a **charge/aim arrow** that grows and turns
+  yellow with kick power so shots are readable; **first-touch feedback** (a ring flash on a
+  clean trap or sharp redirect); a **crowd swell** on shots toward goal and a **groan** on a
+  post/near-miss (SFX only, no music); and **auto-replay of goals** in slow-motion with a
+  Settings toggle. (Camera pass intentionally skipped; no music by request.)
 - **Always-on desktop dock** — on wide screens a match auto-docks the Settings panel on the
   left with the pitch on the right (uses your screen real estate); toggle with the gear,
   remembered as a preference, auto-hides below 900px.
