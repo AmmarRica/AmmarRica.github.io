@@ -10,6 +10,28 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Bouncy walls** — field walls are now near-elastic (~0.9 restitution) so the ball keeps its
+  momentum off the boundary and you can pass to yourself off a wall; only the **net** kills
+  momentum. (Ball containment still verified on all 10 fields.)
+- **Onboarding tutorial** — a short guided first match (move → reach → kick → score) with
+  coaching tips that advance as you complete each step.
+- **Season / Cup** (#10) — a single-player ladder of 5 rounds vs rising difficulty (Easy →
+  Pro, 1v1 → 2v2); win to advance, lose to retry, lift the trophy at the end. Progress and
+  cup count persist.
+- **Dribble Maze drill** — dribble the ball through winding lanes and gaps to the end circle
+  (interior drill walls are now drawn — also fixes 3 older wall drills that were invisible).
+- **Collapsible menu** — the long setup screen is now accordion sections (Your Player / Match /
+  Controls / Online), remembered between visits, with an **Online (coming soon)** section stub.
+- **Esc closes Settings** — same as the Back button (works for the desktop dock too).
+- **Juice pass** — game-feel polish: screen shake (scaled by kick power, hard wall/net hits,
+  and big on goals), a brief hit-stop freeze-frame and dramatic slow-mo on goals, a coloured
+  goal flash (scorer's team), and a bigger confetti burst. All gated by a **Screen shake &
+  effects** toggle in Settings (accessibility — off makes every effect a no-op).
+- **Desktop live-settings dock** — on wide screens the full Settings panel docks on the left
+  as a persistent sidebar so you can tweak theme / sound / feel while the match keeps playing;
+  the pitch camera insets so it's never hidden. Mobile keeps the fullscreen overlay.
+- **Wider difficulty range** — 7 bot tiers now: Rookie, Easy, Normal, Hard, Pro, Elite, Insane
+  (RP rewards scale across the range).
 - **Unlockables + Countryballs + player builder** (#4, #8) — 51 unlockable cosmetics: 29
   **countryball** flag skins for your disc, 10 **eye styles**, and 12 **caps**, each gated
   behind a milestone (RP, wins, goals, win-streak, matches played, or drills finished). A

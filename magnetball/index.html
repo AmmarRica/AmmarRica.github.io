@@ -191,6 +191,52 @@
     .opt.locked { opacity: .6; }
     .opt.locked canvas { filter: grayscale(1) brightness(.7); }
 
+    /* Tutorial coaching tip */
+    #tutTip {
+      position: fixed; top: 66px; left: 0; right: 0; z-index: 14; text-align: center; pointer-events: none;
+      font-family: var(--pix); font-size: 11px; line-height: 1.55;
+    }
+    #tutTip::before {
+      content: attr(data-tip); display: inline-block; max-width: 84%;
+      background: rgba(6,8,16,.82); border: 1px solid var(--accent); color: var(--text);
+      padding: 9px 14px; border-radius: 14px; box-shadow: 0 0 14px rgba(0,0,0,.4);
+    }
+    #tutTip.hidden { display: none; }
+
+    /* Collapsible menu sections (accordion) */
+    .card.collapsible > h2 {
+      cursor: pointer; user-select: none; display: flex; align-items: center;
+      justify-content: space-between; margin-bottom: 0;
+    }
+    .card.collapsible > h2::after {
+      content: '▾'; font-size: 14px; color: var(--muted); transition: transform .15s ease;
+    }
+    .card.collapsible.collapsed > h2::after { transform: rotate(-90deg); }
+    .card.collapsible > h2 { margin-bottom: 14px; }
+    .card.collapsible.collapsed > h2 { margin-bottom: 0; }
+    .card.collapsible.collapsed > *:not(h2) { display: none !important; }
+
+    /* Desktop: dock the full Settings as a live left sidebar while you play. */
+    @media (min-width: 900px){
+      #settings.docked {
+        inset: 0 auto 0 0; width: 372px; max-width: 40vw; height: 100%;
+        align-items: stretch; justify-content: flex-start;
+        border-right: 1px solid var(--edge);
+        background: var(--bg-grad) fixed;
+        box-shadow: 10px 0 34px rgba(0,0,0,.5); z-index: 30;
+        padding: 16px 16px max(20px, env(safe-area-inset-bottom));
+      }
+      #settings.docked .logo { margin-bottom: 8px; }
+      #settings.docked .logo h1 { font-size: 20px; }
+      #settings.docked .logo p { font-size: 11px; }
+      #settings.docked .card { width: 100%; }
+      #settings.docked #settingsBack {
+        position: sticky; bottom: 0; margin-top: 8px;
+        background: var(--bg); border: 1px solid var(--edge);
+      }
+      body.panel-open #hud { padding-left: 372px; }
+    }
+
     /* ---------- In-game HUD ---------- */
     #hud {
       position: fixed; top: 0; left: 0; right: 0; z-index: 10;
@@ -281,6 +327,7 @@
   </div>
 
   <div id="banner"></div>
+  <div id="tutTip" class="hidden"></div>
 
   <!-- ===================== SETUP SCREEN ===================== -->
   <div id="setup" class="screen">
@@ -299,7 +346,7 @@
       <div id="recLine" class="hint" style="text-align:left;margin-top:10px;font-family:var(--pix);font-size:8px;line-height:1.8"></div>
     </div>
 
-    <div class="card">
+    <div class="card collapsible" data-sec="player">
       <h2>Your Player</h2>
       <label class="field" for="pname">Name</label>
       <input id="pname" type="text" maxlength="12" placeholder="Enter a name" autocomplete="off" />
@@ -321,7 +368,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card collapsible" data-sec="match">
       <h2>Match</h2>
       <label class="field">Mode</label>
       <div class="opts" id="modes"></div>
@@ -349,7 +396,7 @@
       <div class="opts" id="pitches"></div>
     </div>
 
-    <div class="card">
+    <div class="card collapsible" data-sec="controls">
       <h2>Controls</h2>
       <label class="field">Handed</label>
       <div class="opts" id="handed"></div>
@@ -365,8 +412,22 @@
       <div class="opts" id="cb"></div>
     </div>
 
+    <div class="card collapsible collapsed" data-sec="online">
+      <h2>Online</h2>
+      <div class="hint" style="text-align:left">Local &amp; vs-bot play now. Online rooms (host / join by code) are coming soon.</div>
+      <div style="height:10px"></div>
+      <label class="field">Room code</label>
+      <input id="roomCode" type="text" maxlength="6" placeholder="Coming soon" autocomplete="off" disabled />
+      <div class="opts" style="margin-top:10px">
+        <div class="opt" style="opacity:.55;cursor:not-allowed"><span class="emoji">🎮</span><span>Host</span><small>soon</small></div>
+        <div class="opt" style="opacity:.55;cursor:not-allowed"><span class="emoji">🔗</span><span>Join</span><small>soon</small></div>
+      </div>
+    </div>
+
     <button class="primary" id="playBtn">KICK OFF ▶</button>
+    <button class="ghost" id="seasonBtn" style="margin-top:12px">🏆 Season / Cup</button>
     <button class="ghost" id="drillsBtn" style="margin-top:12px">🎯 Practice Drills</button>
+    <button class="ghost" id="tutBtn" style="margin-top:12px">🎓 Tutorial</button>
     <button class="ghost" id="settingsBtn" style="margin-top:12px">⚙ Sound &amp; Game Feel</button>
     <button class="ghost" id="howBtn" style="margin-top:12px">How to play</button>
     <div class="footlink">A fast physics soccer game — built for touch.</div>
@@ -391,6 +452,9 @@
     </div>
     <div class="card">
       <h2>Game Feel</h2>
+      <label class="field">Screen shake &amp; effects</label>
+      <div class="opts" id="juicePick"></div>
+      <div style="height:10px"></div>
       <label class="field">Preset</label>
       <div class="opts" id="feelPresets"></div>
       <div style="height:8px"></div>
@@ -408,6 +472,18 @@
       <div class="opts" id="drillList"></div>
     </div>
     <button class="ghost" id="drillsBack">← Back</button>
+  </div>
+
+  <!-- ===================== SEASON / CUP ===================== -->
+  <div id="season" class="screen hidden">
+    <div class="logo"><h1 style="font-size:32px">CUP RUN</h1><p>Beat every round to lift the trophy</p></div>
+    <div class="card">
+      <h2>Rounds <small id="cupInfo" style="color:var(--muted);font-weight:400"></small></h2>
+      <div class="opts" id="seasonList"></div>
+    </div>
+    <button class="primary" id="seasonPlay">Start ▶</button>
+    <button class="ghost" id="seasonReset" style="margin-top:12px">Restart cup</button>
+    <button class="ghost" id="seasonBack" style="margin-top:12px">← Back</button>
   </div>
 
   <!-- ===================== HOW TO PLAY ===================== -->
@@ -591,10 +667,13 @@ function unlockCounts(){
 }
 
 const DIFF = {
+  rookie: { name:'Rookie', emoji:'🐣', react:0.58, err:40, power:0.72, aggr:0.68 },
   easy:   { name:'Easy',   emoji:'🙂', react:0.72, err:26, power:0.82, aggr:0.85 },
   normal: { name:'Normal', emoji:'😎', react:0.85, err:15, power:0.92, aggr:1.0 },
   hard:   { name:'Hard',   emoji:'🔥', react:0.95, err:7,  power:1.0,  aggr:1.12 },
   pro:    { name:'Pro',    emoji:'💀', react:1.0,  err:3,  power:1.06, aggr:1.22 },
+  elite:  { name:'Elite',  emoji:'⚡', react:1.05, err:1.5,power:1.10, aggr:1.32 },
+  insane: { name:'Insane', emoji:'👽', react:1.10, err:0.5,power:1.15, aggr:1.42 },
 };
 
 const MODES = {
@@ -653,7 +732,7 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 let profile = loadProfile();
 let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
             ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
-            theme:'neon', trapOff:false,
+            theme:'neon', trapOff:false, juice:true,
             snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
             // "Game feel" — adjustable physics (defaults mirror the current tuning).
             feel: { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 } };
@@ -914,12 +993,12 @@ let stats = loadStats();
 
 // Apply one match result for team 0 (you); returns the RP delta.
 function recordResult(w){
-  const diffIdx = Object.keys(DIFF).indexOf(sel.diff);          // 0..3 (easy..pro)
+  const diffIdx = Object.keys(DIFF).indexOf(sel.diff);          // 0..N (rookie..insane)
   const my = w.score[0], opp = w.score[1];
   let delta;
-  if (my > opp)      delta = 12 + diffIdx*8;                    // beat harder bots for more
-  else if (my < opp) delta = -(24 - diffIdx*5);                 // losing to easy bots hurts more
-  else               delta = (diffIdx - 1) * 3;                 // draws: small, sign by difficulty
+  if (my > opp)      delta = 10 + diffIdx*7;                    // beat harder bots for more
+  else if (my < opp) delta = -Math.max(3, 22 - diffIdx*3);     // losing to easy bots hurts more (never positive)
+  else               delta = (diffIdx - 2) * 3;                 // draws: small, sign by difficulty
   stats.points = Math.max(0, stats.points + delta);
   stats.played++;
   if (my > opp){ stats.wins++; stats.streak = Math.max(1, stats.streak+1); }
@@ -1048,6 +1127,29 @@ buildOpts('handed', HANDED, 'handed');
 buildOpts('spectate', SPECT, 'spectate');
 buildOpts('cb', CB, 'cb');
 
+// ---- Collapsible menu sections (persisted). Keeps the long setup screen tidy.
+const UI_KEY = 'magnetball.ui';
+function loadUI(){ try { return JSON.parse(localStorage.getItem(UI_KEY)||'{}'); } catch(e){ return {}; } }
+function saveUI(o){ try { localStorage.setItem(UI_KEY, JSON.stringify(o)); } catch(e){} }
+const uiState = loadUI();
+const SECTION_COLLAPSED_DEFAULT = { player:true, match:false, controls:true, online:true };
+function initCollapsibles(){
+  document.querySelectorAll('.card.collapsible').forEach(card=>{
+    const sec = card.dataset.sec;
+    const collapsed = uiState.hasOwnProperty(sec) ? !!uiState[sec] : !!SECTION_COLLAPSED_DEFAULT[sec];
+    card.classList.toggle('collapsed', collapsed);
+    const h2 = card.querySelector('h2');
+    if (h2 && !h2._wired){ h2._wired = true;
+      h2.addEventListener('click', ()=>{
+        const now = !card.classList.contains('collapsed');
+        card.classList.toggle('collapsed', now);
+        uiState[sec] = now; saveUI(uiState);
+      });
+    }
+  });
+}
+initCollapsibles();
+
 // Stick sensitivity slider (0.6×..1.6×).
 const sensEl = $('sens'), sensValEl = $('sensVal');
 sensEl.value = Math.round(sel.sens*100); sensValEl.textContent = sel.sens.toFixed(1)+'×';
@@ -1101,6 +1203,11 @@ $('howBtn').onclick = () => { $('setup').classList.add('hidden'); $('how').class
 $('howBack').onclick = () => { $('how').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('drillsBtn').onclick = openDrills;
 $('drillsBack').onclick = () => { $('drills').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+$('tutBtn').onclick = startTutorial;
+$('seasonBtn').onclick = openSeason;
+$('seasonBack').onclick = () => { $('season').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+$('seasonPlay').onclick = startSeasonRound;
+$('seasonReset').onclick = () => { season.cleared=0; saveSeasonState(); buildSeasonList(); };
 
 // Overlay buttons
 $('pauseBtn').onclick = () => togglePause(true);
@@ -1109,12 +1216,20 @@ $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
 
-function hideScreens(){ ['setup','how','drills','settings'].forEach(id=>$(id).classList.add('hidden')); }
+function hideScreens(){ ['setup','how','drills','settings','season'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); });
+  const tt=$('tutTip'); if(tt) tt.classList.add('hidden');
+  // ensure any docked settings panel is fully torn down when screens change
+  $('settings').classList.remove('docked'); document.body.classList.remove('panel-open');
+  settingsDocked=false; uiPadLeft=0; }
 
 // ---- Settings (sound + game feel), openable from the menu and mid-game
 let settingsFromGame = false;
+let settingsDocked = false;
+let uiPadLeft = 0;                       // left inset for a docked settings panel
+const DOCK_W = 372;                      // must match #settings.docked width in CSS
+function isDesktop(){ return !!(window.matchMedia && window.matchMedia('(min-width:900px)').matches); }
 $('settingsBtn').onclick = () => openSettings(false);
-$('gearBtn').onclick = () => openSettings(true);
+$('gearBtn').onclick = () => { if (!$('settings').classList.contains('hidden')) closeSettings(); else openSettings(true); };
 $('replayBtn').onclick = () => { if (!replay.active) playReplay(); };
 $('clipBtn').onclick = () => { if (!replay.active) saveClip(); };
 $('settingsBack').onclick = closeSettings;
@@ -1131,12 +1246,26 @@ const FEEL_SLIDERS = [
   {label:'Stick sensitivity', get:()=>Math.round(sel.sens*100), set:v=>sel.sens=v/100, min:60,max:160,step:10, fmt:v=>(v/100).toFixed(1)+'×'},
 ];
 function openSettings(fromGame){
+  buildSettings();
+  // Desktop, mid-match: dock the full panel on the left and KEEP PLAYING so you
+  // can tune theme / sound / feel live. Elsewhere: the usual fullscreen overlay.
+  if (fromGame && world && isDesktop()){
+    settingsDocked = true; settingsFromGame = true;
+    document.body.classList.add('panel-open');
+    $('settings').classList.add('docked');
+    $('settings').classList.remove('hidden');
+    uiPadLeft = DOCK_W; resize();
+    return;
+  }
   settingsFromGame = fromGame; if (fromGame) paused = true;
   hideScreens(); $('hud').classList.add('hidden'); hideOverlay();
-  buildSettings(); $('settings').classList.remove('hidden');
+  $('settings').classList.remove('hidden');
 }
 function closeSettings(){
   $('settings').classList.add('hidden');
+  $('settings').classList.remove('docked');
+  document.body.classList.remove('panel-open');
+  if (settingsDocked){ settingsDocked=false; settingsFromGame=false; uiPadLeft=0; resize(); return; }
   if (settingsFromGame && world){ $('hud').classList.remove('hidden'); paused=false; }
   else $('setup').classList.remove('hidden');
   settingsFromGame=false;
@@ -1151,6 +1280,16 @@ function buildSettings(){
     el.innerHTML=`<span class="emoji">${t.emoji}</span><span>${t.name}</span>`;
     el.onclick=()=>{ sel.theme=key; saveSel(); applyTheme(key); buildSettings(); };
     tp.appendChild(el);
+  }
+  // Juice / screen-shake toggle (accessibility: some players want it off).
+  const jp=$('juicePick');
+  if (jp){ jp.innerHTML='';
+    [['on','✨ On'],['off','⊘ Off']].forEach(([k,lab])=>{
+      const on=(k==='on')===!!sel.juice;
+      const el=document.createElement('div'); el.className='opt'+(on?' sel':''); el.innerHTML=`<span>${lab}</span>`;
+      el.onclick=()=>{ sel.juice=(k==='on'); saveSel(); buildSettings(); if(sel.juice) addShake(6); };
+      jp.appendChild(el);
+    });
   }
   const mm=$('sndMaster'); mm.innerHTML='';
   [['on','🔊 On'],['off','🔇 Muted']].forEach(([k,lab])=>{
@@ -1232,6 +1371,127 @@ function openDrills(){
     el.onclick = () => startDrill(key);
     wrap.appendChild(el);
   });
+}
+
+// ============================================================
+//  ONBOARDING TUTORIAL — a short guided first match (move → reach → kick → score)
+// ============================================================
+const TUT_STEPS = [
+  'Move — drag the right side of the screen, or use arrow keys / WASD.',
+  'Nice! Now go and reach the ball.',
+  'Hold KICK (left side, or Space) next to the ball, then release to shoot.',
+  'Great shot! Now score — put the ball in a goal.',
+];
+function setTutTip(text){ const el=$('tutTip'); if(!el) return; el.dataset.tip=text; el.classList.remove('hidden'); }
+function startTutorial(){
+  const fv = feelVals();
+  const you = mkPlayer(0, profile.name, profile.color, profile.cap, 'human1', profile.flag, profile.eyes);
+  world = {
+    field: FIELDS.classic, mode: MODES.train, len: { secs:0, goals:0 }, diff: DIFF.normal,
+    magnet: 0, train: true, watch: false, cb: sel.cb==='on',
+    pAccel: fv.accel, pDamp: fv.pdamp, ballCap: fv.ballcap, kickPower: fv.kick, kickRange: PLAYER.kickRange,
+    players: [you],
+    ball: { x:0, y:110, vx:0, vy:0, r:BALLS.normal.r, invMass:BALLS.normal.invMass, bCoef:BALLS.normal.bCoef, damp:fv.bdamp, isBall:true },
+    posts:[], walls:[], arcs:[], score:[0,0], timeLeft:0, goalsTarget:0, overtime:false,
+    practiceGoals:0, state:'play', stateT:0, kickTeam:1, lastScorer:-1, trapOff:!!sel.trapOff,
+    tutorial: { step:0, moved:0, done:false },
+  };
+  buildGeometry(world);
+  you.x=0; you.y=235; you.faceX=0; you.faceY=-1; you.homeX=0; you.homeY=235;
+  drillKey=null; repReset();
+  hideScreens(); $('hud').classList.remove('hidden');
+  $('scorebug').style.display='none'; $('resetBtn').style.display='none'; hideOverlay();
+  running=true; paused=false; resize(); updateScoreUI(); lastT=0; acc=0;
+  cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
+  setTutTip('Step 1/4 — '+TUT_STEPS[0]);
+}
+function tutorialStep(w){
+  const t=w.tutorial; if(t.done) return;
+  const p=w.players[0], b=w.ball;
+  if (t.step===0){ t.moved += Math.hypot(p.vx,p.vy); if (t.moved>45) tutAdvance(w); }
+  else if (t.step===1){ if (Math.hypot(b.x-p.x,b.y-p.y) < p.r+b.r+24) tutAdvance(w); }
+  else if (t.step===2){ if (Math.hypot(b.vx,b.vy) > 6.5) tutAdvance(w); }
+  else if (t.step===3){ if (w.practiceGoals>0) tutFinish(w); }
+}
+function tutAdvance(w){
+  const t=w.tutorial; t.step++;
+  if (t.step < TUT_STEPS.length){ setTutTip('Step '+(t.step+1)+'/4 — '+TUT_STEPS[t.step]); showBanner('✓', 'var(--green)'); }
+}
+function tutFinish(w){
+  w.tutorial.done=true; sel.tutDone=true; saveSel();
+  $('tutTip').classList.add('hidden');
+  paused=true;
+  $('ovTitle').textContent='TUTORIAL COMPLETE 🎓'; $('ovSub').textContent="You've got the basics — go play!";
+  $('ovResume').textContent='Play a match'; $('ovResume').style.display=''; $('ovResume').onclick=()=>{ hideOverlay(); startMatch(); };
+  $('ovRematch').textContent='Menu'; $('ovRematch').style.display=''; $('ovRematch').onclick=()=>{ hideOverlay(); toMenu(); };
+  $('ovMenu').textContent='Main Menu'; $('ovMenu').onclick=toMenu;
+  $('overlay').classList.add('show');
+}
+
+// ============================================================
+//  SINGLE-PLAYER SEASON / CUP — a ladder of matches vs rising difficulty
+// ============================================================
+const SEASON_ROUNDS = [
+  { name:'Round 1',        mode:'1v1', diff:'easy',   len:'3' },
+  { name:'Round 2',        mode:'1v1', diff:'normal', len:'3' },
+  { name:'Quarter-final',  mode:'2v2', diff:'normal', len:'3' },
+  { name:'Semi-final',     mode:'2v2', diff:'hard',   len:'5' },
+  { name:'Final',          mode:'2v2', diff:'pro',    len:'5' },
+];
+function loadSeason(){ try { return JSON.parse(localStorage.getItem('magnetball.season')||'{}'); } catch(e){ return {}; } }
+function saveSeasonState(){ try { localStorage.setItem('magnetball.season', JSON.stringify(season)); } catch(e){} }
+let season = Object.assign({ cleared:0, cups:0 }, loadSeason());
+function openSeason(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('season').classList.remove('hidden'); buildSeasonList(); }
+function buildSeasonList(){
+  const wrap=$('seasonList'); if(!wrap) return; wrap.innerHTML='';
+  SEASON_ROUNDS.forEach((r,i)=>{
+    const done=i<season.cleared, next=i===season.cleared;
+    const el=document.createElement('div'); el.className='opt'+(next?' sel':'')+((done||next)?'':' locked');
+    const d=DIFF[r.diff], m=MODES[r.mode];
+    el.innerHTML=`<span>${done?'✅ ':''}${r.name}</span><small>${m.name} · ${d.name}</small>`;
+    wrap.appendChild(el);
+  });
+  const cupDone = season.cleared>=SEASON_ROUNDS.length;
+  $('seasonPlay').textContent = cupDone ? '🏆 Cup won — play again'
+    : (season.cleared>0 ? ('Continue · '+SEASON_ROUNDS[season.cleared].name) : 'Start ▶');
+  $('cupInfo').textContent = (season.cups>0 ? ('· 🏆 ×'+season.cups) : '');
+}
+function startSeasonRound(){
+  let i = season.cleared;
+  if (i >= SEASON_ROUNDS.length){ season.cleared=0; saveSeasonState(); i=0; }   // won → new run
+  const r = SEASON_ROUNDS[i];
+  sel.mode=r.mode; sel.diff=r.diff; sel.length=r.len; saveSel();
+  startMatch();
+  world.season = { round:i };
+}
+function seasonEnd(w){
+  let delta=0;
+  if (!w.watch) delta = recordResult(w);
+  const rp = delta ? `   ·   ${delta>0?'+':''}${delta} RP` : '';
+  const sc = `${w.score[0]}–${w.score[1]}`;
+  const won = w.score[0] > w.score[1];
+  if (won){
+    if (w.season.round === season.cleared){ season.cleared++; saveSeasonState(); }
+    if (season.cleared >= SEASON_ROUNDS.length){
+      season.cups = (season.cups||0)+1; saveSeasonState();
+      seasonOverlay('🏆 CUP WON!', `You beat every round · ${sc}${rp}`, 'cup');
+    } else {
+      seasonOverlay('ROUND CLEARED ✅', `${sc}${rp}   ·   Next: ${SEASON_ROUNDS[season.cleared].name}`, 'next');
+    }
+  } else {
+    seasonOverlay('KNOCKED OUT', `Lost ${sc} at ${SEASON_ROUNDS[w.season.round].name}${rp}`, 'retry');
+  }
+}
+function seasonOverlay(title, sub, kind){
+  paused=true;
+  $('ovTitle').textContent=title; $('ovSub').textContent=sub;
+  $('ovResume').style.display='';
+  if (kind==='next'){ $('ovResume').textContent='Next round ▶'; $('ovResume').onclick=()=>{ hideOverlay(); startSeasonRound(); }; }
+  else if (kind==='retry'){ $('ovResume').textContent='Retry round'; $('ovResume').onclick=()=>{ hideOverlay(); startSeasonRound(); }; }
+  else { $('ovResume').textContent='Back to Cup'; $('ovResume').onclick=()=>{ hideOverlay(); openSeason(); }; }
+  $('ovRematch').textContent='Cup'; $('ovRematch').style.display=''; $('ovRematch').onclick=()=>{ hideOverlay(); openSeason(); };
+  $('ovMenu').textContent='Main Menu'; $('ovMenu').onclick=toMenu;
+  $('overlay').classList.add('show');
 }
 
 // ============================================================
@@ -1381,7 +1641,7 @@ function buildGeometry(w){
   w.arcs = [];
   w.posts = [];
 
-  const cB = 0.1; // low-bounce boundary walls
+  const cB = 0.9; // lively, near-elastic boundary walls so you can pass off them (only the net kills momentum)
   // Side walls (left & right), full length
   w.walls.push({a:{x:-halfW,y:-halfL+c}, b:{x:-halfW,y:halfL-c}, bCoef:cB});
   w.walls.push({a:{x: halfW,y:-halfL+c}, b:{x: halfW,y:halfL-c}, bCoef:cB});
@@ -1456,6 +1716,15 @@ function layTeam(list, side, halfL){
 //  MAIN LOOP
 // ============================================================
 let lastT = 0, acc = 0;
+// ---- Juice: screen shake, hit-stop, goal flash & slow-mo (all gated by sel.juice)
+let shake = 0, flash = 0, flashCol = '#ffffff', hitStop = 0;
+function addShake(a){ if (!sel.juice) return; shake = Math.min(shake + a, 16); }
+function goalBurst(w, team){
+  if (!sel.juice) return;
+  addShake(13); hitStop = 5;
+  flashCol = team===0 ? TH.teamRed : TH.teamBlue; flash = 0.9;
+}
+
 function loop(t){
   if (!running){ return; }
   rafId = requestAnimationFrame(loop);
@@ -1464,7 +1733,9 @@ function loop(t){
   let dt = (t - lastT) / 1000; lastT = t;
   if (dt > 0.1) dt = 0.1;               // clamp big gaps
   if (paused){ render(); return; }
-  acc += dt;
+  if (hitStop > 0){ hitStop--; render(); return; }   // brief freeze-frame for impact
+  const slow = (sel.juice && world && world.state==='goal') ? 0.45 : 1;   // dramatic goal slow-mo
+  acc += dt * slow;
   let steps = 0;
   while (acc >= STEP && steps < 5){
     step(world);
@@ -1621,6 +1892,7 @@ function step(w){
   else if (w.state==='goal') integrate(w, false, true);      // ball flies on into the net; players hold
   ballSounds(w);
   repCapture(w);   // feed the rolling replay buffer
+  if (w.tutorial) tutorialStep(w);
 
   updateScoreUI();
 }
@@ -1628,8 +1900,8 @@ function step(w){
 // Play a wall/net sound once per frame when the ball bounces (flags set in collideWall).
 function ballSounds(w){
   const b = w.ball;
-  if (b._hitNet){ playSfx('net'); b._hitNet=false; b._hitWall=false; }
-  else if (b._hitWall){ playSfx('wall'); b._hitWall=false; }
+  if (b._hitNet){ playSfx('net'); addShake(4); b._hitNet=false; b._hitWall=false; }
+  else if (b._hitWall){ playSfx('wall'); addShake(3); b._hitWall=false; }
 }
 
 // ---------- Human input mapping from a pad
@@ -1757,7 +2029,7 @@ function handleBallControl(w, p, ball, ballFrozen){
       if (w.magnet > 0 && dist < sum + 22) power *= 1 + (w.magnet/100) * 0.7;
       ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
       p.kickUsed = true;
-      spawnKickFx(ball.x, ball.y, nx, ny); playSfx('kick');
+      spawnKickFx(ball.x, ball.y, nx, ny, power); playSfx('kick');
     }
     if (!p.kick) p.kickUsed = false;
   } else if (w.trapOff && !ballFrozen){
@@ -1769,7 +2041,7 @@ function handleBallControl(w, p, ball, ballFrozen){
       const power = (w.kickPower||PLAYER.kick) * (1 + (p.chargeT / CHARGE.max) * CHARGE.bonus);
       ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
       p.kickUsed = true;
-      spawnKickFx(ball.x, ball.y, nx, ny); playSfx('kick');
+      spawnKickFx(ball.x, ball.y, nx, ny, power); playSfx('kick');
     }
     if (!p.kick) p.kickUsed = false;
   } else if (!ballFrozen){
@@ -1822,7 +2094,7 @@ function releaseTrap(w, p, ball){
   if (w.magnet > 0) power *= 1 + (w.magnet/100) * 0.7;
   ball.vx = fx*power + p.vx; ball.vy = fy*power + p.vy;
   p.trap = false; p.trapUsed = true; p.chargeT = 0;
-  spawnKickFx(ball.x, ball.y, fx, fy); playSfx('kick');
+  spawnKickFx(ball.x, ball.y, fx, fy, power); playSfx('kick');
 }
 
 // Elastic disc-disc collision weighted by inverse mass.
@@ -1928,7 +2200,8 @@ function scoreGoal(w, team){
   playSfx('crowd');              // crowd cheer on a goal
   showBanner('GOAL!', team===0?'var(--red)':'var(--cyan)');
   fx.length = 0;
-  for (let i=0;i<26;i++) spawnConfetti(ball_x(w), ball_y(w));
+  for (let i=0;i<(sel.juice?40:26);i++) spawnConfetti(ball_x(w), ball_y(w));
+  goalBurst(w, team);   // shake + flash + hit-stop
   repOnGoal(w);   // freeze the last few seconds for replay / clip share
   if (w.goalsTarget && w.score[team] >= w.goalsTarget){ setTimeout(()=>endMatch(w), 1200); }
 }
@@ -1937,6 +2210,7 @@ function ball_x(w){ return w.ball.x; } function ball_y(w){ return w.ball.y; }
 function endMatch(w){
   if (w.state==='over') return;
   w.state='over';
+  if (w.season){ seasonEnd(w); return; }   // cup progression handles its own overlay
   let title, sub;
   if (w.score[0]===w.score[1]){ title='DRAW'; sub=`${w.score[0]} – ${w.score[1]}`; }
   else if (w.score[0]>w.score[1]){ title='YOU WIN! 🏆'; sub=`${w.score[0]} – ${w.score[1]}`; }
@@ -2078,6 +2352,8 @@ function rand(){ return Math.random(); }
 // ============================================================
 let cam = { s:1, ox:0, oy:0 };
 function resize(){
+  // If the panel is docked but the window is no longer desktop-wide, undock it.
+  if (settingsDocked && !isDesktop()){ closeSettings(); return; }
   DPR = Math.min(window.devicePixelRatio||1, 2.5);
   cw = window.innerWidth; ch = window.innerHeight;
   cv.width = Math.floor(cw*DPR); cv.height = Math.floor(ch*DPR);
@@ -2088,11 +2364,13 @@ function resize(){
 }
 function computeCam(){
   const f = world.field;
+  const padL = uiPadLeft || 0;              // keep the pitch clear of a docked panel
+  const availW = Math.max(80, cw - padL);
   const worldW = f.W + 60;
   const worldH = f.L + f.net*2 + 60;
-  const s = Math.min(cw/worldW, ch/worldH);
+  const s = Math.min(availW/worldW, ch/worldH);
   cam.s = s;
-  cam.ox = cw/2;
+  cam.ox = padL + availW/2;
   cam.oy = ch/2;
 }
 function wx(x){ return cam.ox + x*cam.s; }
@@ -2124,7 +2402,7 @@ function dGate(w,x,y,gw,angDeg,opts){
 }
 function dZone(w,x,y,r,kind){ const z={x,y,r,kind:kind||'reach',done:false,tin:0}; w.zones.push(z); return z; }
 function dCone(w,x,y){ w.cones.push({x,y}); w.posts.push({x,y,vx:0,vy:0,r:9,invMass:0,bCoef:0.6,isPost:true,isCone:true}); }
-function dWall(w,x1,y1,x2,y2){ w.walls.push({a:{x:x1,y:y1},b:{x:x2,y:y2},bCoef:0.4}); }
+function dWall(w,x1,y1,x2,y2){ w.walls.push({a:{x:x1,y:y1},b:{x:x2,y:y2},bCoef:0.4, draw:true}); }
 function dSet(w,px,py,bx,by,bvx,bvy){ const p=w.players[0]; p.x=px;p.y=py;p.vx=0;p.vy=0;p.faceX=0;p.faceY=-1;p.trap=false;p.trapUsed=false;p.kick=false;p.kickUsed=false;p.chargeT=0;
   w.ball.x=bx;w.ball.y=by;w.ball.vx=bvx||0;w.ball.vy=bvy||0; w.ball.px=bx; w.ball.py=by; }
 function drillBoundary(w){ const hw=w.field.W/2, hl=w.field.L/2, b=0.3;
@@ -2162,6 +2440,15 @@ const DRILLS = {
     build(w){ drillBoundary(w); dSet(w,0,320,0,285); dWall(w,-42,250,-42,-250); dWall(w,42,250,42,-250); dGate(w,0,-300,58,0); } },
   moving_gate:{ name:'Moving Gate', emoji:'↔️', unit:'s', desc:'Time your shot — the gate slides side to side', moving:true,
     build(w){ drillBoundary(w); dSet(w,0,300,0,255); const g=dGate(w,0,-150,54,0); w.drill.mg={g,amp:135,spd:1.4,t:0}; } },
+  maze:{ name:'Dribble Maze', emoji:'🌀', unit:'s', desc:'Dribble the ball through the winding lanes to the end circle', seq:true,
+    build(w){ drillBoundary(w); const hw=w.field.W/2;
+      dSet(w,-150,-300,-150,-262);
+      dWall(w,-hw,-130, 90,-130);          // divider 1 — gap on the right
+      dWall(w,-90,130, hw,130);            // divider 2 — gap on the left
+      dGate(w,150,-130,84,0);              // pass through the right gap…
+      dGate(w,-150,130,84,0);              // …then the left gap
+      dCone(w,0,-235); dCone(w,10,15); dCone(w,-30,290);
+      dZone(w,150,300,42,'reach'); } },
 };
 const DRILL_KEYS = Object.keys(DRILLS);
 
@@ -2286,8 +2573,10 @@ function renderDrill(){
   ctx.strokeStyle=TH.line; ctx.lineWidth=Math.max(2,3*s);
   ctx.strokeRect(wx(-b.halfW),wy(-b.halfL),(b.halfW*2)*s,(b.halfL*2)*s);
   // solid walls (obstacles) — draw the non-boundary ones
-  ctx.strokeStyle=TH.obstacle; ctx.lineWidth=Math.max(3,4*s);
+  ctx.strokeStyle=TH.obstacle; ctx.lineWidth=Math.max(3,4*s); ctx.lineCap='round';
   for (const g of w.gates){ if(g.solid){ for(const wl of [g.wa0,g.wa1]){ ctx.beginPath(); ctx.moveTo(wx(wl.a.x),wy(wl.a.y)); ctx.lineTo(wx(wl.b.x),wy(wl.b.y)); ctx.stroke(); } } }
+  for (const wl of w.walls){ if(!wl.draw) continue; ctx.beginPath(); ctx.moveTo(wx(wl.a.x),wy(wl.a.y)); ctx.lineTo(wx(wl.b.x),wy(wl.b.y)); ctx.stroke(); }
+  ctx.lineCap='butt';
   drawFx(); drawBallTrail(w);
   // zones
   for (const z of w.zones){
@@ -2323,12 +2612,19 @@ function render(){
   ctx.clearRect(0,0,cw,ch);
   ctx.fillStyle = TH.fieldBg;
   ctx.fillRect(0,0,cw,ch);
+  // Screen shake — jitter only the pitch/players, never the touch controls.
+  let sx=0, sy=0;
+  if (shake > 0.3){ sx=(Math.random()*2-1)*shake; sy=(Math.random()*2-1)*shake; shake*=0.85; } else shake=0;
+  ctx.save(); ctx.translate(sx, sy);
   drawPitch(world);
   drawFx();
   drawBallTrail(world);
   drawDiscs(world);
   drawBall(world);
   if (world.state==='kickoff') drawKickoffHint(world);
+  ctx.restore();
+  // Goal flash — a quick coloured wash that fades.
+  if (flash > 0.01){ ctx.fillStyle = rgba(flashCol, flash*0.35); ctx.fillRect(0,0,cw,ch); flash*=0.88; } else flash=0;
   drawControls();
 }
 
@@ -2509,12 +2805,15 @@ function drawKickoffHint(w){
 
 // ---------- FX (kick sparks, confetti)
 let fx = [];
-function spawnKickFx(x,y,nx,ny){
-  for (let i=0;i<6;i++){
+function spawnKickFx(x,y,nx,ny,pow){
+  pow = pow || 5;
+  const n = Math.min(16, 5 + Math.round(pow*0.9));
+  for (let i=0;i<n;i++){
     const a = Math.atan2(ny,nx) + (Math.random()-0.5)*1.2;
-    const sp = 1.5+Math.random()*2.5;
+    const sp = 1.5 + Math.random()*2.5*(0.6+pow*0.09);
     fx.push({x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, life:0.3, max:0.3, c:'#fff', r:2.5});
   }
+  addShake(Math.min(5, pow*0.5));   // a stronger kick shakes more
 }
 function spawnConfetti(x,y){
   const cols=['#e05a5a','#5a7de0','#f5d547','#46d17a','#fff','#f07a5a'];
@@ -2626,6 +2925,7 @@ const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.key.toLowerCase()] = true;
   if (e.key === ' ') { pads.p1.kick = true; e.preventDefault(); }
+  if (e.key === 'Escape' && !$('settings').classList.contains('hidden')){ closeSettings(); e.preventDefault(); }
 });
 window.addEventListener('keyup', e => {
   keys[e.key.toLowerCase()] = false;
@@ -2789,6 +3089,8 @@ if (window.__MAGNETDEBUG) {
     get repBuf(){ return repBuf; }, get lastReplay(){ return lastReplay; }, playReplay, saveClip, repMime,
     get profile(){ return profile; }, get stats(){ return stats; }, FLAGS, EYES, CAPS,
     isUnlocked, unlockCounts, renderStats, buildFlagPicker, buildEyesPicker, buildCaps,
+    get shake(){ return shake; }, get hitStop(){ return hitStop; }, get flash(){ return flash; },
+    addShake, goalBurst, scoreGoal,
   };
 }
 })();
