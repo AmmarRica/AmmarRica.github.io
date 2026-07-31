@@ -10,6 +10,11 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Desktop live-settings dock** — on wide screens the full Settings panel docks on the left
+  as a persistent sidebar so you can tweak theme / sound / feel while the match keeps playing;
+  the pitch camera insets so it's never hidden. Mobile keeps the fullscreen overlay.
+- **Wider difficulty range** — 7 bot tiers now: Rookie, Easy, Normal, Hard, Pro, Elite, Insane
+  (RP rewards scale across the range).
 - **Unlockables + Countryballs + player builder** (#4, #8) — 51 unlockable cosmetics: 29
   **countryball** flag skins for your disc, 10 **eye styles**, and 12 **caps**, each gated
   behind a milestone (RP, wins, goals, win-streak, matches played, or drills finished). A

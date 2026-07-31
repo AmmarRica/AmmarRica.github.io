@@ -191,6 +191,27 @@
     .opt.locked { opacity: .6; }
     .opt.locked canvas { filter: grayscale(1) brightness(.7); }
 
+    /* Desktop: dock the full Settings as a live left sidebar while you play. */
+    @media (min-width: 900px){
+      #settings.docked {
+        inset: 0 auto 0 0; width: 372px; max-width: 40vw; height: 100%;
+        align-items: stretch; justify-content: flex-start;
+        border-right: 1px solid var(--edge);
+        background: var(--bg-grad) fixed;
+        box-shadow: 10px 0 34px rgba(0,0,0,.5); z-index: 30;
+        padding: 16px 16px max(20px, env(safe-area-inset-bottom));
+      }
+      #settings.docked .logo { margin-bottom: 8px; }
+      #settings.docked .logo h1 { font-size: 20px; }
+      #settings.docked .logo p { font-size: 11px; }
+      #settings.docked .card { width: 100%; }
+      #settings.docked #settingsBack {
+        position: sticky; bottom: 0; margin-top: 8px;
+        background: var(--bg); border: 1px solid var(--edge);
+      }
+      body.panel-open #hud { padding-left: 372px; }
+    }
+
     /* ---------- In-game HUD ---------- */
     #hud {
       position: fixed; top: 0; left: 0; right: 0; z-index: 10;
@@ -591,10 +612,13 @@ function unlockCounts(){
 }
 
 const DIFF = {
+  rookie: { name:'Rookie', emoji:'🐣', react:0.58, err:40, power:0.72, aggr:0.68 },
   easy:   { name:'Easy',   emoji:'🙂', react:0.72, err:26, power:0.82, aggr:0.85 },
   normal: { name:'Normal', emoji:'😎', react:0.85, err:15, power:0.92, aggr:1.0 },
   hard:   { name:'Hard',   emoji:'🔥', react:0.95, err:7,  power:1.0,  aggr:1.12 },
   pro:    { name:'Pro',    emoji:'💀', react:1.0,  err:3,  power:1.06, aggr:1.22 },
+  elite:  { name:'Elite',  emoji:'⚡', react:1.05, err:1.5,power:1.10, aggr:1.32 },
+  insane: { name:'Insane', emoji:'👽', react:1.10, err:0.5,power:1.15, aggr:1.42 },
 };
 
 const MODES = {
@@ -914,12 +938,12 @@ let stats = loadStats();
 
 // Apply one match result for team 0 (you); returns the RP delta.
 function recordResult(w){
-  const diffIdx = Object.keys(DIFF).indexOf(sel.diff);          // 0..3 (easy..pro)
+  const diffIdx = Object.keys(DIFF).indexOf(sel.diff);          // 0..N (rookie..insane)
   const my = w.score[0], opp = w.score[1];
   let delta;
-  if (my > opp)      delta = 12 + diffIdx*8;                    // beat harder bots for more
-  else if (my < opp) delta = -(24 - diffIdx*5);                 // losing to easy bots hurts more
-  else               delta = (diffIdx - 1) * 3;                 // draws: small, sign by difficulty
+  if (my > opp)      delta = 10 + diffIdx*7;                    // beat harder bots for more
+  else if (my < opp) delta = -Math.max(3, 22 - diffIdx*3);     // losing to easy bots hurts more (never positive)
+  else               delta = (diffIdx - 2) * 3;                 // draws: small, sign by difficulty
   stats.points = Math.max(0, stats.points + delta);
   stats.played++;
   if (my > opp){ stats.wins++; stats.streak = Math.max(1, stats.streak+1); }
@@ -1109,12 +1133,19 @@ $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
 
-function hideScreens(){ ['setup','how','drills','settings'].forEach(id=>$(id).classList.add('hidden')); }
+function hideScreens(){ ['setup','how','drills','settings'].forEach(id=>$(id).classList.add('hidden'));
+  // ensure any docked settings panel is fully torn down when screens change
+  $('settings').classList.remove('docked'); document.body.classList.remove('panel-open');
+  settingsDocked=false; uiPadLeft=0; }
 
 // ---- Settings (sound + game feel), openable from the menu and mid-game
 let settingsFromGame = false;
+let settingsDocked = false;
+let uiPadLeft = 0;                       // left inset for a docked settings panel
+const DOCK_W = 372;                      // must match #settings.docked width in CSS
+function isDesktop(){ return !!(window.matchMedia && window.matchMedia('(min-width:900px)').matches); }
 $('settingsBtn').onclick = () => openSettings(false);
-$('gearBtn').onclick = () => openSettings(true);
+$('gearBtn').onclick = () => { if (!$('settings').classList.contains('hidden')) closeSettings(); else openSettings(true); };
 $('replayBtn').onclick = () => { if (!replay.active) playReplay(); };
 $('clipBtn').onclick = () => { if (!replay.active) saveClip(); };
 $('settingsBack').onclick = closeSettings;
@@ -1131,12 +1162,26 @@ const FEEL_SLIDERS = [
   {label:'Stick sensitivity', get:()=>Math.round(sel.sens*100), set:v=>sel.sens=v/100, min:60,max:160,step:10, fmt:v=>(v/100).toFixed(1)+'×'},
 ];
 function openSettings(fromGame){
+  buildSettings();
+  // Desktop, mid-match: dock the full panel on the left and KEEP PLAYING so you
+  // can tune theme / sound / feel live. Elsewhere: the usual fullscreen overlay.
+  if (fromGame && world && isDesktop()){
+    settingsDocked = true; settingsFromGame = true;
+    document.body.classList.add('panel-open');
+    $('settings').classList.add('docked');
+    $('settings').classList.remove('hidden');
+    uiPadLeft = DOCK_W; resize();
+    return;
+  }
   settingsFromGame = fromGame; if (fromGame) paused = true;
   hideScreens(); $('hud').classList.add('hidden'); hideOverlay();
-  buildSettings(); $('settings').classList.remove('hidden');
+  $('settings').classList.remove('hidden');
 }
 function closeSettings(){
   $('settings').classList.add('hidden');
+  $('settings').classList.remove('docked');
+  document.body.classList.remove('panel-open');
+  if (settingsDocked){ settingsDocked=false; settingsFromGame=false; uiPadLeft=0; resize(); return; }
   if (settingsFromGame && world){ $('hud').classList.remove('hidden'); paused=false; }
   else $('setup').classList.remove('hidden');
   settingsFromGame=false;
@@ -2078,6 +2123,8 @@ function rand(){ return Math.random(); }
 // ============================================================
 let cam = { s:1, ox:0, oy:0 };
 function resize(){
+  // If the panel is docked but the window is no longer desktop-wide, undock it.
+  if (settingsDocked && !isDesktop()){ closeSettings(); return; }
   DPR = Math.min(window.devicePixelRatio||1, 2.5);
   cw = window.innerWidth; ch = window.innerHeight;
   cv.width = Math.floor(cw*DPR); cv.height = Math.floor(ch*DPR);
@@ -2088,11 +2135,13 @@ function resize(){
 }
 function computeCam(){
   const f = world.field;
+  const padL = uiPadLeft || 0;              // keep the pitch clear of a docked panel
+  const availW = Math.max(80, cw - padL);
   const worldW = f.W + 60;
   const worldH = f.L + f.net*2 + 60;
-  const s = Math.min(cw/worldW, ch/worldH);
+  const s = Math.min(availW/worldW, ch/worldH);
   cam.s = s;
-  cam.ox = cw/2;
+  cam.ox = padL + availW/2;
   cam.oy = ch/2;
 }
 function wx(x){ return cam.ox + x*cam.s; }
