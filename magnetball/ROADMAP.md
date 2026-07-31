@@ -10,6 +10,13 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Players step outside the line** — boundary walls are now ball-only, so players can nudge
+  ~20px past the pitch edge (HaxBall-style) to get around a ball hugging the wall; the ball is
+  still fully contained (verified on all 10 fields).
+- **Ball size** — trimmed the ball's render rim so it matches HaxBall's exact 3:2 player:ball
+  radius ratio (player 15 / ball 10).
+- **Removed the kick aim line** — the on-pitch charge arrow was misleading, so it's gone (the
+  KICK-pad charge ring stays).
 - **Controller button mapping** — a "press a button to bind it" flow: a Controller config
   screen (Controls → Configure buttons) where you rebind Up / Down / Left / Right / Kick by
   pressing them on your gamepad. Rebind-all walks all five; per-row rebinding; reset to

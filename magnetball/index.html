@@ -1807,17 +1807,19 @@ function buildGeometry(w){
   w.posts = [];
 
   const cB = 0.9; // lively, near-elastic boundary walls so you can pass off them (only the net kills momentum)
+  // Boundary walls are `ballOnly`: they contain the BALL but players may step a
+  // little past the line (HaxBall-style) to get around a wall-hugging ball.
   // Side walls (left & right), full length
-  w.walls.push({a:{x:-halfW,y:-halfL+c}, b:{x:-halfW,y:halfL-c}, bCoef:cB});
-  w.walls.push({a:{x: halfW,y:-halfL+c}, b:{x: halfW,y:halfL-c}, bCoef:cB});
+  w.walls.push({a:{x:-halfW,y:-halfL+c}, b:{x:-halfW,y:halfL-c}, bCoef:cB, ballOnly:true});
+  w.walls.push({a:{x: halfW,y:-halfL+c}, b:{x: halfW,y:halfL-c}, bCoef:cB, ballOnly:true});
 
   // Top & bottom walls with goal gap (from ±halfW+corner to ±gh)
   for (const sign of [-1, 1]){ // sign -1 = top, +1 = bottom
     const y = sign*halfL;
     // left segment: from -halfW(+corner) to -gh
-    w.walls.push({a:{x:-halfW+c,y}, b:{x:-gh,y}, bCoef:cB});
+    w.walls.push({a:{x:-halfW+c,y}, b:{x:-gh,y}, bCoef:cB, ballOnly:true});
     // right segment: from gh to halfW(-corner)
-    w.walls.push({a:{x: gh,y}, b:{x: halfW-c,y}, bCoef:cB});
+    w.walls.push({a:{x: gh,y}, b:{x: halfW-c,y}, bCoef:cB, ballOnly:true});
     // Goal posts at gap ends
     w.posts.push({x:-gh, y, vx:0, vy:0, r:POST.r, invMass:0, bCoef:POST.bCoef, isPost:true, team: sign<0?1:0});
     w.posts.push({x: gh, y, vx:0, vy:0, r:POST.r, invMass:0, bCoef:POST.bCoef, isPost:true, team: sign<0?1:0});
@@ -1831,10 +1833,10 @@ function buildGeometry(w){
   // Corners: either chamfered (cut = straight diagonal → octagon) or rounded (arc).
   if (c > 0){
     if (f.cut){
-      w.walls.push({a:{x:-halfW,y:-halfL+c}, b:{x:-halfW+c,y:-halfL}, bCoef:cB});
-      w.walls.push({a:{x: halfW-c,y:-halfL}, b:{x: halfW,y:-halfL+c}, bCoef:cB});
-      w.walls.push({a:{x: halfW,y: halfL-c}, b:{x: halfW-c,y: halfL}, bCoef:cB});
-      w.walls.push({a:{x:-halfW+c,y: halfL}, b:{x:-halfW,y: halfL-c}, bCoef:cB});
+      w.walls.push({a:{x:-halfW,y:-halfL+c}, b:{x:-halfW+c,y:-halfL}, bCoef:cB, ballOnly:true});
+      w.walls.push({a:{x: halfW-c,y:-halfL}, b:{x: halfW,y:-halfL+c}, bCoef:cB, ballOnly:true});
+      w.walls.push({a:{x: halfW,y: halfL-c}, b:{x: halfW-c,y: halfL}, bCoef:cB, ballOnly:true});
+      w.walls.push({a:{x:-halfW+c,y: halfL}, b:{x:-halfW,y: halfL-c}, bCoef:cB, ballOnly:true});
     } else {
       const corners = [
         {cx:-halfW+c, cy:-halfL+c, a0:Math.PI, a1:1.5*Math.PI},
@@ -1842,7 +1844,7 @@ function buildGeometry(w){
         {cx: halfW-c, cy: halfL-c, a0:0, a1:0.5*Math.PI},
         {cx:-halfW+c, cy: halfL-c, a0:0.5*Math.PI, a1:Math.PI},
       ];
-      for (const co of corners) w.arcs.push({cx:co.cx, cy:co.cy, r:c, a0:co.a0, a1:co.a1, bCoef:cB});
+      for (const co of corners) w.arcs.push({cx:co.cx, cy:co.cy, r:c, a0:co.a0, a1:co.a1, bCoef:cB, ballOnly:true});
     }
   }
 }
@@ -2150,8 +2152,19 @@ function integrate(w, ballFrozen, playersFrozen){
       for (let j=i+1;j<discs.length;j++) collideDiscs(discs[i], discs[j]);
     for (const p of discs){
       for (const post of w.posts) collideDiscs(p, post);
-      for (const wall of w.walls) collideWall(p, wall);
-      for (const arc of w.arcs) collideArc(p, arc);
+      // Skip `ballOnly` boundary walls/arcs so players can step slightly outside.
+      for (const wall of w.walls) if (!wall.ballOnly) collideWall(p, wall);
+      for (const arc of w.arcs) if (!arc.ballOnly) collideArc(p, arc);
+    }
+    // …but keep them from wandering off: clamp to the pitch + a small step-out margin.
+    if (!w.drillMode){
+      const halfW=w.field.W/2, halfL=w.field.L/2, M=20;
+      for (const p of discs){
+        if (p.x < -(halfW+M)){ p.x=-(halfW+M); if(p.vx<0)p.vx=0; }
+        else if (p.x > halfW+M){ p.x=halfW+M; if(p.vx>0)p.vx=0; }
+        if (p.y < -(halfL+M)){ p.y=-(halfL+M); if(p.vy<0)p.vy=0; }
+        else if (p.y > halfL+M){ p.y=halfL+M; if(p.vy>0)p.vy=0; }
+      }
     }
   }
 
@@ -2912,31 +2925,6 @@ function renderDrill(){
   drawControls();
 }
 
-// Charge / aim indicator — a directional arrow that grows with kick charge while
-// a human is trapping or winding up, so shot power & direction are readable.
-function drawAim(w){
-  const s=cam.s;
-  for (const p of w.players){
-    if (p.ctrl==='bot') continue;
-    const charging = p.trap || (p.kick && p.chargeT>0.06);
-    if (!charging) continue;
-    let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
-    const frac = Math.min(1, (p.chargeT||0)/CHARGE.max);
-    const x=wx(p.x), y=wy(p.y), r=p.r*s;
-    const len = r*1.5 + frac*r*3.4;
-    const ex=x+fx*len, ey=y+fy*len;
-    const col = frac>0.66 ? TH.warn : TH.accent;
-    ctx.globalAlpha=0.9; ctx.strokeStyle=col; ctx.lineWidth=Math.max(2,3*s);
-    ctx.beginPath(); ctx.moveTo(x+fx*r*1.2, y+fy*r*1.2); ctx.lineTo(ex,ey); ctx.stroke();
-    const ang=Math.atan2(fy,fx), ah=6*s+frac*5*s;
-    ctx.beginPath(); ctx.moveTo(ex,ey);
-    ctx.lineTo(ex-Math.cos(ang-0.42)*ah, ey-Math.sin(ang-0.42)*ah);
-    ctx.lineTo(ex-Math.cos(ang+0.42)*ah, ey-Math.sin(ang+0.42)*ah);
-    ctx.closePath(); ctx.fillStyle=col; ctx.fill();
-    ctx.globalAlpha=1;
-  }
-}
-
 function render(){
   if (!world) return;
   if (world.drillMode){ renderDrill(); return; }
@@ -2951,7 +2939,6 @@ function render(){
   drawFx();
   drawBallTrail(world);
   drawDiscs(world);
-  drawAim(world);
   drawBall(world);
   if (world.state==='kickoff') drawKickoffHint(world);
   ctx.restore();
@@ -3126,7 +3113,7 @@ function drawBall(w){
   const s=cam.s, b=w.ball, x=wx(b.x), y=wy(b.y), r=b.r*s;
   ctx.beginPath(); ctx.arc(x, y+r*0.3, r*0.9, 0, 2*Math.PI); ctx.fillStyle=TH.shadow; ctx.fill();
   // hard rim + flat ball with a solid spot (chunky sprite)
-  ctx.beginPath(); ctx.arc(x, y, r+Math.max(2,r*0.22), 0, 2*Math.PI); ctx.fillStyle=TH.ballRim; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r+Math.max(1.5,r*0.16), 0, 2*Math.PI); ctx.fillStyle=TH.ballRim; ctx.fill();
   ctx.beginPath(); ctx.arc(x, y, r, 0, 2*Math.PI); ctx.fillStyle=TH.ball; ctx.fill();
   // Spot + an offset pip that orbits with rotation, so spin/roll reads visually.
   const rot = b.rot || 0;
