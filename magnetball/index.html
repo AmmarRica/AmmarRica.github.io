@@ -380,6 +380,18 @@
     .shopcard .sprice { font-family: var(--pix); font-size:11px; color: var(--accent); }
     .shopcard.owned .sprice { color: var(--good, #46d17a); }
 
+    /* Cocktail side-config rows */
+    .ckrow { display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px solid rgba(255,255,255,.06); }
+    .ckrow .cklab { font-family: var(--pix); font-size:12px; color:#fff; min-width:78px; }
+    .ckrow .cksides { display:flex; gap:6px; margin-left:auto; }
+    .ckrow .cksides button {
+      font-family: var(--pix); font-size:13px; width:34px; height:34px; border-radius:9px; cursor:pointer;
+      background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); color:#fff;
+    }
+    .ckrow .cksides button.sel { background: var(--accent); color:#04121a; border-color: var(--accent); }
+    /* Cocktail viewport: bump on-screen text a touch for people reading from a distance. */
+    body.cocktail #banner { font-size: clamp(30px, 12vw, 74px); }
+
     .hint { color: var(--muted); font-size: 11px; text-align: center; margin-top: 8px; line-height: 1.6; }
     .footlink { font-family: var(--pix); color: var(--muted); font-size: 8px; margin-top: 20px; line-height: 1.6; text-align:center; }
     .footlink a { color: var(--cyan); text-decoration: none; }
@@ -526,6 +538,15 @@
       <div class="opts" id="themePick"></div>
     </div>
     <div class="card">
+      <h2>Display</h2>
+      <label class="field">Layout <small id="displayDetected" style="color:var(--muted);font-weight:400"></small></label>
+      <div class="opts" id="displayPick"></div>
+      <div id="cocktailBox" style="margin-top:10px; display:none">
+        <div class="hint" style="text-align:left">Cocktail = a flat screen laid on its back with players standing around it. Each player sets which side they're on, so their controller's "up" always points into the table.</div>
+        <button class="ghost" id="cocktailCfgBtn" style="margin-top:8px">🎛 Configure player sides</button>
+      </div>
+    </div>
+    <div class="card">
       <h2>Sound</h2>
       <label class="field">Master</label>
       <div class="opts" id="sndMaster"></div>
@@ -549,6 +570,16 @@
       <button class="ghost" id="feelReset" style="margin-top:10px">Reset to defaults</button>
     </div>
     <button class="ghost" id="settingsBack">← Back</button>
+  </div>
+
+  <!-- ===================== COCKTAIL SIDES CONFIG ===================== -->
+  <div id="cocktailCfg" class="screen hidden">
+    <div class="logo"><h1 style="font-size:24px">COCKTAIL SIDES</h1><p id="cocktailCfgSub">Which side is each player standing on?</p></div>
+    <div class="card">
+      <div id="cocktailRows"></div>
+      <button class="ghost" id="cocktailReset" style="margin-top:10px">Reset all to Bottom</button>
+    </div>
+    <button class="ghost" id="cocktailBack" style="margin-top:12px">← Back</button>
   </div>
 
   <!-- ===================== DRILLS LIST ===================== -->
@@ -965,6 +996,7 @@ let profile = loadProfile();
 let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
             ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
             theme:'neon', trapOff:false, juice:true, autoReplay:true,
+            display:'auto', cocktailSides:{},   // 'auto' (mobile/desktop by resolution) or 'cocktail'; per-seat sides for cocktail
             // Gamepad button map (standard layout defaults: dpad 12-15 + A). Rebindable.
             pad: { up:12, down:13, left:14, right:15, kick:0 },
             snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
@@ -1265,6 +1297,7 @@ function recordResult(w){
 }
 loadSel();
 applyTheme(sel.theme);
+applyDisplayMode();
 
 const $ = id => document.getElementById(id);
 
@@ -1467,6 +1500,8 @@ $('dmCollect').onclick = closeDailyModal;
 $('lbBack').onclick = () => { $('leaderboard').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('lbRefresh').onclick = () => buildLeaderboard(true);
 $('shopBack').onclick = () => { $('shop').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+$('cocktailReset').onclick = () => { sel.cocktailSides = {}; saveSel(); buildCocktailRows(); };
+$('cocktailBack').onclick = () => { $('cocktailCfg').classList.add('hidden'); openSettings(false); };
 $('shopSupport').onclick = () => { const b=$('shopSupport'); b.textContent='💛 Thank you! Have fun out there.'; };
 $('padCfgBtn').onclick = openPadConfig;
 $('padCfgBack').onclick = () => { padBind.active=false; $('padConfig').classList.add('hidden'); $('setup').classList.remove('hidden'); };
@@ -1482,7 +1517,7 @@ $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
 
-function hideScreens(){ ['setup','how','drills','settings','season','leaderboard','shop','padConfig'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); }); padBind.active=false;
+function hideScreens(){ ['setup','how','drills','settings','season','leaderboard','shop','cocktailCfg','padConfig'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); }); padBind.active=false;
   const tt=$('tutTip'); if(tt) tt.classList.add('hidden');
   // ensure any docked settings panel is fully torn down when screens change
   $('settings').classList.remove('docked'); document.body.classList.remove('panel-open');
@@ -1537,6 +1572,41 @@ function closeSettings(){
   else $('setup').classList.remove('hidden');
   settingsFromGame=false;
 }
+// ---- Display modes: 'auto' picks mobile vs desktop by screen width; 'cocktail'
+// is a flat screen with players standing around it, each controller rotated to
+// the side they stand on so "up" always points into the table.
+const SIDES = [['bottom','⬇'],['top','⬆'],['left','⬅'],['right','➡']];
+function sideQuarter(side){ return {bottom:0, left:1, top:2, right:3}[side] || 0; }
+function seatSide(n){ return (sel.cocktailSides && sel.cocktailSides[n]) || ['bottom','top','left','right'][(n-1)%4]; }
+function viewMode(){ return sel.display==='cocktail' ? 'cocktail' : (isDesktop() ? 'desktop' : 'mobile'); }
+function isTouchLayout(){ return viewMode()==='mobile'; }   // only phones show on-screen thumbsticks
+// Rotate an input vector by q quarter-turns (screen coords, y-down).
+function rotVec(x,y,q){ q=((q%4)+4)%4; if(q===0)return [x,y]; if(q===1)return [-y,x]; if(q===2)return [-x,-y]; return [y,-x]; }
+function applyDisplayMode(){
+  document.body.classList.toggle('cocktail', sel.display==='cocktail');
+  if (world) resize();
+}
+function openCocktailCfg(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('cocktailCfg').classList.remove('hidden'); buildCocktailRows(); }
+function buildCocktailRows(){
+  const wrap=$('cocktailRows'); if(!wrap) return; wrap.innerHTML='';
+  const per = (MODES[sel.mode]||{}).per || 1;
+  const seats = Math.max(2, per*2);           // up to 4v4 = 8 seats
+  const sub=$('cocktailCfgSub'); if(sub) sub.textContent = `Which side is each player standing on? (${sel.mode})`;
+  for(let n=1;n<=seats;n++){
+    const row=document.createElement('div'); row.className='ckrow';
+    const lab=document.createElement('span'); lab.className='cklab'; lab.textContent = n===1?'You (P1)':('Player '+n);
+    const sides=document.createElement('span'); sides.className='cksides';
+    const cur=seatSide(n);
+    SIDES.forEach(([key,arrow])=>{
+      const btn=document.createElement('button'); btn.textContent=arrow; if(cur===key) btn.classList.add('sel');
+      btn.title=key;
+      btn.onclick=()=>{ sel.cocktailSides[n]=key; saveSel(); buildCocktailRows(); };
+      sides.appendChild(btn);
+    });
+    row.append(lab, sides); wrap.appendChild(row);
+  }
+}
+
 function buildSettings(){
   Aud.ensure();
   // Theme picker — each tile switches the whole look instantly.
@@ -1548,6 +1618,24 @@ function buildSettings(){
     el.onclick=()=>{ sel.theme=key; saveSel(); applyTheme(key); buildSettings(); };
     tp.appendChild(el);
   }
+  // Display: Auto (mobile/desktop by screen) vs Cocktail (players around a flat screen).
+  const dp=$('displayPick');
+  if (dp){ dp.innerHTML='';
+    [['auto','🖥 Auto'],['cocktail','🍸 Cocktail']].forEach(([k,lab])=>{
+      const on=(sel.display||'auto')===k;
+      const el=document.createElement('div'); el.className='opt'+(on?' sel':''); el.innerHTML=`<span>${lab}</span>`;
+      el.onclick=()=>{
+        const firstTime = k==='cocktail' && !Object.keys(sel.cocktailSides||{}).length;
+        sel.display=k; saveSel(); applyDisplayMode(); buildSettings();
+        if (firstTime) openCocktailCfg();   // first time cocktail is on → configure sides
+      };
+      dp.appendChild(el);
+    });
+  }
+  const dd=$('displayDetected');
+  if (dd) dd.textContent = sel.display==='cocktail' ? '· cocktail' : (isDesktop()?'· desktop detected':'· mobile detected');
+  const cbx=$('cocktailBox'); if (cbx) cbx.style.display = sel.display==='cocktail' ? '' : 'none';
+  const ccb=$('cocktailCfgBtn'); if (ccb) ccb.onclick=openCocktailCfg;
   // Juice / screen-shake toggle (accessibility: some players want it off).
   const jp=$('juicePick');
   if (jp){ jp.innerHTML='';
@@ -2045,6 +2133,13 @@ function startMatch(){
   const watch = sel.spectate==='watch' && !mode.twoP && !mode.train;
   if (watch) you.ctrl = 'bot';
 
+  // Cocktail: give each human seat (in play order P1, P2, …) a control rotation
+  // for the side they stand on. Non-cocktail seats have no rotation.
+  { let slot=0; for (const p of players){
+      if (p.ctrl!=='bot'){ slot++; p.rotQuarter = (sel.display==='cocktail') ? sideQuarter(seatSide(slot)) : 0; }
+      else p.rotQuarter = 0;
+  } }
+
   const bp = BALLS[sel.ball] || BALLS.normal;
   const pt = PITCH[sel.pitch] || PITCH.normal;
   const fv = feelVals();
@@ -2431,6 +2526,9 @@ function applyHumanInput(p, pad){
   if (!pad){ p.inX=0; p.inY=0; p.kick=false; return; }
   let ix = pad.dx, iy = pad.dy;
   if (pad.invert){ ix=-ix; iy=-iy; }
+  // Cocktail: rotate this player's raw input to the side they stand on, so "up"
+  // on their controller points into the table from wherever they're standing.
+  if (p.rotQuarter){ const r=rotVec(ix,iy,p.rotQuarter); ix=r[0]; iy=r[1]; }
   const mag = Math.hypot(ix,iy);
   if (mag > 0.001){
     const m = Math.min(mag,1);
@@ -3784,8 +3882,10 @@ function drawControls(){
   // player (or a fully-controller match) gets no on-screen thumbstick.
   const hasP1 = world && world.players.some(p=>p.ctrl==='human1');
   const hasP2 = world && world.players.some(p=>p.ctrl==='human2');
+  if (hasP1) pollKeys();                 // keep keyboard live even without on-screen pads
+  // Desktop / cocktail: no touchscreen, so hide the on-screen thumbsticks entirely.
+  if (!isTouchLayout()) return;
   if (hasP1){
-    pollKeys();
     drawPad(pads.p1, false);
     drawKickMarker(pads.p1, false);
   }
@@ -3936,6 +4036,8 @@ if (window.__MAGNETDEBUG) {
     get lbCache(){ return lbCache; }, recordResult,
     computeAwards, renderAwards, mvpScore, noteKick, ballSquash, endMatch,
     openShop, buildShop, shopFeatured, shopCoins,
+    viewMode, isTouchLayout, applyDisplayMode, seatSide, sideQuarter, rotVec,
+    openCocktailCfg, buildCocktailRows, applyHumanInput, drawControls,
   };
 }
 })();
