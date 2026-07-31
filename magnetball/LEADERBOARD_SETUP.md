@@ -38,6 +38,21 @@ That's it — the sheet stays perfectly readable if you just open it.
 
 ---
 
+### Seed it with mock data (so you can see it working)
+
+I can't write to your sheet for you (Google has no anonymous write API — that's
+what the Apps Script in step 3 is for). But you can drop in a set of test rows in
+5 seconds:
+
+1. Open [`mock-scores.tsv`](./mock-scores.tsv) in this folder and **copy all of it**.
+2. In your sheet, click cell **A1** of the `Scores` tab and **paste**. Google
+   splits the tab-separated columns automatically, headers included.
+
+Now open the in-game **Leaderboard** — once the sheet is view-shared (next step)
+it should show these 24 players ranked, with your own RP slotted in. That proves
+the live read path end-to-end. Delete the mock rows whenever you want real data
+to take over.
+
 ## 2. Make the board readable in-game (READ)
 
 Share so anyone can view (either option works):

@@ -338,6 +338,47 @@
       text-shadow: 0 0 14px rgba(33,230,255,.7), 4px 4px 0 var(--magenta);
     }
     #overlay p { font-family: var(--pix); color: var(--muted); font-size: 14px; text-align: center; }
+    /* Scoreline slam: the result title punches in on a match end. */
+    #overlay.show h2.slam { animation: slam .5s cubic-bezier(.2,1.4,.4,1) both; }
+    @keyframes slam { 0%{ transform: scale(2.6); opacity:0; } 55%{ transform: scale(.86); opacity:1; } 75%{ transform: scale(1.06); } 100%{ transform: scale(1); } }
+
+    /* End-of-match awards */
+    #ovAwards { display:flex; flex-direction:column; gap:6px; width:100%; max-width:420px; }
+    #ovAwards:empty { display:none; }
+    #ovAwards .awrow {
+      display:flex; align-items:center; gap:10px; padding:7px 11px; border-radius:10px;
+      background: rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08);
+      animation: awin .32s ease both;
+    }
+    #ovAwards .awrow.you { background: rgba(33,230,255,.13); border-color: rgba(33,230,255,.5); }
+    #ovAwards .awrow .aic { font-size:20px; width:26px; text-align:center; flex:none; }
+    #ovAwards .awrow .alab { font-family: var(--pix); font-size:12px; color:#fff; }
+    #ovAwards .awrow .anote { color: var(--muted); font-size:11px; }
+    #ovAwards .awrow canvas { width:26px; height:26px; flex:none; image-rendering: pixelated; }
+    #ovAwards .awrow .awho { margin-left:auto; font-family: var(--pix); font-size:11px; color:var(--muted); text-align:right; }
+    #ovAwards .awrow.you .awho { color: var(--cyan); }
+    #ovAwards .awfoot { display:flex; gap:8px; justify-content:center; margin-top:4px; }
+    #ovAwards .awfoot button {
+      font-family: var(--pix); font-size:11px; color:#fff; background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.14); border-radius:9px; padding:7px 12px; cursor:pointer;
+    }
+    #ovAwards .awfoot button:active { transform: translateY(1px); }
+    @keyframes awin { from{ opacity:0; transform: translateY(7px); } to{ opacity:1; transform:none; } }
+
+    /* Shop */
+    .shopnote { color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .shopnote b { color: #fff; }
+    .walletbar { display:flex; align-items:center; justify-content:space-between; margin-top:12px;
+      padding:9px 12px; border-radius:10px; background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08); font-family: var(--pix); font-size:13px; }
+    .walletbar b { color: var(--accent); }
+    .shopgrid { display:grid; grid-template-columns: repeat(auto-fill, minmax(96px,1fr)); gap:10px; }
+    .shopcard { display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 6px;
+      border-radius:12px; background: rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); }
+    .shopcard canvas { width:48px; height:48px; image-rendering: pixelated; }
+    .shopcard .sname { font-family: var(--pix); font-size:10px; color:#fff; text-align:center; }
+    .shopcard .sprice { font-family: var(--pix); font-size:11px; color: var(--accent); }
+    .shopcard.owned .sprice { color: var(--good, #46d17a); }
 
     .hint { color: var(--muted); font-size: 11px; text-align: center; margin-top: 8px; line-height: 1.6; }
     .footlink { font-family: var(--pix); color: var(--muted); font-size: 8px; margin-top: 20px; line-height: 1.6; text-align:center; }
@@ -467,6 +508,7 @@
     <button class="primary" id="playBtn">KICK OFF ▶</button>
     <button class="ghost" id="seasonBtn" style="margin-top:12px">🏆 Season / Cup</button>
     <button class="ghost" id="lbBtn" style="margin-top:12px">📊 Leaderboard</button>
+    <button class="ghost" id="shopBtn" style="margin-top:12px">🛍 Shop</button>
     <button class="ghost" id="dailyBtn" style="margin-top:12px">🎁 Daily reward</button>
     <button class="ghost" id="drillsBtn" style="margin-top:12px">🎯 Practice Drills</button>
     <button class="ghost" id="tutBtn" style="margin-top:12px">🎓 Tutorial</button>
@@ -544,6 +586,31 @@
     <button class="ghost" id="lbBack" style="margin-top:12px">← Back</button>
   </div>
 
+  <!-- ===================== SHOP ===================== -->
+  <div id="shop" class="screen hidden">
+    <div class="logo"><h1 style="font-size:28px">SHOP</h1><p>Cosmetics only · support the game</p></div>
+    <div class="card" id="shopPledge">
+      <h2>The honest bit ❤</h2>
+      <p class="shopnote">Magnetball is <b>free</b>, and everything that touches gameplay stays free — no
+        pay-to-win, no ads, no loot boxes. The shop is <b>cosmetics only</b>: a way to support the game
+        if you're enjoying it. You can also unlock every cosmetic just by <b>playing</b> and showing up
+        for the <b>daily reward</b>. Coins buy nothing that helps you win — only how your disc looks.</p>
+      <div class="walletbar"><span>Your coins</span><b id="shopCoins">🪙 0</b></div>
+    </div>
+    <div class="card">
+      <h2>Featured</h2>
+      <div id="shopGrid" class="shopgrid"></div>
+    </div>
+    <div class="card">
+      <h2>Support</h2>
+      <p class="shopnote">Buying coins isn't live yet — I'd rather ship the game first and add a payment
+        option only once it's worth it. If you want to support early, the best thing you can do is
+        <b>play, share a clip, and tell a friend</b>. 🙏</p>
+      <button class="ghost" id="shopSupport" style="margin-top:4px">💛 Coming soon — thanks for playing</button>
+    </div>
+    <button class="ghost" id="shopBack" style="margin-top:12px">← Back</button>
+  </div>
+
   <!-- ===================== CONTROLLER CONFIG ===================== -->
   <div id="padConfig" class="screen hidden">
     <div class="logo"><h1 style="font-size:26px">CONTROLLER</h1><p id="padStatus">Press a direction on your controller to bind it</p></div>
@@ -576,6 +643,7 @@
   <div id="overlay">
     <h2 id="ovTitle">Paused</h2>
     <p id="ovSub"></p>
+    <div id="ovAwards"></div>
     <button class="primary" id="ovResume" style="max-width:260px">Resume</button>
     <button class="ghost" id="ovRematch" style="display:none">Rematch</button>
     <button class="ghost" id="ovMenu">Main Menu</button>
@@ -1102,7 +1170,7 @@ function sfxGroan(){ try{ Aud.noise(0.5,{bp:420,Q:0.6,vol:0.28,swell:true}); Aud
 function crowdReact(w){
   const b=w.ball;
   w._crowdCd = Math.max(0, (w._crowdCd||0) - STEP);
-  if (b._hitPost){ b._hitPost=false; if (w._crowdCd<=0){ sfxGroan(); spawnTouchFx(b.x,b.y,'#ffd23d',30); w._crowdCd=1.0; } return; }
+  if (b._hitPost){ b._hitPost=false; if (b.lastKicker && b.lastKicker.ms) b.lastKicker.ms.posts++; if (w._crowdCd<=0){ sfxGroan(); spawnTouchFx(b.x,b.y,'#ffd23d',30); w._crowdCd=1.0; } return; }
   if (w.state!=='play') return;
   const halfL=w.field.L/2, gh=w.field.goal/2, sp=Math.hypot(b.vx,b.vy);
   if (sp < 7 || w._crowdCd>0) return;
@@ -1392,10 +1460,13 @@ $('tutBtn').onclick = startTutorial;
 $('seasonBtn').onclick = openSeason;
 $('seasonBack').onclick = () => { $('season').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('lbBtn').onclick = openLeaderboard;
+$('shopBtn').onclick = openShop;
 $('dailyBtn').onclick = openDailyView;
 $('dmCollect').onclick = closeDailyModal;
 $('lbBack').onclick = () => { $('leaderboard').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('lbRefresh').onclick = () => buildLeaderboard(true);
+$('shopBack').onclick = () => { $('shop').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+$('shopSupport').onclick = () => { const b=$('shopSupport'); b.textContent='💛 Thank you! Have fun out there.'; };
 $('padCfgBtn').onclick = openPadConfig;
 $('padCfgBack').onclick = () => { padBind.active=false; $('padConfig').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('padReset').onclick = padResetMap;
@@ -1410,7 +1481,7 @@ $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
 
-function hideScreens(){ ['setup','how','drills','settings','season','leaderboard','padConfig'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); }); padBind.active=false;
+function hideScreens(){ ['setup','how','drills','settings','season','leaderboard','shop','padConfig'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); }); padBind.active=false;
   const tt=$('tutTip'); if(tt) tt.classList.add('hidden');
   // ensure any docked settings panel is fully torn down when screens change
   $('settings').classList.remove('docked'); document.body.classList.remove('panel-open');
@@ -1813,6 +1884,50 @@ async function buildLeaderboard(force){
 }
 
 // ============================================================
+//  SHOP — cosmetics only, honest "support the game" framing. Everything here is
+//  also earnable free by playing; buying isn't live (no pay-to-win, ever). Owned
+//  items equip on tap; the "price" shows the real way to unlock a locked item.
+// ============================================================
+// A soft, purely-cosmetic coin balance derived from how much you've played.
+function shopCoins(){ return (stats.wins||0)*25 + (stats.gf||0)*5 + drillsDone()*15; }
+function prettyKey(k){ return String(k).replace(/[-_]/g,' ').replace(/\b\w/g, c=>c.toUpperCase()); }
+function shopFeatured(){
+  const items=[], no=k=>k&&k!=='none';
+  Object.keys(CAPS).filter(no).slice(0,4).forEach(k=>items.push({cat:'cap',key:k}));
+  EYE_KEYS.filter(no).slice(0,3).forEach(k=>items.push({cat:'eyes',key:k}));
+  FLAG_KEYS.filter(no).slice(0,4).forEach(k=>items.push({cat:'flag',key:k}));
+  return items;
+}
+function openShop(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('shop').classList.remove('hidden'); buildShop(); }
+function buildShop(){
+  const coinEl=$('shopCoins'); if(coinEl) coinEl.textContent='🪙 '+shopCoins();
+  const grid=$('shopGrid'); if(!grid) return; grid.innerHTML='';
+  for(const it of shopFeatured()){
+    const owned=isUnlocked(it.cat, it.key);
+    const card=document.createElement('div'); card.className='shopcard'+(owned?' owned':'');
+    const cv=document.createElement('canvas'); cv.width=cv.height=48;
+    const o={ color:profile.color||'#46d17a', flag:'none', eyes:'googly', cap:null };
+    if(it.cat==='flag')o.flag=it.key; else if(it.cat==='eyes')o.eyes=it.key; else if(it.cat==='cap')o.cap=it.key;
+    drawDisc(cv.getContext('2d'), 24,24,17, o);
+    const nm=document.createElement('div'); nm.className='sname';
+    nm.textContent=(it.cat==='cap'&&CAPS[it.key]&&CAPS[it.key].emoji?CAPS[it.key].emoji+' ':'')+prettyKey(it.key);
+    const pr=document.createElement('div'); pr.className='sprice';
+    pr.textContent = owned ? 'Owned ✓' : (reqText(itemReq(it.cat,it.key)) || 'Play to earn');
+    card.append(cv, nm, pr);
+    card.onclick=()=>{
+      if(isUnlocked(it.cat,it.key)){
+        if(it.cat==='flag')profile.flag=it.key; else if(it.cat==='eyes')profile.eyes=it.key; else profile.cap=it.key;
+        saveProfile(); updatePreview();
+        pr.textContent='Equipped ✓';
+      } else {
+        pr.textContent='🔒 '+(reqText(itemReq(it.cat,it.key))||'Keep playing');
+      }
+    };
+    grid.appendChild(card);
+  }
+}
+
+// ============================================================
 //  CONTROLLER BUTTON MAPPING — press a button to bind each direction / kick.
 // ============================================================
 const PAD_SLOTS = [['up','Up ⬆'],['down','Down ⬇'],['left','Left ⬅'],['right','Right ➡'],['kick','Kick 🅰']];
@@ -1957,6 +2072,8 @@ function startMatch(){
     kickTeam: 1,         // which team kicks off (loser)
     lastScorer: -1,
     trapOff: !!sel.trapOff,   // Pro mode: instant one-shot kick instead of trap
+    matchT: 0,                // seconds of play elapsed (for assist/pass windows)
+    maxDeficit: [0,0],        // biggest debt each team clawed back from (Comeback King)
   };
   buildGeometry(world);
   resetKickoff(world, true);
@@ -1991,6 +2108,8 @@ function randCap(i){ const k = Object.keys(CAPS); return k[(i+1)%k.length]; }
 function randFlag(i){ return FLAG_KEYS[(i*5+3) % FLAG_KEYS.length]; }
 function randEyes(i){ return EYE_KEYS[(i*3+1) % EYE_KEYS.length]; }
 
+// Fresh per-match stat sheet used for the end-of-match awards.
+function freshMs(){ return { goals:0, assists:0, saves:0, shots:0, clears:0, passKey:0, posts:0, touches:0, hardest:0 }; }
 function mkPlayer(team, name, color, cap, ctrl, flag, eyes){
   return {
     team, name, color, cap, ctrl, padIndex:-1,
@@ -2000,6 +2119,7 @@ function mkPlayer(team, name, color, cap, ctrl, flag, eyes){
     trap:false, trapT:0, trapUsed:false,                   // human trap-and-release state
     faceX:0, faceY:team===0?-1:1,
     aiT:0, aiTarget:{x:0,y:0}, aiKick:false,
+    ms: freshMs(),                                         // match stats → awards
   };
 }
 
@@ -2267,6 +2387,13 @@ function step(w){
     }
   }
 
+  // Awards bookkeeping: advance the match clock and refresh the on-target "threat"
+  // (so a defender's clearing kick can be credited as a save), then spring the
+  // ball's squash back toward round. Threat must update before integrate() runs
+  // the kick handlers that consume it.
+  if (w.state==='play'){ w.matchT += STEP; updateThreat(w); } else w.threat = null;
+  if (w.ball.sqT) w.ball.sqT *= 0.72;
+
   if (w.state==='play') integrate(w, false, false);
   else if (w.state==='kickoff') integrate(w, true, false);   // ball parked at centre, players jockey
   else if (w.state==='goal') integrate(w, false, true);      // ball flies on into the net; players hold
@@ -2285,8 +2412,9 @@ function step(w){
 // Play a wall/net sound once per frame when the ball bounces (flags set in collideWall).
 function ballSounds(w){
   const b = w.ball;
-  if (b._hitNet){ playSfx('net'); addShake(4); b._hitNet=false; b._hitWall=false; }
-  else if (b._hitWall){ playSfx('wall'); addShake(3); b._hitWall=false; }
+  const sp = Math.hypot(b.vx,b.vy) || 1;
+  if (b._hitNet){ playSfx('net'); addShake(4); ballSquash(b, b.vx/sp, b.vy/sp, 0.7); b._hitNet=false; b._hitWall=false; }
+  else if (b._hitWall){ playSfx('wall'); addShake(3); ballSquash(b, b.vx/sp, b.vy/sp, 0.55); b._hitWall=false; }
 }
 
 // ---------- Human input mapping from a pad
@@ -2414,6 +2542,44 @@ function clampBallInside(w){
   if (b.y > bot){ b.y = bot; if (b.vy > 0) b.vy = -b.vy*0.3; }
 }
 
+// Record a kick for the awards system: maintains the "who touched it last / before
+// that" chain used to credit goals, assists, and key passes, and tallies shots,
+// clears, the hardest strike (Iron Boot), saves and a bit of ball squash.
+function noteKick(w, p, power, nx, ny){
+  if (!p.ms) return;
+  const b = w.ball, ms = p.ms;
+  if (b.lastKicker && b.lastKicker !== p){ b.prevKicker = b.lastKicker; b.prevKickT = b.lastKickT; }
+  b.lastKicker = p; b.lastKickTeam = p.team; b.lastKickT = w.matchT;
+  ms.touches++;
+  if (power > ms.hardest) ms.hardest = power;
+  ballSquash(b, nx, ny, Math.min(1, power/9));
+  const attackDir = p.team===0 ? -1 : 1;           // opponent goal sits at y = attackDir*halfL
+  const halfL = w.field.L/2;
+  // Shot: a real strike heading goalward.
+  if (power > 4 && ny*attackDir > 0.25){
+    ms.shots++;
+    // Playmaker: the previous distinct kicker was a teammate teeing this up.
+    if (b.prevKicker && b.prevKicker!==p && b.prevKicker.team===p.team && (w.matchT-b.prevKickT) < 3 && b.prevKicker.ms)
+      b.prevKicker.ms.passKey++;
+  }
+  // The Wall: a clearance struck from your own half, sent upfield.
+  const ownLineY = -attackDir*halfL;
+  if (Math.abs(p.y-ownLineY) < halfL*0.55 && ny*attackDir > 0.15 && power > 3.5) ms.clears++;
+  // Save: you were the threatened team and you've just turned the ball away from goal.
+  if (w.threat && w.threat.team===p.team && (w.ball.vy * w.threat.dir) <= 0.5){
+    ms.saves++; w.threat = null;
+  }
+}
+// Update the on-target "threat" each play step so a defender's clearing kick can be
+// credited as a save. A threat = ball driving into a goal mouth from that team's half.
+function updateThreat(w){
+  const b=w.ball, halfL=w.field.L/2, gh=w.field.goal/2, r=b.r;
+  let th=null;
+  if (b.vy < -1.5 && Math.abs(b.x) < gh + r*2 && b.y < -halfL*0.3) th={team:1, dir:-1};   // toward top goal (team 1 defends)
+  else if (b.vy > 1.5 && Math.abs(b.x) < gh + r*2 && b.y > halfL*0.3) th={team:0, dir:1}; // toward bottom goal (team 0 defends)
+  w.threat = th;
+}
+
 function handleBallControl(w, p, ball, ballFrozen){
   const dx = ball.x - p.x, dy = ball.y - p.y;
   const dist = Math.hypot(dx,dy);
@@ -2428,6 +2594,7 @@ function handleBallControl(w, p, ball, ballFrozen){
       if (w.magnet > 0 && dist < sum + 22) power *= 1 + (w.magnet/100) * 0.7;
       ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
       p.kickUsed = true;
+      noteKick(w, p, power, nx, ny);
       spawnKickFx(ball.x, ball.y, nx, ny, power); playSfx('kick');
     }
     if (!p.kick) p.kickUsed = false;
@@ -2440,6 +2607,7 @@ function handleBallControl(w, p, ball, ballFrozen){
       const power = (w.kickPower||PLAYER.kick) * (1 + (p.chargeT / CHARGE.max) * CHARGE.bonus);
       ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
       p.kickUsed = true;
+      noteKick(w, p, power, nx, ny);
       spawnKickFx(ball.x, ball.y, nx, ny, power); playSfx('kick');
     }
     if (!p.kick) p.kickUsed = false;
@@ -2506,6 +2674,7 @@ function oneShotKick(w, p, ball, dx, dy, dist, charged){
   if (w.magnet > 0 && dist < (p.r+ball.r) + 22) power *= 1 + (w.magnet/100) * 0.5;
   ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
   p.kickUsed = true;
+  noteKick(w, p, power, nx, ny);
   spawnKickFx(ball.x, ball.y, nx, ny, power); playSfx('kick');
 }
 
@@ -2517,6 +2686,7 @@ function releaseTrap(w, p, ball){
   if (w.magnet > 0) power *= 1 + (w.magnet/100) * 0.7;
   ball.vx = fx*power + p.vx; ball.vy = fy*power + p.vy;
   p.trap = false; p.trapUsed = true; p.chargeT = 0;
+  noteKick(w, p, power, fx, fy);
   spawnKickFx(ball.x, ball.y, fx, fy, power); playSfx('kick');
 }
 
@@ -2619,6 +2789,19 @@ function checkGoal(w){
 function scoreGoal(w, team){
   w.score[team]++;
   w.lastScorer = team;
+  // Awards: credit the scorer (last attacker to touch) and any recent teammate
+  // assist. An own goal (last touch by the conceding side) credits no scorer.
+  const b = w.ball;
+  if (b.lastKicker && b.lastKicker.team===team && b.lastKicker.ms){
+    b.lastKicker.ms.goals++;
+    if (b.prevKicker && b.prevKicker!==b.lastKicker && b.prevKicker.team===team &&
+        (w.matchT - (b.prevKickT||0)) < 6 && b.prevKicker.ms) b.prevKicker.ms.assists++;
+  }
+  b.lastKicker = null; b.prevKicker = null;   // reset chain for the next kickoff
+  // Track the biggest deficit each side clawed back from (Comeback King).
+  const d0 = w.score[1]-w.score[0], d1 = w.score[0]-w.score[1];
+  if (d0 > w.maxDeficit[0]) w.maxDeficit[0] = d0;
+  if (d1 > w.maxDeficit[1]) w.maxDeficit[1] = d1;
   w.kickTeam = team===0 ? 1 : 0;
   w.state='goal'; w.stateT=0;
   updateScoreUI();
@@ -2651,6 +2834,77 @@ function endMatch(w){
     sub += `   ·   ${sign}${delta} RP`;
   }
   showResult(title, sub);
+  $('ovTitle').classList.remove('slam'); void $('ovTitle').offsetWidth; $('ovTitle').classList.add('slam');
+  renderAwards(w);
+}
+
+// ---------- End-of-match awards (Towerfall/CoD style): everyone gets something.
+function mvpScore(m){ return m.goals*4 + m.assists*2.5 + m.saves*2 + m.passKey*1.5 + m.clears + m.shots*0.3 + m.posts*0.15 + m.touches*0.03; }
+function isHero(w, p){ return p.team===0 && p.name===(profile.name||'You'); }
+// Highest scorer of `val` among `ps`, requiring strictly > `minv`. Ties break to
+// the human so you always feel seen.
+function topBy(ps, val, minv){
+  let bv=minv, win=[];
+  for (const p of ps){ const v=val(p); if (v>bv){ bv=v; win=[p]; } else if (v===bv && v>minv) win.push(p); }
+  if (!win.length) return null;
+  return { p: win.find(p=>p._hero) || win[0], v: bv };
+}
+function computeAwards(w){
+  const ps = w.players; ps.forEach(p=>{ p._hero = isHero(w,p); });
+  const out = [];
+  const add = (res, icon, label, note)=>{ if (res) out.push({ p:res.p, icon, label, note: note||'' }); };
+  add(topBy(ps, p=>mvpScore(p.ms), 0),        '🏆', 'Golden Boot', 'MVP');
+  add(topBy(ps, p=>p.ms.goals, 0),            '⚽', 'Most Goals');
+  const hat = topBy(ps, p=>p.ms.goals, 2);    // 3+ goals
+  if (hat) add(hat, '🎩', 'Hat Trick', hat.v+' goals');
+  add(topBy(ps, p=>p.ms.saves, 0),            '🧤', 'Most Saves');
+  add(topBy(ps, p=>p.ms.assists, 0),          '🎯', 'Most Assists');
+  add(topBy(ps, p=>p.ms.clears, 0),           '🧱', 'The Wall', 'clearances');
+  add(topBy(ps, p=>p.ms.passKey, 0),          '🪄', 'Playmaker', 'passes into shots');
+  add(topBy(ps, p=>p.ms.hardest, 5),          '🥾', 'Iron Boot', 'hardest shot');
+  // Comeback King: the winner came back from 2+ down.
+  const win = w.score[0]===w.score[1] ? -1 : (w.score[0]>w.score[1] ? 0 : 1);
+  if (win>=0 && w.maxDeficit[win] >= 2){
+    const cb = topBy(ps.filter(p=>p.team===win), p=>mvpScore(p.ms), -1);
+    add(cb, '🔥', 'Comeback King', 'from '+w.maxDeficit[win]+' down');
+  }
+  add(topBy(ps, p=>p.ms.posts, 0),            '🪵', 'Woodwork', 'most posts hit');
+  // Dedupe by (label), keep priority order, cap at 8, and make sure any award the
+  // human earned is shown even if it falls past the cap.
+  const seen = new Set(), ranked = [];
+  for (const a of out){ if (seen.has(a.label)) continue; seen.add(a.label); ranked.push(a); }
+  let shown = ranked.slice(0, 8);
+  const mine = ranked.find(a=>a.p._hero);
+  if (mine && !shown.includes(mine)){ shown = shown.slice(0,7); shown.push(mine); }
+  return shown;
+}
+function renderAwards(w){
+  const host = $('ovAwards'); if (!host) return; host.innerHTML='';
+  if (!w || w.drillMode || w.tutorial) return;
+  const awards = computeAwards(w);
+  if (!awards.length) return;
+  for (const a of awards){
+    const row=document.createElement('div'); row.className='awrow'+(a.p._hero?' you':'');
+    const ic=document.createElement('span'); ic.className='aic'; ic.textContent=a.icon;
+    const cv=document.createElement('canvas'); cv.width=cv.height=26;
+    drawDisc(cv.getContext('2d'), 13,13,10, { color:a.p.color||'#7f8aa0', flag:a.p.flag||'none', eyes:a.p.eyes||'googly' });
+    const lab=document.createElement('span'); lab.className='alab';
+    lab.innerHTML = a.label + (a.note?` <span class="anote">${a.note}</span>`:'');
+    const who=document.createElement('span'); who.className='awho'; who.textContent=a.p._hero?'You':a.p.name;
+    row.append(ic, cv, lab, who); host.appendChild(row);
+  }
+  // One-tap replay / clip share of the winning goal, if we captured one.
+  if (lastReplay){
+    const foot=document.createElement('div'); foot.className='awfoot';
+    const rep=document.createElement('button'); rep.textContent='🎬 Replay';
+    rep.onclick=()=>playReplay(0.6);
+    foot.appendChild(rep);
+    if (typeof MediaRecorder!=='undefined'){
+      const sh=document.createElement('button'); sh.textContent='⬇ Save clip';
+      sh.onclick=()=>saveClip(); foot.appendChild(sh);
+    }
+    host.appendChild(foot);
+  }
 }
 
 // ============================================================
@@ -3320,6 +3574,13 @@ function drawBallTrail(w){
 function drawBall(w){
   const s=cam.s, b=w.ball, x=wx(b.x), y=wy(b.y), r=b.r*s;
   ctx.beginPath(); ctx.arc(x, y+r*0.3, r*0.9, 0, 2*Math.PI); ctx.fillStyle=TH.shadow; ctx.fill();
+  // Squash & stretch: warp the ball along its impact axis for a frame or two.
+  const sq = b.sqT || 0;
+  const warped = sq > 0.01;
+  if (warped){
+    ctx.save(); ctx.translate(x,y); ctx.rotate(b.sqAng||0);
+    ctx.scale(1 + 0.38*sq, 1 - 0.26*sq); ctx.translate(-x,-y);
+  }
   // hard rim + flat ball with a solid spot (chunky sprite)
   ctx.beginPath(); ctx.arc(x, y, r+Math.max(1.5,r*0.16), 0, 2*Math.PI); ctx.fillStyle=TH.ballRim; ctx.fill();
   ctx.beginPath(); ctx.arc(x, y, r, 0, 2*Math.PI); ctx.fillStyle=TH.ball; ctx.fill();
@@ -3327,10 +3588,19 @@ function drawBall(w){
   const rot = b.rot || 0;
   ctx.beginPath(); ctx.arc(x, y, r*0.30, 0, 2*Math.PI); ctx.fillStyle=TH.ballSpot; ctx.fill();
   ctx.beginPath(); ctx.arc(x + Math.cos(rot)*r*0.46, y + Math.sin(rot)*r*0.46, r*0.15, 0, 2*Math.PI); ctx.fillStyle=TH.ballSpot; ctx.fill();
+  if (warped) ctx.restore();
 }
 function drawKickoffHint(w){
   const s=cam.s;
   const txt = w.state==='kickoff' ? (w.stateT<0.9? '' : '') : '';
+}
+
+// ---------- Ball squash & stretch (game-feel): stretch along the impact axis,
+// squash across it, then spring back. `amt` 0..1 scales the effect.
+function ballSquash(b, nx, ny, amt){
+  if (!sel.juice) return;
+  const a = Math.max(b.sqT||0, Math.max(0.25, Math.min(1, amt||0.6)));
+  b.sqT = a; b.sqAng = Math.atan2(ny, nx);
 }
 
 // ---------- FX (kick sparks, confetti)
@@ -3583,7 +3853,9 @@ function togglePause(p){
 }
 function showOverlay(title, sub, resumable){
   $('ovTitle').textContent = title;
+  $('ovTitle').classList.remove('slam');
   $('ovSub').textContent = sub;
+  { const aw=$('ovAwards'); if (aw) aw.innerHTML=''; }   // awards only appear on a match result
   // Restore the standard match/pause buttons (the drill result repurposes them).
   $('ovResume').textContent = 'Resume'; $('ovResume').onclick = () => togglePause(false);
   $('ovRematch').textContent = 'Rematch'; $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
@@ -3636,6 +3908,8 @@ if (window.__MAGNETDEBUG) {
     get login(){ return login; }, checkDailyLogin, openDailyView, DAILY, dailyReward, grantedHas,
     LB, LB_FAKE, lbLoad, lbSubmit, lbParseGviz, lbNormalize, openLeaderboard, buildLeaderboard,
     get lbCache(){ return lbCache; }, recordResult,
+    computeAwards, renderAwards, mvpScore, noteKick, ballSquash, endMatch,
+    openShop, buildShop, shopFeatured, shopCoins,
   };
 }
 })();

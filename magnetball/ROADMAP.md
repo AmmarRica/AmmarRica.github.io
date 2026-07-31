@@ -10,6 +10,21 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **End-of-match awards** (Towerfall/CoD style) — everyone leaves with something. The match
+  tracks per-player stats (goals, assists, saves, clearances, key passes, hardest shot, posts,
+  touches) and the result screen slams up a ranked list of earned medals: **Golden Boot** (MVP),
+  **Most Goals**, **Hat Trick**, **Most Saves**, **Most Assists**, **The Wall** (clearances),
+  **Playmaker** (passes into shots), **Iron Boot** (hardest shot), **Comeback King** (won from
+  2+ down) and a joke **Woodwork** (most posts hit). Ties break to you; a one-tap **Replay / Save
+  clip** sits under the awards.
+- **Game-feel: squash & slam** — the ball squashes and stretches along its impact axis on every
+  kick and hard bounce, then springs back; the result title punches in with a scoreline "slam"
+  animation. (On top of the existing shake / slow-mo / hit-stop / confetti / crowd juice.)
+- **Shop (cosmetics-only, honest framing)** — a Shop screen that's up-front about monetisation:
+  the game is free, nothing that touches gameplay is ever paid, no ads or loot boxes. Featured
+  cosmetics show **Owned ✓** or their real unlock path (win N, score N, daily reward); owned items
+  equip on tap. A soft coin balance is shown; buying isn't live yet, framed as "support by playing
+  & sharing."
 - **Real Google Sheet leaderboard** — the global board now reads live scores straight from a
   Google Sheet (via the public gviz JSON endpoint — no API key, works as soon as the sheet is
   shared "anyone with the link can view"). Finishing a match submits your RP through a tiny
