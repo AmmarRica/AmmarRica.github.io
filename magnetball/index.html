@@ -754,6 +754,7 @@ const FLAG_KEYS = Object.keys(FLAGS);
 // ============================================================
 function _oval(c,x,y,rx,ry,col,stroke,lw){ c.beginPath(); c.ellipse(x,y,rx,ry,0,0,7); c.fillStyle=col; c.fill(); if(stroke){ c.lineWidth=lw||1; c.strokeStyle=stroke; c.stroke(); } }
 const EYES = {
+  none:   { name:'None', draw:()=>{} },
   googly: { name:'Googly', draw:(c,x,y,r)=>{ const s=r*0.38,er=r*0.27,pr=r*0.13,ey=y+r*0.06; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex,ey,pr,0,7); c.fillStyle='#15181f'; c.fill(); } } },
   ball:   { name:'Countryball', draw:(c,x,y,r)=>{ const s=r*0.32,ey=y-r*0.02; for(const g of[-1,1]){const ex=x+g*s; _oval(c,ex,ey,r*0.19,r*0.30,'#fff','#0a0a0a',Math.max(1.5,r*0.06)); c.beginPath(); c.arc(ex,ey-r*0.08,r*0.09,0,7); c.fillStyle='#0a0a0a'; c.fill(); } } },
   dot:    { name:'Beady', draw:(c,x,y,r)=>{ const s=r*0.34,ey=y; for(const g of[-1,1]){ c.beginPath(); c.arc(x+g*s,ey,r*0.12,0,7); c.fillStyle='#111'; c.fill(); } } },
@@ -768,7 +769,7 @@ const EYES = {
 const EYE_KEYS = Object.keys(EYES);
 
 // Unlock requirements for eyes and flags (caps carry their own `req`).
-const EYE_REQ = { googly:null, ball:null, dot:{wins:2}, wide:{goals:15}, angry:{wins:8}, happy:{played:10}, sleepy:{points:1150}, star:{streak:5}, cyclops:{points:1400}, visor:{drills:6} };
+const EYE_REQ = { none:null, googly:null, ball:null, dot:{wins:2}, wide:{goals:15}, angry:{wins:8}, happy:{played:10}, sleepy:{points:1150}, star:{streak:5}, cyclops:{points:1400}, visor:{drills:6} };
 // Flags unlock along a long progression curve. `none` and a couple are free.
 const FLAG_REQ = {
   none:null, poland:null, japan:null,
@@ -2106,7 +2107,7 @@ function teamTint(team, idx){
 function randCap(i){ const k = Object.keys(CAPS); return k[(i+1)%k.length]; }
 // Deterministic-ish pick so bots vary but a match is reproducible frame-to-frame.
 function randFlag(i){ return FLAG_KEYS[(i*5+3) % FLAG_KEYS.length]; }
-function randEyes(i){ return EYE_KEYS[(i*3+1) % EYE_KEYS.length]; }
+function randEyes(i){ const k=EYE_KEYS.filter(e=>e!=='none'); return k[(i*3+1) % k.length]; }
 
 // Fresh per-match stat sheet used for the end-of-match awards.
 function freshMs(){ return { goals:0, assists:0, saves:0, shots:0, clears:0, passKey:0, posts:0, touches:0, hardest:0 }; }
