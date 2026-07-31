@@ -420,6 +420,9 @@
       <div style="height:14px"></div>
       <label class="field">Colour-blind markers</label>
       <div class="opts" id="cb"></div>
+      <div style="height:14px"></div>
+      <label class="field">Controller</label>
+      <button class="ghost" id="padCfgBtn" style="margin-top:2px">🎮 Configure buttons</button>
     </div>
 
     <div class="card collapsible collapsed" data-sec="online">
@@ -508,6 +511,18 @@
       <div id="lbList"></div>
     </div>
     <button class="ghost" id="lbBack" style="margin-top:12px">← Back</button>
+  </div>
+
+  <!-- ===================== CONTROLLER CONFIG ===================== -->
+  <div id="padConfig" class="screen hidden">
+    <div class="logo"><h1 style="font-size:26px">CONTROLLER</h1><p id="padStatus">Press a direction on your controller to bind it</p></div>
+    <div class="card">
+      <h2>Button map</h2>
+      <div class="opts" id="padRows" style="grid-template-columns:1fr"></div>
+    </div>
+    <button class="primary" id="padRebindAll">Rebind all ▶</button>
+    <button class="ghost" id="padReset" style="margin-top:12px">Reset to default</button>
+    <button class="ghost" id="padCfgBack" style="margin-top:12px">← Back</button>
   </div>
 
   <!-- ===================== HOW TO PLAY ===================== -->
@@ -753,10 +768,13 @@ const BALL   = { r:10, invMass:1.0, bCoef:0.55, damp:0.990 };
 const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 
 // ---------- State
+let padBind = { active:false, slot:null, queue:[], prev:[], _init:false };   // controller-remap capture state
 let profile = loadProfile();
 let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
             ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
             theme:'neon', trapOff:false, juice:true, autoReplay:true,
+            // Gamepad button map (standard layout defaults: dpad 12-15 + A). Rebindable.
+            pad: { up:12, down:13, left:14, right:15, kick:0 },
             snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
             // "Game feel" — adjustable physics (defaults mirror the current tuning).
             feel: { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 } };
@@ -1250,6 +1268,10 @@ $('seasonBtn').onclick = openSeason;
 $('seasonBack').onclick = () => { $('season').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('lbBtn').onclick = openLeaderboard;
 $('lbBack').onclick = () => { $('leaderboard').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+$('padCfgBtn').onclick = openPadConfig;
+$('padCfgBack').onclick = () => { padBind.active=false; $('padConfig').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+$('padReset').onclick = padResetMap;
+$('padRebindAll').onclick = startRebindAll;
 $('seasonPlay').onclick = startSeasonRound;
 $('seasonReset').onclick = () => { season.cleared=0; saveSeasonState(); buildSeasonList(); };
 
@@ -1260,7 +1282,7 @@ $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
 
-function hideScreens(){ ['setup','how','drills','settings','season','leaderboard'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); });
+function hideScreens(){ ['setup','how','drills','settings','season','leaderboard','padConfig'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); }); padBind.active=false;
   const tt=$('tutTip'); if(tt) tt.classList.add('hidden');
   // ensure any docked settings panel is fully torn down when screens change
   $('settings').classList.remove('docked'); document.body.classList.remove('panel-open');
@@ -1581,6 +1603,58 @@ function buildLeaderboard(){
     wrap.appendChild(row);
   });
 }
+
+// ============================================================
+//  CONTROLLER BUTTON MAPPING — press a button to bind each direction / kick.
+// ============================================================
+const PAD_SLOTS = [['up','Up ⬆'],['down','Down ⬇'],['left','Left ⬅'],['right','Right ➡'],['kick','Kick 🅰']];
+function firstPad(){ const gps=(navigator.getGamepads&&navigator.getGamepads())||[]; for(const g of gps){ if(g&&g.connected) return g; } return null; }
+function padBtnName(i){ const n={0:'A',1:'B',2:'X',3:'Y',4:'LB',5:'RB',6:'LT',7:'RT',8:'Select',9:'Start',10:'L3',11:'R3',12:'D-Up',13:'D-Down',14:'D-Left',15:'D-Right',16:'Home'};
+  return n[i]!=null ? ('Btn '+i+' · '+n[i]) : ('Btn '+i); }
+function curSlotLabel(){ const s=PAD_SLOTS.find(x=>x[0]===padBind.slot); return s?s[1]:''; }
+function openPadConfig(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('padConfig').classList.remove('hidden'); padBind.active=false; buildPadRows(); }
+function buildPadRows(){
+  const g=firstPad();
+  $('padStatus').textContent = padBind.active ? ('Press the button for '+curSlotLabel())
+    : (g ? 'Tap a row to rebind, or "Rebind all"' : 'Connect a controller and press any button');
+  const wrap=$('padRows'); if(!wrap) return; wrap.innerHTML='';
+  PAD_SLOTS.forEach(([slot,lab])=>{
+    const active = padBind.active && padBind.slot===slot;
+    const el=document.createElement('div'); el.className='opt'+(active?' sel':'');
+    el.style.flexDirection='row'; el.style.justifyContent='space-between'; el.style.alignItems='center'; el.style.gap='10px';
+    const cur=(sel.pad&&sel.pad[slot]!=null)?padBtnName(sel.pad[slot]):'—';
+    el.innerHTML=`<span>${lab}</span><small>${active?'press a button…':cur}</small>`;
+    el.onclick=()=>startBind([slot]);
+    wrap.appendChild(el);
+  });
+}
+function startBind(queue){
+  if(!firstPad()){ $('padStatus').textContent='Connect a controller first'; return; }
+  padBind.active=true; padBind.queue=queue.slice(); padBind.slot=padBind.queue.shift(); padBind._init=false;
+  buildPadRows(); requestAnimationFrame(padConfigLoop);
+}
+function startRebindAll(){ startBind(PAD_SLOTS.map(s=>s[0])); }
+function advanceBind(){
+  if(padBind.queue.length){ padBind.slot=padBind.queue.shift(); padBind._init=false; }
+  else { padBind.active=false; padBind.slot=null; }
+  buildPadRows();
+}
+function padConfigLoop(){
+  if(!padBind.active) return;
+  const g=firstPad();
+  if(g){
+    if(!padBind._init){ padBind.prev=g.buttons.map(b=>!!(b&&(b.pressed||b.value>0.5))); padBind._init=true; }
+    else {
+      for(let i=0;i<g.buttons.length;i++){
+        const pressed=!!(g.buttons[i]&&(g.buttons[i].pressed||g.buttons[i].value>0.5));
+        if(pressed && !padBind.prev[i]){ sel.pad=sel.pad||{}; sel.pad[padBind.slot]=i; saveSel(); advanceBind(); return; }
+        padBind.prev[i]=pressed;
+      }
+    }
+  }
+  requestAnimationFrame(padConfigLoop);
+}
+function padResetMap(){ sel.pad={up:12,down:13,left:14,right:15,kick:0}; saveSel(); padBind.active=false; buildPadRows(); }
 
 // ============================================================
 //  NAME POOL for bots
@@ -2026,14 +2100,17 @@ function gamepadPad(index){
   const g = gps[index];
   if (!g){ return { dx:0, dy:0, kick:false, invert:false }; }
   let dx = g.axes[0]||0, dy = g.axes[1]||0;
-  // dpad fallback (buttons 12-15) if no stick tilt
+  const pm = sel.pad || {};
+  // The analog stick always works; mapped direction buttons (dpad by default) fill in.
   if (Math.hypot(dx,dy) < 0.18){
-    dx = (btn(g,15)?1:0) - (btn(g,14)?1:0);
-    dy = (btn(g,13)?1:0) - (btn(g,12)?1:0);
+    const U=pm.up!=null?pm.up:12, D=pm.down!=null?pm.down:13, L=pm.left!=null?pm.left:14, R=pm.right!=null?pm.right:15;
+    dx = (btn(g,R)?1:0) - (btn(g,L)?1:0);
+    dy = (btn(g,D)?1:0) - (btn(g,U)?1:0);
   }
   const dead = 0.22, mag = Math.hypot(dx,dy);
   if (mag < dead){ dx=0; dy=0; }
-  const kick = btn(g,0)||btn(g,2)||btn(g,5)||btn(g,7)||btn(g,1); // A/X/RB/RT/B
+  // Kick: the bound button, or (if unbound) the usual set of fire buttons.
+  const kick = (pm.kick!=null) ? btn(g,pm.kick) : (btn(g,0)||btn(g,2)||btn(g,5)||btn(g,7)||btn(g,1));
   return { dx, dy, kick, invert:false };
 }
 function btn(g,i){ const b=g.buttons[i]; return !!(b && (b.pressed || b.value>0.4)); }
@@ -3360,6 +3437,7 @@ if (window.__MAGNETDEBUG) {
     isUnlocked, unlockCounts, renderStats, buildFlagPicker, buildEyesPicker, buildCaps,
     get shake(){ return shake; }, get hitStop(){ return hitStop; }, get flash(){ return flash; },
     addShake, goalBurst, scoreGoal,
+    gamepadPad, openPadConfig, startBind, startRebindAll, get padBind(){ return padBind; },
   };
 }
 })();
