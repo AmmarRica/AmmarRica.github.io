@@ -10,6 +10,9 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Bouncy walls** — field walls are now near-elastic (~0.9 restitution) so the ball keeps its
+  momentum off the boundary and you can pass to yourself off a wall; only the **net** kills
+  momentum. (Ball containment still verified on all 10 fields.)
 - **Onboarding tutorial** — a short guided first match (move → reach → kick → score) with
   coaching tips that advance as you complete each step.
 - **Season / Cup** (#10) — a single-player ladder of 5 rounds vs rising difficulty (Easy →

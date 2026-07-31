@@ -1641,7 +1641,7 @@ function buildGeometry(w){
   w.arcs = [];
   w.posts = [];
 
-  const cB = 0.1; // low-bounce boundary walls
+  const cB = 0.9; // lively, near-elastic boundary walls so you can pass off them (only the net kills momentum)
   // Side walls (left & right), full length
   w.walls.push({a:{x:-halfW,y:-halfL+c}, b:{x:-halfW,y:halfL-c}, bCoef:cB});
   w.walls.push({a:{x: halfW,y:-halfL+c}, b:{x: halfW,y:halfL-c}, bCoef:cB});
