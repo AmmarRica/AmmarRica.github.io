@@ -547,6 +547,15 @@
       </div>
     </div>
     <div class="card">
+      <h2>Skins <small style="color:var(--muted);font-weight:400">experimental</small></h2>
+      <label class="field">Ball</label>
+      <div class="opts" id="ballSkinPick"></div>
+      <div style="height:10px"></div>
+      <label class="field">Players</label>
+      <div class="opts" id="playerSkinPick"></div>
+      <div class="hint" style="text-align:left">Sprite skins render once the image files are added under <code>magnetball/assets/</code> (see that folder's README). Controls and collisions are unchanged — only the look.</div>
+    </div>
+    <div class="card">
       <h2>Sound</h2>
       <label class="field">Master</label>
       <div class="opts" id="sndMaster"></div>
@@ -997,6 +1006,7 @@ let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:
             ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
             theme:'neon', trapOff:false, juice:true, autoReplay:true,
             display:'auto', cocktailSides:{},   // 'auto' (mobile/desktop by resolution) or 'cocktail'; per-seat sides for cocktail
+            ballSkin:'classic', playerSkin:'disc',   // 'soccer' ball sprite / 'sprite' players (visual only; physics unchanged)
             // Gamepad button map (standard layout defaults: dpad 12-15 + A). Rebindable.
             pad: { up:12, down:13, left:14, right:15, kick:0 },
             snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
@@ -1636,6 +1646,25 @@ function buildSettings(){
   if (dd) dd.textContent = sel.display==='cocktail' ? '· cocktail' : (isDesktop()?'· desktop detected':'· mobile detected');
   const cbx=$('cocktailBox'); if (cbx) cbx.style.display = sel.display==='cocktail' ? '' : 'none';
   const ccb=$('cocktailCfgBtn'); if (ccb) ccb.onclick=openCocktailCfg;
+  // Skins: swap the drawn ball / players for image sprites (visual only).
+  const bsp=$('ballSkinPick');
+  if (bsp){ bsp.innerHTML='';
+    [['classic','● Classic'],['soccer','⚽ Soccer']].forEach(([k,lab])=>{
+      const on=(sel.ballSkin||'classic')===k;
+      const el=document.createElement('div'); el.className='opt'+(on?' sel':''); el.innerHTML=`<span>${lab}</span>`;
+      el.onclick=()=>{ sel.ballSkin=k; saveSel(); buildSettings(); };
+      bsp.appendChild(el);
+    });
+  }
+  const psp=$('playerSkinPick');
+  if (psp){ psp.innerHTML='';
+    [['disc','⬤ Disc'],['sprite','🐾 Sprite']].forEach(([k,lab])=>{
+      const on=(sel.playerSkin||'disc')===k;
+      const el=document.createElement('div'); el.className='opt'+(on?' sel':''); el.innerHTML=`<span>${lab}</span>`;
+      el.onclick=()=>{ sel.playerSkin=k; saveSel(); buildSettings(); };
+      psp.appendChild(el);
+    });
+  }
   // Juice / screen-shake toggle (accessibility: some players want it off).
   const jp=$('juicePick');
   if (jp){ jp.innerHTML='';
@@ -3611,6 +3640,19 @@ function drawGoal(w, sign){
   }
 }
 
+// Image-sprite loader with graceful fallback: returns the loaded <img> once
+// ready, or null while loading / on error (so the drawn version is used). Files
+// live under magnetball/assets/ (see that folder's README for the contract).
+const _imgCache = {};
+function spriteImg(path){
+  let im = _imgCache[path];
+  if (im === undefined){ im = new Image(); im.onerror = ()=>{ _imgCache[path] = null; }; im.src = path; _imgCache[path] = im; }
+  if (!im) return null;
+  return (im.complete && im.naturalWidth > 0) ? im : null;
+}
+const BALL_SPRITE = 'assets/ball/soccer.png';
+const PLAYER_SPRITE = 'assets/player/player.png';
+
 function drawDiscs(w){
   const s = cam.s;
   for (const p of w.players){
@@ -3618,8 +3660,15 @@ function drawDiscs(w){
     // shadow
     ctx.beginPath(); ctx.arc(x, y+r*0.28, r*0.95, 0, 2*Math.PI);
     ctx.fillStyle=TH.shadow; ctx.fill();
-    // Flat sprite: rim, team-colour ring, custom-colour core.
     const teamCol = p.team===0 ? TH.teamRed : TH.teamBlue;
+    // Sprite players: keep a team-colour identity ring, stamp the image over the
+    // same collision circle, and skip the drawn face. Physics is untouched.
+    const pim = (sel.playerSkin==='sprite') ? spriteImg(PLAYER_SPRITE) : null;
+    if (pim){
+      ctx.beginPath(); ctx.arc(x, y, r+Math.max(2, r*0.18), 0, 2*Math.PI); ctx.fillStyle=teamCol; ctx.fill();
+      const d = r*2.3; ctx.drawImage(pim, x-d/2, y-d/2, d, d);
+    } else {
+    // Flat sprite: rim, team-colour ring, custom-colour core.
     ctx.beginPath(); ctx.arc(x, y, r+Math.max(2, r*0.16), 0, 2*Math.PI);
     ctx.fillStyle = TH.discRim; ctx.fill();
     ctx.beginPath(); ctx.arc(x, y, r, 0, 2*Math.PI);
@@ -3637,6 +3686,17 @@ function drawDiscs(w){
       ctx.beginPath(); ctx.arc(x, y, r*0.64, 0, 2*Math.PI);
       ctx.fillStyle = p.color; ctx.fill();
     }
+    // Fixed face — cap marking pinned at the top of the head.
+    const cap = CAPS[p.cap] && CAPS[p.cap].emoji;
+    if (cap && r>7){
+      ctx.font = `${Math.round(r*0.78)}px sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.globalAlpha = 0.92; ctx.fillStyle = pickTextColor(p.color);
+      ctx.fillText(cap, x, y - r*0.48); ctx.globalAlpha = 1;
+    }
+    // The countryball "face" — a selectable eye style, always upright.
+    if (r > 5) (EYES[p.eyes] || EYES.googly).draw(ctx, x, y, r);
+    }
     // Colour-blind aid: distinguish teams by shape — team 0 solid white ring,
     // team 1 dashed white ring (readable regardless of hue).
     if (w.cb){
@@ -3650,21 +3710,6 @@ function drawDiscs(w){
     if (p.kick){
       ctx.beginPath(); ctx.arc(x, y, r*1.42, 0, 2*Math.PI);
       ctx.strokeStyle=TH.kickRing; ctx.lineWidth=Math.max(2,r*0.16); ctx.stroke();
-    }
-    // Fixed face — the player's look never rotates with movement direction.
-    // Cap marking pinned at the top of the head.
-    const cap = CAPS[p.cap] && CAPS[p.cap].emoji;
-    if (cap && r>7){
-      ctx.font = `${Math.round(r*0.78)}px sans-serif`;
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.globalAlpha = 0.92;
-      ctx.fillStyle = pickTextColor(p.color);
-      ctx.fillText(cap, x, y - r*0.48);
-      ctx.globalAlpha = 1;
-    }
-    // The countryball "face" — a selectable eye style, always upright (no rotation).
-    if (r > 5){
-      (EYES[p.eyes] || EYES.googly).draw(ctx, x, y, r);
     }
     // name label — pixel font in a solid black plate
     if (s>0.28){
@@ -3701,6 +3746,20 @@ function drawBall(w){
   // Squash & stretch: warp the ball along its impact axis for a frame or two.
   const sq = b.sqT || 0;
   const warped = sq > 0.01;
+  // Soccer-ball sprite (if selected and loaded): stamp the image, rolling with
+  // the ball's rotation, and squash along the impact axis. Falls back to drawn.
+  if (sel.ballSkin==='soccer'){
+    const im = spriteImg(BALL_SPRITE);
+    if (im){
+      const d = (r + Math.max(1.5, r*0.16)) * 2;
+      ctx.save(); ctx.translate(x, y);
+      if (warped){ ctx.rotate(b.sqAng||0); ctx.scale(1 + 0.38*sq, 1 - 0.26*sq); ctx.rotate(-(b.sqAng||0)); }
+      ctx.rotate(b.rot || 0);
+      ctx.drawImage(im, -d/2, -d/2, d, d);
+      ctx.restore();
+      return;
+    }
+  }
   if (warped){
     ctx.save(); ctx.translate(x,y); ctx.rotate(b.sqAng||0);
     ctx.scale(1 + 0.38*sq, 1 - 0.26*sq); ctx.translate(-x,-y);
@@ -4038,6 +4097,7 @@ if (window.__MAGNETDEBUG) {
     openShop, buildShop, shopFeatured, shopCoins,
     viewMode, isTouchLayout, applyDisplayMode, seatSide, sideQuarter, rotVec,
     openCocktailCfg, buildCocktailRows, applyHumanInput, drawControls,
+    spriteImg, BALL_SPRITE, PLAYER_SPRITE, drawDiscs, drawBall,
   };
 }
 })();
