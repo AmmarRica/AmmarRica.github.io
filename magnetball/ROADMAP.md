@@ -10,6 +10,11 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Roguelike "Gauntlet" mode** — a run of escalating matches vs rising bot tiers (1v1 → 2v2 →
+  3v3). Start with **3 lives**; **win to descend** a depth and **pick 1 of 3 random upgrades**
+  (Cannon, Sprint, Magnet, Beach Ball, Floaty, Stopwatch, Extra Life) that **stack** for the run;
+  **lose to spend a life**. Run ends at 0 lives, and your **deepest run** is remembered. New
+  ☠️ Gauntlet tile on the menu.
 - **Content explosion (3×)** — tripled the unlockables, cosmetics and courts:
   **85 countryball flags** (was 29), **31 eye styles** (was 11), **36 caps** (was 12), and
   **30 pitches** (was 10 — new shapes/sizes like Giant, Marathon, Coliseum, Hexagon, Diamond,
