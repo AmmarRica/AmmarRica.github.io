@@ -10,6 +10,15 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Content explosion (3×)** — tripled the unlockables, cosmetics and courts:
+  **85 countryball flags** (was 29), **31 eye styles** (was 11), **36 caps** (was 12), and
+  **30 pitches** (was 10 — new shapes/sizes like Giant, Marathon, Coliseum, Hexagon, Diamond,
+  Pill, Penalty, Endless…). Every new cosmetic has an unlock requirement on the RP/wins/goals/
+  streak/played/drills curve; all render verified with no errors and every field keeps the ball
+  contained.
+- **MMR (Elo rating)** — a proper skill rating (start 1000) updated per match against the bot
+  tier's implied strength, shown on the menu Record card with your peak. Seeds future
+  matchmaking / the belt.
 - **Party modifiers** — toggle fun match twists in Match setup: **Big Ball** (1.8×), **Low Gravity**
   (floaty ball + slippery players), **Sudden Death** (first goal wins), and **Multi-Ball** (two extra
   fully-physical, scorable balls that bounce off each other and everything else — containment verified).
