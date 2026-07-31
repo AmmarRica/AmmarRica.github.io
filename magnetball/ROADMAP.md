@@ -10,6 +10,10 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Daily login rewards** — every calendar day you visit grants the next reward on a generous
+  track (countryballs, caps, eye styles, RP; milestones at day 5/10/14, then endless RP). A
+  first-visit popup shows today's unlock, your streak, and a roadmap of what's coming. Granted
+  items unlock instantly on top of the milestone system; a 🎁 menu button reopens the track.
 - **Players step outside the line** — boundary walls are now ball-only, so players can nudge
   ~20px past the pitch edge (HaxBall-style) to get around a ball hugging the wall; the ball is
   still fully contained (verified on all 10 fields).
