@@ -10,6 +10,10 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Controller button mapping** — a "press a button to bind it" flow: a Controller config
+  screen (Controls → Configure buttons) where you rebind Up / Down / Left / Right / Kick by
+  pressing them on your gamepad. Rebind-all walks all five; per-row rebinding; reset to
+  default; the mapping (`sel.pad`) persists and drives gamepad input (analog stick still works).
 - **Polish pass** — HaxBall-feel refinements: a **charge/aim arrow** that grows and turns
   yellow with kick power so shots are readable; **first-touch feedback** (a ring flash on a
   clean trap or sharp redirect); a **crowd swell** on shots toward goal and a **groan** on a
