@@ -10,6 +10,12 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Party modifiers** — toggle fun match twists in Match setup: **Big Ball** (1.8×), **Low Gravity**
+  (floaty ball + slippery players), **Sudden Death** (first goal wins), and **Multi-Ball** (two extra
+  fully-physical, scorable balls that bounce off each other and everything else — containment verified).
+  Mix and match freely.
+- **"Your clips" tab in Watch** — a new **Yours** filter in the Social feed shows only your own saved
+  goals, each with a 🗑 delete button. Your Save-clip goals already land here automatically.
 - **Main-menu redesign** — destinations no longer buried under long config cards. Now: logo → record
   → a big **KICK OFF**, then a compact **3×3 icon grid** (Season, Drills, Tutorial, Watch, Ranks,
   Daily, Shop, Settings, How) right at the top. The Match / Your Player / Controls / Online config

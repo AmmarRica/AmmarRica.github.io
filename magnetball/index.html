@@ -536,6 +536,9 @@
       <div style="height:14px"></div>
       <label class="field">Pitch surface</label>
       <div class="opts" id="pitches"></div>
+      <div style="height:14px"></div>
+      <label class="field">Party modifiers <small style="color:var(--muted)">(tap to toggle)</small></label>
+      <div class="opts" id="partyMods"></div>
     </div>
 
     <div class="card collapsible collapsed" data-sec="player">
@@ -1082,6 +1085,7 @@ let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:
             theme:'neon', trapOff:false, juice:true, autoReplay:true,
             display:'auto', cocktailSides:{},   // 'auto' (mobile/desktop by resolution) or 'cocktail'; per-seat sides for cocktail
             ballSkin:'classic', playerSkin:'disc',   // 'soccer' ball sprite / 'sprite' players (visual only; physics unchanged)
+            party: { big:false, lowg:false, sudden:false, multi:false },   // fun match modifiers
             // Gamepad button map (standard layout defaults: dpad 12-15 + A). Rebindable.
             pad: { up:12, down:13, left:14, right:15, kick:0 },
             snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
@@ -1497,6 +1501,20 @@ buildOpts('pitches', PITCH, 'pitch');
 buildOpts('handed', HANDED, 'handed');
 buildOpts('spectate', SPECT, 'spectate');
 buildOpts('cb', CB, 'cb');
+
+// Party modifiers — multi-select toggle chips (fun match variety).
+const PARTY_MODS = [['big','🪩','Big Ball'],['lowg','🧊','Low Gravity'],['sudden','⚡','Sudden Death'],['multi','🔴','Multi-Ball']];
+function buildPartyMods(){
+  const w=$('partyMods'); if(!w) return; w.innerHTML=''; sel.party=sel.party||{};
+  PARTY_MODS.forEach(([k,em,lab])=>{
+    const on=!!sel.party[k];
+    const el=document.createElement('div'); el.className='opt'+(on?' sel':'');
+    el.innerHTML=`<span class="emoji">${em}</span><span>${lab}</span>`;
+    el.onclick=()=>{ sel.party[k]=!sel.party[k]; saveSel(); buildPartyMods(); };
+    w.appendChild(el);
+  });
+}
+buildPartyMods();
 
 // ---- Collapsible menu sections (persisted). Keeps the long setup screen tidy.
 const UI_KEY = 'magnetball.ui';
@@ -2266,7 +2284,7 @@ function feedTick(ts){
   socRaf=requestAnimationFrame(feedTick);
 }
 function timeAgo(ms){ const d=Date.now()-ms, h=d/3600e3; if(h<1) return Math.max(1,Math.round(d/60e3))+'m ago'; if(h<24) return Math.round(h)+'h ago'; return Math.round(h/24)+'d ago'; }
-function socMatches(post){ const age=Date.now()-post.when; if(socFilter==='today') return age<24*3600e3; if(socFilter==='month') return age<31*24*3600e3; return true; }
+function socMatches(post){ if(socFilter==='mine') return !!post.mine; const age=Date.now()-post.when; if(socFilter==='today') return age<24*3600e3; if(socFilter==='month') return age<31*24*3600e3; return true; }
 let socFilter='all';
 
 function openSocial(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('social').classList.remove('hidden'); buildSocFilters(); buildFeed(); }
@@ -2276,7 +2294,7 @@ function closeSocial(){
 }
 function buildSocFilters(){
   const w=$('socFilters'); if(!w) return; w.innerHTML='';
-  [['today','Today'],['month','This Month'],['all','All-time']].forEach(([k,lab])=>{
+  [['today','Today'],['month','This Month'],['all','All-time'],['mine','Yours']].forEach(([k,lab])=>{
     const b=document.createElement('button'); b.textContent=lab; if(socFilter===k) b.classList.add('sel');
     b.onclick=()=>{ socFilter=k; buildSocFilters(); buildFeed(); }; w.appendChild(b);
   });
@@ -2286,7 +2304,7 @@ function buildFeed(){
   if(socIO){ socIO.disconnect(); } socVisible.clear();
   host.innerHTML='';
   const posts=feed.filter(socMatches);
-  if(!posts.length){ host.innerHTML='<div class="feedempty">Nothing here for this window yet — score a goal and hit <b>Save clip</b>. ⚽</div>'; return; }
+  if(!posts.length){ host.innerHTML='<div class="feedempty">'+(socFilter==='mine'?'No clips of yours yet — score a goal and hit <b>Save clip</b> to add it here. ⚽':'Nothing here for this window yet — score a goal and hit <b>Save clip</b>. ⚽')+'</div>'; return; }
   socIO=new IntersectionObserver(entries=>{
     for(const e of entries){ const cv=e.target;
       if(e.isIntersecting){ if(!socVisible.has(cv)) socVisible.set(cv,{clip:cv.__clip, fi:0, t:0}); }
@@ -2306,6 +2324,12 @@ function buildPostCard(post){
   who.innerHTML=`${post.n}${post.mine?' <span class="psub">(you)</span>':''}<br><span class="psub">${post.flag&&post.flag!=='none'?post.flag+' · ':''}${timeAgo(post.when)}</span>`;
   const badge=document.createElement('span'); badge.className='pbadge'; badge.textContent='⚽ GOAL';
   head.append(av,who,badge);
+  if(post.mine){
+    const del=document.createElement('button'); del.textContent='🗑'; del.title='Delete clip';
+    del.style.cssText='background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;margin-left:8px;';
+    del.onclick=()=>{ feed=feed.filter(x=>x!==post); saveFeed(); buildFeed(); };
+    head.appendChild(del);
+  }
   // media (playable clip)
   const media=document.createElement('div'); media.className='media';
   const cv=document.createElement('canvas'); cv.width=340; cv.height=340; cv.__clip=post.clip;
@@ -2511,6 +2535,21 @@ function startMatch(){
     matchT: 0,                // seconds of play elapsed (for assist/pass windows)
     maxDeficit: [0,0],        // biggest debt each team clawed back from (Comeback King)
   };
+  // Party modifiers (fun match variety; layered on top of the base setup).
+  const party = sel.party || {};
+  world.party = party;
+  world.sudden = !!party.sudden && !mode.train;
+  if (party.big) world.ball.r = Math.round(bp.r * 1.8);
+  if (party.lowg){                          // floaty: less ball friction, faster cap, slipperier players
+    world.ball.damp = 0.997;
+    world.ballCap = Math.round((world.ballCap||32) * 1.5);
+    world.pDamp = Math.min(0.986, (world.pDamp||PLAYER.damp) + 0.05);
+  }
+  world.extraBalls = [];
+  if (party.multi && !mode.train){          // two extra free balls (3 total), fully physical + scorable
+    for (let i=0;i<2;i++) world.extraBalls.push({ x:0, y:0, vx:0, vy:0, r:world.ball.r,
+      invMass:bp.invMass, bCoef:bp.bCoef, damp:world.ball.damp, isBall:true, extra:true });
+  }
   buildGeometry(world);
   resetKickoff(world, true);
 
@@ -2527,6 +2566,7 @@ function startMatch(){
   resize();
   updateScoreUI();
   updateClock(world);   // show the starting time immediately (don't inherit a prior match's "OT")
+  if (world.sudden) setTimeout(()=>showBanner('SUDDEN DEATH', 'var(--accent)'), 400);   // party: first goal wins
   lastT = 0; acc = 0;
   cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(loop);
@@ -2616,7 +2656,11 @@ function buildGeometry(w){
 
 function resetKickoff(w, initial){
   const f = w.field, halfL = f.L/2;
-  w.ball.x = 0; w.ball.y = 0; w.ball.vx = 0; w.ball.vy = 0;
+  w.ball.x = 0; w.ball.y = 0; w.ball.vx = 0; w.ball.vy = 0; w.ball.sqT = 0;
+  if (w.extraBalls && w.extraBalls.length){   // multiball: park the extra balls out to the sides
+    const spread = Math.min(f.W*0.28, 150);
+    w.extraBalls.forEach((eb,i)=>{ eb.x = (i%2?-1:1)*spread; eb.y = 0; eb.vx=0; eb.vy=0; eb.sqT=0; });
+  }
 
   // Arrange players by team on their own half.
   const t0 = w.players.filter(p=>p.team===0);
@@ -2809,7 +2853,7 @@ function step(w){
     if (w.stateT > 1.8){
       const ending = w.goalsTarget && Math.max(w.score[0],w.score[1]) >= w.goalsTarget;
       if (w.overtime) endMatch(w);                 // golden goal — first goal in OT wins
-      else if (sel.autoReplay && !ending && lastReplay && lastReplay.frames && lastReplay.frames.length
+      else if (sel.autoReplay && !ending && !(w.party&&w.party.multi) && lastReplay && lastReplay.frames && lastReplay.frames.length
                && lastReplay.players === w.players.length && !w._autoReplayed){
         w._autoReplayed = true;                    // slow-mo instant replay, then kick off
         playReplay(0.5).then(()=>{ if (world===w){ resetKickoff(w); w.state='kickoff'; w.stateT=0; w._autoReplayed=false; } });
@@ -2993,33 +3037,42 @@ function integrate(w, ballFrozen, playersFrozen){
     }
   }
 
-  // Ball: cap speed, then SUB-STEP the move so a fast ball can't tunnel through
-  // the thin wall segments (the old single-step check missed fast balls and let
-  // them escape the field). Collide vs players + posts + walls each substep.
+  // Ball movement (sub-stepped so a fast ball can't tunnel walls). Runs for the
+  // primary ball and any multiball extras, then balls bounce off each other.
   if (!ballFrozen){
-    ball.vx *= ball.damp; ball.vy *= ball.damp;
-    const cap = w.ballCap || 32, sp0 = Math.hypot(ball.vx, ball.vy);
-    if (sp0 > cap){ const k = cap/sp0; ball.vx *= k; ball.vy *= k; }
-    const speed = Math.hypot(ball.vx, ball.vy);
-    const n = Math.max(1, Math.min(20, Math.ceil(speed / (ball.r*0.5))));
-    for (let s=0; s<n; s++){
-      ball.x += ball.vx/n; ball.y += ball.vy/n;
-      for (const p of discs) collideDiscs(p, ball);
-      for (const post of w.posts) collideDiscs(ball, post);
-      for (const wall of w.walls) collideWall(ball, wall);
-      for (const arc of w.arcs) collideArc(ball, arc);
+    moveBall(w, ball, discs);
+    if (w.extraBalls) for (const eb of w.extraBalls) moveBall(w, eb, discs);
+    if (w.extraBalls && w.extraBalls.length){
+      const all = [ball, ...w.extraBalls];
+      for (let i=0;i<all.length;i++) for (let j=i+1;j<all.length;j++) collideDiscs(all[i], all[j]);
     }
-    clampBallInside(w);   // hard backstop: the ball can never leave the pitch/net
   }
 
   // Goal detection
   if (!ballFrozen && w.state==='play') checkGoal(w);
 }
 
-// Hard containment for the ball: keep it inside the pitch, allowing it into the
+// Move one ball a fixed step: damp, cap, sub-step + collide vs players/posts/walls.
+function moveBall(w, ball, discs){
+  ball.vx *= ball.damp; ball.vy *= ball.damp;
+  const cap = w.ballCap || 32, sp0 = Math.hypot(ball.vx, ball.vy);
+  if (sp0 > cap){ const k = cap/sp0; ball.vx *= k; ball.vy *= k; }
+  const speed = Math.hypot(ball.vx, ball.vy);
+  const n = Math.max(1, Math.min(20, Math.ceil(speed / (ball.r*0.5))));
+  for (let s=0; s<n; s++){
+    ball.x += ball.vx/n; ball.y += ball.vy/n;
+    for (const p of discs) collideDiscs(p, ball);
+    for (const post of w.posts) collideDiscs(ball, post);
+    for (const wall of w.walls) collideWall(ball, wall);
+    for (const arc of w.arcs) collideArc(ball, arc);
+  }
+  clampBallInside(w, ball);   // hard backstop: the ball can never leave the pitch/net
+}
+
+// Hard containment for a ball: keep it inside the pitch, allowing it into the
 // net pocket only through the goal mouth. Backstop for any collision that slips.
-function clampBallInside(w){
-  const b = w.ball, r = b.r;
+function clampBallInside(w, ball){
+  const b = ball || w.ball, r = b.r;
   const halfW = w.field.W/2, halfL = w.field.L/2;
   const gh = w.drillMode ? -1 : w.field.goal/2, net = w.drillMode ? 0 : w.field.net;
   if (b.x < -halfW + r){ b.x = -halfW + r; if (b.vx < 0) b.vx = -b.vx*0.3; }
@@ -3259,25 +3312,28 @@ function collideArc(d, arc){
 }
 
 function checkGoal(w){
-  const ball = w.ball, halfL = w.field.L/2, gh = w.field.goal/2;
-  const inTop = ball.y < -halfL + ball.r*0.4 && Math.abs(ball.x) < gh;
-  const inBot = ball.y > halfL - ball.r*0.4 && Math.abs(ball.x) < gh;
-  if (!inTop && !inBot) return;
-  if (w.train){
-    // Practice: count the goal and celebrate, but LET THE BALL SIT IN THE NET for
-    // a beat before re-serving at centre — otherwise it looks like it vanishes the
-    // instant it crosses the line. The re-serve happens in step() once the timer
-    // elapses; the guard stops this from re-counting while the ball rests in-goal.
-    if (w._trainGoalCd > 0) return;
-    w.practiceGoals++;
-    showBanner('GOAL!', 'var(--accent)');
-    fx.length = 0; for (let i=0;i<20;i++) spawnConfetti(ball.x, ball.y);
-    goalBurst(w, inTop ? 1 : 0);
-    w._trainGoalCd = 1.1;
-    updateScoreUI();
+  const halfL = w.field.L/2, gh = w.field.goal/2;
+  const balls = (w.extraBalls && w.extraBalls.length) ? [w.ball, ...w.extraBalls] : [w.ball];
+  for (const ball of balls){
+    const inTop = ball.y < -halfL + ball.r*0.4 && Math.abs(ball.x) < gh;
+    const inBot = ball.y > halfL - ball.r*0.4 && Math.abs(ball.x) < gh;
+    if (!inTop && !inBot) continue;
+    if (w.train){
+      // Practice: count the goal and celebrate, but LET THE BALL SIT IN THE NET for
+      // a beat before re-serving at centre — otherwise it looks like it vanishes the
+      // instant it crosses the line. The re-serve happens in step() once the timer elapses.
+      if (w._trainGoalCd > 0) return;
+      w.practiceGoals++;
+      showBanner('GOAL!', 'var(--accent)');
+      fx.length = 0; for (let i=0;i<20;i++) spawnConfetti(ball.x, ball.y);
+      goalBurst(w, inTop ? 1 : 0);
+      w._trainGoalCd = 1.1;
+      updateScoreUI();
+      return;
+    }
+    scoreGoal(w, inTop ? 0 : 1);
     return;
   }
-  scoreGoal(w, inTop ? 0 : 1);
 }
 function scoreGoal(w, team){
   w.score[team]++;
@@ -3304,7 +3360,8 @@ function scoreGoal(w, team){
   for (let i=0;i<(sel.juice?40:26);i++) spawnConfetti(ball_x(w), ball_y(w));
   goalBurst(w, team);   // shake + flash + hit-stop
   repOnGoal(w);   // freeze the last few seconds for replay / clip share
-  if (w.goalsTarget && w.score[team] >= w.goalsTarget){ setTimeout(()=>endMatch(w), 1200); }
+  if (w.sudden){ setTimeout(()=>endMatch(w), 1400); }   // sudden death: first goal wins
+  else if (w.goalsTarget && w.score[team] >= w.goalsTarget){ setTimeout(()=>endMatch(w), 1200); }
 }
 function ball_x(w){ return w.ball.x; } function ball_y(w){ return w.ball.y; }
 
@@ -3900,6 +3957,7 @@ function render(){
   drawBallTrail(world);
   drawDiscs(world);
   drawBall(world);
+  if (world.extraBalls) for (const eb of world.extraBalls) drawBall({ ball: eb });   // multiball extras
   if (world.state==='kickoff') drawKickoffHint(world);
   ctx.restore();
   // Goal flash — a quick coloured wash that fades.
@@ -4434,7 +4492,7 @@ if (window.__MAGNETDEBUG) {
     get repBuf(){ return repBuf; }, get lastReplay(){ return lastReplay; }, playReplay, saveClip, repMime,
     replayPayload, lbSubmitReplay, skipReplay, get replay(){ return replay; },
     openSocial, buildFeed, genGoalClip, clipFromLastReplay, addToFeed, seedFeed, drawClip,
-    get feed(){ return feed; },
+    get feed(){ return feed; }, buildPartyMods, moveBall, checkGoal,
     get profile(){ return profile; }, get stats(){ return stats; }, FLAGS, EYES, CAPS,
     isUnlocked, unlockCounts, renderStats, buildFlagPicker, buildEyesPicker, buildCaps,
     get shake(){ return shake; }, get hitStop(){ return hitStop; }, get flash(){ return flash; },
