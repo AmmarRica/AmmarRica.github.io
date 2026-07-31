@@ -805,6 +805,27 @@ const FIELDS = {
   stadium: { name:'Stadium',  emoji:'🏟️', W:520, L:880,  goal:180, corner:150, net:70 },
   octagon: { name:'Octagon',  emoji:'⬢',  W:460, L:760,  goal:150, corner:110, net:64, cut:true },
   futsal:  { name:'Futsal',   emoji:'🥅', W:340, L:520,  goal:150, corner:70,  net:52 },
+  // --- Expansion set ---
+  tiny:    { name:'Tiny',     emoji:'🔬', W:300, L:460,  goal:150, corner:0,   net:48 },
+  giant:   { name:'Giant',    emoji:'🦣', W:660, L:1160, goal:220, corner:0,   net:82 },
+  ultra:   { name:'Ultrawide',emoji:'📺', W:660, L:560,  goal:210, corner:0,   net:64 },
+  marathon:{ name:'Marathon', emoji:'🏃', W:340, L:1200, goal:150, corner:0,   net:66 },
+  pancake: { name:'Pancake',  emoji:'🥞', W:600, L:480,  goal:200, corner:40,  net:60 },
+  coliseum:{ name:'Coliseum', emoji:'🏛️', W:560, L:940,  goal:180, corner:180, net:74 },
+  arena:   { name:'Arena',    emoji:'🎪', W:500, L:820,  goal:170, corner:130, net:68 },
+  dome:    { name:'Dome',     emoji:'🏙️', W:480, L:800,  goal:160, corner:200, net:66 },
+  hexagon: { name:'Hexagon',  emoji:'⬡',  W:480, L:820,  goal:160, corner:150, net:64, cut:true },
+  diamond: { name:'Diamond',  emoji:'💠', W:520, L:820,  goal:160, corner:200, net:64, cut:true },
+  pill:    { name:'Pill',     emoji:'💊', W:420, L:760,  goal:150, corner:190, net:62 },
+  boxy:    { name:'Boxy',     emoji:'📦', W:460, L:520,  goal:170, corner:0,   net:56 },
+  slim:    { name:'Slim',     emoji:'📏', W:300, L:760,  goal:130, corner:0,   net:60 },
+  chunky:  { name:'Chunky',   emoji:'🧱', W:560, L:700,  goal:200, corner:0,   net:70 },
+  penalty: { name:'Penalty',  emoji:'🎯', W:420, L:600,  goal:220, corner:0,   net:60 },
+  sandlot: { name:'Sandlot',  emoji:'🏖️', W:400, L:640,  goal:160, corner:60,  net:54 },
+  cage:    { name:'Cage',     emoji:'🕸️', W:380, L:560,  goal:150, corner:40,  net:50 },
+  retro:   { name:'Retro',    emoji:'🕹️', W:440, L:720,  goal:150, corner:0,   net:64 },
+  sprint:  { name:'Sprint',   emoji:'💨', W:420, L:520,  goal:160, corner:0,   net:54 },
+  endless: { name:'Endless',  emoji:'♾️', W:380, L:1100, goal:150, corner:0,   net:70 },
 };
 
 const CAPS = {
@@ -820,6 +841,31 @@ const CAPS = {
   sun:   { name:'Sun',    emoji:'☀', req:{ points:1300 } },
   ring:  { name:'Halo',   emoji:'◎', req:{ drills:3 } },
   spark: { name:'Sparkle',emoji:'✦', req:{ points:1500 } },
+  // --- Expansion set ---
+  moon:    { name:'Moon',     emoji:'🌙', req:{ played:20 } },
+  fire:    { name:'Fire',     emoji:'🔥', req:{ streak:8 } },
+  gem:     { name:'Gem',      emoji:'💎', req:{ points:1700 } },
+  tophat:  { name:'Top Hat',  emoji:'🎩', req:{ wins:12 } },
+  grad:    { name:'Grad',     emoji:'🎓', req:{ drills:6 } },
+  helmet:  { name:'Helmet',   emoji:'⛑️', req:{ played:30 } },
+  bow:     { name:'Bow',      emoji:'🎀', req:{ wins:8 } },
+  mushroom:{ name:'Mushroom', emoji:'🍄', req:{ goals:40 } },
+  blossom: { name:'Blossom',  emoji:'🌸', req:{ played:12 } },
+  unicorn: { name:'Unicorn',  emoji:'🦄', req:{ points:1900 } },
+  rainbow: { name:'Rainbow',  emoji:'🌈', req:{ wins:15 } },
+  clover:  { name:'Clover',   emoji:'🍀', req:{ streak:6 } },
+  pumpkin: { name:'Pumpkin',  emoji:'🎃', req:{ goals:50 } },
+  ghost:   { name:'Ghost',    emoji:'👻', req:{ points:1400 } },
+  robot:   { name:'Robot',    emoji:'🤖', req:{ drills:8 } },
+  alien:   { name:'Alien',    emoji:'👽', req:{ points:2000 } },
+  medal:   { name:'Medal',    emoji:'🥇', req:{ wins:20 } },
+  shades:  { name:'Shades',   emoji:'🕶️', req:{ points:1250 } },
+  music:   { name:'Headphones',emoji:'🎧', req:{ played:18 } },
+  jewel:   { name:'Jewel',    emoji:'👑', req:{ points:1850 } },
+  cactus:  { name:'Cactus',   emoji:'🌵', req:{ drills:10 } },
+  wave:    { name:'Wave',     emoji:'🌊', req:{ goals:60 } },
+  comet:   { name:'Comet',    emoji:'☄️', req:{ points:2200 } },
+  party:   { name:'Party',    emoji:'🎉', req:{ wins:25 } },
 };
 
 const COLORS = ['#e05a5a','#f0a04b','#f5d547','#46d17a','#3fbfd0','#5a7de0','#a06bd8','#ff7fb0','#e8eef7','#2f3646'];
@@ -864,6 +910,63 @@ const FLAGS = {
   usa:     { name:'USA',         draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#b22234','#fff','#b22234','#fff','#b22234','#fff','#b22234']); c.fillStyle='#3c3b6e'; c.fillRect(x-r,y-r,r*1.0,r*0.98); c.fillStyle='#fff'; for(let i=0;i<3;i++)for(let j=0;j<2;j++){ _cd(c,x-r*0.82+i*r*0.34, y-r*0.72+j*r*0.42, r, r*0.05);} } },
   uk:      { name:'UK',          draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#012169'); c.strokeStyle='#fff'; c.lineWidth=r*0.42; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x+r,y+r); c.moveTo(x+r,y-r); c.lineTo(x-r,y+r); c.stroke(); c.strokeStyle='#c8102e'; c.lineWidth=r*0.46; c.beginPath(); c.moveTo(x,y-r); c.lineTo(x,y+r); c.moveTo(x-r,y); c.lineTo(x+r,y); c.stroke(); } },
   korea:   { name:'Korea',       draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#fff'); c.beginPath(); c.arc(x,y,r*0.42,Math.PI,2*Math.PI); c.fillStyle='#cd2e3a'; c.fill(); c.beginPath(); c.arc(x,y,r*0.42,0,Math.PI); c.fillStyle='#0047a0'; c.fill(); } },
+  // --- Expansion set ---
+  greece:  { name:'Greece',    draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#0d5eaf','#fff','#0d5eaf','#fff','#0d5eaf']); c.fillStyle='#0d5eaf'; c.fillRect(x-r,y-r,r*0.9,r*0.9); c.strokeStyle='#fff'; c.lineWidth=r*0.16; c.beginPath(); c.moveTo(x-r+r*0.45,y-r); c.lineTo(x-r+r*0.45,y-r+r*0.9); c.moveTo(x-r,y-r+r*0.45); c.lineTo(x-r+r*0.9,y-r+r*0.45); c.stroke(); } },
+  turkey:  { name:'Turkey',    draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#e30a17'); _cd(c,x-r*0.1,y,r,'#fff',r*0.4); _cd(c,x+r*0.02,y,r,'#e30a17',r*0.32); } },
+  egypt:   { name:'Egypt',     draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ce1126','#fff','#000']); _cd(c,x,y,r,'#c09300',r*0.16); } },
+  kenya:   { name:'Kenya',     draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#000','#fff','#bb0000','#fff','#006600']); _cd(c,x,y,r,'#bb0000',r*0.14); } },
+  ghana:   { name:'Ghana',     draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ce1126','#fcd116','#006b3f']); _cd(c,x,y,r,'#000',r*0.18); } },
+  morocco: { name:'Morocco',   draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#c1272d'); _cd(c,x,y,r,'#006233',r*0.3); _cd(c,x,y,r,'#c1272d',r*0.18); } },
+  algeria: { name:'Algeria',   draw:(c,x,y,r)=>{ _fv(c,x,y,r,['#006233','#fff']); _cd(c,x,y,r,'#d21034',r*0.26); _cd(c,x+r*0.1,y,r,'#fff',r*0.22); } },
+  senegal: { name:'Senegal',   draw:(c,x,y,r)=>{ _fv(c,x,y,r,['#00853f','#fdef42','#e31b23']); _cd(c,x,y,r,'#00853f',r*0.16); } },
+  cameroon:{ name:'Cameroon',  draw:(c,x,y,r)=>{ _fv(c,x,y,r,['#007a5e','#ce1126','#fcd116']); _cd(c,x,y,r,'#fcd116',r*0.16); } },
+  southafr:{ name:'S. Africa', draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#e03c31','#007a4d','#001489']); c.fillStyle='#ffb612'; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x-r+r*0.9,y); c.lineTo(x-r,y+r); c.closePath(); c.fill(); c.fillStyle='#000'; c.beginPath(); c.moveTo(x-r,y-r*0.7); c.lineTo(x-r+r*0.5,y); c.lineTo(x-r,y+r*0.7); c.closePath(); c.fill(); } },
+  ethiopia:{ name:'Ethiopia',  draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#078930','#fcdd09','#da121a']); _cd(c,x,y,r,'#0f47af',r*0.3); _cd(c,x,y,r,'#fcdd09',r*0.12); } },
+  russia:  { name:'Russia',    draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#fff','#0039a6','#d52b1e']); } },
+  hungary: { name:'Hungary',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ce2939','#fff','#477050']); } },
+  czechia: { name:'Czechia',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#fff','#d7141a']); c.fillStyle='#11457e'; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x,y); c.lineTo(x-r,y+r); c.closePath(); c.fill(); } },
+  slovakia:{ name:'Slovakia',  draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#fff','#0b4ea2','#ee1c25']); _cd(c,x-r*0.35,y,r,'#fff',r*0.26); _cd(c,x-r*0.35,y,r,'#ee1c25',r*0.18); } },
+  croatia: { name:'Croatia',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ff0000','#fff','#171796']); _cd(c,x,y,r,'#ff0000',r*0.18); } },
+  serbia:  { name:'Serbia',    draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#c6363c','#0c4076','#fff']); } },
+  slovenia:{ name:'Slovenia',  draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#fff','#0000aa','#d50000']); _cd(c,x-r*0.4,y-r*0.2,r,'#ed1c24',r*0.15); } },
+  switzerl:{ name:'Switzerland',draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#d52b1e'); c.fillStyle='#fff'; c.fillRect(x-r*0.18,y-r*0.55,r*0.36,r*1.1); c.fillRect(x-r*0.55,y-r*0.18,r*1.1,r*0.36); } },
+  iceland: { name:'Iceland',   draw:(c,x,y,r)=>{ _nordic(c,x,y,r,'#02529c','#fff'); c.strokeStyle='#dc1e35'; c.lineWidth=r*0.16; c.beginPath(); c.moveTo(x-r*0.15,y-r); c.lineTo(x-r*0.15,y+r); c.moveTo(x-r,y); c.lineTo(x+r,y); c.stroke(); } },
+  estonia: { name:'Estonia',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#0072ce','#000','#fff']); } },
+  latvia:  { name:'Latvia',    draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#9e3039','#9e3039','#fff','#9e3039','#9e3039']); } },
+  lithuan: { name:'Lithuania', draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#fdb913','#006a44','#c1272d']); } },
+  belarus: { name:'Belarus',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#c8313e','#c8313e','#007c30']); c.fillStyle='#fff'; c.fillRect(x-r,y-r,r*0.28,r*2); _cd(c,x-r*0.86,y,r,'#c8313e',r*0.1); } },
+  bulgaria:{ name:'Bulgaria',  draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#fff','#00966e','#d62612']); } },
+  chile:   { name:'Chile',     draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#fff','#d52b1e']); c.fillStyle='#0039a6'; c.fillRect(x-r,y-r,r,r); _cd(c,x-r*0.5,y-r*0.5,r,'#fff',r*0.16); } },
+  peru:    { name:'Peru',      draw:(c,x,y,r)=>{ _fv(c,x,y,r,['#d91023','#fff','#d91023']); } },
+  colombia:{ name:'Colombia',  draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#fcd116','#fcd116','#003893','#ce1126']); } },
+  venezuela:{name:'Venezuela', draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ffcc00','#00247d','#cf142b']); _cd(c,x,y+r*0.1,r,'#fff',r*0.08); } },
+  uruguay: { name:'Uruguay',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#fff','#0038a8','#fff','#0038a8','#fff','#0038a8','#fff','#0038a8','#fff']); c.fillStyle='#fff'; c.fillRect(x-r,y-r,r,r); _cd(c,x-r*0.5,y-r*0.5,r,'#fcd116',r*0.2); } },
+  ecuador: { name:'Ecuador',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ffdd00','#ffdd00','#034ea2','#ed1c24']); _cd(c,x,y,r,'#8b5a2b',r*0.1); } },
+  bolivia: { name:'Bolivia',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#d52b1e','#f9e300','#007a33']); } },
+  paraguay:{ name:'Paraguay',  draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#d52b1e','#fff','#0038a8']); _cd(c,x,y,r,'#009b3a',r*0.14); } },
+  panama:  { name:'Panama',    draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#fff'); c.fillStyle='#d21034'; c.fillRect(x,y-r,r,r); c.fillStyle='#005293'; c.fillRect(x-r,y,r,r); _cd(c,x-r*0.5,y-r*0.5,r,'#005293',r*0.14); _cd(c,x+r*0.5,y+r*0.5,r,'#d21034',r*0.14); } },
+  costarica:{name:'Costa Rica',draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#002b7f','#fff','#ce1126','#ce1126','#fff','#002b7f']); } },
+  cuba:    { name:'Cuba',      draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#002a8f','#fff','#002a8f','#fff','#002a8f']); c.fillStyle='#cb1515'; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x,y); c.lineTo(x-r,y+r); c.closePath(); c.fill(); _cd(c,x-r*0.55,y,r,'#fff',r*0.12); } },
+  jamaica: { name:'Jamaica',   draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#009b3a'); c.fillStyle='#000'; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x,y); c.lineTo(x-r,y+r); c.closePath(); c.moveTo(x+r,y-r); c.lineTo(x,y); c.lineTo(x+r,y+r); c.closePath(); c.fill(); c.strokeStyle='#fed100'; c.lineWidth=r*0.2; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x+r,y+r); c.moveTo(x+r,y-r); c.lineTo(x-r,y+r); c.stroke(); } },
+  china:   { name:'China',     draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#de2910'); _cd(c,x-r*0.45,y-r*0.4,r,'#ffde00',r*0.22); _cd(c,x-r*0.05,y-r*0.6,r,'#ffde00',r*0.07); _cd(c,x+r*0.1,y-r*0.4,r,'#ffde00',r*0.07); _cd(c,x+r*0.1,y-r*0.15,r,'#ffde00',r*0.07); _cd(c,x-r*0.05,y,r,'#ffde00',r*0.07); } },
+  vietnam: { name:'Vietnam',   draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#da251d'); _cd(c,x,y,r,'#ffff00',r*0.3); } },
+  thailand:{ name:'Thailand',  draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#a51931','#f4f5f8','#2d2a4a','#2d2a4a','#f4f5f8','#a51931']); } },
+  philipp: { name:'Philippines',draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#0038a8','#ce1126']); c.fillStyle='#fff'; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x,y); c.lineTo(x-r,y+r); c.closePath(); c.fill(); _cd(c,x-r*0.55,y,r,'#fcd116',r*0.14); } },
+  malaysia:{ name:'Malaysia',  draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#cc0001','#fff','#cc0001','#fff','#cc0001','#fff','#cc0001']); c.fillStyle='#010066'; c.fillRect(x-r,y-r,r,r); _cd(c,x-r*0.5,y-r*0.5,r,'#ffcc00',r*0.18); _cd(c,x-r*0.38,y-r*0.5,r,'#010066',r*0.14); } },
+  singapore:{name:'Singapore', draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ef3340','#fff']); _cd(c,x-r*0.45,y-r*0.45,r,'#fff',r*0.22); _cd(c,x-r*0.3,y-r*0.45,r,'#ef3340',r*0.18); } },
+  pakistan:{ name:'Pakistan',  draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#01411c'); c.fillStyle='#fff'; c.fillRect(x-r,y-r,r*0.5,r*2); _cd(c,x+r*0.2,y,r,'#fff',r*0.3); _cd(c,x+r*0.32,y,r,'#01411c',r*0.24); } },
+  srilanka:{ name:'Sri Lanka', draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#8d153a'); c.fillStyle='#ff9800'; c.fillRect(x-r,y-r,r*0.25,r*2); c.fillStyle='#00534e'; c.fillRect(x-r+r*0.25,y-r,r*0.25,r*2); _cd(c,x+r*0.35,y,r,'#ffb700',r*0.14); } },
+  nepal:   { name:'Nepal',     draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#003893'); c.fillStyle='#dc143c'; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x+r*0.5,y-r*0.1); c.lineTo(x-r,y-r*0.1); c.closePath(); c.moveTo(x-r,y+r); c.lineTo(x+r*0.7,y+r*0.3); c.lineTo(x-r,y-r*0.05); c.closePath(); c.fill(); _cd(c,x-r*0.4,y-r*0.5,r,'#fff',r*0.08); _cd(c,x-r*0.4,y+r*0.3,r,'#fff',r*0.08); } },
+  iran:    { name:'Iran',      draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#239f40','#fff','#da0000']); _cd(c,x,y,r,'#da0000',r*0.14); } },
+  iraq:    { name:'Iraq',      draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ce1126','#fff','#000']); _cd(c,x,y,r,'#007a3d',r*0.1); } },
+  israel:  { name:'Israel',    draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#fff'); c.fillStyle='#0038b8'; c.fillRect(x-r,y-r*0.75,r*2,r*0.22); c.fillRect(x-r,y+r*0.53,r*2,r*0.22); c.strokeStyle='#0038b8'; c.lineWidth=r*0.08; c.beginPath(); c.moveTo(x,y-r*0.28); c.lineTo(x+r*0.24,y+r*0.14); c.lineTo(x-r*0.24,y+r*0.14); c.closePath(); c.moveTo(x,y+r*0.28); c.lineTo(x+r*0.24,y-r*0.14); c.lineTo(x-r*0.24,y-r*0.14); c.closePath(); c.stroke(); } },
+  saudi:   { name:'Saudi Arabia',draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#006c35'); c.fillStyle='#fff'; c.fillRect(x-r*0.6,y+r*0.25,r*1.2,r*0.1); c.fillRect(x-r*0.55,y-r*0.2,r*1.05,r*0.14); } },
+  uae:     { name:'UAE',       draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#00732f','#fff','#000']); c.fillStyle='#ff0000'; c.fillRect(x-r,y-r,r*0.5,r*2); } },
+  qatar:   { name:'Qatar',     draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#8a1538'); c.fillStyle='#fff'; c.fillRect(x-r,y-r,r*0.7,r*2); } },
+  kuwait:  { name:'Kuwait',    draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#007a3d','#fff','#ce1126']); c.fillStyle='#000'; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x-r+r*0.6,y-r*0.4); c.lineTo(x-r+r*0.6,y+r*0.4); c.lineTo(x-r,y+r); c.closePath(); c.fill(); } },
+  jordan:  { name:'Jordan',    draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#000','#fff','#007a3b']); c.fillStyle='#ce1126'; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x,y); c.lineTo(x-r,y+r); c.closePath(); c.fill(); _cd(c,x-r*0.6,y,r,'#fff',r*0.08); } },
+  lebanon: { name:'Lebanon',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ed1c24','#fff','#fff','#ed1c24']); _cd(c,x,y,r,'#007a3d',r*0.2); } },
+  australia:{name:'Australia', draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#00008b'); c.fillStyle='#fff'; c.fillRect(x-r,y-r,r,r); c.strokeStyle='#e4002b'; c.lineWidth=r*0.1; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x,y); c.moveTo(x-r,y); c.lineTo(x,y-r); c.stroke(); _cd(c,x-r*0.3,y+r*0.5,r,'#fff',r*0.12); _cd(c,x+r*0.4,y-r*0.3,r,'#fff',r*0.1); } },
 };
 const FLAG_KEYS = Object.keys(FLAGS);
 
@@ -883,11 +986,33 @@ const EYES = {
   star:   { name:'Star', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.28,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.lineWidth=Math.max(1,r*0.05); c.strokeStyle='#111'; c.stroke(); c.fillStyle='#111'; c.font=`${Math.round(r*0.42)}px sans-serif`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('★',ex,ey+r*0.02); } } },
   cyclops:{ name:'Cyclops', draw:(c,x,y,r)=>{ c.beginPath(); c.arc(x,y,r*0.34,0,7); c.fillStyle='#fff'; c.fill(); c.lineWidth=Math.max(1,r*0.06); c.strokeStyle='#111'; c.stroke(); c.beginPath(); c.arc(x,y+r*0.04,r*0.15,0,7); c.fillStyle='#111'; c.fill(); } },
   visor:  { name:'Visor', draw:(c,x,y,r)=>{ c.fillStyle='#111'; c.beginPath(); if(c.roundRect){ c.roundRect(x-r*0.5,y-r*0.16,r*1.0,r*0.32,r*0.14); c.fill(); } else { c.fillRect(x-r*0.5,y-r*0.16,r*1.0,r*0.32); } c.fillStyle='#3fd6ff'; c.fillRect(x-r*0.4,y-r*0.05,r*0.8,r*0.08); } },
+  // --- Expansion set ---
+  wink:   { name:'Wink', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.24,ey=y; c.beginPath(); c.arc(x-s,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(x-s,ey,r*0.12,0,7); c.fillStyle='#111'; c.fill(); c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.12); c.lineCap='round'; c.beginPath(); c.arc(x+s,ey+r*0.05,r*0.18,Math.PI*1.15,Math.PI*1.85); c.stroke(); c.lineCap='butt'; } },
+  hearts: { name:'Hearts', draw:(c,x,y,r)=>{ const s=r*0.36; c.fillStyle='#e0294a'; c.font=`${Math.round(r*0.44)}px sans-serif`; c.textAlign='center'; c.textBaseline='middle'; for(const g of[-1,1]) c.fillText('♥',x+g*s,y+r*0.02); } },
+  dizzy:  { name:'Dizzy', draw:(c,x,y,r)=>{ const s=r*0.36,ey=y; c.strokeStyle='#111'; c.lineWidth=Math.max(1.5,r*0.07); c.lineCap='round'; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,r*0.20,0,Math.PI*1.5); c.stroke(); c.beginPath(); c.arc(ex,ey,r*0.10,Math.PI,Math.PI*2.7); c.stroke(); } c.lineCap='butt'; } },
+  money:  { name:'Money', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.26,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.fillStyle='#2ea44f'; c.font=`bold ${Math.round(r*0.4)}px sans-serif`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('$',ex,ey+r*0.02); } } },
+  robot:  { name:'Robot', draw:(c,x,y,r)=>{ const s=r*0.36,w=r*0.34,h=r*0.24,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.fillStyle='#fff'; c.fillRect(ex-w/2,ey-h/2,w,h); c.fillStyle='#111'; c.fillRect(ex-w/2,ey-r*0.04,w,r*0.08); } } },
+  drowsy: { name:'Drowsy', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.22,ey=y+r*0.02; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,Math.PI); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex,ey+r*0.05,r*0.1,0,Math.PI); c.fillStyle='#111'; c.fill(); } c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.09); c.beginPath(); c.moveTo(x-s-er,ey); c.lineTo(x-s+er,ey); c.moveTo(x+s-er,ey); c.lineTo(x+s+er,ey); c.stroke(); } },
+  shocked:{ name:'Shocked', draw:(c,x,y,r)=>{ const s=r*0.34,er=r*0.30,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.strokeStyle='#111'; c.lineWidth=Math.max(1.5,r*0.06); c.stroke(); c.beginPath(); c.arc(ex,ey,r*0.1,0,7); c.fillStyle='#111'; c.fill(); } } },
+  sus:    { name:'Suspicious', draw:(c,x,y,r)=>{ const s=r*0.36,w=r*0.5,h=r*0.16,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.fillStyle='#fff'; c.fillRect(ex-w/2,ey-h/2,w,h); c.fillStyle='#111'; c.beginPath(); c.arc(ex,ey,r*0.08,0,7); c.fill(); } c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.1); c.beginPath(); c.moveTo(x-s-w/2,ey-h/2-r*0.03); c.lineTo(x-s+w/2,ey-h/2-r*0.03); c.moveTo(x+s-w/2,ey-h/2-r*0.03); c.lineTo(x+s+w/2,ey-h/2-r*0.03); c.stroke(); } },
+  sparkle:{ name:'Sparkle', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.26,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#111'; c.fill(); c.beginPath(); c.arc(ex-r*0.08,ey-r*0.08,r*0.09,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex+r*0.07,ey+r*0.07,r*0.04,0,7); c.fill(); } } },
+  glasses:{ name:'Glasses', draw:(c,x,y,r)=>{ const s=r*0.38,er=r*0.24,ey=y; c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.07); for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.stroke(); c.beginPath(); c.arc(ex,ey,r*0.1,0,7); c.fillStyle='#111'; c.fill(); } c.beginPath(); c.moveTo(x-s+er,ey); c.lineTo(x+s-er,ey); c.moveTo(x-s-er,ey); c.lineTo(x-r*0.7,ey-r*0.05); c.moveTo(x+s+er,ey); c.lineTo(x+r*0.7,ey-r*0.05); c.stroke(); } },
+  eshades:{ name:'Sunglasses', draw:(c,x,y,r)=>{ const s=r*0.38,ey=y; c.fillStyle='#15181f'; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,r*0.24,0,7); c.fill(); } c.strokeStyle='#15181f'; c.lineWidth=Math.max(2,r*0.08); c.beginPath(); c.moveTo(x-s+r*0.2,ey-r*0.05); c.lineTo(x+s-r*0.2,ey-r*0.05); c.moveTo(x-s-r*0.22,ey-r*0.05); c.lineTo(x-r*0.72,ey-r*0.12); c.moveTo(x+s+r*0.22,ey-r*0.05); c.lineTo(x+r*0.72,ey-r*0.12); c.stroke(); c.fillStyle='#fff'; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex-r*0.08,ey-r*0.08,r*0.05,0,7); c.fill(); } } },
+  monocle:{ name:'Monocle', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.22,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex,ey,r*0.1,0,7); c.fillStyle='#111'; c.fill(); } c.strokeStyle='#c9a227'; c.lineWidth=Math.max(2,r*0.06); c.beginPath(); c.arc(x+s,ey,er*1.5,0,7); c.stroke(); c.beginPath(); c.moveTo(x+s+er*1.5,ey); c.lineTo(x+s+er*1.7,ey+r*0.4); c.stroke(); } },
+  thirdeye:{ name:'Third Eye', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.2,ey=y+r*0.06; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex,ey,r*0.09,0,7); c.fillStyle='#111'; c.fill(); } c.beginPath(); c.arc(x,y-r*0.28,er*0.9,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(x,y-r*0.28,r*0.08,0,7); c.fillStyle='#7a3ff2'; c.fill(); } },
+  kawaii: { name:'Kawaii', draw:(c,x,y,r)=>{ const s=r*0.36,ey=y; c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.12); c.lineCap='round'; c.lineJoin='round'; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.moveTo(ex-r*0.16,ey+r*0.06); c.lineTo(ex,ey-r*0.1); c.lineTo(ex+r*0.16,ey+r*0.06); c.stroke(); } c.lineCap='butt'; c.lineJoin='miter'; } },
+  crying: { name:'Crying', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.22,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex,ey,r*0.1,0,7); c.fillStyle='#111'; c.fill(); c.beginPath(); c.arc(ex,ey+r*0.32,r*0.08,0,7); c.fillStyle='#4aa3ff'; c.fill(); } } },
+  laser:  { name:'Laser', draw:(c,x,y,r)=>{ const s=r*0.36,w=r*0.44,ey=y; c.lineCap='round'; for(const g of[-1,1]){const ex=x+g*s; c.strokeStyle='#5a0000'; c.lineWidth=Math.max(3,r*0.18); c.beginPath(); c.moveTo(ex-w/2,ey); c.lineTo(ex+w/2,ey); c.stroke(); c.strokeStyle='#ff2a2a'; c.lineWidth=Math.max(1.5,r*0.08); c.beginPath(); c.moveTo(ex-w/2,ey); c.lineTo(ex+w/2,ey); c.stroke(); } c.lineCap='butt'; } },
+  pixel:  { name:'8-Bit', draw:(c,x,y,r)=>{ const s=r*0.36,p=r*0.09,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.fillStyle='#111'; for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){ c.fillRect(ex+i*p-p/2,ey+j*p-p/2,p+0.5,p+0.5); } c.fillStyle='#fff'; c.fillRect(ex-p*1.5,ey-p*1.5,p+0.5,p+0.5); } } },
+  anime:  { name:'Anime Shine', draw:(c,x,y,r)=>{ const s=r*0.34,er=r*0.28,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#2a2f3a'; c.fill(); c.beginPath(); c.arc(ex,ey,er*0.55,0,7); c.fillStyle='#111'; c.fill(); c.beginPath(); c.arc(ex-r*0.09,ey-r*0.09,r*0.1,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex+r*0.08,ey+r*0.08,r*0.05,0,7); c.fill(); } } },
+  focus:  { name:'Determined', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.22,ey=y+r*0.06; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex,ey-r*0.03,r*0.11,0,7); c.fillStyle='#111'; c.fill(); } c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.11); c.lineCap='round'; c.beginPath(); c.moveTo(x-r*0.58,y-r*0.2); c.lineTo(x-r*0.16,y-r*0.12); c.moveTo(x+r*0.58,y-r*0.2); c.lineTo(x+r*0.16,y-r*0.12); c.stroke(); c.lineCap='butt'; } },
+  deadx:  { name:'Dizzy X', draw:(c,x,y,r)=>{ const s=r*0.36,d=r*0.18,ey=y; c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.11); c.lineCap='round'; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.moveTo(ex-d,ey-d); c.lineTo(ex+d,ey+d); c.moveTo(ex+d,ey-d); c.lineTo(ex-d,ey+d); c.stroke(); } c.lineCap='butt'; } },
 };
 const EYE_KEYS = Object.keys(EYES);
 
 // Unlock requirements for eyes and flags (caps carry their own `req`).
-const EYE_REQ = { none:null, googly:null, ball:null, dot:{wins:2}, wide:{goals:15}, angry:{wins:8}, happy:{played:10}, sleepy:{points:1150}, star:{streak:5}, cyclops:{points:1400}, visor:{drills:6} };
+const EYE_REQ = { none:null, googly:null, ball:null, dot:{wins:2}, wide:{goals:15}, angry:{wins:8}, happy:{played:10}, sleepy:{points:1150}, star:{streak:5}, cyclops:{points:1400}, visor:{drills:6},
+  wink:null, hearts:{wins:3}, dizzy:null, money:{points:2500}, robot:{played:15}, drowsy:{streak:2}, shocked:{goals:15}, sus:{drills:5}, sparkle:{wins:6}, glasses:{points:1800}, eshades:{wins:10}, monocle:{points:4000}, thirdeye:{goals:60}, kawaii:null, crying:{played:30}, laser:{streak:5}, pixel:{drills:12}, anime:{goals:40}, focus:{wins:15}, deadx:null };
 // Flags unlock along a long progression curve. `none` and a couple are free.
 const FLAG_REQ = {
   none:null, poland:null, japan:null,
@@ -896,6 +1021,18 @@ const FLAG_REQ = {
   argentina:{wins:6}, romania:{goals:22}, nigeria:{streak:3}, mexico:{played:15}, portugal:{points:1180},
   canada:{wins:8}, bangla:{drills:2}, india:{goals:30}, sweden:{points:1250}, finland:{streak:4},
   denmark:{wins:10}, norway:{drills:4}, brazil:{points:1350}, usa:{goals:40}, uk:{points:1450}, korea:{drills:6},
+  greece:null, turkey:{wins:2}, egypt:null, kenya:{played:8}, ghana:{points:1200},
+  morocco:{goals:15}, algeria:{wins:5}, senegal:{played:12}, cameroon:{goals:20}, southafr:{points:1500},
+  ethiopia:{drills:5}, russia:null, hungary:{wins:3}, czechia:{played:6}, slovakia:{points:1300},
+  croatia:{goals:18}, serbia:{streak:3}, slovenia:{played:15}, switzerl:{wins:8}, iceland:{drills:8},
+  estonia:{points:1400}, latvia:{played:20}, lithuan:{goals:25}, belarus:{wins:10}, bulgaria:{streak:4},
+  chile:null, peru:{played:10}, colombia:{goals:30}, venezuela:{points:1600}, uruguay:{wins:12},
+  ecuador:{drills:12}, bolivia:{played:25}, paraguay:{goals:35}, panama:{streak:5}, costarica:{points:1800},
+  cuba:{wins:15}, jamaica:null, china:null, vietnam:{played:30}, thailand:{goals:40},
+  philipp:{points:2000}, malaysia:{wins:18}, singapore:{drills:15}, pakistan:{streak:6}, srilanka:{goals:45},
+  nepal:{played:40}, iran:null, iraq:{points:2200}, israel:{wins:22}, saudi:{goals:50},
+  uae:{streak:7}, qatar:{points:2500}, kuwait:{played:50}, jordan:{drills:20}, lebanon:{wins:30},
+  australia:{points:3000},
 };
 
 // Is a given customization item unlocked, and the human requirement text.
@@ -1359,7 +1496,19 @@ const RANKS = [
   { min:1850, name:'Legend',   emoji:'👑' },
 ];
 function rankFor(points){ let r=RANKS[0]; for (const t of RANKS){ if (points>=t.min) r=t; } return r; }
-function defaultStats(){ return { points:1000, played:0, wins:0, losses:0, draws:0, gf:0, ga:0, streak:0, best:0 }; }
+function defaultStats(){ return { points:1000, played:0, wins:0, losses:0, draws:0, gf:0, ga:0, streak:0, best:0, mmr:1000, mmrPeak:1000 }; }
+// Elo-style skill rating updated per match against the bot tier's implied strength.
+const DIFF_RATING = { rookie:700, easy:900, normal:1100, hard:1300, pro:1500, elite:1700, insane:1900 };
+function updateMMR(w){
+  const oppR = DIFF_RATING[sel.diff] != null ? DIFF_RATING[sel.diff] : 1100;
+  const my=w.score[0], opp=w.score[1];
+  const score = my>opp ? 1 : (my<opp ? 0 : 0.5);
+  const exp = 1/(1+Math.pow(10,(oppR-(stats.mmr||1000))/400));
+  const before = stats.mmr||1000;
+  stats.mmr = Math.max(100, Math.round(before + 32*(score-exp)));
+  stats.mmrPeak = Math.max(stats.mmrPeak||before, stats.mmr);
+  return stats.mmr - before;
+}
 function loadStats(){ let s={}; try { s=JSON.parse(localStorage.getItem('magnetball.stats')||'{}'); } catch(e){} return Object.assign(defaultStats(), s); }
 function saveStats(s){ try { localStorage.setItem('magnetball.stats', JSON.stringify(s)); } catch(e){} }
 let stats = loadStats();
@@ -1379,6 +1528,7 @@ function recordResult(w){
   else { stats.draws++; stats.streak = 0; }
   stats.best = Math.max(stats.best, stats.streak);
   stats.gf += my; stats.ga += opp;
+  updateMMR(w);
   saveStats(stats);
   renderStats();
   lbSubmit();               // push new RP to the global sheet (no-op unless configured)
@@ -1553,7 +1703,8 @@ function renderStats(){
   const gd = stats.gf - stats.ga;
   const streakTxt = stats.streak>0 ? ('W'+stats.streak) : stats.streak<0 ? ('L'+(-stats.streak)) : '—';
   $('recLine').innerHTML = `${stats.wins}W · ${stats.losses}L · ${stats.draws}D  (${stats.played} played)<br>`
-    + `goals ${stats.gf}-${stats.ga} (${gd>=0?'+':''}${gd}) · streak ${streakTxt} · best W${Math.max(0,stats.best)}`;
+    + `goals ${stats.gf}-${stats.ga} (${gd>=0?'+':''}${gd}) · streak ${streakTxt} · best W${Math.max(0,stats.best)}<br>`
+    + `<span style="color:var(--accent)">MMR ${stats.mmr||1000}</span> · peak ${stats.mmrPeak||stats.mmr||1000}`;
   // Refresh customization pickers so anything newly unlocked shows up.
   if (typeof buildCaps==='function'){ buildCaps(); buildFlagPicker(); buildEyesPicker(); updatePreview(); }
 }
