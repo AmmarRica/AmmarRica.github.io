@@ -10,6 +10,16 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Onboarding tutorial** — a short guided first match (move → reach → kick → score) with
+  coaching tips that advance as you complete each step.
+- **Season / Cup** (#10) — a single-player ladder of 5 rounds vs rising difficulty (Easy →
+  Pro, 1v1 → 2v2); win to advance, lose to retry, lift the trophy at the end. Progress and
+  cup count persist.
+- **Dribble Maze drill** — dribble the ball through winding lanes and gaps to the end circle
+  (interior drill walls are now drawn — also fixes 3 older wall drills that were invisible).
+- **Collapsible menu** — the long setup screen is now accordion sections (Your Player / Match /
+  Controls / Online), remembered between visits, with an **Online (coming soon)** section stub.
+- **Esc closes Settings** — same as the Back button (works for the desktop dock too).
 - **Juice pass** — game-feel polish: screen shake (scaled by kick power, hard wall/net hits,
   and big on goals), a brief hit-stop freeze-frame and dramatic slow-mo on goals, a coloured
   goal flash (scorer's team), and a bigger confetti burst. All gated by a **Screen shake &
