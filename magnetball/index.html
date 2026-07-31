@@ -25,7 +25,7 @@
       --panel:   rgba(12,14,26,0.55);
       --edge:    #1c2444;   /* thin neutral border */
       --text:    #eaf2ff;
-      --muted:   #7d88a6;
+      --muted:   #9aa6c6;
       --red:     #ff3b6b;   /* team red / neon */
       --blue:    #4d7bff;
       --cyan:    #21e6ff;
@@ -380,6 +380,54 @@
     .shopcard .sprice { font-family: var(--pix); font-size:11px; color: var(--accent); }
     .shopcard.owned .sprice { color: var(--good, #46d17a); }
 
+    /* Social / Watch — Instagram-style feed */
+    #social { max-width: 560px; }
+    .sochead { display:flex; align-items:center; gap:12px; width:100%; margin-bottom:12px; flex-wrap:wrap; }
+    .sochead h1 { font-family: var(--pix); font-size:26px; color: var(--accent); text-shadow: 0 0 12px rgba(33,230,255,.5); }
+    .socfilters { display:flex; gap:6px; margin-left:auto; }
+    .socfilters button {
+      font-family: var(--pix); font-size:11px; color: var(--muted); background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.12); border-radius:999px; padding:6px 12px; cursor:pointer;
+    }
+    .socfilters button.sel { color:#04121a; background: var(--accent); border-color: var(--accent); }
+    #feed { display:flex; flex-direction:column; gap:18px; width:100%; }
+    .post { background: rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.09); border-radius:16px; overflow:hidden; }
+    .post .phead { display:flex; align-items:center; gap:9px; padding:10px 12px; }
+    .post .phead canvas { width:34px; height:34px; border-radius:50%; flex:none; }
+    .post .phead .pwho { font-family: var(--pix); font-size:12px; color:#fff; line-height:1.35; }
+    .post .phead .psub { color: var(--muted); font-size:10px; }
+    .post .phead .pbadge { margin-left:auto; font-family: var(--pix); font-size:10px; color: var(--accent);
+      border:1px solid rgba(33,230,255,.4); border-radius:999px; padding:3px 8px; }
+    .post .media { position:relative; width:100%; aspect-ratio: 1 / 1; background:#05070d; cursor:pointer; }
+    .post .media canvas { width:100%; height:100%; display:block; }
+    .post .media .heartpop {
+      position:absolute; inset:0; margin:auto; width:96px; height:96px; font-size:96px; line-height:96px;
+      text-align:center; color:#fff; opacity:0; pointer-events:none; text-shadow:0 2px 18px rgba(0,0,0,.6);
+    }
+    .post .media .heartpop.go { animation: heartpop .8s ease; }
+    @keyframes heartpop { 0%{opacity:0; transform:scale(.3)} 15%{opacity:.95; transform:scale(1.1)} 40%{transform:scale(.95)} 70%{opacity:.95} 100%{opacity:0; transform:scale(1)} }
+    .post .media .scorepill { position:absolute; left:10px; top:10px; font-family:var(--pix); font-size:12px; color:#fff;
+      background:rgba(4,7,13,.66); border:1px solid rgba(255,255,255,.16); border-radius:8px; padding:4px 9px; }
+    .post .media .replaytag { position:absolute; right:10px; top:10px; font-family:var(--pix); font-size:9px; color:var(--muted);
+      background:rgba(4,7,13,.6); border-radius:6px; padding:3px 7px; }
+    .post .pacts { display:flex; align-items:center; gap:16px; padding:9px 12px 2px; font-size:20px; }
+    .post .pacts button { background:none; border:none; cursor:pointer; font-size:20px; line-height:1; padding:0; color:#fff; }
+    .post .pacts .liked { color:#ff3b6b; }
+    .post .pacts .save { margin-left:auto; }
+    .post .plikes { font-family: var(--pix); font-size:11px; color:#fff; padding:4px 12px 0; }
+    .post .pcap { font-size:13px; color:#e8ecf4; padding:4px 12px; line-height:1.45; }
+    .post .pcap b { color:#fff; }
+    .post .pcomments { padding:0 12px 6px; }
+    .post .pcomments .cmt { font-size:12px; color:#c7ccd8; line-height:1.5; }
+    .post .pcomments .cmt b { color:#fff; }
+    .post .pcomments .cmore { color: var(--muted); font-size:11px; cursor:pointer; }
+    .post .paddc { display:flex; gap:8px; padding:6px 12px 12px; }
+    .post .paddc input { flex:1; background: rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12);
+      border-radius:999px; color:#fff; font-size:12px; padding:7px 12px; outline:none; }
+    .post .paddc button { font-family: var(--pix); font-size:11px; color: var(--accent); background:none; border:none; cursor:pointer; }
+    .post .ptime { font-size:10px; color: var(--muted); padding:0 12px 10px; text-transform:uppercase; letter-spacing:.5px; }
+    .feedempty { color: var(--muted); text-align:center; padding:30px 10px; font-size:13px; }
+
     /* Cocktail side-config rows */
     .ckrow { display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px solid rgba(255,255,255,.06); }
     .ckrow .cklab { font-family: var(--pix); font-size:12px; color:#fff; min-width:78px; }
@@ -520,6 +568,7 @@
     <button class="primary" id="playBtn">KICK OFF ▶</button>
     <button class="ghost" id="seasonBtn" style="margin-top:12px">🏆 Season / Cup</button>
     <button class="ghost" id="lbBtn" style="margin-top:12px">📊 Leaderboard</button>
+    <button class="ghost" id="socialBtn" style="margin-top:12px">📱 Watch (Social)</button>
     <button class="ghost" id="shopBtn" style="margin-top:12px">🛍 Shop</button>
     <button class="ghost" id="dailyBtn" style="margin-top:12px">🎁 Daily reward</button>
     <button class="ghost" id="drillsBtn" style="margin-top:12px">🎯 Practice Drills</button>
@@ -649,6 +698,16 @@
       <button class="ghost" id="shopSupport" style="margin-top:4px">💛 Coming soon — thanks for playing</button>
     </div>
     <button class="ghost" id="shopBack" style="margin-top:12px">← Back</button>
+  </div>
+
+  <!-- ===================== SOCIAL / WATCH (Instagram-style feed) ===================== -->
+  <div id="social" class="screen hidden">
+    <div class="sochead">
+      <h1>WATCH</h1>
+      <div class="socfilters" id="socFilters"></div>
+    </div>
+    <div id="feed"></div>
+    <button class="ghost" id="socialBack" style="margin-top:12px">← Back</button>
   </div>
 
   <!-- ===================== CONTROLLER CONFIG ===================== -->
@@ -1003,7 +1062,7 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 let padBind = { active:false, slot:null, queue:[], prev:[], _init:false };   // controller-remap capture state
 let profile = loadProfile();
 let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
-            ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
+            ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'on',
             theme:'neon', trapOff:false, juice:true, autoReplay:true,
             display:'auto', cocktailSides:{},   // 'auto' (mobile/desktop by resolution) or 'cocktail'; per-seat sides for cocktail
             ballSkin:'classic', playerSkin:'disc',   // 'soccer' ball sprite / 'sprite' players (visual only; physics unchanged)
@@ -1024,7 +1083,7 @@ const THEMES = {
     name: 'Neon', emoji: '🌃',
     ui: { scan:true,
       grad:'radial-gradient(120% 90% at 50% -12%, #0c1236 0%, #05060f 52%, #000000 100%)',
-      bg:'#04040a', panel:'rgba(12,14,26,0.55)', edge:'#1c2444', text:'#eaf2ff', muted:'#7d88a6',
+      bg:'#04040a', panel:'rgba(12,14,26,0.55)', edge:'#1c2444', text:'#eaf2ff', muted:'#9aa6c6',
       red:'#ff3b6b', blue:'#4d7bff', cyan:'#21e6ff', magenta:'#ff35c8', green:'#35ff87', yellow:'#ffe23d',
       accent:'#21e6ff', go:'#35ff87' },
     pitch: { glow:true, fieldBg:'#0a0d14', court:'#0a1622', stripeA:'#0c2016', stripeB:'#0a1a12',
@@ -1040,7 +1099,7 @@ const THEMES = {
     name: 'Flat', emoji: '🟦',
     ui: { scan:false,
       grad:'linear-gradient(180deg, #223243 0%, #17222e 100%)',
-      bg:'#17222e', panel:'rgba(40,56,73,0.92)', edge:'#3a5068', text:'#eef3f8', muted:'#8ea3b8',
+      bg:'#17222e', panel:'rgba(40,56,73,0.92)', edge:'#3a5068', text:'#eef3f8', muted:'#a6bacf',
       red:'#ef5350', blue:'#42a5f5', cyan:'#26c6da', magenta:'#ec407a', green:'#66bb6a', yellow:'#ffca28',
       accent:'#42a5f5', go:'#66bb6a' },
     pitch: { glow:false, fieldBg:'#1b2b25', court:'#25463a', stripeA:'#2f9e78', stripeB:'#2b9370',
@@ -1056,7 +1115,7 @@ const THEMES = {
     name: 'Grass', emoji: '🟢',
     ui: { scan:false,
       grad:'linear-gradient(180deg, #1e3a2a 0%, #12241b 100%)',
-      bg:'#12241b', panel:'rgba(22,44,30,0.92)', edge:'#2f5a3f', text:'#eefaf0', muted:'#8fb89b',
+      bg:'#12241b', panel:'rgba(22,44,30,0.92)', edge:'#2f5a3f', text:'#eefaf0', muted:'#a8cdb4',
       red:'#e23c3c', blue:'#2b6fdb', cyan:'#28c0c0', magenta:'#d94fa0', green:'#3ec06a', yellow:'#f2c53d',
       accent:'#3ec06a', go:'#3ec06a' },
     pitch: { glow:false, fieldBg:'#12281b', court:'#1c3a26', stripeA:'#2f9e52', stripeB:'#2a8f49',
@@ -1072,7 +1131,7 @@ const THEMES = {
     name: 'Mono', emoji: '⬜',
     ui: { scan:false,
       grad:'linear-gradient(180deg, #17181a 0%, #0b0c0d 100%)',
-      bg:'#0b0c0d', panel:'rgba(30,32,34,0.92)', edge:'#3a3d40', text:'#f2f4f6', muted:'#9aa0a6',
+      bg:'#0b0c0d', panel:'rgba(30,32,34,0.92)', edge:'#3a3d40', text:'#f2f4f6', muted:'#b4bac0',
       red:'#f2f4f6', blue:'#9aa0a6', cyan:'#ffffff', magenta:'#cccccc', green:'#d0d0d0', yellow:'#f2f4f6',
       accent:'#f2f4f6', go:'#d0d0d0' },
     pitch: { glow:false, fieldBg:'#0c0d0e', court:'#1c1f22', stripeA:'#232629', stripeB:'#1b1e21',
@@ -1088,7 +1147,7 @@ const THEMES = {
     name: 'Videoball', emoji: '🔺',
     ui: { scan:false,
       grad:'linear-gradient(180deg, #0e3b3a 0%, #0a2c2b 100%)',
-      bg:'#0a2c2b', panel:'rgba(14,59,58,0.94)', edge:'#1f6b69', text:'#eafcfb', muted:'#7fb8b6',
+      bg:'#0a2c2b', panel:'rgba(14,59,58,0.94)', edge:'#1f6b69', text:'#eafcfb', muted:'#9dcecc',
       red:'#ff7a1a', blue:'#2f7fff', cyan:'#19c3c0', magenta:'#ff4da6', green:'#3ddc84', yellow:'#ffd23d',
       accent:'#ff7a1a', go:'#3ddc84' },
     // Videoball look: one flat vivid field (identical stripe colours = solid), bold
@@ -1106,7 +1165,7 @@ const THEMES = {
     name: 'Paper', emoji: '📄',
     ui: { scan:false,
       grad:'linear-gradient(180deg, #eef2f6 0%, #dbe3ec 100%)',
-      bg:'#eef2f6', panel:'rgba(255,255,255,0.9)', edge:'#c2ccd6', text:'#1a2430', muted:'#5a6b7b',
+      bg:'#eef2f6', panel:'rgba(255,255,255,0.9)', edge:'#c2ccd6', text:'#1a2430', muted:'#44586a',
       red:'#d64545', blue:'#2f6fd0', cyan:'#1c9bb0', magenta:'#c23c8f', green:'#2fa35a', yellow:'#c98a12',
       accent:'#2f6fd0', go:'#2fa35a' },
     pitch: { glow:false, fieldBg:'#dbe3ec', court:'#cfe6d6', stripeA:'#cfe6d6', stripeB:'#c4ddcc',
@@ -1505,6 +1564,7 @@ $('seasonBtn').onclick = openSeason;
 $('seasonBack').onclick = () => { $('season').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('lbBtn').onclick = openLeaderboard;
 $('shopBtn').onclick = openShop;
+$('socialBtn').onclick = openSocial;
 $('dailyBtn').onclick = openDailyView;
 $('dmCollect').onclick = closeDailyModal;
 $('lbBack').onclick = () => { $('leaderboard').classList.add('hidden'); $('setup').classList.remove('hidden'); };
@@ -1512,6 +1572,7 @@ $('lbRefresh').onclick = () => buildLeaderboard(true);
 $('shopBack').onclick = () => { $('shop').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('cocktailReset').onclick = () => { sel.cocktailSides = {}; saveSel(); buildCocktailRows(); };
 $('cocktailBack').onclick = () => { $('cocktailCfg').classList.add('hidden'); openSettings(false); };
+$('socialBack').onclick = closeSocial;
 $('shopSupport').onclick = () => { const b=$('shopSupport'); b.textContent='💛 Thank you! Have fun out there.'; };
 $('padCfgBtn').onclick = openPadConfig;
 $('padCfgBack').onclick = () => { padBind.active=false; $('padConfig').classList.add('hidden'); $('setup').classList.remove('hidden'); };
@@ -1527,7 +1588,7 @@ $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
 
-function hideScreens(){ ['setup','how','drills','settings','season','leaderboard','shop','cocktailCfg','padConfig'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); }); padBind.active=false;
+function hideScreens(){ ['setup','how','drills','settings','season','leaderboard','shop','social','cocktailCfg','padConfig'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); }); padBind.active=false;
   const tt=$('tutTip'); if(tt) tt.classList.add('hidden');
   // ensure any docked settings panel is fully torn down when screens change
   $('settings').classList.remove('docked'); document.body.classList.remove('panel-open');
@@ -2077,6 +2138,209 @@ function buildShop(){
 }
 
 // ============================================================
+//  SOCIAL / WATCH — an Instagram-style feed of goal clips. Each card plays a
+//  real mini re-simulation (like an autoplaying video), with like / comment /
+//  save and Today / This Month / All-time filters. Seeded with mock posts now;
+//  your own saved goals get pushed to the top for real. All local (no backend).
+// ============================================================
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const SOC_NAMES=[['Nyx','japan','#e05a5a'],['Volt','brazil','#5a7de0'],['Kestrel','germany','#46d17a'],['Sable','france','#f5d547'],['Blitz','ukraine','#f07a5a'],['Mira','italy','#e07ad0'],['Onyx','usa','#5aa0e0'],['Juno','argentina','#e05a5a'],['Rook','uk','#6b6be0'],['Pixel','sweden','#46d17a']];
+const SOC_CAPS=['Top bins. 🧠⚽','wall pass into the roof','last-second winner 😤','no magnet, all skill','told you I\'d score','cheeky chip 🥶','from my own half??','GOTM contender','bench told me to shoot','one-touch finish'];
+const SOC_COMMS=['clean','how 😭','teach me that','robbed the keeper','insane angle','🐐','running it back','post-worthy','GOAL OF THE DAY','skill'];
+const SOC_COMMENTERS=['Dash','Vega','Bolt','Koda','Wren','Sy','Ash','Pip','Rio','Lex','Moss','Echo','Fern'];
+
+// A synthetic goal clip: ball eased into a goal with a striker chasing + others
+// milling about. frames are compact rows: [bx,by, x,y,k, x,y,k, …].
+function genGoalClip(rng){
+  const fkeys=['classic','big','wide','stadium','futsal']; const fkey=fkeys[(rng()*fkeys.length)|0];
+  const F=FIELDS[fkey]; const hw=F.W/2, hl=F.L/2, gh=F.goal/2;
+  const toTop=rng()<0.5, dir=toTop?-1:1;
+  const nP=(rng()<0.5)?2:4; const players=[];
+  for(let i=0;i<nP;i++) players.push({team:i%2, color:i%2?'#5a7de0':'#e05a5a'});
+  const sx=(rng()*2-1)*hw*0.5, sy=(rng()*0.4+0.1)*hl*-dir;
+  const ex=(rng()*2-1)*gh*0.55, ey=dir*(hl+F.net*0.5);
+  const arc=(rng()*2-1)*hw*0.5, kickAt=0.62+rng()*0.15;
+  const scatter=players.map(()=>({ox:(rng()*2-1)*hw*0.7, oy:(rng()*2-1)*hl*0.5, wob:rng()*6.28}));
+  const N=90, frames=[];
+  for(let f=0; f<N; f++){
+    const t=f/(N-1), e=t*t*(3-2*t);
+    const bx=sx+(ex-sx)*e + Math.sin(t*Math.PI)*arc*(1-t);
+    const by=sy+(ey-sy)*e;
+    const row=[Math.round(bx),Math.round(by)];
+    for(let i=0;i<nP;i++){
+      const sc=scatter[i];
+      let px,py,k=0;
+      if(i===0){ // striker trails the ball then peels off after the kick
+        const lag=Math.max(0,e-0.06); px=sx+(ex-sx)*lag; py=sy+((ey)-sy)*lag - dir*14;
+        if(Math.abs(t-kickAt)<0.03) k=1;
+      } else { px=sc.ox + Math.cos(sc.wob+t*3)*18; py=sc.oy + Math.sin(sc.wob+t*3)*14; }
+      row.push(Math.round(px),Math.round(py),k);
+    }
+    frames.push(row);
+  }
+  return { players, field:fkey, frames, toTop };
+}
+// Real clip from your last goal's replay buffer (downsampled to ~90 frames).
+function clipFromLastReplay(){
+  if(!lastReplay||!lastReplay.frames||!lastReplay.frames.length||!world) return null;
+  const src=lastReplay.frames, step=Math.max(1,Math.ceil(src.length/90)), frames=[];
+  for(let i=0;i<src.length;i+=step){ const fr=src[i], row=[Math.round(fr.bx),Math.round(fr.by)];
+    for(const pl of fr.p) row.push(Math.round(pl.x),Math.round(pl.y),pl.k?1:0); frames.push(row); }
+  return { players: world.players.map(p=>({team:p.team,color:p.color})), field:sel.field, frames };
+}
+
+let feed = loadFeed();
+function loadFeed(){ try{ return JSON.parse(localStorage.getItem('magnetball.feed')||'null'); }catch(e){ return null; } }
+function saveFeed(){ try{ localStorage.setItem('magnetball.feed', JSON.stringify(feed.slice(0,60))); }catch(e){} }
+function seedFeed(){
+  const rng=mulberry32(1337); const out=[]; const now=Date.now();
+  for(let i=0;i<11;i++){
+    const a=SOC_NAMES[i%SOC_NAMES.length];
+    const ageH = i<2 ? (1+rng()*10) : i<6 ? (26+rng()*160) : (200+rng()*1100);   // spread across today / month / older
+    const nc=(rng()*3)|0, comments=[];
+    for(let c=0;c<nc;c++) comments.push({ n:SOC_COMMENTERS[(rng()*SOC_COMMENTERS.length)|0], t:SOC_COMMS[(rng()*SOC_COMMS.length)|0] });
+    out.push({ id:'m'+i, n:a[0], flag:a[1], color:a[2], eyes:'googly',
+      cap:SOC_CAPS[i%SOC_CAPS.length], likes:(rng()*900|0)+5, liked:false, saved:false,
+      comments, when: now - ageH*3600e3, clip: genGoalClip(rng), score:(1+(rng()*4|0))+'–'+(rng()*3|0) });
+  }
+  return out;
+}
+if(!feed){ feed=seedFeed(); saveFeed(); }
+
+// Add your saved goal to the top of the feed for real.
+function addToFeed(clip){
+  if(!clip) return;
+  feed.unshift({ id:'you'+Date.now(), n:profile.name||'You', flag:profile.flag||'none', color:profile.color||'#e05a5a',
+    eyes:profile.eyes||'googly', cap:'My goal ⚽', likes:0, liked:false, saved:false, comments:[],
+    when:Date.now(), clip, mine:true, score: world? (world.score[0]+'–'+world.score[1]) : '' });
+  saveFeed();
+}
+
+// ---- mini pitch renderer for a feed card (self-contained; no game camera)
+function drawClip(cvs, clip, fi){
+  const c=cvs.getContext('2d'), W=cvs.width, H=cvs.height;
+  const F=FIELDS[clip.field]||FIELDS.classic, hw=F.W/2, hl=F.L/2, gh=F.goal/2, net=F.net;
+  const s=Math.min(W/(F.W+50), H/(F.L+net*2+50)), ox=W/2, oy=H/2;
+  const X=x=>ox+x*s, Y=y=>oy+y*s;
+  c.fillStyle='#081410'; c.fillRect(0,0,W,H);
+  c.fillStyle='#0e2a1c'; c.fillRect(X(-hw),Y(-hl),hw*2*s,hl*2*s);
+  c.strokeStyle='rgba(255,255,255,.22)'; c.lineWidth=Math.max(1,s*1.1);
+  c.strokeRect(X(-hw),Y(-hl),hw*2*s,hl*2*s);
+  c.beginPath(); c.moveTo(X(-hw),oy); c.lineTo(X(hw),oy); c.stroke();
+  c.beginPath(); c.arc(ox,oy,55*s,0,7); c.stroke();
+  c.fillStyle='rgba(255,255,255,.12)';
+  c.fillRect(X(-gh),Y(-hl-net),gh*2*s,net*s); c.fillRect(X(-gh),Y(hl),gh*2*s,net*s);
+  const fr=clip.frames[fi]||clip.frames[0]; if(!fr) return;
+  for(let i=0;i<clip.players.length;i++){
+    const px=fr[2+i*3], py=fr[3+i*3], k=fr[4+i*3], pl=clip.players[i];
+    c.beginPath(); c.arc(X(px),Y(py),Math.max(3.5,8*s),0,7); c.fillStyle=pl.color||(pl.team?'#5a7de0':'#e05a5a'); c.fill();
+    c.lineWidth=Math.max(1,1.4*s); c.strokeStyle=pl.team?'#bcd0ff':'#ffd0d0'; c.stroke();
+    if(k){ c.strokeStyle='#f5d547'; c.lineWidth=Math.max(1.5,2.4*s); c.beginPath(); c.arc(X(px),Y(py),Math.max(5,11*s),0,7); c.stroke(); }
+  }
+  c.beginPath(); c.arc(X(fr[0]),Y(fr[1]),Math.max(2.5,5.5*s),0,7); c.fillStyle='#fff'; c.fill();
+  c.strokeStyle='#111'; c.lineWidth=Math.max(1,1.2*s); c.stroke();
+}
+
+// ---- autoplay: only cards on screen animate (like IG video)
+const socVisible=new Map(); let socRaf=0, socLast=0, socIO=null;
+function feedTick(ts){
+  if(!socVisible.size){ socRaf=0; return; }
+  const dt=socLast?ts-socLast:16; socLast=ts;
+  for(const [cv,st] of socVisible){ st.t+=dt; if(st.t>=45){ st.t=0; st.fi=(st.fi+1)%st.clip.frames.length; drawClip(cv,st.clip,st.fi); } }
+  socRaf=requestAnimationFrame(feedTick);
+}
+function timeAgo(ms){ const d=Date.now()-ms, h=d/3600e3; if(h<1) return Math.max(1,Math.round(d/60e3))+'m ago'; if(h<24) return Math.round(h)+'h ago'; return Math.round(h/24)+'d ago'; }
+function socMatches(post){ const age=Date.now()-post.when; if(socFilter==='today') return age<24*3600e3; if(socFilter==='month') return age<31*24*3600e3; return true; }
+let socFilter='all';
+
+function openSocial(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('social').classList.remove('hidden'); buildSocFilters(); buildFeed(); }
+function closeSocial(){
+  if(socIO){ socIO.disconnect(); socIO=null; } socVisible.clear(); if(socRaf){ cancelAnimationFrame(socRaf); socRaf=0; }
+  $('social').classList.add('hidden'); $('setup').classList.remove('hidden');
+}
+function buildSocFilters(){
+  const w=$('socFilters'); if(!w) return; w.innerHTML='';
+  [['today','Today'],['month','This Month'],['all','All-time']].forEach(([k,lab])=>{
+    const b=document.createElement('button'); b.textContent=lab; if(socFilter===k) b.classList.add('sel');
+    b.onclick=()=>{ socFilter=k; buildSocFilters(); buildFeed(); }; w.appendChild(b);
+  });
+}
+function buildFeed(){
+  const host=$('feed'); if(!host) return;
+  if(socIO){ socIO.disconnect(); } socVisible.clear();
+  host.innerHTML='';
+  const posts=feed.filter(socMatches);
+  if(!posts.length){ host.innerHTML='<div class="feedempty">Nothing here for this window yet — score a goal and hit <b>Save clip</b>. ⚽</div>'; return; }
+  socIO=new IntersectionObserver(entries=>{
+    for(const e of entries){ const cv=e.target;
+      if(e.isIntersecting){ if(!socVisible.has(cv)) socVisible.set(cv,{clip:cv.__clip, fi:0, t:0}); }
+      else socVisible.delete(cv);
+    }
+    if(socVisible.size && !socRaf){ socLast=0; socRaf=requestAnimationFrame(feedTick); }
+  }, { threshold:0.35 });
+  for(const post of posts) host.appendChild(buildPostCard(post));
+}
+function buildPostCard(post){
+  const el=document.createElement('div'); el.className='post';
+  // header
+  const head=document.createElement('div'); head.className='phead';
+  const av=document.createElement('canvas'); av.width=av.height=34;
+  drawDisc(av.getContext('2d'),17,17,13,{color:post.color,flag:post.flag,eyes:post.eyes||'googly'});
+  const who=document.createElement('div'); who.className='pwho';
+  who.innerHTML=`${post.n}${post.mine?' <span class="psub">(you)</span>':''}<br><span class="psub">${post.flag&&post.flag!=='none'?post.flag+' · ':''}${timeAgo(post.when)}</span>`;
+  const badge=document.createElement('span'); badge.className='pbadge'; badge.textContent='⚽ GOAL';
+  head.append(av,who,badge);
+  // media (playable clip)
+  const media=document.createElement('div'); media.className='media';
+  const cv=document.createElement('canvas'); cv.width=340; cv.height=340; cv.__clip=post.clip;
+  drawClip(cv,post.clip,0);
+  const heart=document.createElement('div'); heart.className='heartpop'; heart.textContent='❤';
+  if(post.score){ const sp=document.createElement('div'); sp.className='scorepill'; sp.textContent=post.score; media.appendChild(sp); }
+  const rt=document.createElement('div'); rt.className='replaytag'; rt.textContent='▶ REPLAY';
+  media.append(cv,heart,rt);
+  const doLike=(fromDbl)=>{ if(!post.liked){ post.liked=true; post.likes++; } else if(!fromDbl){ post.liked=false; post.likes--; } saveFeed(); refresh(); };
+  let lastTap=0;
+  media.onclick=()=>{ const t=Date.now(); if(t-lastTap<300){ if(!post.liked) doLike(true); heart.classList.remove('go'); void heart.offsetWidth; heart.classList.add('go'); } lastTap=t; };
+  // actions
+  const acts=document.createElement('div'); acts.className='pacts';
+  const like=document.createElement('button'); like.className=post.liked?'liked':''; like.textContent=post.liked?'❤':'🤍';
+  like.onclick=()=>doLike(false);
+  const cbtn=document.createElement('button'); cbtn.textContent='💬';
+  const share=document.createElement('button'); share.textContent='➦';
+  share.onclick=()=>{ try{ if(navigator.share) navigator.share({title:'Magnetball',text:post.n+' scored! '+post.cap}); }catch(e){} };
+  const save=document.createElement('button'); save.className='save'; save.textContent=post.saved?'🔖':'🏷';
+  save.onclick=()=>{ post.saved=!post.saved; saveFeed(); refresh(); };
+  acts.append(like,cbtn,share,save);
+  // likes + caption
+  const likes=document.createElement('div'); likes.className='plikes'; likes.textContent=post.likes.toLocaleString()+' likes';
+  const cap=document.createElement('div'); cap.className='pcap'; cap.innerHTML=`<b>${post.n}</b> ${post.cap}`;
+  // comments
+  const cwrap=document.createElement('div'); cwrap.className='pcomments';
+  const renderComments=()=>{ cwrap.innerHTML='';
+    const list=post.comments||[];
+    if(list.length>2){ const more=document.createElement('div'); more.className='cmore'; more.textContent=`View all ${list.length} comments`;
+      more.onclick=()=>{ cwrap.dataset.all='1'; renderComments(); }; if(cwrap.dataset.all!=='1'){ cwrap.appendChild(more); } }
+    const show=cwrap.dataset.all==='1'?list:list.slice(-2);
+    for(const cm of show){ const d=document.createElement('div'); d.className='cmt'; d.innerHTML=`<b>${cm.n}</b> ${cm.t}`; cwrap.appendChild(d); }
+  };
+  renderComments();
+  // add comment
+  const addc=document.createElement('div'); addc.className='paddc';
+  const inp=document.createElement('input'); inp.placeholder='Add a comment…'; inp.maxLength=80;
+  const post2=document.createElement('button'); post2.textContent='Post';
+  const submit=()=>{ const t=inp.value.trim(); if(!t) return; (post.comments=post.comments||[]).push({n:profile.name||'You',t}); inp.value=''; saveFeed(); renderComments(); };
+  post2.onclick=submit; inp.onkeydown=e=>{ if(e.key==='Enter') submit(); };
+  cbtn.onclick=()=>inp.focus();
+  addc.append(inp,post2);
+  const time=document.createElement('div'); time.className='ptime'; time.textContent=timeAgo(post.when);
+  function refresh(){ like.className=post.liked?'liked':''; like.textContent=post.liked?'❤':'🤍'; save.textContent=post.saved?'🔖':'🏷'; likes.textContent=post.likes.toLocaleString()+' likes'; }
+  el.append(head,media,acts,likes,cap,cwrap,addc,time);
+  // observe for autoplay
+  requestAnimationFrame(()=>{ if(socIO) socIO.observe(cv); });
+  return el;
+}
+
+// ============================================================
 //  CONTROLLER BUTTON MAPPING — press a button to bind each direction / kick.
 // ============================================================
 const PAD_SLOTS = [['up','Up ⬆'],['down','Down ⬇'],['left','Left ⬅'],['right','Right ➡'],['kick','Kick 🅰']];
@@ -2460,7 +2724,9 @@ async function saveClip(){
   // 1) record + share/download the video (its own early-returns can't skip the
   //    sheet post below, since it's a separate call).
   await recordAndShareClip(btn);
-  // 2) always post the replay DATA (re-simulatable frames, not the video) to the
+  // 2) push the goal into the local Social feed (real, works offline).
+  try { addToFeed(clipFromLastReplay()); } catch(e){}
+  // 3) always post the replay DATA (re-simulatable frames, not the video) to the
   //    Replays sheet, and show whether it landed.
   const res = await lbSubmitReplay();
   let status;
@@ -3754,15 +4020,15 @@ function drawDiscs(w){
       ctx.beginPath(); ctx.arc(x, y, r*1.42, 0, 2*Math.PI);
       ctx.strokeStyle=TH.kickRing; ctx.lineWidth=Math.max(2,r*0.16); ctx.stroke();
     }
-    // name label — pixel font in a solid black plate
+    // name label — pixel font in a solid high-contrast plate (readability)
     if (s>0.28){
-      ctx.font = `8px 'PixAmiga', monospace`;
+      ctx.font = `9px 'PixAmiga', monospace`;
       ctx.textAlign='center'; ctx.textBaseline='alphabetic';
       const label = p.name;
       const tw = ctx.measureText(label).width;
-      ctx.fillStyle=TH.nameBg; ctx.fillRect(x-tw/2-4, y-r-21, tw+8, 15);
+      ctx.fillStyle=TH.nameBg; ctx.fillRect(x-tw/2-5, y-r-23, tw+10, 16);
       ctx.fillStyle = TH.nameText;
-      ctx.fillText(label, x, y-r-10);
+      ctx.fillText(label, x, y-r-11);
     }
   }
 }
@@ -4129,6 +4395,8 @@ if (window.__MAGNETDEBUG) {
     handleBallControl, openSettings, closeSettings,
     get repBuf(){ return repBuf; }, get lastReplay(){ return lastReplay; }, playReplay, saveClip, repMime,
     replayPayload, lbSubmitReplay,
+    openSocial, buildFeed, genGoalClip, clipFromLastReplay, addToFeed, seedFeed, drawClip,
+    get feed(){ return feed; },
     get profile(){ return profile; }, get stats(){ return stats; }, FLAGS, EYES, CAPS,
     isUnlocked, unlockCounts, renderStats, buildFlagPicker, buildEyesPicker, buildCaps,
     get shake(){ return shake; }, get hitStop(){ return hitStop; }, get flash(){ return flash; },

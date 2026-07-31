@@ -10,6 +10,15 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Social / Watch feed (Instagram-style)** — a vertical feed of goal clips that each **autoplay a
+  real mini re-simulation** (like a video), with **like** (double-tap too), **comment** (add your
+  own), **save**, share, and **Today / This Month / All-time** filters. Seeded with mock posts for
+  now; your own **Save clip** goals get pushed to the top of the feed for real (stored locally).
+  Only visible cards animate (like IG autoplay). No backend.
+- **Clarity + colour-blind pass** — the **colour-blind team markers** (solid ring vs dashed ring,
+  hue-independent) are now **on by default** so teams are distinguishable by shape, not just colour
+  (toggle in Settings). Lighter, higher-contrast muted text across all themes, and a bigger, crisper
+  in-game player-name plate.
 - **Save clip → sheet (replay data)** — "Save clip" now also posts the goal's **replay data**
   (the re-simulatable frame buffer, rounded + downsampled to fit one cell — not the video) to a
   **Replays** tab in the Google Sheet, created automatically by the Apps Script. The button shows
