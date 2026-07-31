@@ -10,6 +10,36 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Unlockables + Countryballs + player builder** (#4, #8) — 51 unlockable cosmetics: 29
+  **countryball** flag skins for your disc, 10 **eye styles**, and 12 **caps**, each gated
+  behind a milestone (RP, wins, goals, win-streak, matches played, or drills finished). A
+  live-preview "build your own player" in the setup screen (colour + flag + eyes + cap);
+  locked items show their requirement. Bots wear random flags/eyes for personality. The
+  actual match ball is never skinned — only players.
+- **Goal replay + clip share** (#9) — a rolling 6-second snapshot buffer is frozen on every
+  goal and re-rendered as an instant replay (offline, theme-aware). A **Save clip** button
+  records that playback with `MediaRecorder` and opens the native share sheet
+  (`navigator.share`), falling back to a file download. No external libraries.
+- **Kick feel + Pro preset** — one-shot kicks now carry the striker's momentum, so a
+  running shot is stronger and more directional than a standing one (HaxBall-like). New
+  **Casual / Pro** feel presets in Settings: Pro is authentic — no magnet, no trap (instant
+  kick), floatier acceleration and a higher ball-speed cap for a raw, high-skill feel.
+- **Themes** (#17) — a full theme engine: palettes drive both the CSS and the canvas, so a
+  theme reskins the entire game. 6 built-in looks — **Neon** (the CRT default), **Flat**,
+  **Grass**, **Mono**, **Paper** (light), **Videoball** (flat vivid, geometric) — picked live
+  from Settings. Player colours still customise the disc core on top of any theme.
+- **Sound & SFX** (#2) — programmatic Web Audio (no files): whistle on kickoff/reset, crowd on
+  goal, pass/kick, wall-bounce and net sounds. **3 selectable variants per sound**, tap-to-hear,
+  master mute + volume — all in an in-game **Settings** screen (⚙ in the HUD).
+- **Game-feel sliders** (#17-ish) — live-tunable player acceleration, player float, kick power,
+  max ball speed, ball glide, ball magnet, and stick sensitivity. Reset-to-default button.
+- **Field variety** — 10 pitch shapes/sizes (Classic, Big, Small, Wide, Long, Huge, Rounded,
+  Stadium, **Octagon** (chamfered corners), Futsal).
+- **Net physics** — the ball loses momentum (halved) hitting the net so it settles inside the goal.
+- **Kickoff hold** — the ball stays on the spot until a human actually kicks near it (bots hold
+  their formation), so play only starts when you touch it.
+- **Practice / drills challenge mode** — 12+ drills (incl. Y-passing and an angled free-kick
+  through a wall gap) with best-time tracking and a quick reset.
 - **Pitch surface** (#18) — Grass / Ice (slide) / Mud (sluggish), scaling player grip
 - **Spectator / Watch** (#15) — hand your seat to the AI and watch
 - **Colour-blind team markers** (#7) — solid vs dashed white rings, hue-independent
