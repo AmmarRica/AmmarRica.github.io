@@ -10,6 +10,12 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Display modes (mobile / desktop / cocktail)** — a Display section in Settings. **Auto** picks
+  mobile vs desktop by screen width; on desktop/cocktail the on-screen touch thumbsticks are hidden
+  (keyboard + gamepad drive play instead). **Cocktail** is a new mode for a flat screen laid on its
+  back with players standing around it: a configurable-first-time (remembered, resettable) screen
+  where each of up to 8 seats (4v4) picks which side they stand on, and their controller input is
+  rotated so "up" always points into the table from wherever they're standing.
 - **End-of-match awards** (Towerfall/CoD style) — everyone leaves with something. The match
   tracks per-player stats (goals, assists, saves, clearances, key passes, hardest shot, posts,
   touches) and the result screen slams up a ranked list of earned medals: **Golden Boot** (MVP),
