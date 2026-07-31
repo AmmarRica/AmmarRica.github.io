@@ -947,6 +947,7 @@ const CHARGE = { max:0.6, bonus:0.9 };   // up to +90% power at 0.6s of hold
 const KICK_CARRY = 0.5;
 // Trap-and-release: humans hold KICK to stick the ball to their feet, then let go to shoot.
 const TRAP = { max:0.5 };                // ball stays stuck for at most half a second
+const TAP_HOLD = 0.14;                    // press shorter than this near the ball = instant pass; longer = trap
 
 let cv = document.getElementById('game');
 let ctx = cv.getContext('2d');
@@ -1891,6 +1892,10 @@ function step(w){
   else if (w.state==='kickoff') integrate(w, true, false);   // ball parked at centre, players jockey
   else if (w.state==='goal') integrate(w, false, true);      // ball flies on into the net; players hold
   ballSounds(w);
+  // Visual ball spin — rolls while moving, plus any spin from carrying/redirecting; decays.
+  { const bl=w.ball, sp=Math.hypot(bl.vx,bl.vy);
+    bl.rot = (bl.rot||0) + (bl.spin||0) + sp*0.03;
+    bl.spin = (bl.spin||0) * 0.90; }
   repCapture(w);   // feed the rolling replay buffer
   if (w.tutorial) tutorialStep(w);
 
@@ -2045,23 +2050,33 @@ function handleBallControl(w, p, ball, ballFrozen){
     }
     if (!p.kick) p.kickUsed = false;
   } else if (!ballFrozen){
-    // Humans: hold KICK to TRAP the ball to your feet (max 0.5s), release to
-    // kick/pass in the facing direction. Holding longer charges a stronger shot.
+    // Casual: a QUICK TAP of KICK is an instant pass; HOLDING traps the ball to
+    // your feet (max 0.5s), then release to shoot. Redirecting while carrying
+    // spins the ball. The ball is glued just OUTSIDE your body so it never overlaps.
+    const near = dist < sum + PLAYER.kickRange;
     if (p.kick){
-      if (!p.trap && !p.trapUsed && dist < sum + PLAYER.kickRange){
-        p.trap = true; p.trapT = 0;                       // ball just touched — grab it
+      if (!p.trap && !p.trapUsed){
+        if (near){
+          if (!p.tapArmed){ p.tapArmed = true; p.tapT = 0; }
+          p.tapT += STEP;
+          if (p.tapT >= TAP_HOLD){ p.trap = true; p.trapT = 0; p.tapArmed = false; p._pfx = null; }  // held → trap
+        } else { p.tapArmed = false; }
       }
       if (p.trap){
         p.trapT += STEP;
         let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
-        const hold = sum + 1;
-        ball.x = p.x + fx*hold; ball.y = p.y + fy*hold;   // glued just ahead of the feet
+        // Redirecting while carrying imparts spin (CW / CCW by turn direction).
+        if (p._pfx != null){ const cross = p._pfx*fy - p._pfy*fx; ball.spin = (ball.spin||0) + cross*0.6; }
+        p._pfx = fx; p._pfy = fy;
+        const hold = sum + 2;                              // just outside the body — never clips through
+        ball.x = p.x + fx*hold; ball.y = p.y + fy*hold;
         ball.vx = p.vx; ball.vy = p.vy;                    // travels with you
         if (p.trapT >= TRAP.max) releaseTrap(w, p, ball);  // can't hold longer than 0.5s
       }
     } else {
-      if (p.trap) releaseTrap(w, p, ball);                 // let go → kick / pass
-      p.trap = false; p.trapUsed = false;
+      if (p.trap){ releaseTrap(w, p, ball); }              // let go while carrying → shoot
+      else if (p.tapArmed && near && !p.trapUsed){ oneShotKick(w, p, ball, dx, dy, dist, false); }  // quick tap → instant pass
+      p.trap = false; p.trapUsed = false; p.tapArmed = false;
     }
   }
 
@@ -2084,6 +2099,18 @@ function handleBallControl(w, p, ball, ballFrozen){
     ball.vx += (p.vx - ball.vx) * mag * 0.10;   // carry the ball with you
     ball.vy += (p.vy - ball.vy) * mag * 0.10;
   }
+}
+
+// Instant one-shot kick away from the striker, carrying their momentum. Used by
+// bots, Pro mode, and a casual quick-tap pass. `charged` adds the hold-charge bonus.
+function oneShotKick(w, p, ball, dx, dy, dist, charged){
+  let nx, ny;
+  if (dist > 0.001){ nx = dx/dist; ny = dy/dist; } else { nx = p.faceX; ny = p.faceY; }
+  let power = (w.kickPower||PLAYER.kick) * (charged ? (1 + (p.chargeT/CHARGE.max)*CHARGE.bonus) : 1);
+  if (w.magnet > 0 && dist < (p.r+ball.r) + 22) power *= 1 + (w.magnet/100) * 0.5;
+  ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
+  p.kickUsed = true;
+  spawnKickFx(ball.x, ball.y, nx, ny, power); playSfx('kick');
 }
 
 // Release a trapped ball as a kick/pass in the player's facing direction. Power
@@ -2807,7 +2834,10 @@ function drawBall(w){
   // hard rim + flat ball with a solid spot (chunky sprite)
   ctx.beginPath(); ctx.arc(x, y, r+Math.max(2,r*0.22), 0, 2*Math.PI); ctx.fillStyle=TH.ballRim; ctx.fill();
   ctx.beginPath(); ctx.arc(x, y, r, 0, 2*Math.PI); ctx.fillStyle=TH.ball; ctx.fill();
-  ctx.beginPath(); ctx.arc(x,y,r*0.4,0,2*Math.PI); ctx.fillStyle=TH.ballSpot; ctx.fill();
+  // Spot + an offset pip that orbits with rotation, so spin/roll reads visually.
+  const rot = b.rot || 0;
+  ctx.beginPath(); ctx.arc(x, y, r*0.30, 0, 2*Math.PI); ctx.fillStyle=TH.ballSpot; ctx.fill();
+  ctx.beginPath(); ctx.arc(x + Math.cos(rot)*r*0.46, y + Math.sin(rot)*r*0.46, r*0.15, 0, 2*Math.PI); ctx.fillStyle=TH.ballSpot; ctx.fill();
 }
 function drawKickoffHint(w){
   const s=cam.s;
