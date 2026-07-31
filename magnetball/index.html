@@ -2091,6 +2091,7 @@ function startMatch(){
   running = true; paused = false;
   resize();
   updateScoreUI();
+  updateClock(world);   // show the starting time immediately (don't inherit a prior match's "OT")
   lastT = 0; acc = 0;
   cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(loop);
@@ -2492,6 +2493,13 @@ function integrate(w, ballFrozen, playersFrozen){
       // Skip `ballOnly` boundary walls/arcs so players can step slightly outside.
       for (const wall of w.walls) if (!wall.ballOnly) collideWall(p, wall);
       for (const arc of w.arcs) if (!arc.ballOnly) collideArc(p, arc);
+    }
+    // While the ball is parked (kickoff), players still bump into it instead of
+    // sliding through — treat it as immovable so the bump never nudges it.
+    if (ballFrozen){
+      const im = ball.invMass; ball.invMass = 0;
+      for (const p of discs) collideDiscs(p, ball);
+      ball.invMass = im; ball.vx = 0; ball.vy = 0;
     }
     // …but keep them from wandering off: clamp to the pitch + a small step-out margin.
     if (!w.drillMode){
@@ -3074,13 +3082,18 @@ function resize(){
 function computeCam(){
   const f = world.field;
   const padL = uiPadLeft || 0;              // keep the pitch clear of a docked panel
+  // Reserve headroom at the top for the HUD (scorebug, pause/gear, replay bar) so
+  // the top goal + net never render underneath it — otherwise a ball driven into
+  // the top net looks like it vanishes behind the buttons.
+  const padTop = 96;
   const availW = Math.max(80, cw - padL);
+  const availH = Math.max(80, ch - padTop);
   const worldW = f.W + 60;
   const worldH = f.L + f.net*2 + 60;
-  const s = Math.min(availW/worldW, ch/worldH);
+  const s = Math.min(availW/worldW, availH/worldH);
   cam.s = s;
   cam.ox = padL + availW/2;
-  cam.oy = ch/2;
+  cam.oy = padTop + availH/2;
 }
 function wx(x){ return cam.ox + x*cam.s; }
 function wy(y){ return cam.oy + y*cam.s; }
