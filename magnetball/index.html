@@ -203,6 +203,16 @@
     }
     #tutTip.hidden { display: none; }
 
+    /* Leaderboard rows */
+    #lbList { display:flex; flex-direction:column; gap:4px; }
+    .lbrow { display:flex; align-items:center; gap:10px; padding:7px 9px; border-radius:8px;
+      font-family:var(--pix); font-size:11px; border:1px solid transparent; }
+    .lbrow .rank { width:32px; color:var(--muted); text-align:center; }
+    .lbrow canvas.cv { width:24px; height:24px; flex:0 0 auto; }
+    .lbrow .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .lbrow .rp { color:var(--accent); font-weight:700; }
+    .lbrow.you { background:rgba(255,255,255,.07); border-color:var(--accent); }
+
     /* Collapsible menu sections (accordion) */
     .card.collapsible > h2 {
       cursor: pointer; user-select: none; display: flex; align-items: center;
@@ -426,6 +436,7 @@
 
     <button class="primary" id="playBtn">KICK OFF ▶</button>
     <button class="ghost" id="seasonBtn" style="margin-top:12px">🏆 Season / Cup</button>
+    <button class="ghost" id="lbBtn" style="margin-top:12px">📊 Leaderboard</button>
     <button class="ghost" id="drillsBtn" style="margin-top:12px">🎯 Practice Drills</button>
     <button class="ghost" id="tutBtn" style="margin-top:12px">🎓 Tutorial</button>
     <button class="ghost" id="settingsBtn" style="margin-top:12px">⚙ Sound &amp; Game Feel</button>
@@ -484,6 +495,16 @@
     <button class="primary" id="seasonPlay">Start ▶</button>
     <button class="ghost" id="seasonReset" style="margin-top:12px">Restart cup</button>
     <button class="ghost" id="seasonBack" style="margin-top:12px">← Back</button>
+  </div>
+
+  <!-- ===================== LEADERBOARD ===================== -->
+  <div id="leaderboard" class="screen hidden">
+    <div class="logo"><h1 style="font-size:28px">LEADERBOARD</h1><p>Global ranking · simulated</p></div>
+    <div class="card">
+      <h2>Top players <small id="lbYou" style="color:var(--muted);font-weight:400"></small></h2>
+      <div id="lbList"></div>
+    </div>
+    <button class="ghost" id="lbBack" style="margin-top:12px">← Back</button>
   </div>
 
   <!-- ===================== HOW TO PLAY ===================== -->
@@ -1207,6 +1228,8 @@ $('drillsBack').onclick = () => { $('drills').classList.add('hidden'); $('setup'
 $('tutBtn').onclick = startTutorial;
 $('seasonBtn').onclick = openSeason;
 $('seasonBack').onclick = () => { $('season').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+$('lbBtn').onclick = openLeaderboard;
+$('lbBack').onclick = () => { $('leaderboard').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('seasonPlay').onclick = startSeasonRound;
 $('seasonReset').onclick = () => { season.cleared=0; saveSeasonState(); buildSeasonList(); };
 
@@ -1217,7 +1240,7 @@ $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
 
-function hideScreens(){ ['setup','how','drills','settings','season'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); });
+function hideScreens(){ ['setup','how','drills','settings','season','leaderboard'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); });
   const tt=$('tutTip'); if(tt) tt.classList.add('hidden');
   // ensure any docked settings panel is fully torn down when screens change
   $('settings').classList.remove('docked'); document.body.classList.remove('panel-open');
@@ -1252,6 +1275,7 @@ function openSettings(fromGame){
   // can tune theme / sound / feel live. Elsewhere: the usual fullscreen overlay.
   if (fromGame && world && isDesktop()){
     settingsDocked = true; settingsFromGame = true;
+    sel.deskDock = true; saveSel();
     document.body.classList.add('panel-open');
     $('settings').classList.add('docked');
     $('settings').classList.remove('hidden');
@@ -1266,7 +1290,7 @@ function closeSettings(){
   $('settings').classList.add('hidden');
   $('settings').classList.remove('docked');
   document.body.classList.remove('panel-open');
-  if (settingsDocked){ settingsDocked=false; settingsFromGame=false; uiPadLeft=0; resize(); return; }
+  if (settingsDocked){ settingsDocked=false; settingsFromGame=false; uiPadLeft=0; sel.deskDock=false; saveSel(); resize(); return; }
   if (settingsFromGame && world){ $('hud').classList.remove('hidden'); paused=false; }
   else $('setup').classList.remove('hidden');
   settingsFromGame=false;
@@ -1496,6 +1520,39 @@ function seasonOverlay(title, sub, kind){
 }
 
 // ============================================================
+//  MOCK GLOBAL LEADERBOARD — simulated field of players; your real RP slots in.
+// ============================================================
+const LB_FAKE = [
+  {n:'Nyx',rp:2290,f:'japan'}, {n:'Volt',rp:2160,f:'brazil'}, {n:'Kestrel',rp:2040,f:'germany'},
+  {n:'Sable',rp:1930,f:'france'}, {n:'Q',rp:1840,f:'korea'}, {n:'Blitz',rp:1760,f:'ukraine'},
+  {n:'Mira',rp:1690,f:'italy'}, {n:'Onyx',rp:1610,f:'usa'}, {n:'Pixel',rp:1540,f:'sweden'},
+  {n:'Juno',rp:1470,f:'argentina'}, {n:'Rook',rp:1400,f:'uk'}, {n:'Echo',rp:1330,f:'spain'},
+  {n:'Fern',rp:1260,f:'ireland'}, {n:'Dash',rp:1190,f:'mexico'}, {n:'Vega',rp:1120,f:'nigeria'},
+  {n:'Bolt',rp:1060,f:'canada'}, {n:'Koda',rp:1010,f:'netherl'}, {n:'Wren',rp:960,f:'portugal'},
+  {n:'Sy',rp:900,f:'denmark'}, {n:'Ash',rp:840,f:'romania'}, {n:'Pip',rp:780,f:'finland'},
+  {n:'Rio',rp:720,f:'india'}, {n:'Lex',rp:660,f:'belgium'}, {n:'Moss',rp:600,f:'austria'},
+];
+function openLeaderboard(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('leaderboard').classList.remove('hidden'); buildLeaderboard(); }
+function buildLeaderboard(){
+  const me = { n: profile.name||'You', rp: stats.points, f: profile.flag, eyes: profile.eyes, color: profile.color, you:true };
+  const all = LB_FAKE.map(e=>({...e})).concat([me]).sort((a,b)=> (b.rp-a.rp) || (a.you?1:-1));
+  const rank = all.findIndex(e=>e.you)+1;
+  $('lbYou').textContent = '· you: #'+rank+' / '+all.length;
+  const wrap=$('lbList'); wrap.innerHTML='';
+  all.forEach((e,i)=>{
+    const row=document.createElement('div'); row.className='lbrow'+(e.you?' you':'');
+    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':('#'+(i+1));
+    const cvs=document.createElement('canvas'); cvs.className='cv'; cvs.width=cvs.height=40;
+    drawDisc(cvs.getContext('2d'), 20,20,13, { color:e.color||'#7f8aa0', flag:e.f||'none', eyes:e.eyes||'googly' });
+    const rk=document.createElement('span'); rk.className='rank'; rk.textContent=medal;
+    const nm=document.createElement('span'); nm.className='nm'; nm.textContent=e.n + (e.you?' (you)':'');
+    const rp=document.createElement('span'); rp.className='rp'; rp.textContent=e.rp+' RP';
+    row.append(rk, cvs, nm, rp);
+    wrap.appendChild(row);
+  });
+}
+
+// ============================================================
 //  NAME POOL for bots
 // ============================================================
 const BOT_NAMES = ['Nico','Vega','Blaze','Kai','Rush','Zed','Milo','Ivy','Rex','Juno','Ace','Fox','Neo','Sol','Wren','Dex','Pip','Rio','Sy','Bolt','Onyx','Ash','Koda','Lex'];
@@ -1607,6 +1664,9 @@ function startMatch(){
   lastT = 0; acc = 0;
   cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(loop);
+  // Desktop: use the extra width — dock the settings panel on the left by default,
+  // with the pitch on the right. (Toggle with the gear; auto-hides below 900px.)
+  if (isDesktop() && sel.deskDock !== false) openSettings(true);
 }
 
 function teamTint(team, idx){
@@ -2290,28 +2350,39 @@ function runBot(w, p){
 
   let target, wantKick=false;
   const bx=ball.x, by=ball.y;
+  p.passAim = null;
 
   if (iAmChaser){
-    // Approach ball from behind so we push it toward opp goal.
-    const behind = 1;
     const gx=oppGoal.x, gy=oppGoal.y;
-    let toGoalX=gx-bx, toGoalY=gy-by; const tg=Math.hypot(toGoalX,toGoalY)||1; toGoalX/=tg; toGoalY/=tg;
-    // approach point behind ball relative to goal direction
-    target = { x: bx - toGoalX*(p.r+ball.r+2), y: by - toGoalY*(p.r+ball.r+2) };
-    // if we're behind the ball and close, go through it toward goal & kick
-    const d = Math.sqrt(dist2(p,ball));
+    // Anticipate where the ball is heading and approach THAT point from behind —
+    // reads more like a human reading the play than chasing the ball's shadow.
+    const dB = Math.sqrt(dist2(p,ball));
+    const lead = clamp(dB*0.02, 0, 9);
+    const abx = bx + ball.vx*lead, aby = by + ball.vy*lead;
+    let toGoalX=gx-abx, toGoalY=gy-aby; const tg=Math.hypot(toGoalX,toGoalY)||1; toGoalX/=tg; toGoalY/=tg;
+    target = { x: abx - toGoalX*(p.r+ball.r+2), y: aby - toGoalY*(p.r+ball.r+2) };
     const behindOk = ((p.y-by)*attackDir < 4);  // we're on our side of the ball
-    if (d < p.r+ball.r+18){
-      // aim: toward goal with a little error
+    if (dB < p.r+ball.r+18){
       const err = (rand()-0.5)*diff.err;
       const ang = Math.atan2(toGoalY,toGoalX) + err*Math.PI/180;
       p.faceX = Math.cos(ang); p.faceY = Math.sin(ang);
       target = { x: p.x + p.faceX*40, y: p.y + p.faceY*40 };
-      // kick when reasonably lined up and in range
-      const lined = behindOk && d < p.r+ball.r+6;
-      // clear the ball if near own goal
-      const nearOwn = (by*attackDir < -halfL*0.5);
+      const lined = behindOk && dB < p.r+ball.r+6;
+      const nearOwn = (by*attackDir < -halfL*0.5);   // clear it if deep in our half
       if (lined || nearOwn) wantKick = true;
+    }
+    // Passing: if a teammate is open and further upfield, prefer a pass sometimes
+    // instead of always forcing it toward goal.
+    if (mates.length > 1){
+      let best=null, bestScore=0.15;
+      for (const q of mates){ if (q===p) continue;
+        const fwd=(q.y-p.y)*attackDir; if (fwd < 30) continue;         // forward only
+        const dd=Math.hypot(q.x-p.x, q.y-p.y); if (dd < 70 || dd > 340) continue;
+        let od=1e9; for (const o of w.players){ if (o.team!==p.team) od=Math.min(od, Math.hypot(o.x-q.x, o.y-q.y)); }
+        const score = fwd*0.003 + od*0.01 - dd*0.0015;                 // upfield + open + not too far
+        if (score > bestScore){ bestScore=score; best=q; }
+      }
+      if (best && rand() < 0.35) p.passAim = best;
     }
   } else {
     // Not the chaser — take up a useful position instead of crowding the ball.
@@ -2345,6 +2416,13 @@ function runBot(w, p){
   if (dl > 4){ p.inX = dx/dl; p.inY = dy/dl; p.faceX = dx/dl; p.faceY = dy/dl; }
   else { p.inX = 0; p.inY = 0; }
 
+  // Flocking: ease away from teammates who crowd you, so bots spread and offer
+  // passing lanes instead of clumping on the ball.
+  let sx=0, sy=0;
+  for (const q of mates){ if (q===p) continue; const ddx=p.x-q.x, ddy=p.y-q.y, dd=Math.hypot(ddx,ddy);
+    if (dd>0 && dd<64){ const f=(64-dd)/64; sx += ddx/dd*f; sy += ddy/dd*f; } }
+  if (sx||sy){ p.inX += sx*0.55; p.inY += sy*0.55; const il=Math.hypot(p.inX,p.inY); if (il>1){ p.inX/=il; p.inY/=il; } }
+
   // Kick decision is evaluated every frame from live geometry (not throttled) so
   // it actually connects now that the ball no longer sticks. Kick when we're in
   // range AND positioned behind the ball relative to the goal — the kick pushes
@@ -2356,16 +2434,18 @@ function runBot(w, p){
   // ball no longer sticks to the bot's feet.)
   const dBall = Math.sqrt(dist2(p, ball));
   const inRange = dBall < p.r + ball.r + 9;
-  let ogx = oppGoal.x - ball.x, ogy = oppGoal.y - ball.y;
-  const ogl = Math.hypot(ogx,ogy)||1; ogx/=ogl; ogy/=ogl;
+  // Aim: a chosen pass target (led ahead of the runner) or the opponent goal.
+  let aimx, aimy;
+  if (p.passAim){ aimx = (p.passAim.x + p.passAim.vx*8) - ball.x; aimy = (p.passAim.y + p.passAim.vy*8) - ball.y; }
+  else { aimx = oppGoal.x - ball.x; aimy = oppGoal.y - ball.y; }
+  const aiml = Math.hypot(aimx,aimy)||1; aimx/=aiml; aimy/=aiml;
   let pbx = ball.x-p.x, pby = ball.y-p.y; const pbl = Math.hypot(pbx,pby)||1; pbx/=pbl; pby/=pbl;
-  const align = pbx*ogx + pby*ogy;                 // how well player->ball points at the goal
-  const behindBall = align > 0.2;                  // forward-only: never kicks toward our own net
-  // The kick is one-shot (fires on press, re-arms on release). A bot that just
-  // holds it would kick once and then only body-push the ball, so release for a
-  // frame right after a kick lands to re-arm — giving a steady tap-tap of kicks.
+  const align = pbx*aimx + pby*aimy;               // player->ball vs the aim (goal or pass)
+  const behindBall = align > 0.15;                 // forward-only: never kicks toward our own net
+  // The kick is one-shot (fires on press, re-arms on release), giving a steady
+  // tap-tap of kicks as the bot works the ball forward.
   p.kick = inRange && behindBall && !p.kickUsed;
-  if (p.kick){ p.faceX = ogx; p.faceY = ogy; }
+  if (p.kick){ p.faceX = aimx; p.faceY = aimy; }
 }
 
 function dist2(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
@@ -2379,8 +2459,12 @@ function rand(){ return Math.random(); }
 // ============================================================
 let cam = { s:1, ox:0, oy:0 };
 function resize(){
-  // If the panel is docked but the window is no longer desktop-wide, undock it.
-  if (settingsDocked && !isDesktop()){ closeSettings(); return; }
+  // Shrank below desktop while docked — hide the dock but keep the preference.
+  if (settingsDocked && !isDesktop()){
+    $('settings').classList.add('hidden'); $('settings').classList.remove('docked');
+    document.body.classList.remove('panel-open');
+    settingsDocked=false; settingsFromGame=false; uiPadLeft=0;
+  }
   DPR = Math.min(window.devicePixelRatio||1, 2.5);
   cw = window.innerWidth; ch = window.innerHeight;
   cv.width = Math.floor(cw*DPR); cv.height = Math.floor(ch*DPR);
@@ -2388,6 +2472,11 @@ function resize(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.imageSmoothingEnabled = false;   // crisp, chunky pixels (Amiga look)
   if (world) computeCam();
+  // Widened to desktop during a live match — auto-dock the settings panel.
+  if (running && world && !world.drillMode && !world.tutorial && isDesktop()
+      && !settingsDocked && sel.deskDock !== false && !$('hud').classList.contains('hidden')){
+    openSettings(true);
+  }
 }
 function computeCam(){
   const f = world.field;
@@ -2439,6 +2528,39 @@ function drillBoundary(w){ const hw=w.field.W/2, hl=w.field.L/2, b=0.3;
 
 // ---- the 12+ drills. Each build() lays out gates / zones / cones on a fresh world.
 const DRILLS = {
+  // ----- Basics: easy movement drills. Goal is just to finish in the (generous)
+  // time. A coaching ghost demonstrates the route the whole time. -----
+  straight_up:{ name:'Straight Line', emoji:'⬆️', unit:'t', desc:'Dribble the ball straight up into the circle', timed:25,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dZone(w,0,-260,48,'reach'); },
+    path:[{x:0,y:285},{x:0,y:-260}] },
+  turn_right:{ name:'Right Turn', emoji:'➡️', unit:'t', desc:'Go up, then turn right into the circle', timed:28, seq:true,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dZone(w,0,-30,46,'reach'); dZone(w,175,-30,46,'reach'); },
+    path:[{x:0,y:285},{x:0,y:-30},{x:175,y:-30}] },
+  turn_left:{ name:'Left Turn', emoji:'⬅️', unit:'t', desc:'Go up, then turn left into the circle', timed:28, seq:true,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dZone(w,0,-30,46,'reach'); dZone(w,-175,-30,46,'reach'); },
+    path:[{x:0,y:285},{x:0,y:-30},{x:-175,y:-30}] },
+  uturn:{ name:'U-Turn', emoji:'↩️', unit:'t', desc:'Up the left lane, around the wall, back down into the circle', timed:34, seq:true,
+    build(w){ drillBoundary(w); dSet(w,-110,320,-110,285); dWall(w,0,-330,0,150);
+      dZone(w,-110,-300,42,'reach'); dZone(w,110,-300,42,'reach'); dZone(w,110,150,46,'reach'); },
+    path:[{x:-110,y:285},{x:-110,y:-300},{x:110,y:-300},{x:110,y:150}] },
+  zigzag_easy:{ name:'Zig-Zag', emoji:'〽️', unit:'t', desc:'Weave the ball through the circles in order', timed:32, seq:true,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dZone(w,-120,150,42,'reach'); dZone(w,120,-20,42,'reach'); dZone(w,-90,-250,42,'reach'); },
+    path:[{x:0,y:285},{x:-120,y:150},{x:120,y:-20},{x:-90,y:-250}] },
+  round_cone:{ name:'Round the Cone', emoji:'🚧', unit:'t', desc:'Take the ball around the cone and into the circle', timed:28,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dCone(w,0,20); dZone(w,0,-250,46,'reach'); },
+    path:[{x:0,y:285},{x:95,y:20},{x:0,y:-250}] },
+  wide_route:{ name:'Wide Route', emoji:'🛣️', unit:'t', desc:'Push wide right, then up into the circle', timed:30, seq:true,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dZone(w,175,120,44,'reach'); dZone(w,175,-240,46,'reach'); },
+    path:[{x:0,y:285},{x:175,y:120},{x:175,y:-240}] },
+  box_path:{ name:'Box Path', emoji:'⬛', unit:'t', desc:'Trace the box: right, up, left, into the circle', timed:36, seq:true,
+    build(w){ drillBoundary(w); dSet(w,-130,320,-130,285); dZone(w,130,200,40,'reach'); dZone(w,130,-200,40,'reach'); dZone(w,-130,-200,44,'reach'); },
+    path:[{x:-130,y:285},{x:130,y:200},{x:130,y:-200},{x:-130,y:-200}] },
+  long_push:{ name:'Long Push', emoji:'🎳', unit:'t', desc:'One long dribble the length of the pitch', timed:26,
+    build(w){ drillBoundary(w); dSet(w,0,330,0,300); dZone(w,0,-330,50,'reach'); },
+    path:[{x:0,y:300},{x:0,y:-330}] },
+  dribble_finish:{ name:'Dribble & Finish', emoji:'🥅', unit:'t', desc:'Dribble up, round the cone, then KICK through the gate', timed:34, seq:true,
+    build(w){ drillBoundary(w); dSet(w,0,320,0,285); dCone(w,0,-40); dZone(w,120,-40,42,'reach'); dGate(w,0,-320,66,0); },
+    path:[{x:0,y:285},{x:120,y:-40},{x:0,y:-320}] },
   y_pass:{ name:'Y-Passing', emoji:'🔱', unit:'s', desc:'Thread the three gates of the Y, in order', seq:true,
     build(w){ drillBoundary(w); dSet(w,0,300,0,250); dGate(w,0,150,74,0); dGate(w,-120,-30,58,60); dGate(w,120,-30,58,-60); } },
   free_kick:{ name:'Free Kick', emoji:'🧱', unit:'s', desc:'Run to the ball and angle it through the gap in the wall',
@@ -2488,7 +2610,7 @@ function startDrill(key){
     ball: { x:0,y:0,vx:0,vy:0,px:0,py:0, r:BALL.r, invMass:BALL.invMass, bCoef:BALL.bCoef, damp:BALL.damp, isBall:true },
     walls:[], posts:[], arcs:[], gates:[], zones:[], cones:[],
     state:'drill', stateT:0,
-    drill: { key, def, elapsed:0, complete:false, failed:false, timed:def.timed||0, timeLeft:def.timed||0 },
+    drill: { key, def, elapsed:0, complete:false, failed:false, timed:def.timed||0, timeLeft:def.timed||0, coachT:0 },
   };
   def.build(world);
   world.drill.total = world.gates.length + world.zones.length;
@@ -2505,6 +2627,7 @@ function resetDrill(){ if (drillKey) startDrill(drillKey); }
 
 function stepDrill(w){
   const d = w.drill;
+  d.coachT = (d.coachT||0) + STEP;                    // coaching-ghost demo keeps looping
   if (d.complete || d.failed) return;                 // frozen — waiting for reset/next
   d.elapsed += STEP;
   if (d.moving) {} // handled below in mg
@@ -2600,6 +2723,33 @@ function showDrillResult(title, sub, completed){
   $('overlay').classList.add('show');
 }
 
+// Coaching ghost — draws the ideal route as a dotted line and animates a faded
+// ghost player+ball looping along it, so you can see the movement to copy.
+function pathAt(path, t){
+  const segs=[]; let total=0;
+  for (let i=1;i<path.length;i++){ const dx=path[i].x-path[i-1].x, dy=path[i].y-path[i-1].y; const l=Math.hypot(dx,dy)||1; segs.push({dx:dx/l,dy:dy/l,l}); total+=l; }
+  const LOOP=6.5;                         // seconds per demo loop
+  let dist=((t/LOOP)*total)%total;
+  for (let i=0;i<segs.length;i++){ if (dist<=segs[i].l){ const p0=path[i]; return {x:p0.x+segs[i].dx*dist, y:p0.y+segs[i].dy*dist, dx:segs[i].dx, dy:segs[i].dy}; } dist-=segs[i].l; }
+  const last=path[path.length-1]; return {x:last.x, y:last.y, dx:0, dy:-1};
+}
+function drawCoach(w){
+  const d=w.drill, path=d.def && d.def.path; if (!path || path.length<2) return;
+  const s=cam.s;
+  ctx.save();
+  ctx.setLineDash([6,9]); ctx.lineWidth=Math.max(1,2*s); ctx.strokeStyle=rgba(TH.accent,0.45);
+  ctx.beginPath(); ctx.moveTo(wx(path[0].x),wy(path[0].y));
+  for (let i=1;i<path.length;i++) ctx.lineTo(wx(path[i].x),wy(path[i].y));
+  ctx.stroke(); ctx.setLineDash([]);
+  const g=pathAt(path, d.coachT||0);
+  const gx=wx(g.x), gy=wy(g.y), r=w.ball.r*s;
+  ctx.globalAlpha=0.5;
+  ctx.beginPath(); ctx.arc(gx - g.dx*r*2.2, gy - g.dy*r*2.2, PLAYER.r*s, 0, 2*Math.PI); ctx.fillStyle=rgba(TH.accent,0.32); ctx.fill();
+  ctx.beginPath(); ctx.arc(gx, gy, r, 0, 2*Math.PI); ctx.fillStyle='rgba(255,255,255,0.6)'; ctx.fill();
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+
 // ---- drill rendering
 function renderDrill(){
   const w = world;
@@ -2615,6 +2765,7 @@ function renderDrill(){
   for (const g of w.gates){ if(g.solid){ for(const wl of [g.wa0,g.wa1]){ ctx.beginPath(); ctx.moveTo(wx(wl.a.x),wy(wl.a.y)); ctx.lineTo(wx(wl.b.x),wy(wl.b.y)); ctx.stroke(); } } }
   for (const wl of w.walls){ if(!wl.draw) continue; ctx.beginPath(); ctx.moveTo(wx(wl.a.x),wy(wl.a.y)); ctx.lineTo(wx(wl.b.x),wy(wl.b.y)); ctx.stroke(); }
   ctx.lineCap='butt';
+  drawCoach(w);                 // coaching ghost demonstrates the route
   drawFx(); drawBallTrail(w);
   // zones
   for (const z of w.zones){

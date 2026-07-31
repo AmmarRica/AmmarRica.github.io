@@ -10,6 +10,17 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Always-on desktop dock** — on wide screens a match auto-docks the Settings panel on the
+  left with the pitch on the right (uses your screen real estate); toggle with the gear,
+  remembered as a preference, auto-hides below 900px.
+- **Mock global leaderboard** — a simulated global ranking (24 fake players with countryballs)
+  with your real RP slotted in at the correct rank and highlighted.
+- **Easy movement drills + coaching ghost** — 10 new beginner drills (straight, turns, U-turn,
+  zig-zag, round-the-cone, box, long push, dribble-&-finish…) that are timed generously so the
+  goal is just to finish. Each shows a **coaching ghost** — a dotted route plus a faded ghost
+  player+ball looping the ideal path — so you can see the movement to copy.
+- **More human bot AI** — bots now anticipate the ball, **pass** to open upfield teammates
+  instead of always forcing it, and **flock/space out** (separation) instead of clumping.
 - **Bouncy walls** — field walls are now near-elastic (~0.9 restitution) so the ball keeps its
   momentum off the boundary and you can pass to yourself off a wall; only the **net** kills
   momentum. (Ball containment still verified on all 10 fields.)
