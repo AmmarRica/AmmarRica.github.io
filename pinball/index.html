@@ -111,6 +111,23 @@
     }
     #zones .zone.active { background: rgba(123,108,255,.10); }
 
+    #tableSwitch {
+      position: absolute;
+      top: 10px; left: 10px;
+      z-index: 4;                 /* below the start overlay (5) */
+      appearance: none; cursor: pointer;
+      display: flex; align-items: center; gap: 5px;
+      padding: 6px 12px;
+      font-size: 12px; font-weight: 700; letter-spacing: .5px;
+      color: var(--text);
+      background: rgba(16,20,40,0.72);
+      border: 1px solid rgba(255,255,255,0.20);
+      border-radius: 999px;
+      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    }
+    #tableSwitch:active { transform: translateY(1px); }
+    #tableSwitch.hidden { display: none; }
+
     #overlay {
       position: absolute;
       inset: 0;
@@ -205,12 +222,13 @@
 
     <div id="stage">
       <canvas id="game"></canvas>
+      <button id="tableSwitch" aria-label="Switch table">⇄ <span id="tableName">NOVA</span></button>
       <div id="zones">
         <div class="zone" id="zoneL">◄ Left</div>
         <div class="zone" id="zoneR">Right ►</div>
       </div>
       <div id="overlay">
-        <h1>NOVA</h1>
+        <h1>PINBALL</h1>
         <p><b>Hold</b> the left or right side to flip. <b>Charge</b> the plunger to launch.<br>
         Light the <b style="color:var(--good)">top lanes</b> to raise your multiplier and clear the
         <b style="color:#ff4fd8">drop targets</b> for a jackpot.<br>
@@ -407,6 +425,8 @@
       dropResetAt = 0;
       buildWalls();       // frame walls + this table's extra walls
       buildBackground();  // re-render the static playfield for this theme
+      const nm = document.getElementById('tableName');
+      if (nm) nm.textContent = t.name;
     }
 
     // Flippers
@@ -460,7 +480,15 @@
       startBtn: document.getElementById('startBtn'),
       zoneL: document.getElementById('zoneL'),
       zoneR: document.getElementById('zoneR'),
+      tableSwitch: document.getElementById('tableSwitch'),
     };
+
+    // In-game table switcher: cycle to the next table without leaving the game.
+    el.tableSwitch.addEventListener('click', () => {
+      loadTable(tableIndex + 1);
+      if (running) resetBallToLane();   // re-seat the ball on the new table (score/balls kept)
+      else showStartOverlay();          // otherwise refresh the start-screen selector
+    });
     el.best.textContent = best;
 
     function setMultiplier(m) {
@@ -519,6 +547,7 @@
       resetBallToLane();
       running = true;
       el.overlay.classList.add('hidden');
+      el.tableSwitch.classList.toggle('hidden', demo); // hide during auto-demo
     }
 
     const START_HTML =
