@@ -213,6 +213,33 @@
     .lbrow .rp { color:var(--accent); font-weight:700; }
     .lbrow.you { background:rgba(255,255,255,.07); border-color:var(--accent); }
 
+    /* Daily reward modal */
+    #dailyModal {
+      position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+      background: rgba(2,3,8,.72); backdrop-filter: blur(3px); padding: 18px;
+    }
+    #dailyModal.hidden { display: none; }
+    .dm-card {
+      background: var(--bg-grad) fixed, var(--panel); border: 1px solid var(--accent); border-radius: 16px;
+      box-shadow: 0 12px 44px rgba(0,0,0,.6); padding: 20px 18px; max-width: 460px; width: 100%;
+      text-align: center; max-height: 92vh; overflow-y: auto;
+    }
+    .dm-card h2 { color: var(--accent); font-size: 20px; }
+    #dmSub { font-family: var(--pix); font-size: 11px; color: var(--muted); margin: 6px 0 14px; }
+    .dm-heading { font-family: var(--pix); font-size: 10px; color: var(--muted); text-align: left; margin: 16px 4px 8px; }
+    #dmTrack { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; }
+    .dm-chip {
+      flex: 0 0 auto; width: 86px; border: 1px solid var(--edge); border-radius: 10px; padding: 8px 4px;
+      display: flex; flex-direction: column; align-items: center; gap: 5px; background: rgba(255,255,255,.03);
+    }
+    #dmToday .dm-chip { width: 120px; margin: 0 auto; border-color: var(--accent); box-shadow: 0 0 16px rgba(33,230,255,.25); }
+    #dmToday .dm-chip canvas { width: 76px; height: 76px; }
+    .dm-chip canvas { width: 54px; height: 54px; }
+    .dm-chip.future { opacity: .82; }
+    .dm-day { font-family: var(--pix); font-size: 8px; color: var(--accent); }
+    .dm-rwlabel { font-family: var(--pix); font-size: 8px; color: var(--text); line-height: 1.3; }
+    .dm-got { font-family: var(--pix); font-size: 11px; color: var(--go); margin-top: 8px; }
+
     /* Collapsible menu sections (accordion) */
     .card.collapsible > h2 {
       cursor: pointer; user-select: none; display: flex; align-items: center;
@@ -440,6 +467,7 @@
     <button class="primary" id="playBtn">KICK OFF ▶</button>
     <button class="ghost" id="seasonBtn" style="margin-top:12px">🏆 Season / Cup</button>
     <button class="ghost" id="lbBtn" style="margin-top:12px">📊 Leaderboard</button>
+    <button class="ghost" id="dailyBtn" style="margin-top:12px">🎁 Daily reward</button>
     <button class="ghost" id="drillsBtn" style="margin-top:12px">🎯 Practice Drills</button>
     <button class="ghost" id="tutBtn" style="margin-top:12px">🎓 Tutorial</button>
     <button class="ghost" id="settingsBtn" style="margin-top:12px">⚙ Sound &amp; Game Feel</button>
@@ -548,6 +576,18 @@
     <button class="primary" id="ovResume" style="max-width:260px">Resume</button>
     <button class="ghost" id="ovRematch" style="display:none">Rematch</button>
     <button class="ghost" id="ovMenu">Main Menu</button>
+  </div>
+
+  <!-- ===================== DAILY REWARD MODAL ===================== -->
+  <div id="dailyModal" class="hidden">
+    <div class="dm-card">
+      <h2>DAILY REWARD 🎁</h2>
+      <p id="dmSub"></p>
+      <div id="dmToday"></div>
+      <div class="dm-heading">Coming up — keep logging in!</div>
+      <div id="dmTrack"></div>
+      <button class="primary" id="dmCollect" style="margin-top:16px">Collect ✓</button>
+    </div>
   </div>
 
 <script>
@@ -696,7 +736,7 @@ function itemReq(cat, key){
   if(cat==='cap')  return (CAPS[key]||{}).req;
   return null;
 }
-function isUnlocked(cat, key){ return reqMet(itemReq(cat, key)); }
+function isUnlocked(cat, key){ return grantedHas(cat,key) || reqMet(itemReq(cat, key)); }
 function unlockCounts(){
   let have=0, total=0;
   for(const k of FLAG_KEYS){ total++; if(isUnlocked('flag',k)) have++; }
@@ -704,6 +744,86 @@ function unlockCounts(){
   for(const k of Object.keys(CAPS)){ total++; if(isUnlocked('cap',k)) have++; }
   return { have, total };
 }
+
+// ============================================================
+//  DAILY LOGIN REWARDS — every calendar day you visit grants the next reward on
+//  a generous track; a first-visit popup shows what you got and what's coming.
+// ============================================================
+function loadLogin(){ try { return JSON.parse(localStorage.getItem('magnetball.login')||'{}'); } catch(e){ return {}; } }
+function saveLogin(){ try { localStorage.setItem('magnetball.login', JSON.stringify(login)); } catch(e){} }
+let login = Object.assign({ claimed:0, last:'', streak:0, granted:[] }, loadLogin());
+function grantedHas(cat,key){ return !!(login && login.granted && login.granted.indexOf(cat+':'+key) >= 0); }
+// The reward track. Generous: good cosmetics early, milestones at day 5/10/14,
+// then it keeps paying out RP forever so logging in is always worth it.
+const DAILY = [
+  { t:'flag', k:'brazil',   label:'Brazil ball' },
+  { t:'cap',  k:'crown',    label:'Crown cap' },
+  { t:'eyes', k:'star',     label:'Star eyes' },
+  { t:'rp',   n:150,        label:'+150 RP' },
+  { t:'flag', k:'uk',       label:'UK ball',   big:true },
+  { t:'eyes', k:'cyclops',  label:'Cyclops eyes' },
+  { t:'cap',  k:'skull',    label:'Skull cap' },
+  { t:'flag', k:'korea',    label:'Korea ball' },
+  { t:'rp',   n:200,        label:'+200 RP' },
+  { t:'flag', k:'usa',      label:'USA ball',  big:true },
+  { t:'eyes', k:'visor',    label:'Visor eyes' },
+  { t:'cap',  k:'spark',    label:'Sparkle cap' },
+  { t:'rp',   n:250,        label:'+250 RP' },
+  { t:'flag', k:'denmark',  label:'Denmark ball', big:true },
+];
+function dailyReward(i){ return DAILY[i] || { t:'rp', n:100, label:'+100 RP' }; }   // never stops rewarding
+function todayStr(){ return window.__today || new Date().toISOString().slice(0,10); }
+function ymdMinus(str, days){ const d=new Date(str+'T00:00:00'); d.setDate(d.getDate()-days); return d.toISOString().slice(0,10); }
+function applyDailyReward(rw){
+  if (rw.t==='rp'){ stats.points += rw.n; saveStats(stats); }
+  else { const key = rw.t+':'+rw.k; login.granted = login.granted||[]; if (login.granted.indexOf(key)<0) login.granted.push(key); saveLogin(); }
+}
+function checkDailyLogin(){
+  const today = todayStr();
+  if (login.last === today) return false;         // already claimed today
+  login.streak = (login.last === ymdMinus(today,1)) ? (login.streak||0)+1 : 1;
+  const idx = login.claimed;
+  applyDailyReward(dailyReward(idx));
+  login.claimed = idx+1; login.last = today; saveLogin();
+  // refresh UI so the new unlock shows immediately
+  if (typeof renderStats==='function') renderStats();
+  if (typeof buildCaps==='function'){ buildCaps(); buildFlagPicker(); buildEyesPicker(); updatePreview(); }
+  showDailyModal(idx);
+  return true;
+}
+function rewardIcon(rw, size){
+  const c=document.createElement('canvas'); c.width=c.height=size; const x=c.width/2, g=c.getContext('2d');
+  if (rw.t==='rp'){
+    g.fillStyle='#0a0d16'; g.beginPath(); g.arc(x,x,x*0.92,0,7); g.fill();
+    g.fillStyle='#f5d547'; g.font='bold '+Math.round(size*0.30)+'px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+    g.fillText('+RP', x, x);
+  } else {
+    const o = rw.t==='flag' ? {color:profile.color,flag:rw.k,eyes:'googly'}
+            : rw.t==='eyes' ? {color:profile.color,flag:'none',eyes:rw.k}
+            :                 {color:profile.color,flag:'none',eyes:'googly',cap:rw.k};
+    drawDisc(g, x, x, x*0.62, o);
+  }
+  return c;
+}
+function dailyChip(rw, dayNum, state){
+  const el=document.createElement('div'); el.className='dm-chip '+(state||'');
+  const day=document.createElement('div'); day.className='dm-day'; day.textContent='Day '+dayNum+(rw.big?' ★':'');
+  const lab=document.createElement('div'); lab.className='dm-rwlabel'; lab.textContent=rw.label;
+  el.append(day, rewardIcon(rw,54), lab);
+  return el;
+}
+function showDailyModal(claimedIdx){
+  const sub=$('dmSub'); if(!sub) return;
+  sub.textContent = 'Day '+login.claimed+'  ·  🔥 '+login.streak+'-day streak';
+  const today=$('dmToday'); today.innerHTML='';
+  today.appendChild(dailyChip(dailyReward(claimedIdx), claimedIdx+1, 'claimed'));
+  const tag=document.createElement('div'); tag.className='dm-got'; tag.textContent='Unlocked today!'; today.appendChild(tag);
+  const track=$('dmTrack'); track.innerHTML='';
+  for (let i=login.claimed; i<login.claimed+6; i++) track.appendChild(dailyChip(dailyReward(i), i+1, 'future'));
+  $('dailyModal').classList.remove('hidden');
+}
+function openDailyView(){ showDailyModal(Math.max(0, login.claimed-1)); }
+function closeDailyModal(){ $('dailyModal').classList.add('hidden'); }
 
 const DIFF = {
   rookie: { name:'Rookie', emoji:'🐣', react:0.58, err:40, power:0.72, aggr:0.68 },
@@ -1241,6 +1361,7 @@ magEl.oninput = () => {
 
 updatePreview();
 updatePadInfo();
+checkDailyLogin();   // grant + show today's reward on the first visit each day
 
 // Reflect connected gamepads on the setup screen.
 function connectedGamepadIndices(){
@@ -1267,6 +1388,8 @@ $('tutBtn').onclick = startTutorial;
 $('seasonBtn').onclick = openSeason;
 $('seasonBack').onclick = () => { $('season').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('lbBtn').onclick = openLeaderboard;
+$('dailyBtn').onclick = openDailyView;
+$('dmCollect').onclick = closeDailyModal;
 $('lbBack').onclick = () => { $('leaderboard').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('padCfgBtn').onclick = openPadConfig;
 $('padCfgBack').onclick = () => { padBind.active=false; $('padConfig').classList.add('hidden'); $('setup').classList.remove('hidden'); };
@@ -3425,6 +3548,7 @@ if (window.__MAGNETDEBUG) {
     get shake(){ return shake; }, get hitStop(){ return hitStop; }, get flash(){ return flash; },
     addShake, goalBurst, scoreGoal,
     gamepadPad, openPadConfig, startBind, startRebindAll, get padBind(){ return padBind; },
+    get login(){ return login; }, checkDailyLogin, openDailyView, DAILY, dailyReward, grantedHas,
   };
 }
 })();
