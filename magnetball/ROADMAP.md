@@ -10,6 +10,10 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Main-menu redesign** — destinations no longer buried under long config cards. Now: logo → record
+  → a big **KICK OFF**, then a compact **3×3 icon grid** (Season, Drills, Tutorial, Watch, Ranks,
+  Daily, Shop, Settings, How) right at the top. The Match / Your Player / Controls / Online config
+  cards are collapsed one-line sections by default; smaller icons and less text throughout.
 - **Social / Watch feed (Instagram-style)** — a vertical feed of goal clips that each **autoplay a
   real mini re-simulation** (like a video), with **like** (double-tap too), **comment** (add your
   own), **save**, share, and **Today / This Month / All-time** filters. Seeded with mock posts for
