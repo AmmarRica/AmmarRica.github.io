@@ -178,12 +178,18 @@
     button.ghost:active { transform: translateY(1px); }
 
     .preview { display: flex; align-items: center; gap: 14px; padding: 14px 0 2px; }
-    .pvBall {
-      width: 52px; height: 52px; border-radius: 50%; flex: 0 0 auto; position: relative;
-      display: flex; align-items: center; justify-content: center; font-size: 22px;
-      border: 2px solid rgba(255,255,255,.85);
-    }
+    .pvBall { width: 58px; height: 58px; flex: 0 0 auto; }
+    canvas.pvBall { image-rendering: auto; }
     .pvName { font-family: var(--pix); font-size: 14px; }
+
+    /* Countryball / eye pickers — mini-disc tiles, greyed + locked with a badge */
+    .tilewrap { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); }
+    .tilewrap .opt { padding: 8px 6px; gap: 4px; }
+    .tilewrap .opt canvas { width: 40px; height: 40px; }
+    .tilewrap .opt span { font-size: 9px; }
+    .tilewrap .opt small { font-size: 7px; line-height: 1.3; color: var(--muted); }
+    .opt.locked { opacity: .6; }
+    .opt.locked canvas { filter: grayscale(1) brightness(.7); }
 
     /* ---------- In-game HUD ---------- */
     #hud {
@@ -303,8 +309,14 @@
       <div style="height:14px"></div>
       <label class="field">Cap</label>
       <div class="opts" id="caps"></div>
+      <div style="height:14px"></div>
+      <label class="field">Countryball <small id="unlockCount" style="color:var(--muted);font-weight:400"></small></label>
+      <div class="opts tilewrap" id="flagPick"></div>
+      <div style="height:14px"></div>
+      <label class="field">Eyes</label>
+      <div class="opts tilewrap" id="eyesPick"></div>
       <div class="preview">
-        <div class="pvBall" id="pvBall"></div>
+        <canvas class="pvBall" id="pvCanvas" width="120" height="120"></canvas>
         <div class="pvName" id="pvName">Player</div>
       </div>
     </div>
@@ -455,11 +467,128 @@ const CAPS = {
   none:  { name:'None',   emoji:'' },
   dot:   { name:'Dot',    emoji:'•' },
   stripe:{ name:'Stripe', emoji:'▬' },
-  star:  { name:'Star',   emoji:'★' },
-  crown: { name:'Crown',  emoji:'♛' },
+  star:  { name:'Star',   emoji:'★', req:{ wins:1 } },
+  crown: { name:'Crown',  emoji:'♛', req:{ wins:5 } },
+  bolt:  { name:'Bolt',   emoji:'⚡', req:{ points:1100 } },
+  heart: { name:'Heart',  emoji:'♥', req:{ played:15 } },
+  snow:  { name:'Snow',   emoji:'❄', req:{ streak:5 } },
+  skull: { name:'Skull',  emoji:'☠', req:{ goals:30 } },
+  sun:   { name:'Sun',    emoji:'☀', req:{ points:1300 } },
+  ring:  { name:'Halo',   emoji:'◎', req:{ drills:3 } },
+  spark: { name:'Sparkle',emoji:'✦', req:{ points:1500 } },
 };
 
 const COLORS = ['#e05a5a','#f0a04b','#f5d547','#46d17a','#3fbfd0','#5a7de0','#a06bd8','#ff7fb0','#e8eef7','#2f3646'];
+
+// ============================================================
+//  COUNTRYBALLS — flag "skins" for the player disc. Each draw(c,x,y,r)
+//  paints a flag design; the caller clips it to the disc circle first.
+//  (The soccer ball itself is never skinned — only players.)
+// ============================================================
+function _fh(c,x,y,r,cols){ const n=cols.length, t=y-r, h=2*r/n; for(let i=0;i<n;i++){ c.fillStyle=cols[i]; c.fillRect(x-r, t+i*h, 2*r, h+0.6); } }
+function _fv(c,x,y,r,cols){ const n=cols.length, l=x-r, w=2*r/n; for(let i=0;i<n;i++){ c.fillStyle=cols[i]; c.fillRect(l+i*w, y-r, w+0.6, 2*r); } }
+function _bg(c,x,y,r,col){ c.fillStyle=col; c.fillRect(x-r,y-r,2*r,2*r); }
+function _cd(c,x,y,r,col,rr){ c.beginPath(); c.arc(x,y,rr,0,7); c.fillStyle=col; c.fill(); }
+function _nordic(c,x,y,r,bg,cr){ _bg(c,x,y,r,bg); c.fillStyle=cr; const t=r*0.32, cx=x-r*0.28; c.fillRect(x-r, y-t/2, 2*r, t); c.fillRect(cx-t/2, y-r, t, 2*r); }
+const FLAGS = {
+  none:    { name:'Plain',       draw:null },
+  poland:  { name:'Poland',      draw:(c,x,y,r)=>_fh(c,x,y,r,['#fff','#dc143c']) },
+  indo:    { name:'Indonesia',   draw:(c,x,y,r)=>_fh(c,x,y,r,['#dc143c','#fff']) },
+  austria: { name:'Austria',     draw:(c,x,y,r)=>_fh(c,x,y,r,['#e6273e','#fff','#e6273e']) },
+  germany: { name:'Germany',     draw:(c,x,y,r)=>_fh(c,x,y,r,['#111','#dd0000','#ffce00']) },
+  netherl: { name:'Netherlands', draw:(c,x,y,r)=>_fh(c,x,y,r,['#ae1c28','#fff','#21468b']) },
+  ukraine: { name:'Ukraine',     draw:(c,x,y,r)=>_fh(c,x,y,r,['#0057b7','#ffd700']) },
+  japan:   { name:'Japan',       draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#fff'); _cd(c,x,y,r,'#bc002d',r*0.5); } },
+  bangla:  { name:'Bangladesh',  draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#006a4e'); _cd(c,x-r*0.1,y,r,'#f42a41',r*0.48); } },
+  spain:   { name:'Spain',       draw:(c,x,y,r)=>_fh(c,x,y,r,['#aa151b','#f1bf00','#f1bf00','#aa151b']) },
+  india:   { name:'India',       draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#ff9933','#fff','#138808']); _cd(c,x,y,r,'#0a3d91',r*0.16); } },
+  france:  { name:'France',      draw:(c,x,y,r)=>_fv(c,x,y,r,['#0055a4','#fff','#ef4135']) },
+  italy:   { name:'Italy',       draw:(c,x,y,r)=>_fv(c,x,y,r,['#009246','#fff','#ce2b37']) },
+  ireland: { name:'Ireland',     draw:(c,x,y,r)=>_fv(c,x,y,r,['#169b62','#fff','#ff883e']) },
+  belgium: { name:'Belgium',     draw:(c,x,y,r)=>_fv(c,x,y,r,['#111','#fdda24','#ef3340']) },
+  romania: { name:'Romania',     draw:(c,x,y,r)=>_fv(c,x,y,r,['#002b7f','#fcd116','#ce1126']) },
+  nigeria: { name:'Nigeria',     draw:(c,x,y,r)=>_fv(c,x,y,r,['#008751','#fff','#008751']) },
+  mexico:  { name:'Mexico',      draw:(c,x,y,r)=>{ _fv(c,x,y,r,['#006847','#fff','#ce1126']); _cd(c,x,y,r,'#7a5230',r*0.12); } },
+  portugal:{ name:'Portugal',    draw:(c,x,y,r)=>{ _fv(c,x,y,r,['#046a38','#046a38','#da291c']); _cd(c,x-r*0.15,y,r,'#ffe000',r*0.14); } },
+  canada:  { name:'Canada',      draw:(c,x,y,r)=>{ _fv(c,x,y,r,['#d80621','#fff','#d80621']); _cd(c,x,y,r,'#d80621',r*0.18); } },
+  argentina:{name:'Argentina',   draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#75aadb','#fff','#75aadb']); _cd(c,x,y,r,'#f6b40e',r*0.13); } },
+  sweden:  { name:'Sweden',      draw:(c,x,y,r)=>_nordic(c,x,y,r,'#006aa7','#fecc00') },
+  finland: { name:'Finland',     draw:(c,x,y,r)=>_nordic(c,x,y,r,'#fff','#003580') },
+  denmark: { name:'Denmark',     draw:(c,x,y,r)=>_nordic(c,x,y,r,'#c8102e','#fff') },
+  norway:  { name:'Norway',      draw:(c,x,y,r)=>_nordic(c,x,y,r,'#ba0c2f','#fff') },
+  brazil:  { name:'Brazil',      draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#009c3b'); c.fillStyle='#ffdf00'; c.beginPath(); c.moveTo(x,y-r*0.82); c.lineTo(x+r*0.82,y); c.lineTo(x,y+r*0.82); c.lineTo(x-r*0.82,y); c.closePath(); c.fill(); _cd(c,x,y,r,'#002776',r*0.32); } },
+  usa:     { name:'USA',         draw:(c,x,y,r)=>{ _fh(c,x,y,r,['#b22234','#fff','#b22234','#fff','#b22234','#fff','#b22234']); c.fillStyle='#3c3b6e'; c.fillRect(x-r,y-r,r*1.0,r*0.98); c.fillStyle='#fff'; for(let i=0;i<3;i++)for(let j=0;j<2;j++){ _cd(c,x-r*0.82+i*r*0.34, y-r*0.72+j*r*0.42, r, r*0.05);} } },
+  uk:      { name:'UK',          draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#012169'); c.strokeStyle='#fff'; c.lineWidth=r*0.42; c.beginPath(); c.moveTo(x-r,y-r); c.lineTo(x+r,y+r); c.moveTo(x+r,y-r); c.lineTo(x-r,y+r); c.stroke(); c.strokeStyle='#c8102e'; c.lineWidth=r*0.46; c.beginPath(); c.moveTo(x,y-r); c.lineTo(x,y+r); c.moveTo(x-r,y); c.lineTo(x+r,y); c.stroke(); } },
+  korea:   { name:'Korea',       draw:(c,x,y,r)=>{ _bg(c,x,y,r,'#fff'); c.beginPath(); c.arc(x,y,r*0.42,Math.PI,2*Math.PI); c.fillStyle='#cd2e3a'; c.fill(); c.beginPath(); c.arc(x,y,r*0.42,0,Math.PI); c.fillStyle='#0047a0'; c.fill(); } },
+};
+const FLAG_KEYS = Object.keys(FLAGS);
+
+// ============================================================
+//  EYE STYLES — the countryball "face". draw(c,x,y,r) renders the eyes.
+// ============================================================
+function _oval(c,x,y,rx,ry,col,stroke,lw){ c.beginPath(); c.ellipse(x,y,rx,ry,0,0,7); c.fillStyle=col; c.fill(); if(stroke){ c.lineWidth=lw||1; c.strokeStyle=stroke; c.stroke(); } }
+const EYES = {
+  googly: { name:'Googly', draw:(c,x,y,r)=>{ const s=r*0.38,er=r*0.27,pr=r*0.13,ey=y+r*0.06; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex,ey,pr,0,7); c.fillStyle='#15181f'; c.fill(); } } },
+  ball:   { name:'Countryball', draw:(c,x,y,r)=>{ const s=r*0.32,ey=y-r*0.02; for(const g of[-1,1]){const ex=x+g*s; _oval(c,ex,ey,r*0.19,r*0.30,'#fff','#0a0a0a',Math.max(1.5,r*0.06)); c.beginPath(); c.arc(ex,ey-r*0.08,r*0.09,0,7); c.fillStyle='#0a0a0a'; c.fill(); } } },
+  dot:    { name:'Beady', draw:(c,x,y,r)=>{ const s=r*0.34,ey=y; for(const g of[-1,1]){ c.beginPath(); c.arc(x+g*s,ey,r*0.12,0,7); c.fillStyle='#111'; c.fill(); } } },
+  wide:   { name:'Wide', draw:(c,x,y,r)=>{ const s=r*0.40,er=r*0.34,pr=r*0.12,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.lineWidth=Math.max(1,r*0.05); c.strokeStyle='#111'; c.stroke(); c.beginPath(); c.arc(ex,ey+r*0.05,pr,0,7); c.fillStyle='#111'; c.fill(); } } },
+  angry:  { name:'Angry', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.24,pr=r*0.12,ey=y+r*0.08; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.beginPath(); c.arc(ex,ey,pr,0,7); c.fillStyle='#111'; c.fill(); } c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.11); c.beginPath(); c.moveTo(x-r*0.55,y-r*0.28); c.lineTo(x-r*0.14,y-r*0.05); c.moveTo(x+r*0.55,y-r*0.28); c.lineTo(x+r*0.14,y-r*0.05); c.stroke(); } },
+  happy:  { name:'Happy', draw:(c,x,y,r)=>{ const s=r*0.36,ey=y; c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.12); c.lineCap='round'; for(const g of[-1,1]){ c.beginPath(); c.arc(x+g*s,ey+r*0.06,r*0.18,Math.PI*1.15,Math.PI*1.85); c.stroke(); } c.lineCap='butt'; } },
+  sleepy: { name:'Sleepy', draw:(c,x,y,r)=>{ const s=r*0.36,ey=y+r*0.02; c.strokeStyle='#111'; c.lineWidth=Math.max(2,r*0.1); c.lineCap='round'; for(const g of[-1,1]){ c.beginPath(); c.moveTo(x+g*s-r*0.16,ey); c.lineTo(x+g*s+r*0.16,ey); c.stroke(); } c.lineCap='butt'; } },
+  star:   { name:'Star', draw:(c,x,y,r)=>{ const s=r*0.36,er=r*0.28,ey=y; for(const g of[-1,1]){const ex=x+g*s; c.beginPath(); c.arc(ex,ey,er,0,7); c.fillStyle='#fff'; c.fill(); c.lineWidth=Math.max(1,r*0.05); c.strokeStyle='#111'; c.stroke(); c.fillStyle='#111'; c.font=`${Math.round(r*0.42)}px sans-serif`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('★',ex,ey+r*0.02); } } },
+  cyclops:{ name:'Cyclops', draw:(c,x,y,r)=>{ c.beginPath(); c.arc(x,y,r*0.34,0,7); c.fillStyle='#fff'; c.fill(); c.lineWidth=Math.max(1,r*0.06); c.strokeStyle='#111'; c.stroke(); c.beginPath(); c.arc(x,y+r*0.04,r*0.15,0,7); c.fillStyle='#111'; c.fill(); } },
+  visor:  { name:'Visor', draw:(c,x,y,r)=>{ c.fillStyle='#111'; c.beginPath(); if(c.roundRect){ c.roundRect(x-r*0.5,y-r*0.16,r*1.0,r*0.32,r*0.14); c.fill(); } else { c.fillRect(x-r*0.5,y-r*0.16,r*1.0,r*0.32); } c.fillStyle='#3fd6ff'; c.fillRect(x-r*0.4,y-r*0.05,r*0.8,r*0.08); } },
+};
+const EYE_KEYS = Object.keys(EYES);
+
+// Unlock requirements for eyes and flags (caps carry their own `req`).
+const EYE_REQ = { googly:null, ball:null, dot:{wins:2}, wide:{goals:15}, angry:{wins:8}, happy:{played:10}, sleepy:{points:1150}, star:{streak:5}, cyclops:{points:1400}, visor:{drills:6} };
+// Flags unlock along a long progression curve. `none` and a couple are free.
+const FLAG_REQ = {
+  none:null, poland:null, japan:null,
+  indo:{wins:1}, austria:{played:5}, germany:{wins:2}, ukraine:{goals:8}, netherl:{wins:3},
+  spain:{points:1080}, france:{wins:4}, italy:{goals:15}, ireland:{played:10}, belgium:{points:1120},
+  argentina:{wins:6}, romania:{goals:22}, nigeria:{streak:3}, mexico:{played:15}, portugal:{points:1180},
+  canada:{wins:8}, bangla:{drills:2}, india:{goals:30}, sweden:{points:1250}, finland:{streak:4},
+  denmark:{wins:10}, norway:{drills:4}, brazil:{points:1350}, usa:{goals:40}, uk:{points:1450}, korea:{drills:6},
+};
+
+// Is a given customization item unlocked, and the human requirement text.
+function reqMet(req){
+  if(!req) return true;
+  if(req.wins!=null   && stats.wins   < req.wins)   return false;
+  if(req.points!=null && stats.points < req.points) return false;
+  if(req.goals!=null  && stats.gf     < req.goals)  return false;
+  if(req.streak!=null && stats.best   < req.streak) return false;
+  if(req.played!=null && stats.played < req.played) return false;
+  if(req.drills!=null && drillsDone() < req.drills) return false;
+  return true;
+}
+function reqText(req){
+  if(!req) return '';
+  if(req.wins!=null)   return 'Win '+req.wins+(req.wins>1?' matches':' match');
+  if(req.points!=null) return req.points+' RP';
+  if(req.goals!=null)  return 'Score '+req.goals+' goals';
+  if(req.streak!=null) return req.streak+'-win streak';
+  if(req.played!=null) return 'Play '+req.played+' matches';
+  if(req.drills!=null) return 'Finish '+req.drills+' drills';
+  return '';
+}
+function drillsDone(){ try { return Object.keys(drillBest||{}).length; } catch(e){ return 0; } }
+function itemReq(cat, key){
+  if(cat==='flag') return FLAG_REQ[key];
+  if(cat==='eyes') return EYE_REQ[key];
+  if(cat==='cap')  return (CAPS[key]||{}).req;
+  return null;
+}
+function isUnlocked(cat, key){ return reqMet(itemReq(cat, key)); }
+function unlockCounts(){
+  let have=0, total=0;
+  for(const k of FLAG_KEYS){ total++; if(isUnlocked('flag',k)) have++; }
+  for(const k of EYE_KEYS){ total++; if(isUnlocked('eyes',k)) have++; }
+  for(const k of Object.keys(CAPS)){ total++; if(isUnlocked('cap',k)) have++; }
+  return { have, total };
+}
 
 const DIFF = {
   easy:   { name:'Easy',   emoji:'🙂', react:0.72, err:26, power:0.82, aggr:0.85 },
@@ -759,6 +888,8 @@ function loadProfile() {
     name: (d.name||'').slice(0,12) || 'You',
     color: d.color || '#46d17a',
     cap: d.cap || 'star',
+    flag: d.flag || 'none',
+    eyes: d.eyes || 'googly',
   };
 }
 function saveProfile(){ try { localStorage.setItem('magnetball.profile', JSON.stringify(profile)); } catch(e){} }
@@ -833,13 +964,65 @@ function buildOpts(containerId, obj, key, extra){
     wrap.appendChild(el);
   });
 }
+// Draw one player disc (colour/flag/eyes/cap) onto a canvas context — shared by
+// the big live preview and every mini tile in the flag/eye pickers.
+function drawDisc(c, cx, cy, r, o){
+  c.beginPath(); c.arc(cx,cy,r+Math.max(2,r*0.16),0,7); c.fillStyle='#0a0d16'; c.fill();
+  c.beginPath(); c.arc(cx,cy,r,0,7); c.fillStyle=o.color||'#46d17a'; c.fill();
+  const flag = o.flag && o.flag!=='none' && FLAGS[o.flag] && FLAGS[o.flag].draw;
+  if (flag){
+    const fr=r*0.84; c.save(); c.beginPath(); c.arc(cx,cy,fr,0,7); c.clip();
+    FLAGS[o.flag].draw(c,cx,cy,fr); c.restore();
+  } else {
+    c.beginPath(); c.arc(cx,cy,r*0.64,0,7); c.fillStyle=o.color||'#46d17a'; c.fill();
+  }
+  if (o.eyes!==false) (EYES[o.eyes] || EYES.googly).draw(c,cx,cy,r);
+  const cap = o.cap && CAPS[o.cap] && CAPS[o.cap].emoji;
+  if (cap){ c.font=`${Math.round(r*0.72)}px sans-serif`; c.textAlign='center'; c.textBaseline='middle';
+    c.fillStyle=pickTextColor(o.color||'#46d17a'); c.fillText(cap, cx, cy - r*0.5); }
+}
 function updatePreview(){
   $('pvName').textContent = profile.name || 'Player';
-  const b = $('pvBall');
-  b.style.background = profile.color;
-  b.textContent = CAPS[profile.cap] ? CAPS[profile.cap].emoji : '';
-  b.style.color = pickTextColor(profile.color);
+  const cvs = $('pvCanvas');
+  if (cvs){ const c=cvs.getContext('2d'); c.clearRect(0,0,cvs.width,cvs.height);
+    drawDisc(c, cvs.width/2, cvs.height/2, cvs.width*0.36, profile); }
   $('pvName').style.color = profile.color;
+  const uc = unlockCounts(); const el=$('unlockCount'); if(el) el.textContent = `· ${uc.have}/${uc.total} unlocked`;
+}
+// Lock-aware tile pickers for flags and eyes (each tile is a mini disc).
+function buildTilePicker(containerId, cat, keys, curGet, onPick){
+  const wrap=$(containerId); if(!wrap) return; wrap.innerHTML='';
+  keys.forEach(k=>{
+    const unlocked = isUnlocked(cat,k);
+    const el=document.createElement('div');
+    el.className='opt'+(curGet()===k?' sel':'')+(unlocked?'':' locked');
+    const cvs=document.createElement('canvas'); cvs.width=cvs.height=64;
+    const o = cat==='flag' ? { color:profile.color, flag:k, eyes:'googly' }
+                           : { color:profile.color, flag:profile.flag, eyes:k };
+    drawDisc(cvs.getContext('2d'), 32, 32, 22, o);
+    el.appendChild(cvs);
+    const nm=document.createElement('span'); nm.textContent = cat==='flag'?FLAGS[k].name:EYES[k].name; el.appendChild(nm);
+    if(!unlocked){ const s=document.createElement('small'); s.textContent='🔒 '+reqText(itemReq(cat,k)); el.appendChild(s); }
+    el.onclick=()=>{ if(!isUnlocked(cat,k)) return;
+      if(cat==='flag') profile.flag=k; else profile.eyes=k;
+      saveProfile(); buildFlagPicker(); buildEyesPicker(); updatePreview(); };
+    wrap.appendChild(el);
+  });
+}
+function buildFlagPicker(){ buildTilePicker('flagPick','flag',FLAG_KEYS,()=>profile.flag); }
+function buildEyesPicker(){ buildTilePicker('eyesPick','eyes',EYE_KEYS,()=>profile.eyes); }
+// Caps: lock-aware emoji tiles.
+function buildCaps(){
+  const wrap=$('caps'); if(!wrap) return; wrap.innerHTML='';
+  Object.keys(CAPS).forEach(k=>{
+    const cp=CAPS[k]; const unlocked=isUnlocked('cap',k);
+    const el=document.createElement('div');
+    el.className='opt'+(profile.cap===k?' sel':'')+(unlocked?'':' locked');
+    el.innerHTML=`<span class="emoji">${cp.emoji||'—'}</span><span>${cp.name}</span>`+
+      (unlocked?'':`<small>🔒 ${reqText(cp.req)}</small>`);
+    el.onclick=()=>{ if(!unlocked) return; profile.cap=k; saveProfile(); buildCaps(); updatePreview(); };
+    wrap.appendChild(el);
+  });
 }
 function pickTextColor(hex){
   const c = hex.replace('#',''); const r=parseInt(c.substr(0,2),16),g=parseInt(c.substr(2,2),16),bl=parseInt(c.substr(4,2),16);
@@ -851,7 +1034,9 @@ $('pname').oninput = e => { profile.name = e.target.value.slice(0,12); saveProfi
 $('pname').onblur  = () => { if(!profile.name.trim()){ profile.name='You'; $('pname').value='You'; saveProfile(); updatePreview(); } };
 
 buildSwatches();
-buildOpts('caps', CAPS, 'cap');
+buildCaps();
+buildFlagPicker();
+buildEyesPicker();
 buildOpts('modes', MODES, 'mode', o=>o.desc);
 buildOpts('fields', FIELDS, 'field');
 buildOpts('diffs', DIFF, 'diff');
@@ -878,6 +1063,8 @@ function renderStats(){
   const streakTxt = stats.streak>0 ? ('W'+stats.streak) : stats.streak<0 ? ('L'+(-stats.streak)) : '—';
   $('recLine').innerHTML = `${stats.wins}W · ${stats.losses}L · ${stats.draws}D  (${stats.played} played)<br>`
     + `goals ${stats.gf}-${stats.ga} (${gd>=0?'+':''}${gd}) · streak ${streakTxt} · best W${Math.max(0,stats.best)}`;
+  // Refresh customization pickers so anything newly unlocked shows up.
+  if (typeof buildCaps==='function'){ buildCaps(); buildFlagPicker(); buildEyesPicker(); updatePreview(); }
 }
 renderStats();
 
@@ -1070,22 +1257,23 @@ function startMatch(){
   let players = [];
   // Team 0 = you (red), attacks toward top (-y). Team 1 = blue, attacks toward bottom (+y).
   // Human 1 on team 0.
-  const you = mkPlayer(0, profile.name, profile.color, profile.cap, 'human1');
+  const you = mkPlayer(0, profile.name, profile.color, profile.cap, 'human1', profile.flag, profile.eyes);
 
   if (mode.train){
     // Free practice: just you and the ball, no opponents, no clock.
     players.push(you);
   } else if (mode.twoP){
     // Local 2-player couch: two humans on one screen, split touch controls.
-    players.push(you, mkPlayer(1, 'P2', '#5a7de0', 'stripe', 'human2'));
+    players.push(you, mkPlayer(1, 'P2', '#5a7de0', 'stripe', 'human2', 'none', 'ball'));
   } else {
-    // Build both teams as bots, with you leading team 0.
+    // Build both teams as bots, with you leading team 0. Bots get random
+    // countryball flags + eyes for personality (unlock rules don't apply to NPCs).
     const t0 = [you];
     const t0names = pickNames(per-1, used);
-    for(let i=0;i<per-1;i++) t0.push(mkPlayer(0, t0names[i], teamTint(0,i+1), randCap(i), 'bot'));
+    for(let i=0;i<per-1;i++) t0.push(mkPlayer(0, t0names[i], teamTint(0,i+1), randCap(i), 'bot', randFlag(i), randEyes(i)));
     const t1 = [];
     const t1names = pickNames(per, used);
-    for(let i=0;i<per;i++) t1.push(mkPlayer(1, t1names[i], teamTint(1,i), randCap(i+3), 'bot'));
+    for(let i=0;i<per;i++) t1.push(mkPlayer(1, t1names[i], teamTint(1,i), randCap(i+3), 'bot', randFlag(i+3), randEyes(i+2)));
 
     // Duo mode: you steer BOTH of your players at once (same joystick + KICK).
     if (mode.duo){ for (const pl of t0){ pl.ctrl = 'human1'; pl.color = profile.color; } }
@@ -1166,10 +1354,14 @@ function teamTint(team, idx){
   return base[idx % base.length];
 }
 function randCap(i){ const k = Object.keys(CAPS); return k[(i+1)%k.length]; }
+// Deterministic-ish pick so bots vary but a match is reproducible frame-to-frame.
+function randFlag(i){ return FLAG_KEYS[(i*5+3) % FLAG_KEYS.length]; }
+function randEyes(i){ return EYE_KEYS[(i*3+1) % EYE_KEYS.length]; }
 
-function mkPlayer(team, name, color, cap, ctrl){
+function mkPlayer(team, name, color, cap, ctrl, flag, eyes){
   return {
     team, name, color, cap, ctrl, padIndex:-1,
+    flag: flag||'none', eyes: eyes||'googly',
     x:0, y:0, vx:0, vy:0, r:PLAYER.r, invMass:PLAYER.invMass, bCoef:PLAYER.bCoef, damp:PLAYER.damp,
     inX:0, inY:0, kick:false, kickUsed:false, chargeT:0,   // controller input + kick charge
     trap:false, trapT:0, trapUsed:false,                   // human trap-and-release state
@@ -1978,7 +2170,7 @@ function startDrill(key){
   world = {
     field: FIELDS.classic, drillMode:true, magnet:0,
     pAccel: PITCH.normal.accel, pDamp: PITCH.normal.damp,
-    players: [ mkPlayer(0, profile.name, profile.color, profile.cap, 'human1') ],
+    players: [ mkPlayer(0, profile.name, profile.color, profile.cap, 'human1', profile.flag, profile.eyes) ],
     ball: { x:0,y:0,vx:0,vy:0,px:0,py:0, r:BALL.r, invMass:BALL.invMass, bCoef:BALL.bCoef, damp:BALL.damp, isBall:true },
     walls:[], posts:[], arcs:[], gates:[], zones:[], cones:[],
     state:'drill', stateT:0,
@@ -2231,8 +2423,19 @@ function drawDiscs(w){
     ctx.fillStyle = TH.discRim; ctx.fill();
     ctx.beginPath(); ctx.arc(x, y, r, 0, 2*Math.PI);
     ctx.fillStyle = teamCol; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, r*0.64, 0, 2*Math.PI);
-    ctx.fillStyle = p.color; ctx.fill();
+    // Face: a countryball flag skin (clipped to the disc, leaving a thin team ring),
+    // or the classic solid custom-colour core when no flag is chosen.
+    const flag = p.flag && p.flag!=='none' && FLAGS[p.flag] && FLAGS[p.flag].draw;
+    if (flag){
+      const fr = r*0.84;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(x, y, fr, 0, 2*Math.PI); ctx.clip();
+      FLAGS[p.flag].draw(ctx, x, y, fr);
+      ctx.restore();
+    } else {
+      ctx.beginPath(); ctx.arc(x, y, r*0.64, 0, 2*Math.PI);
+      ctx.fillStyle = p.color; ctx.fill();
+    }
     // Colour-blind aid: distinguish teams by shape — team 0 solid white ring,
     // team 1 dashed white ring (readable regardless of hue).
     if (w.cb){
@@ -2258,14 +2461,9 @@ function drawDiscs(w){
       ctx.fillText(cap, x, y - r*0.48);
       ctx.globalAlpha = 1;
     }
-    // Two googly eyes, always in the same spot, pupils centred (no rotation).
+    // The countryball "face" — a selectable eye style, always upright (no rotation).
     if (r > 5){
-      const sep=r*0.38, eyeR=r*0.27, pupilR=r*0.13, ey=y+r*0.06;
-      for (const sgn of [-1,1]){
-        const ex = x + sgn*sep;
-        ctx.beginPath(); ctx.arc(ex,ey,eyeR,0,2*Math.PI); ctx.fillStyle=TH.eyeWhite; ctx.fill();
-        ctx.beginPath(); ctx.arc(ex,ey,pupilR,0,2*Math.PI); ctx.fillStyle=TH.eyePupil; ctx.fill();
-      }
+      (EYES[p.eyes] || EYES.googly).draw(ctx, x, y, r);
     }
     // name label — pixel font in a solid black plate
     if (s>0.28){
@@ -2589,6 +2787,8 @@ if (window.__MAGNETDEBUG) {
     startMatch, step, applyFeel, feelVals, playSfx, applyTheme, applyPreset,
     handleBallControl, openSettings, closeSettings,
     get repBuf(){ return repBuf; }, get lastReplay(){ return lastReplay; }, playReplay, saveClip, repMime,
+    get profile(){ return profile; }, get stats(){ return stats; }, FLAGS, EYES, CAPS,
+    isUnlocked, unlockCounts, renderStats, buildFlagPicker, buildEyesPicker, buildCaps,
   };
 }
 })();

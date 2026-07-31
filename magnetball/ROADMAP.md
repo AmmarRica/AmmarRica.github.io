@@ -10,6 +10,12 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Unlockables + Countryballs + player builder** (#4, #8) — 51 unlockable cosmetics: 29
+  **countryball** flag skins for your disc, 10 **eye styles**, and 12 **caps**, each gated
+  behind a milestone (RP, wins, goals, win-streak, matches played, or drills finished). A
+  live-preview "build your own player" in the setup screen (colour + flag + eyes + cap);
+  locked items show their requirement. Bots wear random flags/eyes for personality. The
+  actual match ball is never skinned — only players.
 - **Goal replay + clip share** (#9) — a rolling 6-second snapshot buffer is frozen on every
   goal and re-rendered as an instant replay (offline, theme-aware). A **Save clip** button
   records that playback with `MediaRecorder` and opens the native share sheet
