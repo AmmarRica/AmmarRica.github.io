@@ -2706,9 +2706,28 @@ function drawReplayFrame(f){
     ball: { ...world.ball, x:f.bx, y:f.by },
   };
   drawPitch(fake); drawBall(fake); drawDiscs(fake);
-  ctx.fillStyle = TH.hudText; ctx.font = `14px 'PixAmiga', monospace`;
-  ctx.textAlign='center'; ctx.textBaseline='top';
-  ctx.fillText('▶ REPLAY', cw/2, 116);
+  // Big, centred REPLAY label + skip hint so it's clear what's happening.
+  const cx = cw/2, cy = ch*0.44;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.save();
+  ctx.shadowColor='rgba(0,0,0,.85)'; ctx.shadowBlur=14;
+  ctx.font = `${Math.round(Math.min(cw,ch)*0.075)}px 'PixAmiga', monospace`;
+  ctx.fillStyle = TH.accent || '#21e6ff';
+  ctx.fillText('▶ REPLAY', cx, cy);
+  ctx.font = `12px 'PixAmiga', monospace`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('tap to skip', cx, cy + Math.min(cw,ch)*0.075*0.72 + 6);
+  ctx.restore();
+  ctx.textBaseline='alphabetic';
+}
+// Skip a playing replay — the pending rAF tick then resolves the promise, so
+// the goal → kickoff flow continues immediately. (Don't cancel the rAF here, or
+// the promise would never resolve and the match would hang in the goal state.)
+function skipReplay(){ if (replay.active) replay.active = false; }
+function anyPadPressed(){
+  const gps=(navigator.getGamepads&&navigator.getGamepads())||[];
+  for (const g of gps){ if(!g) continue; for (const b of g.buttons){ if (b && (b.pressed || b.value>0.5)) return true; } }
+  return false;
 }
 function playReplay(speed){
   speed = speed || 0.55;
@@ -2720,6 +2739,7 @@ function playReplay(speed){
     const dur = (STEP/speed)*1000;
     function tick(t){
       if (!replay.active){ resolve(); return; }
+      if (idx > 4 && anyPadPressed()){ replay.active=false; resolve(); return; }   // controller skips too
       if (!last) last = t;
       while (t - last >= dur){ last += dur; idx++; }
       if (idx >= frames.length){ drawReplayFrame(frames[frames.length-1]); replay.active=false; resolve(); return; }
@@ -4187,6 +4207,7 @@ function zoneForTouch(x, y){
 }
 
 function onDown(id, x, y){
+  if (replay.active){ skipReplay(); return; }   // tap anywhere skips a playing replay
   if (!running || paused || (world && world.state==='over')) return;
   const z = zoneForTouch(x,y);
   const pad = pads[z.pad];
@@ -4242,6 +4263,7 @@ window.addEventListener('mouseup', () => onUp(mouseDownId));
 // Keyboard (desktop testing) — arrows/WASD move p1, space kicks
 const keys = {};
 window.addEventListener('keydown', e => {
+  if (replay.active){ skipReplay(); return; }   // any key skips a playing replay
   keys[e.key.toLowerCase()] = true;
   if (e.key === ' ') { pads.p1.kick = true; e.preventDefault(); }
   if (e.key === 'Escape' && !$('settings').classList.contains('hidden')){ closeSettings(); e.preventDefault(); }
@@ -4410,7 +4432,7 @@ if (window.__MAGNETDEBUG) {
     startMatch, step, applyFeel, feelVals, playSfx, applyTheme, applyPreset,
     handleBallControl, openSettings, closeSettings,
     get repBuf(){ return repBuf; }, get lastReplay(){ return lastReplay; }, playReplay, saveClip, repMime,
-    replayPayload, lbSubmitReplay,
+    replayPayload, lbSubmitReplay, skipReplay, get replay(){ return replay; },
     openSocial, buildFeed, genGoalClip, clipFromLastReplay, addToFeed, seedFeed, drawClip,
     get feed(){ return feed; },
     get profile(){ return profile; }, get stats(){ return stats; }, FLAGS, EYES, CAPS,
