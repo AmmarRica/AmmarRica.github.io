@@ -10,6 +10,10 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Juice pass** — game-feel polish: screen shake (scaled by kick power, hard wall/net hits,
+  and big on goals), a brief hit-stop freeze-frame and dramatic slow-mo on goals, a coloured
+  goal flash (scorer's team), and a bigger confetti burst. All gated by a **Screen shake &
+  effects** toggle in Settings (accessibility — off makes every effect a no-op).
 - **Desktop live-settings dock** — on wide screens the full Settings panel docks on the left
   as a persistent sidebar so you can tweak theme / sound / feel while the match keeps playing;
   the pitch camera insets so it's never hidden. Mobile keeps the fullscreen overlay.

@@ -412,6 +412,9 @@
     </div>
     <div class="card">
       <h2>Game Feel</h2>
+      <label class="field">Screen shake &amp; effects</label>
+      <div class="opts" id="juicePick"></div>
+      <div style="height:10px"></div>
       <label class="field">Preset</label>
       <div class="opts" id="feelPresets"></div>
       <div style="height:8px"></div>
@@ -677,7 +680,7 @@ const POST   = { r:8,  invMass:0.0, bCoef:0.55 };
 let profile = loadProfile();
 let sel = { mode:'1v1', field:'classic', diff:'normal', length:'5', controllers:'off', magnet:0,
             ball:'normal', handed:'right', sens:1.0, pitch:'normal', spectate:'play', cb:'off',
-            theme:'neon', trapOff:false,
+            theme:'neon', trapOff:false, juice:true,
             snd: { muted:false, vol:40, whistle:0, crowd:0, kick:0, wall:0, net:0 },
             // "Game feel" — adjustable physics (defaults mirror the current tuning).
             feel: { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 } };
@@ -1197,6 +1200,16 @@ function buildSettings(){
     el.onclick=()=>{ sel.theme=key; saveSel(); applyTheme(key); buildSettings(); };
     tp.appendChild(el);
   }
+  // Juice / screen-shake toggle (accessibility: some players want it off).
+  const jp=$('juicePick');
+  if (jp){ jp.innerHTML='';
+    [['on','✨ On'],['off','⊘ Off']].forEach(([k,lab])=>{
+      const on=(k==='on')===!!sel.juice;
+      const el=document.createElement('div'); el.className='opt'+(on?' sel':''); el.innerHTML=`<span>${lab}</span>`;
+      el.onclick=()=>{ sel.juice=(k==='on'); saveSel(); buildSettings(); if(sel.juice) addShake(6); };
+      jp.appendChild(el);
+    });
+  }
   const mm=$('sndMaster'); mm.innerHTML='';
   [['on','🔊 On'],['off','🔇 Muted']].forEach(([k,lab])=>{
     const el=document.createElement('div'); const isSel=(k==='off')===!!sel.snd.muted;
@@ -1501,6 +1514,15 @@ function layTeam(list, side, halfL){
 //  MAIN LOOP
 // ============================================================
 let lastT = 0, acc = 0;
+// ---- Juice: screen shake, hit-stop, goal flash & slow-mo (all gated by sel.juice)
+let shake = 0, flash = 0, flashCol = '#ffffff', hitStop = 0;
+function addShake(a){ if (!sel.juice) return; shake = Math.min(shake + a, 16); }
+function goalBurst(w, team){
+  if (!sel.juice) return;
+  addShake(13); hitStop = 5;
+  flashCol = team===0 ? TH.teamRed : TH.teamBlue; flash = 0.9;
+}
+
 function loop(t){
   if (!running){ return; }
   rafId = requestAnimationFrame(loop);
@@ -1509,7 +1531,9 @@ function loop(t){
   let dt = (t - lastT) / 1000; lastT = t;
   if (dt > 0.1) dt = 0.1;               // clamp big gaps
   if (paused){ render(); return; }
-  acc += dt;
+  if (hitStop > 0){ hitStop--; render(); return; }   // brief freeze-frame for impact
+  const slow = (sel.juice && world && world.state==='goal') ? 0.45 : 1;   // dramatic goal slow-mo
+  acc += dt * slow;
   let steps = 0;
   while (acc >= STEP && steps < 5){
     step(world);
@@ -1673,8 +1697,8 @@ function step(w){
 // Play a wall/net sound once per frame when the ball bounces (flags set in collideWall).
 function ballSounds(w){
   const b = w.ball;
-  if (b._hitNet){ playSfx('net'); b._hitNet=false; b._hitWall=false; }
-  else if (b._hitWall){ playSfx('wall'); b._hitWall=false; }
+  if (b._hitNet){ playSfx('net'); addShake(4); b._hitNet=false; b._hitWall=false; }
+  else if (b._hitWall){ playSfx('wall'); addShake(3); b._hitWall=false; }
 }
 
 // ---------- Human input mapping from a pad
@@ -1802,7 +1826,7 @@ function handleBallControl(w, p, ball, ballFrozen){
       if (w.magnet > 0 && dist < sum + 22) power *= 1 + (w.magnet/100) * 0.7;
       ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
       p.kickUsed = true;
-      spawnKickFx(ball.x, ball.y, nx, ny); playSfx('kick');
+      spawnKickFx(ball.x, ball.y, nx, ny, power); playSfx('kick');
     }
     if (!p.kick) p.kickUsed = false;
   } else if (w.trapOff && !ballFrozen){
@@ -1814,7 +1838,7 @@ function handleBallControl(w, p, ball, ballFrozen){
       const power = (w.kickPower||PLAYER.kick) * (1 + (p.chargeT / CHARGE.max) * CHARGE.bonus);
       ball.vx += nx * power + p.vx * KICK_CARRY; ball.vy += ny * power + p.vy * KICK_CARRY;
       p.kickUsed = true;
-      spawnKickFx(ball.x, ball.y, nx, ny); playSfx('kick');
+      spawnKickFx(ball.x, ball.y, nx, ny, power); playSfx('kick');
     }
     if (!p.kick) p.kickUsed = false;
   } else if (!ballFrozen){
@@ -1867,7 +1891,7 @@ function releaseTrap(w, p, ball){
   if (w.magnet > 0) power *= 1 + (w.magnet/100) * 0.7;
   ball.vx = fx*power + p.vx; ball.vy = fy*power + p.vy;
   p.trap = false; p.trapUsed = true; p.chargeT = 0;
-  spawnKickFx(ball.x, ball.y, fx, fy); playSfx('kick');
+  spawnKickFx(ball.x, ball.y, fx, fy, power); playSfx('kick');
 }
 
 // Elastic disc-disc collision weighted by inverse mass.
@@ -1973,7 +1997,8 @@ function scoreGoal(w, team){
   playSfx('crowd');              // crowd cheer on a goal
   showBanner('GOAL!', team===0?'var(--red)':'var(--cyan)');
   fx.length = 0;
-  for (let i=0;i<26;i++) spawnConfetti(ball_x(w), ball_y(w));
+  for (let i=0;i<(sel.juice?40:26);i++) spawnConfetti(ball_x(w), ball_y(w));
+  goalBurst(w, team);   // shake + flash + hit-stop
   repOnGoal(w);   // freeze the last few seconds for replay / clip share
   if (w.goalsTarget && w.score[team] >= w.goalsTarget){ setTimeout(()=>endMatch(w), 1200); }
 }
@@ -2372,12 +2397,19 @@ function render(){
   ctx.clearRect(0,0,cw,ch);
   ctx.fillStyle = TH.fieldBg;
   ctx.fillRect(0,0,cw,ch);
+  // Screen shake — jitter only the pitch/players, never the touch controls.
+  let sx=0, sy=0;
+  if (shake > 0.3){ sx=(Math.random()*2-1)*shake; sy=(Math.random()*2-1)*shake; shake*=0.85; } else shake=0;
+  ctx.save(); ctx.translate(sx, sy);
   drawPitch(world);
   drawFx();
   drawBallTrail(world);
   drawDiscs(world);
   drawBall(world);
   if (world.state==='kickoff') drawKickoffHint(world);
+  ctx.restore();
+  // Goal flash — a quick coloured wash that fades.
+  if (flash > 0.01){ ctx.fillStyle = rgba(flashCol, flash*0.35); ctx.fillRect(0,0,cw,ch); flash*=0.88; } else flash=0;
   drawControls();
 }
 
@@ -2558,12 +2590,15 @@ function drawKickoffHint(w){
 
 // ---------- FX (kick sparks, confetti)
 let fx = [];
-function spawnKickFx(x,y,nx,ny){
-  for (let i=0;i<6;i++){
+function spawnKickFx(x,y,nx,ny,pow){
+  pow = pow || 5;
+  const n = Math.min(16, 5 + Math.round(pow*0.9));
+  for (let i=0;i<n;i++){
     const a = Math.atan2(ny,nx) + (Math.random()-0.5)*1.2;
-    const sp = 1.5+Math.random()*2.5;
+    const sp = 1.5 + Math.random()*2.5*(0.6+pow*0.09);
     fx.push({x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, life:0.3, max:0.3, c:'#fff', r:2.5});
   }
+  addShake(Math.min(5, pow*0.5));   // a stronger kick shakes more
 }
 function spawnConfetti(x,y){
   const cols=['#e05a5a','#5a7de0','#f5d547','#46d17a','#fff','#f07a5a'];
@@ -2838,6 +2873,8 @@ if (window.__MAGNETDEBUG) {
     get repBuf(){ return repBuf; }, get lastReplay(){ return lastReplay; }, playReplay, saveClip, repMime,
     get profile(){ return profile; }, get stats(){ return stats; }, FLAGS, EYES, CAPS,
     isUnlocked, unlockCounts, renderStats, buildFlagPicker, buildEyesPicker, buildCaps,
+    get shake(){ return shake; }, get hitStop(){ return hitStop; }, get flash(){ return flash; },
+    addShake, goalBurst, scoreGoal,
   };
 }
 })();
