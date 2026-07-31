@@ -506,6 +506,7 @@
       <button class="navtile" id="lbBtn"><span>📊</span>Ranks</button>
       <button class="navtile" id="dailyBtn"><span>🎁</span>Daily</button>
       <button class="navtile" id="shopBtn"><span>🛍</span>Shop</button>
+      <button class="navtile" id="rogueBtn"><span>☠️</span>Gauntlet</button>
       <button class="navtile" id="settingsBtn"><span>⚙</span>Settings</button>
       <button class="navtile" id="howBtn"><span>❔</span>How to play</button>
     </div>
@@ -717,6 +718,13 @@
       <button class="ghost" id="shopSupport" style="margin-top:4px">💛 Coming soon — thanks for playing</button>
     </div>
     <button class="ghost" id="shopBack" style="margin-top:12px">← Back</button>
+  </div>
+
+  <!-- ===================== ROGUELIKE / GAUNTLET ===================== -->
+  <div id="rogue" class="screen hidden">
+    <div class="logo"><h1 style="font-size:26px">GAUNTLET</h1><p id="rogueSub">Roguelike run · climb as deep as you can</p></div>
+    <div class="card"><div id="rogueBody"></div></div>
+    <button class="ghost" id="rogueBack" style="margin-top:12px">← Back</button>
   </div>
 
   <!-- ===================== SOCIAL / WATCH (Instagram-style feed) ===================== -->
@@ -1750,6 +1758,7 @@ $('seasonBack').onclick = () => { $('season').classList.add('hidden'); $('setup'
 $('lbBtn').onclick = openLeaderboard;
 $('shopBtn').onclick = openShop;
 $('socialBtn').onclick = openSocial;
+$('rogueBtn').onclick = openRogue;
 $('dailyBtn').onclick = openDailyView;
 $('dmCollect').onclick = closeDailyModal;
 $('lbBack').onclick = () => { $('leaderboard').classList.add('hidden'); $('setup').classList.remove('hidden'); };
@@ -1758,6 +1767,7 @@ $('shopBack').onclick = () => { $('shop').classList.add('hidden'); $('setup').cl
 $('cocktailReset').onclick = () => { sel.cocktailSides = {}; saveSel(); buildCocktailRows(); };
 $('cocktailBack').onclick = () => { $('cocktailCfg').classList.add('hidden'); openSettings(false); };
 $('socialBack').onclick = closeSocial;
+$('rogueBack').onclick = () => { $('rogue').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('shopSupport').onclick = () => { const b=$('shopSupport'); b.textContent='💛 Thank you! Have fun out there.'; };
 $('padCfgBtn').onclick = openPadConfig;
 $('padCfgBack').onclick = () => { padBind.active=false; $('padConfig').classList.add('hidden'); $('setup').classList.remove('hidden'); };
@@ -1773,7 +1783,7 @@ $('ovResume').onclick = () => togglePause(false);
 $('ovMenu').onclick = toMenu;
 $('ovRematch').onclick = () => { hideOverlay(); startMatch(); };
 
-function hideScreens(){ ['setup','how','drills','settings','season','leaderboard','shop','social','cocktailCfg','padConfig'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); }); padBind.active=false;
+function hideScreens(){ ['setup','how','drills','settings','season','leaderboard','shop','social','rogue','cocktailCfg','padConfig'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); }); padBind.active=false;
   const tt=$('tutTip'); if(tt) tt.classList.add('hidden');
   // ensure any docked settings panel is fully torn down when screens change
   $('settings').classList.remove('docked'); document.body.classList.remove('panel-open');
@@ -2132,6 +2142,106 @@ function seasonOverlay(title, sub, kind){
   $('ovRematch').textContent='Cup'; $('ovRematch').style.display=''; $('ovRematch').onclick=()=>{ hideOverlay(); openSeason(); };
   $('ovMenu').textContent='Main Menu'; $('ovMenu').onclick=toMenu;
   $('overlay').classList.add('show');
+}
+
+// ============================================================
+//  ROGUELIKE / GAUNTLET — a run of escalating matches. Win to descend deeper
+//  and pick a random upgrade; lose to spend a life. 3 lives; run ends at 0.
+//  Your deepest run is remembered. Local, reuses the match engine.
+// ============================================================
+const ROGUE_PERKS = [
+  { k:'cannon',  emoji:'💥', name:'Cannon',     desc:'+30% kick power' },
+  { k:'sprint',  emoji:'⚡', name:'Sprint',      desc:'+22% move speed' },
+  { k:'magnet',  emoji:'🧲', name:'Magnet',      desc:'Ball sticks to your feet' },
+  { k:'bigball', emoji:'🏐', name:'Beach Ball',  desc:'Bigger, easier ball' },
+  { k:'floaty',  emoji:'🎈', name:'Floaty',      desc:'Faster, floatier ball' },
+  { k:'clock',   emoji:'⏱️', name:'Stopwatch',   desc:'+60s on the clock' },
+  { k:'heal',    emoji:'❤️', name:'Extra Life',  desc:'+1 life' },
+];
+function loadRogue(){ try{ return JSON.parse(localStorage.getItem('magnetball.rogue')||'{}'); }catch(e){ return {}; } }
+function saveRogue(){ try{ localStorage.setItem('magnetball.rogue', JSON.stringify(rogue)); }catch(e){} }
+let rogue = Object.assign({ best:0, active:false, depth:0, lives:3, perks:[] }, loadRogue());
+function rogueRoundSetup(round){                    // round is 1-based
+  const tiers=['rookie','easy','normal','hard','pro','elite','insane'];
+  const di=Math.min(tiers.length-1, Math.floor((round-1)/2));
+  const mode = round<3?'1v1':(round<6?'2v2':'3v3');
+  const len  = round<4?'3':'5';
+  return { mode, diff:tiers[di], len };
+}
+function applyRoguePerks(w){
+  const n=k=>rogue.perks.filter(p=>p===k).length;
+  w.kickPower = (w.kickPower||PLAYER.kick) * Math.pow(1.30, n('cannon'));
+  w.pAccel    = (w.pAccel||PLAYER.accel)   * Math.pow(1.22, n('sprint'));
+  if(n('magnet'))  w.magnet   = Math.max(w.magnet, 55 + 15*n('magnet'));
+  if(n('bigball')) w.ball.r   = Math.round(w.ball.r * Math.pow(1.35, n('bigball')));
+  if(n('floaty'))  w.ballCap  = Math.round((w.ballCap||32) * Math.pow(1.25, n('floaty')));
+  if(n('clock'))   w.timeLeft += 60*n('clock');
+}
+function perkChip(k){ const p=ROGUE_PERKS.find(x=>x.k===k); return p?p.emoji:''; }
+function openRogue(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('rogue').classList.remove('hidden'); buildRogueHome(); }
+function buildRogueHome(){
+  const b=$('rogueBody'); if(!b) return;
+  const sub=$('rogueSub'); if(sub) sub.textContent = `Deepest run: ${rogue.best}`;
+  const perksTxt = rogue.perks.length ? rogue.perks.map(perkChip).join(' ') : '—';
+  b.innerHTML='';
+  if(rogue.active){
+    const info=document.createElement('div'); info.style.cssText='font-family:var(--pix);font-size:13px;line-height:1.9';
+    info.innerHTML=`Run in progress<br>Depth <b style="color:var(--accent)">${rogue.depth}</b> · Lives ❤×${rogue.lives}<br>Upgrades: ${perksTxt}`;
+    const go=document.createElement('button'); go.className='primary'; go.style.marginTop='12px'; go.textContent='Continue run ▶'; go.onclick=()=>rogueNextRound();
+    const quit=document.createElement('button'); quit.className='ghost'; quit.style.marginTop='10px'; quit.textContent='Abandon run';
+    quit.onclick=()=>{ rogue.active=false; rogue.depth=0; rogue.lives=3; rogue.perks=[]; saveRogue(); buildRogueHome(); };
+    b.append(info,go,quit);
+  } else {
+    const info=document.createElement('div'); info.style.cssText='font-family:var(--pix);font-size:12px;line-height:1.9;color:var(--muted)';
+    info.innerHTML=`Win to descend &amp; pick an upgrade. Lose to spend a life. <b style="color:#fff">3 lives.</b><br>Bots get tougher every round. How deep can you go?`;
+    const go=document.createElement('button'); go.className='primary'; go.style.marginTop='12px'; go.textContent='Start run ▶';
+    go.onclick=()=>{ rogue.active=true; rogue.depth=0; rogue.lives=3; rogue.perks=[]; saveRogue(); rogueNextRound(); };
+    b.append(info,go);
+  }
+}
+function rogueNextRound(){
+  const round = rogue.depth + 1, s = rogueRoundSetup(round);
+  sel.mode=s.mode; sel.diff=s.diff; sel.length=s.len; saveSel();
+  startMatch();
+  world.rogue = { round };
+  applyRoguePerks(world);
+  showBanner('DEPTH '+round, 'var(--accent)');
+}
+function rogueEnd(w){
+  let delta=0; if(!w.watch) delta=recordResult(w);
+  const rp = delta ? `   ·   ${delta>0?'+':''}${delta} RP` : '';
+  const sc = `${w.score[0]}–${w.score[1]}`;
+  if(w.score[0] > w.score[1]){
+    rogue.depth++; if(rogue.depth>rogue.best) rogue.best=rogue.depth; saveRogue();
+    rogueOverlay(`DEPTH ${rogue.depth} ✅`, `${sc}${rp} · ❤×${rogue.lives}`, 'perk');
+  } else {
+    rogue.lives--; saveRogue();
+    if(rogue.lives<=0){ rogue.active=false; saveRogue(); rogueOverlay('RUN OVER ☠', `Reached depth ${rogue.depth} · best ${rogue.best}${rp}`, 'end'); }
+    else rogueOverlay('KNOCKED OUT', `${sc} · ❤×${rogue.lives} left${rp}`, 'retry');
+  }
+}
+function rogueOverlay(title, sub, kind){
+  paused=true; const aw=$('ovAwards'); if(aw) aw.innerHTML='';
+  $('ovTitle').classList.remove('slam'); $('ovTitle').textContent=title; $('ovSub').textContent=sub;
+  $('ovResume').style.display=''; $('ovRematch').style.display='none';
+  if(kind==='perk'){ $('ovResume').textContent='Choose upgrade ▶'; $('ovResume').onclick=()=>{ hideOverlay(); openRoguePerks(); }; }
+  else if(kind==='retry'){ $('ovResume').textContent='Try again ▶'; $('ovResume').onclick=()=>{ hideOverlay(); rogueNextRound(); }; }
+  else { $('ovResume').textContent='End run'; $('ovResume').onclick=()=>{ hideOverlay(); openRogue(); }; }
+  $('ovMenu').textContent='Main Menu'; $('ovMenu').onclick=toMenu;
+  $('overlay').classList.add('show');
+}
+function openRoguePerks(){
+  hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('rogue').classList.remove('hidden');
+  const sub=$('rogueSub'); if(sub) sub.textContent = `Depth ${rogue.depth} cleared · pick an upgrade`;
+  const b=$('rogueBody'); b.innerHTML='';
+  const pool=ROGUE_PERKS.slice(), choices=[];
+  for(let i=0;i<3 && pool.length;i++){ const idx=Math.floor(Math.random()*pool.length); choices.push(pool.splice(idx,1)[0]); }
+  choices.forEach(p=>{
+    const el=document.createElement('div'); el.className='opt'; el.style.marginBottom='8px';
+    el.innerHTML=`<span class="emoji">${p.emoji}</span><span>${p.name}</span><small>${p.desc}</small>`;
+    el.onclick=()=>{ if(p.k==='heal') rogue.lives++; else rogue.perks.push(p.k); saveRogue(); rogueNextRound(); };
+    b.appendChild(el);
+  });
 }
 
 // ============================================================
@@ -3519,6 +3629,7 @@ function ball_x(w){ return w.ball.x; } function ball_y(w){ return w.ball.y; }
 function endMatch(w){
   if (w.state==='over') return;
   w.state='over';
+  if (w.rogue){ rogueEnd(w); return; }     // gauntlet run handles its own overlay
   if (w.season){ seasonEnd(w); return; }   // cup progression handles its own overlay
   let title, sub;
   if (w.score[0]===w.score[1]){ title='DRAW'; sub=`${w.score[0]} – ${w.score[1]}`; }
@@ -4644,6 +4755,7 @@ if (window.__MAGNETDEBUG) {
     replayPayload, lbSubmitReplay, skipReplay, get replay(){ return replay; },
     openSocial, buildFeed, genGoalClip, clipFromLastReplay, addToFeed, seedFeed, drawClip,
     get feed(){ return feed; }, buildPartyMods, moveBall, checkGoal,
+    openRogue, rogueNextRound, rogueEnd, applyRoguePerks, openRoguePerks, ROGUE_PERKS, get rogue(){ return rogue; }, updateMMR,
     get profile(){ return profile; }, get stats(){ return stats; }, FLAGS, EYES, CAPS,
     isUnlocked, unlockCounts, renderStats, buildFlagPicker, buildEyesPicker, buildCaps,
     get shake(){ return shake; }, get hitStop(){ return hitStop; }, get flash(){ return flash; },
