@@ -95,6 +95,15 @@ the screen is never empty). Tap **↻ Refresh** to re-pull.
 6. Commit & deploy. Done — finishing a match now writes your score, and the
    board reads through the same script (one row per player, best RP kept).
 
+### Replays (Save clip → sheet)
+Once the Apps Script is deployed and `LB.endpoint` is set, the game's **Save clip**
+button also posts the goal's **replay data** — the re-simulatable frame buffer, not
+the video (a Sheet can't hold binary) — to a **Replays** tab. That tab is created
+automatically on the first save, with columns `Timestamp | Name | Country | Field |
+Players | Frames | Data`. The button shows **✓ Saved to sheet** on success, or
+**⚠ Sheet not connected** if you haven't set `LB.endpoint` yet. Frames are
+downsampled + rounded so each replay fits in one cell.
+
 ### How submission behaves
 - Scores are posted automatically at the end of every ranked match
   (`recordResult`).

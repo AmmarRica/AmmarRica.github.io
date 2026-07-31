@@ -10,6 +10,13 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
 ---
 
 ## ✅ Shipped since
+- **Save clip → sheet (replay data)** — "Save clip" now also posts the goal's **replay data**
+  (the re-simulatable frame buffer, rounded + downsampled to fit one cell — not the video) to a
+  **Replays** tab in the Google Sheet, created automatically by the Apps Script. The button shows
+  **✓ Saved to sheet** / **⚠ Sheet not connected** so you know it landed. (Writing needs the Apps
+  Script endpoint from LEADERBOARD_SETUP.md.)
+- **Bot fairness** — bots no longer get a hidden magnet "stick" the player doesn't have; everyone
+  plays with the same ball-magnet setting, so at magnet 0 the ball is a free puck for bots too.
 - **Display modes (mobile / desktop / cocktail)** — a Display section in Settings. **Auto** picks
   mobile vs desktop by screen width; on desktop/cocktail the on-screen touch thumbsticks are hidden
   (keyboard + gamepad drive play instead). **Cocktail** is a new mode for a flat screen laid on its
