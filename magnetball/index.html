@@ -2372,6 +2372,13 @@ function step(w){
     updateClock(w);
   }
 
+  // Training re-serve: after a practice goal the ball rests in the net briefly,
+  // then returns to centre (so it never looks like it just disappeared).
+  if (w.train && w._trainGoalCd > 0){
+    w._trainGoalCd -= STEP;
+    if (w._trainGoalCd <= 0){ const b=w.ball; b.x=0; b.y=0; b.vx=0; b.vy=0; b.spin=0; b.sqT=0; }
+  }
+
   const active = (w.state==='play' || w.state==='kickoff');
 
   // --- Gather controller inputs (only while the ball is live or during kickoff)
@@ -2785,11 +2792,16 @@ function checkGoal(w){
   const inBot = ball.y > halfL - ball.r*0.4 && Math.abs(ball.x) < gh;
   if (!inTop && !inBot) return;
   if (w.train){
-    // Practice: count the goal, flash the banner, and re-serve the ball at centre.
+    // Practice: count the goal and celebrate, but LET THE BALL SIT IN THE NET for
+    // a beat before re-serving at centre — otherwise it looks like it vanishes the
+    // instant it crosses the line. The re-serve happens in step() once the timer
+    // elapses; the guard stops this from re-counting while the ball rests in-goal.
+    if (w._trainGoalCd > 0) return;
     w.practiceGoals++;
     showBanner('GOAL!', 'var(--accent)');
     fx.length = 0; for (let i=0;i<20;i++) spawnConfetti(ball.x, ball.y);
-    ball.x = 0; ball.y = 0; ball.vx = 0; ball.vy = 0;
+    goalBurst(w, inTop ? 1 : 0);
+    w._trainGoalCd = 1.1;
     updateScoreUI();
     return;
   }
