@@ -648,6 +648,7 @@
       <button class="ghost" id="feelReset" style="margin-top:10px">Reset to defaults</button>
     </div>
     <button class="ghost" id="settingsBack">← Back</button>
+    <button class="ghost" id="settingsMenu" style="margin-top:12px">🏠 Main Menu</button>
   </div>
 
   <!-- ===================== COCKTAIL SIDES CONFIG ===================== -->
@@ -1800,6 +1801,14 @@ $('gearBtn').onclick = () => { if (!$('settings').classList.contains('hidden')) 
 $('replayBtn').onclick = () => { if (!replay.active) playReplay(); };
 $('clipBtn').onclick = () => { if (!replay.active) saveClip(); };
 $('settingsBack').onclick = closeSettings;
+$('settingsMenu').onclick = () => {
+  // Tear down any docked/overlay settings state, then go to the main menu
+  // (ends the current match if one is running).
+  $('settings').classList.add('hidden'); $('settings').classList.remove('docked');
+  document.body.classList.remove('panel-open');
+  settingsDocked = false; settingsFromGame = false; uiPadLeft = 0;
+  toMenu();
+};
 $('feelReset').onclick = () => { sel.feel = { accel:40, pdamp:905, ballcap:32, kick:55, bdamp:990 }; sel.magnet=0; sel.sens=1.0; sel.trapOff=false; saveSel(); applyFeel(); buildSettings(); };
 
 const SFX_CATS = [['whistle','Whistle (kickoff / reset)'],['crowd','Crowd (goal)'],['kick','Pass / kick'],['wall','Wall bounce'],['net','Net']];
