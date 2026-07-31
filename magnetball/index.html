@@ -533,9 +533,12 @@
 
   <!-- ===================== LEADERBOARD ===================== -->
   <div id="leaderboard" class="screen hidden">
-    <div class="logo"><h1 style="font-size:28px">LEADERBOARD</h1><p>Global ranking · simulated</p></div>
+    <div class="logo"><h1 style="font-size:28px">LEADERBOARD</h1><p>Global ranking <span id="lbSrc">· live</span></p></div>
     <div class="card">
-      <h2>Top players <small id="lbYou" style="color:var(--muted);font-weight:400"></small></h2>
+      <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">Top players
+        <small id="lbYou" style="color:var(--muted);font-weight:400"></small>
+        <button class="ghost" id="lbRefresh" style="margin-left:auto;padding:4px 10px;font-size:12px">↻ Refresh</button>
+      </h2>
       <div id="lbList"></div>
     </div>
     <button class="ghost" id="lbBack" style="margin-top:12px">← Back</button>
@@ -1188,6 +1191,7 @@ function recordResult(w){
   stats.gf += my; stats.ga += opp;
   saveStats(stats);
   renderStats();
+  lbSubmit();               // push new RP to the global sheet (no-op unless configured)
   return delta;
 }
 loadSel();
@@ -1391,6 +1395,7 @@ $('lbBtn').onclick = openLeaderboard;
 $('dailyBtn').onclick = openDailyView;
 $('dmCollect').onclick = closeDailyModal;
 $('lbBack').onclick = () => { $('leaderboard').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+$('lbRefresh').onclick = () => buildLeaderboard(true);
 $('padCfgBtn').onclick = openPadConfig;
 $('padCfgBack').onclick = () => { padBind.active=false; $('padConfig').classList.add('hidden'); $('setup').classList.remove('hidden'); };
 $('padReset').onclick = padResetMap;
@@ -1695,8 +1700,24 @@ function seasonOverlay(title, sub, kind){
 }
 
 // ============================================================
-//  MOCK GLOBAL LEADERBOARD — simulated field of players; your real RP slots in.
+//  GLOBAL LEADERBOARD — live scores from a Google Sheet.
+//  • READ works with zero backend as soon as the sheet is shared
+//    "Anyone with the link → Viewer" (or File → Share → Publish to web):
+//    we pull it through Google's public gviz JSON endpoint.
+//  • WRITE (submitting your score) needs a tiny Google Apps Script Web App —
+//    paste its /exec URL into LB.endpoint below. The same endpoint also
+//    serves reads, so once it's set we prefer it. Setup steps + the script
+//    to paste live in magnetball/LEADERBOARD_SETUP.md.
+//  Until the sheet is reachable we fall back to a local sample field so the
+//  board is never empty.
 // ============================================================
+const LB = {
+  sheetId : '1zaWdcOfWnmEEyHjVuczidZ6HtapPaiPl_Ls8NYVBE9U', // the sheet you created
+  gid     : '0',   // first tab (the "Scores" sheet)
+  endpoint: '',    // Apps Script /exec URL → enables live writes (and reads)
+  top     : 100,   // rows to show
+};
+// Offline sample field — shown only when the sheet can't be reached.
 const LB_FAKE = [
   {n:'Nyx',rp:2290,f:'japan'}, {n:'Volt',rp:2160,f:'brazil'}, {n:'Kestrel',rp:2040,f:'germany'},
   {n:'Sable',rp:1930,f:'france'}, {n:'Q',rp:1840,f:'korea'}, {n:'Blitz',rp:1760,f:'ukraine'},
@@ -1707,13 +1728,77 @@ const LB_FAKE = [
   {n:'Sy',rp:900,f:'denmark'}, {n:'Ash',rp:840,f:'romania'}, {n:'Pip',rp:780,f:'finland'},
   {n:'Rio',rp:720,f:'india'}, {n:'Lex',rp:660,f:'belgium'}, {n:'Moss',rp:600,f:'austria'},
 ];
+
+let lbCache = null;    // { live:bool, rows:[{n,rp,f,eyes,color}] }
+let lbBusy  = false;
+
+// Coerce/clean rows from any source into the shape the board renders.
+function lbNormalize(rows){
+  return (rows||[]).filter(r=>r && (r.n!=null && String(r.n).trim())).map(r=>({
+    n:String(r.n).trim().slice(0,24), rp:Math.round(+r.rp||0),
+    f:String(r.f||'none').trim()||'none', eyes:String(r.eyes||'googly').trim()||'googly',
+    color:String(r.color||'').trim(),
+  })).sort((a,b)=> b.rp-a.rp).slice(0, LB.top);
+}
+// Parse the wrapped JSON Google returns for a public sheet's gviz endpoint.
+function lbParseGviz(text){
+  const s=text.indexOf('{'), e=text.lastIndexOf('}');
+  if(s<0||e<=s) throw new Error('gviz: not json (sheet may be private)');
+  const j=JSON.parse(text.slice(s,e+1));
+  const cols=((j.table&&j.table.cols)||[]).map(c=>String((c&&c.label)||'').trim().toLowerCase());
+  const at=(...names)=>{ for(const n of names){ const i=cols.indexOf(n); if(i>=0) return i; } return -1; };
+  const iN=at('name','player'), iR=at('rp','points','score'),
+        iF=at('country','flag'), iE=at('eyes'), iC=at('colour','color');
+  const cell=(c,k)=> (k>=0 && c[k]) ? (c[k].v!=null?c[k].v:c[k].f) : null;
+  const rows=((j.table&&j.table.rows)||[]).map(r=>{ const c=r.c||[];
+    return { n:cell(c,iN), rp:cell(c,iR), f:cell(c,iF), eyes:cell(c,iE), color:cell(c,iC) }; });
+  return lbNormalize(rows);
+}
+// Load the board: Apps Script endpoint → public gviz → offline sample.
+async function lbLoad(force){
+  if(lbCache && !force) return lbCache;
+  if(LB.endpoint){
+    try{
+      const r=await fetch(LB.endpoint+(LB.endpoint.includes('?')?'&':'?')+'action=top&n='+LB.top, {cache:'no-store'});
+      if(r.ok){ const j=await r.json(); const rows=lbNormalize(Array.isArray(j)?j:(j&&j.rows));
+        return (lbCache={live:true, rows}); }
+    }catch(_){}
+  }
+  if(LB.sheetId){
+    try{
+      const url='https://docs.google.com/spreadsheets/d/'+LB.sheetId+'/gviz/tq?tqx=out:json&gid='+LB.gid;
+      const r=await fetch(url, {cache:'no-store'});
+      if(r.ok) return (lbCache={live:true, rows:lbParseGviz(await r.text())});
+    }catch(_){}
+  }
+  return (lbCache={live:false, rows:lbNormalize(LB_FAKE)});
+}
+// Submit your current score. Needs LB.endpoint (Apps Script). Form-encoded so
+// the browser treats it as a "simple" request (no CORS preflight to fail).
+async function lbSubmit(){
+  if(!LB.endpoint) return false;
+  const body=new URLSearchParams({
+    name:  profile.name||'You', rp: String(stats.points||0),
+    country: profile.flag||'none', eyes: profile.eyes||'googly', color: profile.color||'',
+  });
+  try{ await fetch(LB.endpoint, {method:'POST', body}); lbCache=null; return true; }
+  catch(_){ return false; }
+}
+
 function openLeaderboard(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('leaderboard').classList.remove('hidden'); buildLeaderboard(); }
-function buildLeaderboard(){
+async function buildLeaderboard(force){
+  if(lbBusy) return; lbBusy=true;
+  const wrap=$('lbList'), sub=$('lbYou');
+  if(wrap && !lbCache) wrap.innerHTML='<div class="lbrow" style="justify-content:center;color:var(--muted)">Loading…</div>';
+  let data; try{ data=await lbLoad(force); } finally { lbBusy=false; }
+  const src=$('lbSrc'); if(src) src.textContent = data.live ? '· live' : '· offline sample';
   const me = { n: profile.name||'You', rp: stats.points, f: profile.flag, eyes: profile.eyes, color: profile.color, you:true };
-  const all = LB_FAKE.map(e=>({...e})).concat([me]).sort((a,b)=> (b.rp-a.rp) || (a.you?1:-1));
+  // Drop any live row that is really "me" (same name) so we don't double-list.
+  const others = data.rows.filter(e=> !(me.n && e.n.toLowerCase()===me.n.toLowerCase()));
+  const all = others.map(e=>({...e})).concat([me]).sort((a,b)=> (b.rp-a.rp) || (a.you?1:-1));
   const rank = all.findIndex(e=>e.you)+1;
-  $('lbYou').textContent = '· you: #'+rank+' / '+all.length;
-  const wrap=$('lbList'); wrap.innerHTML='';
+  if(sub) sub.textContent = '· you: #'+rank+' / '+all.length;
+  if(!wrap) return; wrap.innerHTML='';
   all.forEach((e,i)=>{
     const row=document.createElement('div'); row.className='lbrow'+(e.you?' you':'');
     const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':('#'+(i+1));
@@ -3549,6 +3634,8 @@ if (window.__MAGNETDEBUG) {
     addShake, goalBurst, scoreGoal,
     gamepadPad, openPadConfig, startBind, startRebindAll, get padBind(){ return padBind; },
     get login(){ return login; }, checkDailyLogin, openDailyView, DAILY, dailyReward, grantedHas,
+    LB, LB_FAKE, lbLoad, lbSubmit, lbParseGviz, lbNormalize, openLeaderboard, buildLeaderboard,
+    get lbCache(){ return lbCache; }, recordResult,
   };
 }
 })();
