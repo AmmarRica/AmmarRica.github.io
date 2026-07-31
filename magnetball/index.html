@@ -1974,6 +1974,37 @@ async function lbSubmit(){
   catch(_){ return false; }
 }
 
+// Compact, re-simulatable replay payload for the sheet (NOT the video — a Sheet
+// can't hold binary). Positions are rounded and frames downsampled to ~120 so
+// the whole thing fits comfortably in one cell.
+function replayPayload(){
+  if(!lastReplay || !lastReplay.frames || !lastReplay.frames.length) return null;
+  const src=lastReplay.frames, step=Math.max(1, Math.ceil(src.length/120)), frames=[];
+  for(let i=0;i<src.length;i+=step){
+    const f=src[i], row=[Math.round(f.bx), Math.round(f.by)];
+    for(const pl of f.p) row.push(Math.round(pl.x), Math.round(pl.y), pl.k?1:0);
+    frames.push(row);
+  }
+  const data=JSON.stringify({ v:1, field:sel.field, players:lastReplay.players, fps:Math.round(60/step), frames });
+  return { data, frames:frames.length, players:lastReplay.players, field:sel.field };
+}
+// Post the last goal's replay data to the Replays sheet. Needs LB.endpoint
+// (the Apps Script web app). Returns {ok, reason} so the UI can report status.
+async function lbSubmitReplay(){
+  if(!LB.endpoint) return { ok:false, reason:'no-endpoint' };
+  const rp=replayPayload();
+  if(!rp) return { ok:false, reason:'no-replay' };
+  const body=new URLSearchParams({
+    action:'replay', name: profile.name||'You', country: profile.flag||'none',
+    field: rp.field, players: String(rp.players), frames: String(rp.frames), data: rp.data,
+  });
+  try{
+    const r=await fetch(LB.endpoint, { method:'POST', body });
+    let ok=r.ok; try{ const j=await r.json(); if(j && j.ok===false) ok=false; }catch(_){}
+    return { ok };
+  }catch(_){ return { ok:false, reason:'error' }; }
+}
+
 function openLeaderboard(){ hideScreens(); $('hud').classList.add('hidden'); hideOverlay(); $('leaderboard').classList.remove('hidden'); buildLeaderboard(); }
 async function buildLeaderboard(force){
   if(lbBusy) return; lbBusy=true;
@@ -2426,6 +2457,20 @@ function repMime(){
 async function saveClip(){
   if (!lastReplay || !lastReplay.frames.length) return;
   const btn = $('clipBtn'); const label = btn ? btn.textContent : '';
+  // 1) record + share/download the video (its own early-returns can't skip the
+  //    sheet post below, since it's a separate call).
+  await recordAndShareClip(btn);
+  // 2) always post the replay DATA (re-simulatable frames, not the video) to the
+  //    Replays sheet, and show whether it landed.
+  const res = await lbSubmitReplay();
+  let status;
+  if (res.ok) status = '✓ Saved to sheet';
+  else if (res.reason === 'no-endpoint') status = '⚠ Sheet not connected';
+  else if (res.reason === 'no-replay') status = label;
+  else status = '⚠ Sheet save failed';
+  if (btn){ btn.textContent = status; setTimeout(()=>{ if (btn.textContent===status) btn.textContent = label; }, 2800); }
+}
+async function recordAndShareClip(btn){
   try {
     if (!cv.captureStream || !window.MediaRecorder){ await playReplay(); return; }
     const stream = cv.captureStream(60);
@@ -2451,7 +2496,6 @@ async function saveClip(){
       setTimeout(()=>URL.revokeObjectURL(url), 4000);
     }
   } catch(e){ /* recording unsupported / failed — silently ignore */ }
-  finally { if (btn) btn.textContent = label; }
 }
 
 function step(w){
@@ -2793,10 +2837,9 @@ function handleBallControl(w, p, ball, ballFrozen){
   // its velocity toward the player's so it travels along as you dribble. A kick
   // is a big one-shot impulse that easily overpowers the pull, so shooting still
   // sends the ball flying even at full magnet.
+  // Same magnet for everyone — bots get no free stick a human wouldn't have.
+  // (Parity: at magnet 0 the ball is a free puck for bots too.)
   let mag = (w.magnet||0) / 100;
-  // Bots always get a light stick so they can control and finish even when the
-  // player's magnet is 0 (they can't "trap" like humans do).
-  if (p.ctrl === 'bot') mag = Math.max(mag, 0.4);
   if (mag > 0 && !ballFrozen && !p.kick && dist < sum + 18){
     let fx=p.faceX, fy=p.faceY; const fl=Math.hypot(fx,fy)||1; fx/=fl; fy/=fl;
     const hold = sum + 1;                       // rest just in front of the feet
@@ -4085,6 +4128,7 @@ if (window.__MAGNETDEBUG) {
     startMatch, step, applyFeel, feelVals, playSfx, applyTheme, applyPreset,
     handleBallControl, openSettings, closeSettings,
     get repBuf(){ return repBuf; }, get lastReplay(){ return lastReplay; }, playReplay, saveClip, repMime,
+    replayPayload, lbSubmitReplay,
     get profile(){ return profile; }, get stats(){ return stats; }, FLAGS, EYES, CAPS,
     isUnlocked, unlockCounts, renderStats, buildFlagPicker, buildEyesPicker, buildCaps,
     get shake(){ return shake; }, get hitStop(){ return hitStop; }, get flash(){ return flash; },

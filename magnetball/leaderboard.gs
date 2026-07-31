@@ -9,10 +9,15 @@
  *   Timestamp | Name | RP | Country | Eyes | Colour
  * Columns are matched by header text, so order/extra columns are fine.
  *
+ * A second tab "Replays" is created automatically the first time a clip is
+ * saved (the game's "Save clip" posts the re-simulatable replay data there).
+ *
  * Endpoints:
- *   GET  ?action=top&n=100                      → JSON array, sorted by RP desc
- *   GET  ?action=add&name=..&rp=..&country=..   → add/update (handy for testing)
- *   POST name=..&rp=..&country=..&eyes=..&color=..  → add/update one score
+ *   GET  ?action=top&n=100                       → JSON array, sorted by RP desc
+ *   GET  ?action=add&name=..&rp=..&country=..    → add/update a score (testing)
+ *   GET  ?action=replays&n=20[&full=1]           → recent replays (metadata; full=1 includes data)
+ *   POST name=..&rp=..&country=..&eyes=..&color=..           → add/update one score
+ *   POST action=replay&name=..&field=..&frames=..&data=..    → store one replay
  */
 
 var SHEET_NAME = 'Scores';
@@ -98,6 +103,60 @@ function addScore_(p) {
   return { ok: true, added: true };
 }
 
+// ---- Replays: re-simulatable goal clips stored as a compact data blob. The
+// game's "Save clip" posts these (the video itself can't live in a Sheet). The
+// Replays tab is created automatically on first write.
+var REPLAY_SHEET = 'Replays';
+var REPLAY_HEADERS = ['Timestamp', 'Name', 'Country', 'Field', 'Players', 'Frames', 'Data'];
+
+function replaySheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(REPLAY_SHEET);
+  if (!sh) { sh = ss.insertSheet(REPLAY_SHEET); sh.appendRow(REPLAY_HEADERS); }
+  else if (sh.getLastRow() === 0) sh.appendRow(REPLAY_HEADERS);
+  return sh;
+}
+
+function addReplay_(p) {
+  var data = String(p.data || '');
+  if (!data) return { ok: false, error: 'no data' };
+  if (data.length > 49000) return { ok: false, error: 'too big' };   // Sheet cell cap is 50k chars
+  var sh = replaySheet_();
+  sh.appendRow([
+    new Date(),
+    String(p.name || 'You').slice(0, 24),
+    String(p.country || 'none'),
+    String(p.field || ''),
+    Math.round(Number(p.players) || 0),
+    Math.round(Number(p.frames) || 0),
+    data
+  ]);
+  return { ok: true, added: true, row: sh.getLastRow() - 1 };
+}
+
+// Recent replays. By default returns metadata only (no bulky Data column) unless
+// full=1, so a listing stays light.
+function readReplays_(n, full) {
+  var sh = replaySheet_();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var m = colMap_(sh);
+  var iT = pick_(m, ['timestamp']), iN = pick_(m, ['name']), iF = pick_(m, ['country']),
+      iFl = pick_(m, ['field']), iP = pick_(m, ['players']), iFr = pick_(m, ['frames']), iD = pick_(m, ['data']);
+  var take = Math.min(n || 20, last - 1);
+  var data = sh.getRange(last - take + 1, 1, take, sh.getLastColumn()).getValues();
+  var out = [];
+  data.forEach(function (r) {
+    var o = { name: iN >= 0 ? r[iN] : '', country: iF >= 0 ? r[iF] : 'none',
+      field: iFl >= 0 ? r[iFl] : '', players: iP >= 0 ? r[iP] : 0, frames: iFr >= 0 ? r[iFr] : 0,
+      ts: iT >= 0 ? r[iT] : '' };
+    if (full && iD >= 0) o.data = r[iD];
+    out.push(o);
+  });
+  out.reverse();   // newest first
+  return out;
+}
+
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
@@ -106,6 +165,8 @@ function json_(obj) {
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (p.action === 'add') return json_(addScore_(p));
+  if (p.action === 'replay') return json_(addReplay_(p));                 // GET add (testing)
+  if (p.action === 'replays') return json_(readReplays_(parseInt(p.n, 10) || 20, p.full == '1'));
   var n = Math.min(500, Math.max(1, parseInt(p.n, 10) || 100));
   return json_(readRows_(n));
 }
@@ -117,5 +178,6 @@ function doPost(e) {
       p = JSON.parse(e.postData.contents) || p;
     }
   } catch (err) {}
+  if (p.action === 'replay') return json_(addReplay_(p));
   return json_(addScore_(p));
 }
