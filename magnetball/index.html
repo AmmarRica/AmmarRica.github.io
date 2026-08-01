@@ -622,7 +622,7 @@
       <div style="height:10px"></div>
       <label class="field">Players</label>
       <div class="opts" id="playerSkinPick"></div>
-      <div class="hint" style="text-align:left">Sprite skins render once the image files are added under <code>magnetball/assets/</code> (see that folder's README). Controls and collisions are unchanged — only the look.</div>
+      <div class="hint" style="text-align:left">Sprite skins render once the image files are added under <code>assets/</code> (see that folder's README). Controls and collisions are unchanged — only the look.</div>
     </div>
     <div class="card">
       <h2>Sound</h2>
@@ -2261,7 +2261,7 @@ function openRoguePerks(){
 //  • WRITE (submitting your score) needs a tiny Google Apps Script Web App —
 //    paste its /exec URL into LB.endpoint below. The same endpoint also
 //    serves reads, so once it's set we prefer it. Setup steps + the script
-//    to paste live in magnetball/LEADERBOARD_SETUP.md.
+//    to paste live in LEADERBOARD_SETUP.md.
 //  Until the sheet is reachable we fall back to a local sample field so the
 //  board is never empty.
 // ============================================================
@@ -4316,7 +4316,7 @@ function drawGoal(w, sign){
 
 // Image-sprite loader with graceful fallback: returns the loaded <img> once
 // ready, or null while loading / on error (so the drawn version is used). Files
-// live under magnetball/assets/ (see that folder's README for the contract).
+// live under assets/ (see that folder's README for the contract).
 const _imgCache = {};
 function spriteImg(path){
   let im = _imgCache[path];
