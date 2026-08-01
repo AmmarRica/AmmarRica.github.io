@@ -81,7 +81,7 @@ the screen is never empty). Tap **↻ Refresh** to re-pull.
    - **Who has access:** **Anyone**.
    - **Deploy**, authorise when prompted (it's your own script).
 4. Copy the **Web app URL** — it ends in `/exec`.
-5. In `magnetball/index.html`, set:
+5. In `index.html`, set:
 
    ```js
    const LB = {

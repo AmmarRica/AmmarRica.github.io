@@ -77,7 +77,7 @@ Legend: ✅ done · 🎯 recommended next · effort S(hours) M(a day) L(days) XL
   Google Apps Script Web App (upsert-by-name, keeps your best RP), so the sheet stays clean and
   human-readable if you just open it. The board shows **· live** vs **· offline sample**, has a
   ↻ Refresh, and always falls back to a local sample field so it's never empty. Setup steps +
-  the script to paste live in `magnetball/LEADERBOARD_SETUP.md` and `magnetball/leaderboard.gs`.
+  the script to paste live in `LEADERBOARD_SETUP.md` and `leaderboard.gs`.
 - **Daily login rewards** — every calendar day you visit grants the next reward on a generous
   track (countryballs, caps, eye styles, RP; milestones at day 5/10/14, then endless RP). A
   first-visit popup shows today's unlock, your streak, and a roadmap of what's coming. Granted
