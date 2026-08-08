@@ -7,3 +7,7 @@ Gemfile.lock
 *.gem
 *.log
 .sass-cache/
+
+node_modules/
+package.json
+package-lock.json

@@ -1,0 +1,14 @@
+{
+  "name": "Tower of Chips — Incremental Pinball",
+  "short_name": "Tower of Chips",
+  "description": "Incremental pinball in a tower: flip by hand, buy bouncers and paddles, drag them where you want, and climb for bigger multipliers.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1b262c",
+  "theme_color": "#1b262c",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
