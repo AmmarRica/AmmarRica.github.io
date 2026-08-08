@@ -20,7 +20,7 @@
 
   <!-- ============ SCREEN 1: THE TABLE ============ -->
   <div id="stage">
-    <canvas id="cv"></canvas>
+    <canvas id="cv" aria-label="Pinball table" role="img"></canvas>
 
     <div id="hud"></div>
     <div id="flash"></div>
@@ -31,12 +31,12 @@
   <!-- ============ SCREEN 2: THE MENU (collapses away) ============ -->
   <div id="menu">
     <div id="menuHead"></div>
-    <div id="menuTabs"></div>
+    <div id="menuTabs" role="tablist" aria-label="Menu sections"></div>
     <div id="menuBody"></div>
   </div>
 
-  <div id="modal"></div>
-  <div id="toast"></div>
+  <div id="modal" role="dialog" aria-modal="true"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
 </div>
 
 <script src="js/util.js"></script>

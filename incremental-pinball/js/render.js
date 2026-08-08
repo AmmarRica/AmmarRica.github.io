@@ -98,6 +98,7 @@
       drawParticles(g);
       drawPopups(g);
       if (g.build.on) drawBuildOverlay(g);
+      drawMinimap(g);
       drawVignette(g);
     }
 
@@ -793,6 +794,51 @@
         if (b.ghostErr) inkText(ctx, b.ghostErr, x, y - r - 14, 12, C.red);
         ctx.restore();
       }
+    }
+
+    /**
+     * A tall table is easy to get lost in, so the right edge carries a
+     * miniature of the whole tower: floor bands, where your parts are, the
+     * slice you are looking at, and every live ball.
+     */
+    function drawMinimap(g) {
+      const totalH = g.world.totalH || 1;
+      const mw = 10;
+      const x0 = view.w - mw - 4;
+      const top = 152, bot = view.h - 120;
+      const h = bot - top;
+      if (h < 90) return;
+      const my = (wy) => bot - (wy / totalH) * h;
+
+      ctx.save();
+      ctx.globalAlpha = 0.88;
+      roundRect(ctx, x0 - 2, top - 4, mw + 4, h + 8, 6);
+      ctx.fillStyle = U.rgba('#000000', 0.55); ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = U.rgba(C.ink2, 0.8); ctx.stroke();
+
+      for (let k = 0; k < g.state.floors; k++) {
+        const f = D.FLOORS[k] || D.FLOORS[0];
+        const ya = my((k + 1) * D.W.FLOOR_H), yb = my(k * D.W.FLOOR_H);
+        ctx.fillStyle = U.rgba(f.accent, 0.3);
+        ctx.fillRect(x0, ya, mw, yb - ya - 1);
+      }
+      // Part density per floor, as pips.
+      for (const p of g.state.parts) {
+        if (p.floor >= g.state.floors) continue;
+        const def = D.PART_BY_ID[p.id];
+        ctx.fillStyle = U.rgba(def ? def.color : C.cream, 0.9);
+        ctx.fillRect(x0 + 1 + (p.x / 100) * (mw - 3), my(p.y) - 1, 2, 2);
+      }
+      // Viewport slice.
+      const va = my(view.camY + view.viewH), vb = my(view.camY);
+      ctx.lineWidth = 2; ctx.strokeStyle = C.cream;
+      ctx.strokeRect(x0 - 1, va, mw + 2, Math.max(4, vb - va));
+      // Balls.
+      for (const b of g.balls) {
+        if (!b.alive) continue;
+        inkCircle(ctx, x0 + mw / 2, my(b.p.y), 3.4, b.def.color, 1.5);
+      }
+      ctx.restore();
     }
 
     function drawVignette() {

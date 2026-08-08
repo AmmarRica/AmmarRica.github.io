@@ -83,14 +83,15 @@ html, body {
 #hud {
   position: absolute;
   top: 44px; left: 0; right: 0;
-  padding: 6px 10px 0;
+  /* Inset past the table's cream side walls: cream-on-cream text vanishes. */
+  padding: 6px 22px 0;
   pointer-events: none;
   z-index: 3;
   font-variant-numeric: tabular-nums;
 }
 .hudrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .hcell { display: flex; flex-direction: column; line-height: 1; }
-.hlabel { font-size: 9px; letter-spacing: 2px; color: var(--cream3); }
+.hlabel { font-size: 9px; letter-spacing: 2px; color: var(--cream3); text-shadow: 0 1px 2px rgba(0,0,0,.85); }
 .hval { font-size: 24px; font-weight: 900; letter-spacing: -.5px; text-shadow: 0 2px 0 var(--ink2); }
 .hcell.coins { align-items: flex-end; }
 .hcell.coins .hval { font-size: 18px; color: var(--gold); }
@@ -121,7 +122,7 @@ html, body {
 .hmini.combo { color: var(--gold); opacity: 0; transition: opacity .15s, transform .15s; }
 .hmini.combo.live { opacity: 1; transform: scale(1.06); border-color: var(--gold); }
 
-.hudrow.meters { margin-top: 5px; gap: 6px; }
+.hudrow.meters { margin-top: 5px; gap: 6px; padding: 0 2px; }
 .meter {
   flex: 1; position: relative; height: 12px;
   background: rgba(10,13,17,.6);
@@ -519,6 +520,33 @@ kbd {
   opacity: 0; pointer-events: none; transition: all .2s; z-index: 30;
 }
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* =====================================================================
+ * Desktop: stop covering the table. The menu docks beside it instead,
+ * so both "screens" are visible at once and collapsing just slides the
+ * dock away to widen the playfield.
+ * ================================================================== */
+@media (min-width: 900px) {
+  #app { transition: padding-right .34s cubic-bezier(.3,.9,.3,1); }
+  #app.menu-open { padding-right: min(560px, 46vw); }
+  #menu {
+    left: auto; right: 0; transform: none;
+    width: min(560px, 46vw);
+    border-left: 4px solid var(--ink2); border-right: none;
+    box-shadow: -14px 0 40px rgba(0,0,0,.5);
+  }
+  #menu.collapsed { transform: translateX(101%); }
+  #menuBody { padding: 14px 14px 40px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
+  #modal { z-index: 40; }
+}
+
+/* Visible keyboard focus everywhere — the whole menu is reachable by tab. */
+.btn:focus-visible, .tab:focus-visible, .trayitem:focus-visible,
+.pbtn:focus-visible, .launchbtn:focus-visible, .psel:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
 
 /* =====================================================================
  * Responsive touches

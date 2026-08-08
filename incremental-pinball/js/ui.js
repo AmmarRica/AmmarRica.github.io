@@ -30,10 +30,13 @@
    * =============================================================== */
   function btn(label, opts) {
     opts = opts || {};
-    const b = el('button.btn' + (opts.cls ? '.' + opts.cls.split(' ').join('.') : ''), {
-      onclick: opts.onclick, disabled: opts.disabled, title: opts.title || '',
+    return el('button.btn' + (opts.cls ? '.' + opts.cls.split(' ').join('.') : ''), {
+      type: 'button',
+      onclick: opts.onclick,
+      disabled: opts.disabled,
+      title: opts.title || '',
+      'aria-label': opts.aria || opts.title || null,
     }, label);
-    return b;
   }
 
   function card(opts) {
@@ -143,9 +146,9 @@
     tabs.innerHTML = '';
     for (const t of TABS) {
       tabs.appendChild(el('button.tab', {
-        'data-tab': t.id,
+        type: 'button', role: 'tab', 'data-tab': t.id, 'aria-label': t.name,
         onclick: () => { UI.tab = t.id; renderMenu(); },
-      }, el('span.temoji', t.emoji), el('span.tname', t.name)));
+      }, el('span.temoji', { 'aria-hidden': 'true' }, t.emoji), el('span.tname', t.name)));
     }
   }
 
@@ -153,12 +156,20 @@
     UI.menuOpen = open;
     $('menu').classList.toggle('collapsed', !open);
     $('app').classList.toggle('menu-open', open);
-    if (open) { renderMenu(); }
+    $('menu').setAttribute('aria-hidden', String(!open));
+    if (open) renderMenu();
+    // On desktop the drawer docks beside the table, so the canvas resizes.
+    setTimeout(layout, 20);
+    setTimeout(layout, 380);
     G.Sfx.resume();
   }
 
   function renderMenu() {
-    U.$$('#menuTabs .tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === UI.tab));
+    U.$$('#menuTabs .tab').forEach((t) => {
+      const on = t.dataset.tab === UI.tab;
+      t.classList.toggle('on', on);
+      t.setAttribute('aria-selected', String(on));
+    });
     const body = $('menuBody');
     body.innerHTML = '';
     body.scrollTop = 0;
@@ -741,9 +752,11 @@
       .sort((a, b) => a.c - b.c).slice(0, 10);
     for (const { p, c } of affordable) {
       tray.appendChild(el('button.trayitem' + (g.state.coins >= c ? '' : '.dim'), {
-        style: { '--accent': p.color }, title: p.name,
+        type: 'button', style: { '--accent': p.color },
+        title: p.name + ' — ' + fmt(c) + ' coins',
+        'aria-label': 'Buy ' + p.name + ' for ' + fmt(c) + ' coins',
         onclick: () => armPlacement(p.id),
-      }, el('span.tie', p.emoji), el('span.tic', fmt(c))));
+      }, el('span.tie', { 'aria-hidden': 'true' }, p.emoji), el('span.tic', fmt(c))));
     }
     bar.appendChild(tray);
   }
@@ -994,7 +1007,7 @@
     host.dataset.sig = sig;
     host.innerHTML = '';
     for (const i of want) {
-      const b = el('button.pbtn', 'P' + (i + 1));
+      const b = el('button.pbtn', { type: 'button', 'aria-label': 'Control panel ' + (i + 1) }, 'P' + (i + 1));
       b.addEventListener('pointerdown', (e) => { e.preventDefault(); pressPanel(i, true); b.classList.add('on'); });
       b.addEventListener('pointerup', () => { pressPanel(i, false); b.classList.remove('on'); });
       b.addEventListener('pointerleave', () => { pressPanel(i, false); b.classList.remove('on'); });
@@ -1121,6 +1134,13 @@
 
     global.addEventListener('resize', layout);
     global.addEventListener('orientationchange', () => setTimeout(layout, 200));
+    // Never lose progress to a closed tab or a backgrounded phone.
+    global.addEventListener('pagehide', () => G.save());
+    global.addEventListener('beforeunload', () => G.save());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { G.save(); return; }
+      g.world.flippers.forEach((f) => { f.humanPress = false; f.pressed = false; });
+    });
 
     const off = G.collectOffline();
     G.startRun();
