@@ -465,6 +465,70 @@
           inkText(ctx, '⬆', x, y, r, spent ? '#7a8a80' : C.ink2, 900, 0);
           break;
         }
+        case 'lift': {
+          ctx.save();
+          const rise = s(32 + 7 * lvl);
+          ctx.globalAlpha = 0.28;
+          ctx.setLineDash([4, 6]);
+          ctx.lineWidth = 2.5; ctx.strokeStyle = def.color;
+          ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x - r, y - rise);
+          ctx.moveTo(x + r, y); ctx.lineTo(x + r, y - rise); ctx.stroke();
+          ctx.restore();
+          roundRect(ctx, x - r, y - s(1) + 3, r * 2, s(2.6), 3); ctx.fillStyle = C.ink2; ctx.fill();
+          roundRect(ctx, x - r, y - s(1), r * 2, s(2.6), 3);
+          ctx.fillStyle = def.color; ctx.fill();
+          ctx.lineWidth = 3; ctx.strokeStyle = C.ink2; ctx.stroke();
+          inkText(ctx, '▲', x, y - s(3.5), 12, def.color, 900, 3);
+          break;
+        }
+        case 'piston': {
+          const fire = !!inst.fire;
+          const lift = fire ? s(3) : 0;
+          inkCircle(ctx, x, y + 3, r, C.ink2, 0);
+          roundRect(ctx, x - r * 0.85, y - lift - r * 0.5, r * 1.7, r * 1.2, 4);
+          ctx.fillStyle = fire ? C.cream : def.color; ctx.fill();
+          ctx.lineWidth = 3; ctx.strokeStyle = C.ink2; ctx.stroke();
+          // Charge ring so the timing is readable.
+          const p = ((inst.t || 0) % Math.max(1.1, 2.6 - lvl * 0.09)) / Math.max(1.1, 2.6 - lvl * 0.09);
+          ctx.beginPath(); ctx.arc(x, y, r * 0.95, -Math.PI / 2, -Math.PI / 2 + U.TAU * p);
+          ctx.lineWidth = 3; ctx.strokeStyle = fire ? C.gold : U.rgba(def.color, 0.7); ctx.stroke();
+          break;
+        }
+        case 'gate': {
+          const L = s(8 + lvl * 0.7), a = -inst.a;
+          const x1 = x - Math.cos(a) * L, y1 = y - Math.sin(a) * L;
+          const x2 = x + Math.cos(a) * L, y2 = y + Math.sin(a) * L;
+          capsule(ctx, x1, y1 + 3, x2, y2 + 3, s(1.5)); ctx.fillStyle = C.ink2; ctx.fill();
+          capsule(ctx, x1, y1, x2, y2, s(1.5));
+          ctx.fillStyle = def.color; ctx.fill();
+          ctx.lineWidth = 3; ctx.strokeStyle = C.ink2; ctx.stroke();
+          ctx.save(); ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 4);
+          inkText(ctx, '▲', x, y - s(3.5), 11, C.cream, 900, 2.5);
+          ctx.restore();
+          break;
+        }
+        case 'bell': {
+          inkCircle(ctx, x, y + 3, r, C.ink2, 0);
+          inkCircle(ctx, x, y, r, def.color, 3.5);
+          inkText(ctx, '🔔', x, y, r * 1.2, C.cream, 900, 0);
+          break;
+        }
+        case 'roulette': {
+          ctx.save(); ctx.translate(x, y); ctx.rotate((inst.face || 0) * 1.25 + Math.sin(t) * 0.05);
+          inkCircle(ctx, 0, 3, r, C.ink2, 0);
+          for (let i = 0; i < 5; i++) {
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, r, i * U.TAU / 5, (i + 1) * U.TAU / 5);
+            ctx.closePath();
+            ctx.fillStyle = [C.blue, C.red, C.gold, C.green, C.pink][i];
+            ctx.fill();
+          }
+          inkCircle(ctx, 0, 0, r, 'transparent', 3.5);
+          inkCircle(ctx, 0, 0, r * 0.28, C.cream, 3);
+          ctx.restore();
+          break;
+        }
         case 'jet': case 'magnet': case 'antigrav': {
           inkCircle(ctx, x, y + 3, r * 0.7, C.ink2, 0);
           inkCircle(ctx, x, y, r * 0.7, def.color, 3);
@@ -498,6 +562,19 @@
         const px = sx(f.pivot.x), py = y;
         const tx = sx(f.tip.x), ty = sy(f.tip.y);
         const w = s(f.thick + 0.6);
+        if (f.wheel) {
+          // Batter wheel: a windmilling arm on a fat hub.
+          ctx.save();
+          ctx.globalAlpha = 0.18;
+          inkCircle(ctx, px, py, s(f.len), f.color, 0);
+          ctx.restore();
+          capsule(ctx, px, py, tx, ty, w); ctx.fillStyle = C.ink2; ctx.fill();
+          capsule(ctx, px, py, tx, ty, w * 0.78);
+          ctx.fillStyle = f.color; ctx.fill();
+          inkCircle(ctx, tx, ty, w * 1.1, C.cream, 3);
+          inkCircle(ctx, px, py, w * 1.25, C.ink, 3.5, f.color);
+          continue;
+        }
         capsule(ctx, px, py + 4, tx, ty + 4, w); ctx.fillStyle = C.ink2; ctx.fill();
         capsule(ctx, px, py, tx, ty, w);
         ctx.fillStyle = f.pressed ? C.gold : f.color;

@@ -51,6 +51,8 @@
       medals: {},
       missions: [],
       counters: {},
+      perks: {},
+      ballLevels: { steel: 1 },
       settings: { sound: true, shake: true, particles: true, autoRun: true, assist: false },
       stats: {
         totalChips: 0, bestRun: 0, bestFloor: 0, bestMult: 1, runs: 0,
@@ -193,20 +195,25 @@
 
   const gemMul = () => D.gemBonus(g.state.gems);
   const ballDef = () => D.BALL_BY_ID[g.state.loadout] || D.BALL_BY_ID.steel;
+  const perk = (id) => (g.state.perks && g.state.perks[id]) || 0;
+  const ballLevel = (id) => (g.state.ballLevels && g.state.ballLevels[id || g.state.loadout]) || 1;
+  const ballScoreMul = () => D.ballScore(ballDef(), ballLevel());
+  const ballCoinMul = () => D.ballCoin(ballDef(), ballLevel());
 
   function ballsPerRun() {
     return Math.max(1, 3 + up('balls') + (g.trinketFx.ballDelta || 0));
   }
 
   function baseMult() {
-    let m = 1 + 0.35 * up('multBase');
+    let m = 1 + 0.35 * up('multBase') + 0.5 * perk('mult');
     for (const f of g.trinketFx.multAdds || []) m += f(A);
     for (const f of g.trinketFx.multMults || []) m *= f(A);
     return Math.max(1, m);
   }
 
   function coinRate() {
-    return 0.020 * (1 + 0.14 * up('coinYield')) * gemMul() * ballDef().coin * (g.trinketFx.coinMult || 1);
+    return 0.020 * (1 + 0.14 * up('coinYield')) * gemMul() * ballCoinMul()
+      * (1 + 0.25 * perk('coins')) * (g.trinketFx.coinMult || 1);
   }
 
   function idlePerSec() {
@@ -217,10 +224,11 @@
       if (p.floor >= g.state.floors) continue;
       sum += def.idle(p);
     }
-    return sum * (1 + 0.16 * up('idleRate')) * gemMul() * (g.trinketFx.coinMult || 1);
+    return sum * (1 + 0.16 * up('idleRate')) * (1 + 0.4 * perk('idle')) * gemMul() * (g.trinketFx.coinMult || 1);
   }
 
   const slotsUsed = (floor) => g.state.parts.filter((p) => p.floor === floor).length;
+  const slotBonus = () => 2 * perk('slots');
 
   /* ===================================================================
    * WORLD
@@ -268,7 +276,7 @@
    * SCORING PIPELINE  (chips × mult, Balatro-style)
    * ================================================================ */
   function chipMultiplier(ev) {
-    let m = (1 + 0.12 * up('chipGain')) * ballDef().score * gemMul();
+    let m = (1 + 0.12 * up('chipGain')) * ballScoreMul() * gemMul() * (1 + 0.25 * perk('chips'));
     if (ev.tag === 'bumper' || ev.tag === 'sling' || ev.tag === 'tramp') m *= (1 + 0.15 * up('bumperV'));
     for (const f of g.trinketFx.chipMults || []) m *= f(A, ev);
     return m;
@@ -391,7 +399,8 @@
     count('hits');
     if (inst.id === 'target' && inst.t_down <= 0) count('targets');
     trinketHook('hit', inst);
-    if (ball.def.luck && Math.random() < ball.def.luck) {
+    const luck = (ball.def.luck || 0) + 0.015 * perk('luck');
+    if (luck > 0 && Math.random() < luck) {
       score(400, inst, { pop: true, label: 'LUCKY', luckJackpot: true });
       burst(inst.x, inst.y, D.C.green, 20);
       sfx('jackpot');
@@ -477,6 +486,27 @@
     ball.holdTo = { x: inst.x, y: inst.y };
     ball.holdT = time;
     ball.holdCb = cb;
+  }
+
+  /**
+   * Carry a ball upward on a platform. The travel is clamped so a lift can
+   * never shove a ball through the deck above it.
+   */
+  function liftBall(ball, inst, dist, time, cb) {
+    if (ball.held) return;
+    const ceil = IP.table.ceilingAt(g.state, inst.floor, inst.x) - ball.r - 2;
+    const top = Math.min(inst.y + dist, ceil);
+    if (top <= inst.y + 4) { ball.holdCd = 0.5; return; }   // no headroom: skip
+    ball.held = true;
+    ball.holdTo = { x: inst.x, y: inst.y };
+    ball.holdT = time;
+    ball.lift = { x: inst.x, y0: inst.y, y1: top, t: 0, T: time };
+    ball.holdCb = cb;
+  }
+
+  function grantBallSave(sec) {
+    g.ballSaveT = Math.max(g.ballSaveT, sec);
+    popupScreen('BALL SAVE ARMED', D.C.green);
   }
 
   function splitBall(src) {
@@ -793,6 +823,33 @@
     return true;
   }
 
+  function buyPerk(id) {
+    const p = D.PERK_BY_ID[id];
+    if (!p) return false;
+    const lvl = perk(id);
+    if (lvl >= p.max) return false;
+    const cost = D.perkCost(p, lvl);
+    if (g.state.gems < cost) return false;
+    g.state.gems -= cost;
+    g.state.perks[id] = lvl + 1;
+    rebuild(); save();
+    sfx('levelup');
+    return true;
+  }
+
+  function polishBall(id) {
+    id = id || g.state.loadout;
+    const b = D.BALL_BY_ID[id];
+    if (!b || !g.state.balls[id]) return false;
+    const lvl = ballLevel(id);
+    if (lvl >= D.BALL_MAX_LEVEL) return false;
+    const cost = D.ballPolishCost(b, lvl);
+    if (!pay(cost)) return false;
+    g.state.ballLevels[id] = lvl + 1;
+    save(); sfx('levelup');
+    return true;
+  }
+
   function prestige() {
     const earn = D.prestigeGems(g.state.stats.totalChips);
     if (earn <= 0) return false;
@@ -801,11 +858,17 @@
       medals: g.state.medals,
       settings: g.state.settings,
       panels: g.state.panels,
+      perks: g.state.perks,
+      counters: g.state.counters,
       stats: Object.assign({}, g.state.stats, { prestiges: g.state.stats.prestiges + 1, totalChips: 0 }),
     };
+    // Perks decide what survives the melt-down.
+    if (perk('keepBalls')) { keep.balls = g.state.balls; keep.ballLevels = g.state.ballLevels; }
+    if (perk('keepTrinkets')) keep.trinkets = g.state.trinkets;
     const s = freshState();
     Object.assign(s, keep);
-    s.coins = 500 + earn * 250;
+    s.floors = Math.min(W.MAX_FLOORS, 3 + perk('floors'));
+    s.coins = 500 + earn * 250 + (perk('seed') ? 1000 * Math.pow(3, perk('seed')) : 0);
     g.state = s;
     recomputeTrinkets(); rebuild(); save();
     startRun();
@@ -929,6 +992,9 @@
     g.state.parts = (s.parts || []).filter((p) => D.PART_BY_ID[p.id]);
     g.state.trinkets = (s.trinkets || []).filter((t) => D.TRINKET_BY_ID[t]);
     g.state.panels = (s.panels && s.panels.length === 6) ? s.panels : base.panels;
+    g.state.perks = s.perks || {};
+    g.state.ballLevels = Object.assign({ steel: 1 }, s.ballLevels || {});
+    g.state.counters = s.counters || {};
     return true;
   }
 
@@ -1012,7 +1078,16 @@
     for (const b of g.balls) {
       if (!b.held) continue;
       b.holdT -= dt;
-      if (b.holdT <= 0 && b.holdCb) { const cb = b.holdCb; b.holdCb = null; b.held = false; b.holdTo = null; b.holdCd = 0.5; cb(); }
+      if (b.lift) {
+        b.lift.t = Math.min(b.lift.T, b.lift.t + dt);
+        b.holdTo.y = U.lerp(b.lift.y0, b.lift.y1, U.easeInOut(b.lift.t / b.lift.T));
+        if (g.state.settings.particles && Math.random() < 0.4) burst(b.p.x, b.p.y - 4, D.C.teal, 1);
+      }
+      if (b.holdT <= 0) {
+        const cb = b.holdCb;
+        b.holdCb = null; b.held = false; b.holdTo = null; b.lift = null; b.holdCd = 0.5;
+        if (cb) cb();
+      }
     }
 
     /* --- ball search: nothing may ever get stuck forever --- */
@@ -1102,6 +1177,7 @@
   function autoFlippers(dt) {
     const assistLvl = up('autoPlay');
     for (const f of g.world.flippers) {
+      if (f.wheel) continue;
       const isAuto = f.auto;
       const assisted = !isAuto && (g.demo || (g.state.settings.assist && assistLvl > 0));
       if (!isAuto && !assisted) continue;
@@ -1146,7 +1222,8 @@
    * ================================================================ */
   const A = {
     score, addMult, freezeMult, burst, shake, sfx, coins, count,
-    holdBall, splitBall, otherPortal, loadCannon, fireCannon,
+    holdBall, liftBall, grantBallSave, splitBall, otherPortal, loadCannon, fireCannon,
+    now: () => g.time,
     checkTargetBank, checkLaneSet,
     flag: (k, v) => (v === undefined ? g.flags[k] : (g.flags[k] = v)),
     highestActiveFloor: () => {
@@ -1184,6 +1261,7 @@
     plungerDown, plungerRelease, nudge, fireCannon,
     buyPart, sellPart, levelPart, movePart, rotatePart,
     buyUpgrade, buyBall, selectBall, buyTrinket, sellTrinket, buyFloor, prestige,
+    buyPerk, polishBall, perk, ballLevel, ballScoreMul, ballCoinMul,
     canAfford, pay, coins, up, idlePerSec, coinRate, baseMult, ballsPerRun,
     trinketSlots, slotsUsed, floorOf, checkMedals,
     count, missionProgress, ensureMissions, claimMission, rerollMission, comboWindow,

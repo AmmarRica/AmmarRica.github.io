@@ -152,16 +152,26 @@
       if (!def) continue;
       if (inst.floor >= state.floors) continue;   // on a locked floor: dormant
       if (def.flipper) {
-        flippers.push(flipperFrom({
+        const f = flipperFrom({
           id: inst.uid, part: inst, x: inst.x, y: inst.y, a: inst.a || 0,
           side: inst.side || 'L', panel: inst.panel != null ? inst.panel : (inst.side === 'R' ? 1 : 0),
-          len: 12 + inst.lvl * 0.6, power: 118 + inst.lvl * 9, auto: !!def.auto,
-          color: def.color,
-        }, ups));
+          len: def.wheel ? 9 + inst.lvl * 0.5 : 12 + inst.lvl * 0.6,
+          power: def.wheel ? 0 : 118 + inst.lvl * 9,
+          auto: !!def.auto, color: def.color,
+        }, ups);
+        if (def.wheel) {
+          // Batter wheels never rest — they just windmill.
+          f.wheel = true;
+          f.spinRate = (2.6 + inst.lvl * 0.22) * ((inst.a || 0) < 0 ? -1 : 1);
+          f.e = 0.75;
+          f.thick = 1.9;
+        }
+        flippers.push(f);
         continue;
       }
       const tmp = [];
       def.build(inst, tmp);
+      inst._cols = tmp;             // so tick() can animate a live collider
       for (const c of tmp) {
         c.part = inst;
         if (c.k === 'field') fields.push(c); else colliders.push(c);
@@ -182,7 +192,7 @@
   /* ===================================================================
    * PLACEMENT RULES
    * ================================================================ */
-  const slotLimit = (state) => 10 + 2 * (state.upgrades.slots || 0);
+  const slotLimit = (state) => 10 + 2 * (state.upgrades.slots || 0) + 2 * ((state.perks && state.perks.slots) || 0);
 
   function partsOnFloor(state, floor) {
     return state.parts.filter((p) => p.floor === floor);

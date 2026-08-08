@@ -290,9 +290,10 @@
       c.appendChild(el('div.borb', { style: { background: `radial-gradient(circle at 32% 30%, #fff, ${b.color} 55%, ${U.shade(b.color, -0.35)})` } }));
       c.appendChild(el('div.pname', b.name));
       c.appendChild(el('div.pdesc', b.desc));
+      const lvl = G.ballLevel(b.id);
       c.appendChild(el('div.bstats',
-        chip('CHIPS', '×' + b.score, D.C.blue),
-        chip('COINS', '×' + b.coin, D.C.gold),
+        chip('CHIPS', '×' + (owned ? D.ballScore(b, lvl) : b.score).toFixed(2), D.C.blue),
+        chip('COINS', '×' + (owned ? D.ballCoin(b, lvl) : b.coin).toFixed(2), D.C.gold),
         chip('GRAV', b.grav.toFixed(2), D.C.purple),
         chip('BOUNCE', b.e.toFixed(2), D.C.red),
         chip('MASS', b.mass.toFixed(2), D.C.cream),
@@ -300,6 +301,14 @@
       c.appendChild(owned
         ? btn(sel ? '✔ EQUIPPED' : 'EQUIP', { cls: 'buy' + (sel ? ' on' : ''), disabled: sel, onclick: () => { G.selectBall(b.id); renderMenu(); } })
         : btn('🪙 ' + fmt(b.cost), { cls: 'buy', disabled: g.state.coins < b.cost, onclick: () => { if (G.buyBall(b.id)) { G.selectBall(b.id); renderMenu(); } } }));
+      if (owned) {
+        const maxed = lvl >= D.BALL_MAX_LEVEL;
+        const pc = D.ballPolishCost(b, lvl);
+        c.appendChild(btn(maxed ? 'POLISHED · MAX' : 'POLISH Lv' + lvl + ' → ' + (lvl + 1) + '  🪙 ' + fmt(pc), {
+          cls: 'sm', disabled: maxed || g.state.coins < pc,
+          onclick: () => { G.polishBall(b.id); renderMenu(); },
+        }));
+      }
       grid.appendChild(c);
     }
     root.appendChild(grid);
@@ -501,6 +510,29 @@
       onclick: () => confirmModal('Reforge the tower?', 'You will restart with ' + fmt(g.state.gems + gems) + ' gems and a permanent ×' + D.gemBonus(g.state.gems + gems).toFixed(2) + ' to chips and coins.', () => { G.prestige(); renderMenu(); }),
     }));
     root.appendChild(p);
+
+    root.appendChild(el('div.cathead', { style: { '--accent': D.C.purple } }, 'GEM PERKS',
+      el('span.slots', '💎 ' + fmt(g.state.gems))));
+    root.appendChild(el('div.sectitle', el('p', 'Bought with gems and never reset — not even by a Reforge.')));
+    const plist = el('div.plist');
+    for (const pk of D.PERKS) {
+      const lvl = G.perk(pk.id);
+      const maxed = lvl >= pk.max;
+      const cost = D.perkCost(pk, lvl);
+      const row = el('div.prow.up');
+      row.appendChild(el('div.pico.sm', { style: { background: D.C.pink } }, pk.emoji));
+      row.appendChild(el('div.pinfo',
+        el('b', pk.name + '  ' + (maxed ? 'MAX' : 'Lv' + lvl + '/' + pk.max)),
+        el('small', pk.desc),
+        el('small.eff', pk.fmt(lvl)),
+      ));
+      row.appendChild(btn(maxed ? 'MAX' : '💎 ' + fmt(cost), {
+        cls: 'sm', disabled: maxed || g.state.gems < cost,
+        onclick: () => { if (G.buyPerk(pk.id)) renderMenu(); },
+      }));
+      plist.appendChild(row);
+    }
+    root.appendChild(plist);
   }
 
   /* ==================================================================
@@ -833,7 +865,7 @@
   function pressPanel(i, down) {
     if (!g.world) return;
     for (const f of g.world.flippers) {
-      if (f.panel !== i || f.auto) continue;
+      if (f.panel !== i || f.auto || f.wheel) continue;
       f.humanPress = down;
       f.pressed = down || (f.autoPress && (g.demo || (g.state.settings.assist && G.up('autoPlay') > 0))) || false;
     }
@@ -887,6 +919,46 @@
   }
 
   /* ==================================================================
+   * GAMEPAD — shoulder buttons are flippers, exactly like a real cabinet.
+   * =============================================================== */
+  const PAD_MAP = [
+    { btns: [4, 6], act: 'panel', panel: 0 },
+    { btns: [5, 7], act: 'panel', panel: 1 },
+    { btns: [2], act: 'panel', panel: 2 },
+    { btns: [3], act: 'panel', panel: 3 },
+    { btns: [0], act: 'plunge' },
+    { btns: [1], act: 'nudge' },
+    { btns: [14], act: 'nudgeL' },
+    { btns: [15], act: 'nudgeR' },
+    { btns: [9], act: 'menu' },
+  ];
+  const padPrev = {};
+
+  function pollGamepads() {
+    if (!navigator.getGamepads) return;
+    const pads = navigator.getGamepads();
+    let any = null;
+    for (const p of pads) if (p && p.connected) { any = p; break; }
+    if (!any) return;
+    for (let i = 0; i < PAD_MAP.length; i++) {
+      const m = PAD_MAP[i];
+      const down = m.btns.some((b) => any.buttons[b] && any.buttons[b].pressed);
+      const was = !!padPrev[i];
+      if (down === was) continue;
+      padPrev[i] = down;
+      switch (m.act) {
+        case 'panel': pressPanel(m.panel, down); break;
+        case 'plunge': down ? G.plungerDown() : G.plungerRelease(); break;
+        case 'nudge': if (down) G.nudge(0); break;
+        case 'nudgeL': if (down) G.nudge(-1); break;
+        case 'nudgeR': if (down) G.nudge(1); break;
+        case 'menu': if (down) setMenu(!UI.menuOpen); break;
+        default: break;
+      }
+    }
+  }
+
+  /* ==================================================================
    * TABLE-SIDE CONTROLS
    * =============================================================== */
   function buildTableUI() {
@@ -915,7 +987,7 @@
   function refreshPanelButtons() {
     const host = $('panelBtns');
     if (!host || !g.world) return;
-    const used = new Set(g.world.flippers.filter((f) => !f.auto).map((f) => f.panel));
+    const used = new Set(g.world.flippers.filter((f) => !f.auto && !f.wheel).map((f) => f.panel));
     const want = [2, 3, 4, 5].filter((i) => used.has(i));
     const sig = want.join(',');
     if (host.dataset.sig === sig) return;
@@ -1042,6 +1114,7 @@
     G.on('rebuild', () => { refreshPanelButtons(); });
     G.on('tick', () => {
       updateHud();
+      pollGamepads();
       if (UI.menuOpen) updatePurse();
     });
     G.on('cannon', (c) => { $('app').classList.toggle('aiming', !!c); });

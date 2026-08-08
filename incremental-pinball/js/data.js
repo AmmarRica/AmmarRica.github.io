@@ -450,6 +450,107 @@
       onHit(A, inst) { A.score(chipsFor(this.chips, inst.lvl), inst); A.addMult(0.12); A.sfx('rail'); },
     },
 
+    {
+      id: 'lift', name: 'Lift Platform', emoji: '🛗', cat: 'flow', color: C.teal,
+      cost: 1500, growth: 1.3, floor: 1, r: 6, rot: false, maxLevel: 15,
+      desc: 'Catches the ball and carries it bodily up the shaft. The most reliable climb in the game.',
+      chips: 80,
+      build(inst, out) { out.push({ k: 'sensor', c: { x: inst.x, y: inst.y }, r: 6, tag: 'lift' }); },
+      onHit(A, inst, ball) {
+        if (ball.held || ball.holdCd > 0) return;
+        const dist = 32 + 7 * inst.lvl;
+        A.liftBall(ball, inst, dist, 0.95, () => {
+          A.score(chipsFor(this.chips, inst.lvl), inst, { pop: true, label: 'LIFT' });
+          A.addMult(0.3 + 0.1 * inst.lvl);
+          ball.v.y = 55 + 6 * inst.lvl;
+          ball.v.x = U.rand(-12, 12);
+          A.burst(ball.p.x, ball.p.y, C.teal, 16);
+          A.sfx('vault');
+        });
+      },
+    },
+    {
+      id: 'piston', name: 'Piston', emoji: '⏫', cat: 'flow', color: C.orange,
+      cost: 700, growth: 1.25, floor: 0, r: 5.5, rot: false, maxLevel: 15,
+      desc: 'Fires on a timer. Anything resting on it gets launched skyward every few seconds.',
+      chips: 35, period: 2.6,
+      build(inst, out) { out.push({ k: 'circ', c: { x: inst.x, y: inst.y }, r: 5.5, e: 0.35, kick: 6, tag: 'piston' }); },
+      tick(A, inst, dt) {
+        inst.t = (inst.t || 0) + dt;
+        const p = Math.max(1.1, this.period - inst.lvl * 0.09);
+        const firing = (inst.t % p) < 0.16;
+        inst.fire = firing;
+        if (inst._cols && inst._cols[0]) inst._cols[0].kick = firing ? 155 + 13 * inst.lvl : 6;
+      },
+      onHit(A, inst) {
+        A.score(chipsFor(this.chips, inst.lvl), inst, { pop: !!inst.fire });
+        if (inst.fire) { A.addMult(0.2 + 0.05 * inst.lvl); A.burst(inst.x, inst.y, C.orange, 14); A.sfx('save'); }
+      },
+    },
+    {
+      id: 'wheel', name: 'Batter Wheel', emoji: '🎡', cat: 'flow', color: C.purple,
+      cost: 1100, growth: 1.28, floor: 0, r: 12, rot: true, maxLevel: 15,
+      desc: 'A constantly spinning arm that swats anything it touches. Unpredictable and very strong.',
+      chips: 26, flipper: true, wheel: true,
+      build() { /* dynamic — see table.js */ },
+      onHit(A, inst) {
+        A.score(chipsFor(this.chips, inst.lvl), inst);
+        A.addMult(0.1 + 0.03 * inst.lvl);
+        A.burst(inst.x, inst.y, C.purple, 8);
+        A.sfx('sling');
+      },
+    },
+    {
+      id: 'gate', name: 'One-Way Gate', emoji: '⤒', cat: 'flow', color: C.green,
+      cost: 260, growth: 1.2, floor: 0, r: 8, rot: true, maxLevel: 8,
+      desc: 'Balls travelling upward pass straight through it; anything falling gets stopped dead.',
+      chips: 12,
+      build(inst, out) {
+        const L = 8 + inst.lvl * 0.7;
+        const d = U.vrot({ x: L, y: 0 }, inst.a);
+        out.push({
+          k: 'seg', a: { x: inst.x - d.x, y: inst.y - d.y }, b: { x: inst.x + d.x, y: inst.y + d.y },
+          t: 1.1, e: 0.45, kick: 6, oneWayUp: true, tag: 'gate',
+        });
+      },
+      onHit(A, inst) { A.score(chipsFor(this.chips, inst.lvl), inst, { silent: true }); },
+    },
+    {
+      id: 'bell', name: 'Chime Bell', emoji: '🔔', cat: 'score', color: C.gold,
+      cost: 200, growth: 1.2, floor: 0, r: 4.6, rot: false, maxLevel: 20,
+      desc: 'Rings in a chain: every bell struck within two seconds of the last pays double.',
+      chips: 26,
+      build(inst, out) { out.push({ k: 'circ', c: { x: inst.x, y: inst.y }, r: 4.6, e: 0.8, kick: 30, tag: 'bell' }); },
+      onHit(A, inst) {
+        const t = A.now();
+        const chain = (t - (A.flag('bellT') || -9) < 2) ? Math.min(8, (A.flag('bellN') || 0) + 1) : 1;
+        A.flag('bellT', t); A.flag('bellN', chain);
+        A.score(chipsFor(this.chips, inst.lvl) * Math.pow(2, chain - 1), inst, { pop: chain > 2, label: chain > 2 ? 'CHAIN ×' + chain : null });
+        A.addMult(0.05 * chain);
+        A.burst(inst.x, inst.y, C.gold, 4 + chain * 2);
+        A.sfx('blip', chain * 0.09);
+      },
+    },
+    {
+      id: 'roulette', name: 'Roulette', emoji: '🎰', cat: 'score', color: C.pink,
+      cost: 1900, growth: 1.3, floor: 2, r: 6.5, rot: false, maxLevel: 15,
+      desc: 'Every hit pays out something different: chips, MULT, coins, a ball save, or an extra ball.',
+      chips: 60,
+      build(inst, out) { out.push({ k: 'circ', c: { x: inst.x, y: inst.y }, r: 6.5, e: 0.65, kick: 38, tag: 'roulette' }); },
+      onHit(A, inst, ball) {
+        const base = chipsFor(this.chips, inst.lvl);
+        const roll = Math.random();
+        inst.face = Math.floor(roll * 5);
+        if (roll < 0.34) { A.score(base * 4, inst, { pop: true, label: 'CHIPS' }); }
+        else if (roll < 0.60) { A.score(base, inst); A.addMult(0.8 + 0.2 * inst.lvl, true); }
+        else if (roll < 0.82) { A.score(base, inst); A.coins(Math.round(base * 0.7)); A.sfx('coin'); }
+        else if (roll < 0.94) { A.score(base * 2, inst, { pop: true, label: 'SAVE' }); A.grantBallSave(3); }
+        else { A.score(base * 3, inst, { pop: true, label: 'EXTRA BALL' }); A.splitBall(ball); }
+        A.burst(inst.x, inst.y, C.pink, 16);
+        A.sfx('jackpot');
+      },
+    },
+
     /* --------------------------------------------------------- CONTROL */
     {
       id: 'paddle', name: 'Paddle', emoji: '🏓', cat: 'control', color: C.cream,
@@ -769,10 +870,48 @@
   }
 
   /* =====================================================================
+   * BALL POLISHING — every owned ball can be levelled for more chips/coins.
+   * ================================================================== */
+  const BALL_MAX_LEVEL = 20;
+  const ballPolishCost = (ball, lvl) => Math.round((Math.max(160, ball.cost * 0.35) + 90) * Math.pow(1.85, lvl));
+  const ballScore = (ball, lvl) => ball.score * (1 + 0.14 * (lvl - 1));
+  const ballCoin = (ball, lvl) => ball.coin * (1 + 0.09 * (lvl - 1));
+
+  /* =====================================================================
    * PRESTIGE
    * ================================================================== */
   const prestigeGems = (lifetimeChips) => Math.floor(Math.pow(Math.max(0, lifetimeChips) / 1e6, 0.42));
   const gemBonus = (gems) => 1 + gems * 0.15;         // global chip + coin multiplier
+
+  /**
+   * Gem perks: the only thing gems buy besides their flat bonus, and the
+   * only progress that is never reset. Deliberately few and chunky.
+   */
+  const PERKS = [
+    { id: 'chips',   name: 'Molten Core',    emoji: '🔥', cost: 1, growth: 2.0, max: 10,
+      desc: 'All chips +25% per level.', fmt: (l) => `+${l * 25}% chips` },
+    { id: 'coins',   name: 'Gilded Ledger',  emoji: '📜', cost: 1, growth: 2.0, max: 10,
+      desc: 'All coins +25% per level.', fmt: (l) => `+${l * 25}% coins` },
+    { id: 'floors',  name: 'Deep Foundation',emoji: '🏗️', cost: 3, growth: 2.6, max: 6,
+      desc: 'Start every Reforge with an extra floor already open.', fmt: (l) => `${3 + l} starting floors` },
+    { id: 'seed',    name: 'Seed Capital',   emoji: '💰', cost: 2, growth: 2.2, max: 10,
+      desc: 'Start each Reforge with more coins.', fmt: (l) => `${U.fmt(1000 * Math.pow(3, l))} starting coins` },
+    { id: 'keepBalls', name: 'Ball Vault',   emoji: '🎱', cost: 5, growth: 3.0, max: 1,
+      desc: 'Keep every ball you have unlocked through a Reforge.', fmt: (l) => (l ? 'active' : 'locked') },
+    { id: 'keepTrinkets', name: 'Curio Case', emoji: '🃏', cost: 8, growth: 3.0, max: 1,
+      desc: 'Keep your trinkets through a Reforge.', fmt: (l) => (l ? 'active' : 'locked') },
+    { id: 'slots',   name: 'Wide Girders',   emoji: '🧱', cost: 3, growth: 2.4, max: 8,
+      desc: 'Permanently +2 build slots on every floor.', fmt: (l) => `+${l * 2} slots per floor` },
+    { id: 'idle',    name: 'Night Foreman',  emoji: '🌙', cost: 2, growth: 2.3, max: 10,
+      desc: 'Idle income +40% per level.', fmt: (l) => `+${l * 40}% idle` },
+    { id: 'luck',    name: 'Loaded Dice',    emoji: '🎲', cost: 4, growth: 2.6, max: 8,
+      desc: 'Every hit has a chance to pay a 25× lucky jackpot.', fmt: (l) => `${(l * 1.5).toFixed(1)}% lucky hits` },
+    { id: 'mult',    name: 'Weighted Ante',  emoji: '✖️', cost: 4, growth: 2.8, max: 8,
+      desc: 'Base MULT +0.5 per level.', fmt: (l) => `MULT floor +${(l * 0.5).toFixed(1)}` },
+  ];
+  const PERK_BY_ID = {};
+  PERKS.forEach((p) => { PERK_BY_ID[p.id] = p; });
+  const perkCost = (p, lvl) => Math.round(p.cost * Math.pow(p.growth, lvl));
 
   IP.data = {
     W, C, FLOORS, floorMult, floorCost,
@@ -782,5 +921,7 @@
     TRINKETS, TRINKET_BY_ID, RARITY,
     MEDALS, prestigeGems, gemBonus,
     MISSION_POOL, MISSION_BY_KEY, missionNeed, missionPay,
+    PERKS, PERK_BY_ID, perkCost,
+    BALL_MAX_LEVEL, ballPolishCost, ballScore, ballCoin,
   };
 })(window);

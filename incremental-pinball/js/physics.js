@@ -78,6 +78,12 @@
 
   /** Advance a flipper's swing. `dir` = +1 pressed (up), -1 released. */
   function stepFlipper(f, dt) {
+    if (f.spinRate) {                    // batter wheel: constant windmill
+      f.ang = U.norm(f.ang + f.spinRate * dt);
+      f.angV = f.spinRate;
+      f.tip = { x: f.pivot.x + Math.cos(f.ang) * f.len, y: f.pivot.y + Math.sin(f.ang) * f.len };
+      return;
+    }
     const target = f.pressed ? f.upAng : f.restAng;
     const prev = f.ang;
     const rate = f.rate * (f.pressed ? 1 : 0.62);
@@ -113,8 +119,8 @@
       ball.v.x = vs.x + n.x * nvn + tx * vt;
       ball.v.y = vs.y + n.y * nvn + ty * vt;
       // Extra punch while actively swinging up — this is what "flipping" feels like.
-      const swing = Math.abs(f.angV) * (f.pressed ? 1 : 0.25);
-      if (swing > 0.6) {
+      const swing = Math.abs(f.angV) * (f.spinRate ? 1 : f.pressed ? 1 : 0.25);
+      if (swing > 0.6 && f.power > 0) {
         const boost = Math.min(swing * f.power * 0.09, f.power) / Math.sqrt(ball.mass);
         ball.v.x += n.x * boost;
         ball.v.y += n.y * boost;
