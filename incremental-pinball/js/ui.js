@@ -18,6 +18,7 @@
     tab: 'shop',
     menuOpen: true,
     armed: null,          // part id queued for placement
+    bulk: 1,              // upgrade purchase batch size
     dragUid: null,
     dirty: true,
     lastCoins: 0,
@@ -67,7 +68,12 @@
     hud.appendChild(el('div.hudrow.small',
       el('div#hBalls.hmini', '●●●'),
       el('div#hFloor.hmini', 'F0'),
+      el('div#hCombo.hmini.combo', ''),
       el('div#hIdle.hmini', '+0/s'),
+    ));
+    hud.appendChild(el('div.hudrow.meters',
+      el('div.meter#mSave', el('i'), el('span', 'BALL SAVE')),
+      el('div.meter.tilt#mTilt', el('i'), el('span', 'TILT')),
     ));
   }
 
@@ -84,8 +90,28 @@
     const f = g.balls.length ? G.floorOf(g.balls[0].p.y) : 0;
     set('hFloor', 'F' + f + '  ×' + fmt(D.floorMult(f)));
     set('hIdle', '+' + fmt(g.idleRate) + '/s');
+    const cb = $('hCombo');
+    if (cb) {
+      const live = (g.combo || 0) > 1 && (g.sinceHit || 0) < G.comboWindow();
+      cb.textContent = live ? '🔗 ' + g.combo : '';
+      cb.classList.toggle('live', live);
+    }
     const ns = $('hNudge');
     if (ns) ns.textContent = 'NUDGE ' + g.nudgesLeft;
+
+    // Ball-save and tilt meters only matter mid-ball, so they fade in and out.
+    const saveMax = 2.5 * G.up('ballSave');
+    const ms = $('mSave');
+    if (ms) {
+      const on = g.ballSaveT > 0 && saveMax > 0;
+      ms.classList.toggle('on', on);
+      if (on) ms.firstChild.style.width = (100 * g.ballSaveT / saveMax).toFixed(0) + '%';
+    }
+    const mt = $('mTilt');
+    if (mt) {
+      mt.classList.toggle('on', g.tilt > 0.02);
+      mt.firstChild.style.width = (100 * U.clamp(g.tilt, 0, 1)).toFixed(0) + '%';
+    }
   }
 
   /* ==================================================================
@@ -96,6 +122,7 @@
     { id: 'build', name: 'BUILD', emoji: '🔧' },
     { id: 'balls', name: 'BALLS', emoji: '⚪' },
     { id: 'trinkets', name: 'TRINKETS', emoji: '🃏' },
+    { id: 'tasks', name: 'TASKS', emoji: '📋' },
     { id: 'upgrades', name: 'UPGRADES', emoji: '⬆️' },
     { id: 'tower', name: 'TOWER', emoji: '🏗️' },
     { id: 'panels', name: 'PANELS', emoji: '🎛️' },
@@ -138,7 +165,7 @@
     ({
       shop: renderShop, build: renderBuild, balls: renderBalls,
       trinkets: renderTrinkets, upgrades: renderUpgrades, tower: renderTower,
-      panels: renderPanels, stats: renderStats,
+      panels: renderPanels, stats: renderStats, tasks: renderTasks,
     }[UI.tab] || renderShop)(body);
     updatePurse();
   }
@@ -324,6 +351,52 @@
   }
 
   /* ==================================================================
+   * TAB: TASKS — three rolling objectives
+   * =============================================================== */
+  function renderTasks(root) {
+    G.ensureMissions();
+    root.appendChild(section('TASKS', 'Three jobs at a time. Finish one, claim the coins, and a harder one takes its place.'));
+    const rerollCost = 150 + 60 * (g.state.stats.missionsDone || 0);
+
+    g.state.missions.forEach((m, i) => {
+      const pr = G.missionProgress(m);
+      if (!pr.def) return;
+      const pct = U.clamp(pr.have / pr.need, 0, 1);
+      const c = card({ cls: 'task' + (pr.done ? ' done' : ''), accent: pr.done ? D.C.green : D.C.blue });
+      c.appendChild(el('div.trow2',
+        el('div.pico.sm', { style: { background: pr.done ? D.C.green : D.C.blue } }, pr.def.emoji),
+        el('div.pinfo', el('b', pr.def.text(pr.need)), el('small', 'Tier ' + (m.tier + 1))),
+      ));
+      c.appendChild(el('div.bar', el('div.fill', { style: { width: (pct * 100).toFixed(1) + '%' } })));
+      c.appendChild(el('div.pmeta',
+        el('span.owned', fmt(Math.min(pr.have, pr.need)) + ' / ' + fmt(pr.need)),
+        el('span.cost', '🪙 ' + fmt(pr.pay)),
+      ));
+      c.appendChild(el('div.taskacts',
+        btn(pr.done ? 'CLAIM' : 'IN PROGRESS', {
+          cls: 'buy' + (pr.done ? ' on' : ''), disabled: !pr.done,
+          onclick: () => { G.claimMission(i); renderMenu(); },
+        }),
+        btn('SWAP 🪙' + fmt(rerollCost), {
+          cls: 'sm ghost', title: 'Swap this task for another',
+          disabled: g.state.coins < rerollCost,
+          onclick: () => { G.rerollMission(i); renderMenu(); },
+        }),
+      ));
+      root.appendChild(c);
+    });
+
+    root.appendChild(el('div.cathead', { style: { '--accent': D.C.gold } }, 'CAREER'));
+    const box = el('div.statbox');
+    box.appendChild(statRow('Tasks completed', fmt(g.state.stats.missionsDone || 0)));
+    box.appendChild(statRow('Best combo', fmt(g.state.stats.bestCombo || 0) + ' hits'));
+    box.appendChild(statRow('Lifetime part hits', fmt(g.state.counters.hits || 0)));
+    box.appendChild(statRow('Floor openings climbed', fmt(g.state.counters.climbs || 0)));
+    box.appendChild(statRow('Jackpots collected', fmt(g.state.counters.jackpots || 0)));
+    root.appendChild(box);
+  }
+
+  /* ==================================================================
    * TAB: UPGRADES
    * =============================================================== */
   const UGROUPS = [
@@ -334,25 +407,56 @@
     { id: 'build', name: 'CONSTRUCTION', color: D.C.purple },
   ];
 
+  /** Cost of buying `n` more levels of `u` from its current level. */
+  function bulkCost(u, lvl, n) {
+    let c = 0;
+    for (let i = 0; i < n && lvl + i < u.max; i++) c += D.upgradeCost(u, lvl + i);
+    return c;
+  }
+  /** How many levels the current purse can actually cover. */
+  function affordableLevels(u, lvl, want) {
+    let c = 0, n = 0;
+    while (n < want && lvl + n < u.max) {
+      const next = D.upgradeCost(u, lvl + n);
+      if (c + next > g.state.coins) break;
+      c += next; n++;
+    }
+    return { n, c };
+  }
+
   function renderUpgrades(root) {
     root.appendChild(section('UPGRADES', 'Permanent. These survive every run — only a Reforge resets them.'));
+
+    const bulks = [1, 10, 'MAX'];
+    const picker = el('div.bulkrow', el('span', 'BUY'));
+    for (const b of bulks) {
+      picker.appendChild(btn('×' + b, {
+        cls: 'sm' + (UI.bulk === b ? ' primary' : ' ghost'),
+        onclick: () => { UI.bulk = b; renderMenu(); },
+      }));
+    }
+    root.appendChild(picker);
+
     for (const grp of UGROUPS) {
       root.appendChild(el('div.cathead', { style: { '--accent': grp.color } }, grp.name));
       const list = el('div.plist');
       for (const u of D.UPGRADES.filter((x) => x.group === grp.id)) {
         const lvl = G.up(u.id);
         const maxed = lvl >= u.max;
-        const cost = D.upgradeCost(u, lvl);
+        const want = UI.bulk === 'MAX' ? u.max - lvl : UI.bulk;
+        const aff = affordableLevels(u, lvl, Math.max(1, want));
+        const buyN = Math.max(1, UI.bulk === 'MAX' ? aff.n : Math.min(want, u.max - lvl));
+        const cost = UI.bulk === 'MAX' ? aff.c : bulkCost(u, lvl, buyN);
         const row = el('div.prow.up');
         row.appendChild(el('div.pico.sm', { style: { background: grp.color } }, u.emoji));
         row.appendChild(el('div.pinfo',
           el('b', u.name + '  ' + (maxed ? 'MAX' : 'Lv' + lvl + '/' + u.max)),
           el('small', u.desc),
-          el('small.eff', u.fmt(lvl)),
+          el('small.eff', u.fmt(lvl) + (maxed || buyN < 2 ? '' : '  →  ' + u.fmt(lvl + buyN))),
         ));
-        row.appendChild(btn(maxed ? 'MAX' : '🪙 ' + fmt(cost), {
-          cls: 'sm', disabled: maxed || g.state.coins < cost,
-          onclick: () => { if (G.buyUpgrade(u.id)) renderMenu(); },
+        row.appendChild(btn(maxed ? 'MAX' : (buyN > 1 ? '×' + buyN + '  ' : '') + '🪙 ' + fmt(cost), {
+          cls: 'sm', disabled: maxed || cost <= 0 || g.state.coins < cost,
+          onclick: () => { for (let i = 0; i < buyN; i++) if (!G.buyUpgrade(u.id)) break; renderMenu(); },
         }));
         list.appendChild(row);
       }
@@ -931,6 +1035,10 @@
 
     G.on('runEnd', showRunEnd);
     G.on('flash', flash);
+    G.on('ball', (run) => {
+      if (g.demo) return;
+      flash({ text: 'BALL ' + run.ballNo + ' / ' + (run.ballNo + run.ballsLeft - 1), color: D.C.cream });
+    });
     G.on('rebuild', () => { refreshPanelButtons(); });
     G.on('tick', () => {
       updateHud();

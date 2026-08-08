@@ -67,6 +67,8 @@ navigation:
     url: /nonogram/
   - title: Pinball
     url: /pinball/
+  - title: Tower of Chips
+    url: /incremental-pinball/
   - title: Magnetball
     url: /magnetball/
 

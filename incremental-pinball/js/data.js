@@ -198,6 +198,7 @@
       onHit(A, inst, ball) {
         const spins = U.clamp(Math.round(U.vlen(ball.v) / 26), 1, 14);
         inst.spin = (inst.spin || 0) + spins * 0.9;
+        A.count('spins', spins);
         A.score(chipsFor(this.chips, inst.lvl) * spins, inst);
         A.addMult(0.05 * spins);
         A.sfx('spin');
@@ -227,6 +228,7 @@
         if ((inst.charge || 0) < 1) { A.score(8, inst); return; }
         const pay = Math.round(chipsFor(this.chips, inst.lvl) * (1 + inst.charge));
         inst.charge = 0;
+        A.count('jackpots');
         A.score(pay, inst, { pop: true, label: 'JACKPOT' });
         A.addMult(1 + 0.2 * inst.lvl);
         A.burst(inst.x, inst.y, C.pink, 26);
@@ -347,6 +349,7 @@
       onHit(A, inst, ball) {
         if (ball.held || ball.holdCd > 0) return;
         A.holdBall(ball, inst, 0.85, () => {
+          A.count('jackpots');
           A.score(chipsFor(this.chips, inst.lvl), inst, { pop: true, label: 'VAULT' });
           A.addMult(0.5 + 0.2 * inst.lvl);
           ball.v.x = U.rand(-14, 14);
@@ -475,6 +478,7 @@
         if ((inst.used || 0) >= max) return;
         if (ball.v.y > 20) return;
         inst.used = (inst.used || 0) + 1;
+        A.count('saves');
         ball.v.y = Math.max(ball.v.y, 150 + 8 * inst.lvl);
         ball.v.x *= 0.5;
         A.score(chipsFor(this.chips, inst.lvl), inst, { pop: true, label: 'SAVE' });
@@ -731,6 +735,40 @@
   ];
 
   /* =====================================================================
+   * MISSIONS — three rolling objectives, each one tier harder than the last.
+   * `max` missions read a high-water stat directly; `count` missions measure
+   * progress from wherever the counter stood when the mission was handed out.
+   * ================================================================== */
+  const MISSION_POOL = [
+    { key: 'runChips', kind: 'max',   emoji: '🔷', text: (n) => `Score ${fmtN(n)} chips in a single run`,  base: 4000, grow: 3.4, pay: 1.0 },
+    { key: 'floor',    kind: 'max',   emoji: '🏢', text: (n) => `Reach floor ${n}`,                        base: 2,    grow: 1,  pay: 1.6, step: 1, cap: 11 },
+    { key: 'mult',     kind: 'max',   emoji: '✖️', text: (n) => `Reach ×${fmtN(n)} MULT`,                   base: 4,    grow: 1.8, pay: 1.3 },
+    { key: 'parts',    kind: 'max',   emoji: '🧱', text: (n) => `Have ${fmtN(n)} parts on the tower`,       base: 14,   grow: 1.45, pay: 1.0 },
+    { key: 'hits',     kind: 'count', emoji: '💥', text: (n) => `Land ${fmtN(n)} hits on your parts`,       base: 180,  grow: 2.5, pay: 0.85 },
+    { key: 'targets',  kind: 'count', emoji: '🎯', text: (n) => `Knock down ${fmtN(n)} drop targets`,       base: 18,   grow: 2.4, pay: 1.1 },
+    { key: 'jackpots', kind: 'count', emoji: '💎', text: (n) => `Collect ${fmtN(n)} jackpots`,              base: 4,    grow: 2.3, pay: 1.4 },
+    { key: 'combo',    kind: 'max',   emoji: '🔗', text: (n) => `Chain a ${fmtN(n)}-hit combo`,             base: 10,   grow: 1.7, pay: 1.2 },
+    { key: 'coins',    kind: 'count', emoji: '🪙', text: (n) => `Earn ${fmtN(n)} coins`,                    base: 1500, grow: 3.1, pay: 0.75 },
+    { key: 'launches', kind: 'count', emoji: '🚀', text: (n) => `Launch ${fmtN(n)} balls`,                  base: 12,   grow: 2.1, pay: 0.7 },
+    { key: 'spins',    kind: 'count', emoji: '🌀', text: (n) => `Rack up ${fmtN(n)} spinner revolutions`,   base: 60,   grow: 2.5, pay: 0.95 },
+    { key: 'climbs',   kind: 'count', emoji: '⤴️', text: (n) => `Climb through ${fmtN(n)} floor openings`,  base: 8,    grow: 2.3, pay: 1.25 },
+    { key: 'banks',    kind: 'count', emoji: '🏦', text: (n) => `Complete ${fmtN(n)} target banks`,         base: 3,    grow: 2.4, pay: 1.5 },
+    { key: 'saves',    kind: 'count', emoji: '🛟', text: (n) => `Trigger ${fmtN(n)} kicker saves`,          base: 6,    grow: 2.2, pay: 1.0 },
+  ];
+  const MISSION_BY_KEY = {};
+  MISSION_POOL.forEach((m) => { MISSION_BY_KEY[m.key] = m; });
+
+  function fmtN(n) { return U.fmt(n); }
+
+  function missionNeed(def, tier) {
+    if (def.step) return Math.min(def.cap || 99, def.base + def.step * tier);
+    return Math.max(1, Math.round(def.base * Math.pow(def.grow, tier)));
+  }
+  function missionPay(def, tier) {
+    return Math.round(260 * Math.pow(3.05, tier) * def.pay);
+  }
+
+  /* =====================================================================
    * PRESTIGE
    * ================================================================== */
   const prestigeGems = (lifetimeChips) => Math.floor(Math.pow(Math.max(0, lifetimeChips) / 1e6, 0.42));
@@ -743,5 +781,6 @@
     UPGRADES, UP_BY_ID, upgradeCost,
     TRINKETS, TRINKET_BY_ID, RARITY,
     MEDALS, prestigeGems, gemBonus,
+    MISSION_POOL, MISSION_BY_KEY, missionNeed, missionPay,
   };
 })(window);

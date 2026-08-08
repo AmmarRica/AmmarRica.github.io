@@ -49,12 +49,13 @@
         { key: 'e', label: 'PANEL 6' },
       ],
       medals: {},
-      shopSeed: (Math.random() * 1e9) | 0,
-      shopStock: null,
+      missions: [],
+      counters: {},
       settings: { sound: true, shake: true, particles: true, autoRun: true, assist: false },
       stats: {
         totalChips: 0, bestRun: 0, bestFloor: 0, bestMult: 1, runs: 0,
         placed: 0, prestiges: 0, bestIdle: 0, drains: 0, playTime: 0, launches: 0,
+        bestCombo: 0, missionsDone: 0, paddles: 0,
       },
       lastSeen: Date.now(),
       tutorialSeen: false,
@@ -282,12 +283,18 @@
     const gained = Math.max(0, Math.round(base * g.mult));
     if (gained <= 0) return 0;
 
+    // Combo = consecutive scoring hits inside the MULT window.
+    if (!opts._echo) {
+      g.combo = (g.sinceHit || 0) < comboWindow() ? (g.combo || 0) + 1 : 1;
+      if (g.combo > g.state.stats.bestCombo) g.state.stats.bestCombo = g.combo;
+    }
     g.sinceHit = 0;
     g.run.score += gained;
     g.run.chipsThisBall += gained;
     g.state.stats.totalChips += gained;
     const cn = gained * coinRate();
     g.state.coins += cn;
+    count('coins', cn);
     if (g.activeBall) g.activeBall.chips += gained;
 
     if (inst) inst._glow = 1;
@@ -332,6 +339,7 @@
     if (g.multFreeze > 0) { g.multFreeze -= dt; return; }
     if (g.trinketFx.ratchetMult) { g.mult = Math.max(g.mult, g.multPeak); return; }
     if (g.sinceHit < comboWindow()) return;
+    g.combo = 0;
     const rate = 1.15 * (g.trinketFx.decayMult || 1);
     if (g.mult > base) g.mult = Math.max(base, g.mult - (g.mult - base) * rate * dt - dt * 0.08);
     else g.mult = base;
@@ -380,6 +388,8 @@
     if (g.time - (ball._cd[key] || -9) < TRIGGER_CD) return;
     ball._cd[key] = g.time;
     g.activeBall = ball;
+    count('hits');
+    if (inst.id === 'target' && inst.t_down <= 0) count('targets');
     trinketHook('hit', inst);
     if (ball.def.luck && Math.random() < ball.def.luck) {
       score(400, inst, { pop: true, label: 'LUCKY', luckJackpot: true });
@@ -417,6 +427,7 @@
       g.run.floorsThisRun = f;
       const sc = up('scaffold');
       if (sc > 0) score(500 * sc * f, null, { pop: true, label: 'CLIMB', floor: f });
+      count('climbs');
       trinketHook('newFloor', f);
       // Multiball reward for opening up a new floor.
       const mb = up('multiball');
@@ -441,6 +452,7 @@
     score(pay, ts[0], { pop: true, label: 'BANK' });
     addMult(1 + ts.length * 0.5, true);
     ts.forEach((t) => { t.t_down = 0; });
+    count('banks');
     burst(ts[0].x, ts[0].y, D.C.gold, 28);
     shake(9);
     sfx('win');
@@ -564,6 +576,7 @@
     g.balls = [];
     g.mult = baseMult(); g.multPeak = g.mult;
     g.multFreeze = 0;
+    g.combo = 0; g.sinceHit = 99;
     g.run.chipsThisBall = 0;
     g.nudgesLeft = 2 + up('nudge');
     g.tilt = 0;
@@ -623,6 +636,7 @@
     g.plunger.pull = 0;
     g.awaitLaunch = false;
     g.state.stats.launches++;
+    count('launches');
     sfx('launch');
     shake(4);
     // Skill shot: a full-power plunge that flies straight into the first gap.
@@ -798,6 +812,84 @@
     sfx('win');
     emit('prestige', earn);
     return earn;
+  }
+
+  /* ===================================================================
+   * MISSIONS
+   * ================================================================ */
+  function count(key, n) {
+    g.state.counters[key] = (g.state.counters[key] || 0) + (n == null ? 1 : n);
+  }
+
+  /** Current value of whatever a mission is watching. */
+  function missionValue(key) {
+    const s = g.state;
+    switch (key) {
+      case 'runChips': return s.stats.bestRun;
+      case 'floor': return s.stats.bestFloor;
+      case 'mult': return s.stats.bestMult;
+      case 'parts': return s.parts.length;
+      case 'combo': return s.stats.bestCombo;
+      default: return s.counters[key] || 0;
+    }
+  }
+
+  function missionProgress(m) {
+    const def = D.MISSION_BY_KEY[m.key];
+    if (!def) return { have: 0, need: 1, done: false };
+    const need = D.missionNeed(def, m.tier);
+    const have = def.kind === 'max' ? missionValue(m.key) : missionValue(m.key) - (m.from || 0);
+    return { have: Math.max(0, have), need, done: have >= need, def, pay: D.missionPay(def, m.tier) };
+  }
+
+  /** Roll a fresh mission, avoiding whatever is already on the board. */
+  function rollMission(slot) {
+    const taken = new Set(g.state.missions.filter((_, i) => i !== slot).map((m) => m && m.key));
+    const pool = D.MISSION_POOL.filter((d) => !taken.has(d.key));
+    const def = U.pick(pool.length ? pool : D.MISSION_POOL);
+    const seen = (g.state.counters['_tier_' + def.key] || 0);
+    // Start the tier near where the player already is so it is neither
+    // instantly complete nor hopeless.
+    let tier = seen;
+    for (let i = 0; i < 30; i++) {
+      const need = D.missionNeed(def, tier);
+      const have = def.kind === 'max' ? missionValue(def.key) : 0;
+      if (have < need) break;
+      tier++;
+    }
+    return { key: def.key, tier, from: def.kind === 'max' ? 0 : missionValue(def.key) };
+  }
+
+  function ensureMissions() {
+    if (!Array.isArray(g.state.missions)) g.state.missions = [];
+    while (g.state.missions.length < 3) g.state.missions.push(rollMission(g.state.missions.length));
+    g.state.missions = g.state.missions.slice(0, 3);
+  }
+
+  function claimMission(i) {
+    ensureMissions();
+    const m = g.state.missions[i];
+    if (!m) return false;
+    const pr = missionProgress(m);
+    if (!pr.done) return false;
+    coins(pr.pay);
+    g.state.counters['_tier_' + m.key] = m.tier + 1;
+    g.state.stats.missionsDone++;
+    g.state.missions[i] = rollMission(i);
+    popupScreen('TASK DONE  +' + U.fmt(pr.pay), D.C.green);
+    sfx('win');
+    save();
+    return pr.pay;
+  }
+
+  function rerollMission(i) {
+    ensureMissions();
+    const cost = 150 + 60 * (g.state.stats.missionsDone || 0);
+    if (!pay(cost)) return false;
+    g.state.missions[i] = rollMission(i);
+    save();
+    sfx('buy');
+    return true;
   }
 
   /* ===================================================================
@@ -1053,7 +1145,7 @@
    * PUBLIC API handed to parts & trinkets
    * ================================================================ */
   const A = {
-    score, addMult, freezeMult, burst, shake, sfx, coins,
+    score, addMult, freezeMult, burst, shake, sfx, coins, count,
     holdBall, splitBall, otherPortal, loadCannon, fireCannon,
     checkTargetBank, checkLaneSet,
     flag: (k, v) => (v === undefined ? g.flags[k] : (g.flags[k] = v)),
@@ -1074,6 +1166,7 @@
    * ================================================================ */
   function init(canvas) {
     load();
+    ensureMissions();
     recomputeTrinkets();
     rebuild();
     g.renderer = IP.render.makeRenderer(canvas);
@@ -1093,6 +1186,7 @@
     buyUpgrade, buyBall, selectBall, buyTrinket, sellTrinket, buyFloor, prestige,
     canAfford, pay, coins, up, idlePerSec, coinRate, baseMult, ballsPerRun,
     trinketSlots, slotsUsed, floorOf, checkMedals,
+    count, missionProgress, ensureMissions, claimMission, rerollMission, comboWindow,
     on, emit, freshState,
     setDemo: (v) => { g.demo = !!v; if (v && !g.run.active) startRun(); },
   };

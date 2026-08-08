@@ -94,6 +94,7 @@
       drawFlippers(g);
       drawPlunger(g);
       drawBalls(g);
+      drawCannon(g);
       drawParticles(g);
       drawPopups(g);
       if (g.build.on) drawBuildOverlay(g);
@@ -593,6 +594,46 @@
         inkText(ctx, y < 0 ? '▲' : '▼', x, yy, 12, C.ink2, 900, 0);
         ctx.restore();
       }
+    }
+
+    /**
+     * A loaded cannon hands the shot to the player, so it needs a real aim
+     * readout: a dotted trajectory the ball will actually follow, plus a
+     * power wedge you set by dragging further from the barrel.
+     */
+    function drawCannon(g) {
+      const c = g.cannon;
+      if (!c) return;
+      const ox = c.inst.x, oy = c.inst.y;
+      const sp = (170 + c.inst.lvl * 10) * U.clamp(c.power, 0.3, 1);
+      const vx = Math.cos(c.ang) * sp, vy = Math.sin(c.ang) * sp;
+      const grav = g.world.gravity * (g.balls[0] ? g.balls[0].grav : 1);
+
+      ctx.save();
+      ctx.setLineDash([5, 7]);
+      ctx.lineDashOffset = -g.time * 40;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = U.rgba(C.gold, 0.85);
+      ctx.beginPath();
+      ctx.moveTo(sx(ox), sy(oy));
+      for (let i = 1; i <= 26; i++) {
+        const t = i * 0.032;
+        ctx.lineTo(sx(ox + vx * t), sy(oy + vy * t - 0.5 * grav * t * t));
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Power wedge at the muzzle.
+      ctx.save();
+      ctx.translate(sx(ox), sy(oy));
+      ctx.rotate(-c.ang);
+      const len = s(9 + 12 * c.power);
+      capsule(ctx, 0, 0, len, 0, s(2.4));
+      ctx.fillStyle = C.red; ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = C.ink2; ctx.stroke();
+      ctx.restore();
+      inkCircle(ctx, sx(ox), sy(oy), s(3), C.ink, 3, C.gold);
+      inkText(ctx, 'DRAG TO AIM · RELEASE TO FIRE', view.w / 2, view.h - 96, 12, C.gold);
     }
 
     function drawParticles(g) {
