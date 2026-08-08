@@ -20,8 +20,14 @@
   const DECK_DROP = 7;        // how far the deck falls from wall → opening
   const HOP_DROP = 15;        // how far the funnel rails hang below the deck
 
-  /** Horizontal centre of the opening leading from floor k-1 up to floor k. */
-  function gapX(k) { return k % 2 === 1 ? 25 : 75; }
+  /**
+   * Horizontal centre of the opening leading from floor k-1 up to floor k.
+   * The zig-zag moves in 25-unit steps rather than flipping wall to wall:
+   * a ball entering a floor has to be walked sideways to the next opening,
+   * and 25 units is a distance one well-aimed bumper can cover. 50 was not.
+   */
+  const GAP_PATTERN = [25, 50, 75, 50];
+  function gapX(k) { return GAP_PATTERN[((k % 4) + 4) % 4]; }
 
   /** Absolute y of the deck between floor k-1 and floor k. */
   const deckY = (k) => k * W.FLOOR_H;
@@ -227,9 +233,13 @@
     if (x < PLAY_L + 2 + r || x > PLAY_R - 2 - r) return 'Outside the table';
     if (y > ceilingAt(state, floor, x) - 2 - r) return 'Too close to the deck above';
     if (floor === 0 && y < LANE_TOP + 6 && x > LANE_X - 2 - r) return 'Blocking the plunger lane';
-    // Keep the floor openings clear so balls can still climb.
-    for (const g of state.gapCache || []) {
-      if (Math.abs(g.y - y) < r + 10 && Math.abs(g.x - x) < GAP_HALF + r && !def.gate) return 'Blocking a floor opening';
+    // Keep the throat of each opening clear of solid parts. Force fields and
+    // gates are exempt: they cannot block a ball, and hanging a jet pad over
+    // an opening is the whole technique for climbing a floor.
+    if (!def.gate && !def.field) {
+      for (const gp of state.gapCache || []) {
+        if (Math.abs(gp.y - y) < r + 5 && Math.abs(gp.x - x) < GAP_HALF + r) return 'Blocking a floor opening';
+      }
     }
     for (const p of state.parts) {
       if (p.uid === excludeUid) continue;

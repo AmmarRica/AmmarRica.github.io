@@ -25,7 +25,7 @@
       mk('sling', 20, 56, 0, -0.7), mk('sling', 66, 56, 0, 0.7),
       mk('target', 40, 96, 0, 0), mk('rollover', 58, 96, 0),
       mk('bumper', 34, 148, 1), mk('bumper', 62, 166, 1),
-      mk('jet', 74, 136, 1, 0),
+      mk('jet', 50, 132, 1, 0), mk('jet', 52, 62, 0, 0),
     ];
   }
 
@@ -212,7 +212,7 @@
   }
 
   function coinRate() {
-    return 0.020 * (1 + 0.14 * up('coinYield')) * gemMul() * ballCoinMul()
+    return 0.045 * (1 + 0.14 * up('coinYield')) * gemMul() * ballCoinMul()
       * (1 + 0.25 * perk('coins')) * (g.trinketFx.coinMult || 1);
   }
 
@@ -298,6 +298,7 @@
     }
     g.sinceHit = 0;
     g.run.score += gained;
+    if (g.run.score > g.state.stats.bestRun) g.state.stats.bestRun = g.run.score;
     g.run.chipsThisBall += gained;
     g.state.stats.totalChips += gained;
     const cn = gained * coinRate();
@@ -428,7 +429,28 @@
   /* ===================================================================
    * FLOOR PROGRESS / BONUSES
    * ================================================================ */
+  /**
+   * Climbing is the game, so climbing pays on its own — every upward pass
+   * through a floor opening scores, not just the first one of a run. Without
+   * this a ball can circulate happily between two floors earning nothing,
+   * which is exactly what an empty upper floor used to feel like.
+   */
+  function checkCrossing(ball) {
+    const f = floorOf(ball.p.y);
+    if (ball.band == null) { ball.band = f; return; }
+    if (f === ball.band) return;
+    const climbed = f > ball.band;
+    ball.band = f;
+    if (!climbed) return;
+    score(140, null, { pop: true, label: 'CLIMB', floor: f });
+    addMult(0.45);
+    count('climbs');
+    burst(ball.p.x, ball.p.y, D.C.green, 12);
+    sfx('rail');
+  }
+
   function checkFloorProgress(ball) {
+    checkCrossing(ball);
     const f = floorOf(ball.p.y);
     if (f <= ball.maxFloor) return;
     ball.maxFloor = f;
@@ -436,7 +458,6 @@
       g.run.floorsThisRun = f;
       const sc = up('scaffold');
       if (sc > 0) score(500 * sc * f, null, { pop: true, label: 'CLIMB', floor: f });
-      count('climbs');
       trinketHook('newFloor', f);
       // Multiball reward for opening up a new floor.
       const mb = up('multiball');
@@ -1089,6 +1110,9 @@
         if (cb) cb();
       }
     }
+
+    /* --- floor crossings pay on their own --- */
+    for (const b of g.balls) if (b.alive && !b.held) checkFloorProgress(b);
 
     /* --- ball search: nothing may ever get stuck forever --- */
     ballSearch(dt);

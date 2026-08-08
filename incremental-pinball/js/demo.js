@@ -25,6 +25,13 @@
     const nextFloorCost = D.floorCost(g.state.floors);
     if (g.state.floors < D.W.MAX_FLOORS && g.state.coins > nextFloorCost * 2.2) { G.buyFloor(); return; }
 
+    // Keep the permanent upgrades ticking over too, the way a player would.
+    const ups = D.UPGRADES
+      .map((u) => ({ u, lvl: G.up(u.id), c: D.upgradeCost(u, G.up(u.id)) }))
+      .filter((x) => x.lvl < x.u.max && g.state.coins > x.c * 6)
+      .sort((a, b) => a.c - b.c);
+    if (ups.length && Math.random() < 0.45) { G.buyUpgrade(ups[0].u.id); return; }
+
     // Build like a player would: climbing gear first, then scorers, then
     // income — and always the priciest affordable option in that class.
     const WANT = ['jet', 'paddle', 'saucer', 'tramp', 'kicker', 'bumper', 'target', 'sling', 'jackpot', 'mint', 'spinner'];
@@ -42,10 +49,14 @@
       const floor = U.randInt(Math.max(def.floor, 0), g.state.floors - 1);
       if (IP.table.partsOnFloor(g.state, floor).length >= IP.table.slotLimit(g.state)) continue;
       const base = floor * D.W.FLOOR_H;
-      // Bias toward the column under the next floor's opening — that is where
-      // a real player would stack their climbing gear.
-      const gx = IP.table.gapX(floor + 1);
-      const x = IP.table.snap(U.clamp(gx + U.rand(-26, 26), 8, 92));
+      // Build along the line a ball has to travel: from where it enters this
+      // floor to the opening that leads out of it.
+      const entry = IP.table.gapX(floor);
+      const exit = IP.table.gapX(floor + 1);
+      // Jet pads are the one part allowed over an opening, so hang them there.
+      const gx = def.field ? (Math.random() < 0.5 ? entry : exit) : U.lerp(entry, exit, Math.random());
+      const spread = def.field ? 5 : 16;
+      const x = IP.table.snap(U.clamp(gx + U.rand(-spread, spread), 8, 92));
       const y = IP.table.snap(base + U.rand(floor === 0 ? 52 : 14, D.W.FLOOR_H - 22));
       const a = def.id === 'jet' ? 0 : U.rand(-1, 1);
       const res = G.buyPart(def.id, x, y, floor, a);

@@ -270,8 +270,8 @@
     /* ------------------------------------------------------------ FLOW */
     {
       id: 'jet', name: 'Jet Pad', emoji: '💨', cat: 'flow', color: C.teal,
-      cost: 120, growth: 1.2, floor: 0, r: 8, rot: true, maxLevel: 15,
-      desc: 'Blows a constant gust. The main way to push balls up the tower.',
+      cost: 120, growth: 1.2, floor: 0, r: 8, rot: true, maxLevel: 15, field: true,
+      desc: 'Blows a constant gust. Nothing solid, so it is the one part you may hang directly over a floor opening — which is exactly where it belongs.',
       chips: 3,
       build(inst, out) {
         out.push({ k: 'field', c: { x: inst.x, y: inst.y }, r: 14 + 1.2 * inst.lvl, kind: 'push', power: 210 + 52 * inst.lvl, ang: inst.a + Math.PI / 2, tag: 'jet' });
@@ -280,7 +280,7 @@
     },
     {
       id: 'magnet', name: 'Magnet', emoji: '🧲', cat: 'flow', color: C.blue,
-      cost: 150, growth: 1.2, floor: 0, r: 9, rot: false, maxLevel: 15,
+      cost: 150, growth: 1.2, floor: 0, r: 9, rot: false, maxLevel: 15, field: true,
       desc: 'Draws balls in. Lodestone balls feel it three times as hard.',
       chips: 4,
       build(inst, out) {
@@ -290,7 +290,7 @@
     },
     {
       id: 'antigrav', name: 'Gravity Well', emoji: '🌌', cat: 'flow', color: C.purple,
-      cost: 420, growth: 1.24, floor: 2, r: 12, rot: false, maxLevel: 12,
+      cost: 420, growth: 1.24, floor: 2, r: 12, rot: false, maxLevel: 12, field: true,
       desc: 'Cancels most of gravity in a wide bubble. Balls hang and hover.',
       chips: 5,
       build(inst, out) {
@@ -375,7 +375,7 @@
     },
     {
       id: 'mint', name: 'Chip Mint', emoji: '🪙', cat: 'idle', color: C.gold,
-      cost: 380, growth: 1.22, floor: 0, r: 5, rot: false, maxLevel: 25,
+      cost: 240, growth: 1.22, floor: 0, r: 5, rot: false, maxLevel: 25,
       desc: 'Prints coins on its own, even while you are away. Hit it for an instant payout.',
       chips: 30,
       idle(inst) { return 0.22 * inst.lvl * Math.pow(1.12, inst.lvl - 1) * (1 + inst.floor * 0.6); },

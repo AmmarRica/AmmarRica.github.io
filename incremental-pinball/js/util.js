@@ -13,15 +13,23 @@
   const $ = (id) => document.getElementById(id);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
-  /** Tiny hyperscript. el('div.card', {onclick}, 'text', childNode, …) */
+  /**
+   * Tiny hyperscript. el('div.card#id', {onclick}, 'text', childNode, …)
+   * Classes may be written dotted (`div.card.dim`) or space-separated
+   * (`div.card dim`) — the latter falls out of `'div.card' + (x ? ' dim' : '')`,
+   * which is how call sites naturally write conditional classes.
+   */
   function el(spec, attrs, ...kids) {
-    const m = /^([a-z0-9]+)?((?:[.#][\w-]+)*)$/i.exec(spec) || [];
+    const tokens = String(spec).trim().split(/\s+/);
+    const m = /^([a-z0-9]+)?((?:[.#][\w-]+)*)$/i.exec(tokens[0]) || [];
     const node = document.createElement(m[1] || 'div');
-    (m[2] || '').split(/(?=[.#])/).forEach((tok) => {
+    const addTok = (tok) => {
       if (!tok) return;
       if (tok[0] === '#') node.id = tok.slice(1);
-      else node.classList.add(tok.slice(1));
-    });
+      else node.classList.add(tok[0] === '.' ? tok.slice(1) : tok);
+    };
+    (m[2] || '').split(/(?=[.#])/).forEach(addTok);
+    tokens.slice(1).forEach((t) => t.split(/(?=[.#])/).forEach(addTok));
     if (attrs && attrs.nodeType) { kids.unshift(attrs); attrs = null; }
     if (typeof attrs === 'string') { kids.unshift(attrs); attrs = null; }
     for (const k in attrs || {}) {

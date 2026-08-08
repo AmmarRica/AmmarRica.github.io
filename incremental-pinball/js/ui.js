@@ -1072,6 +1072,7 @@
       ['🔧', 'You build it', 'Buy bouncers, scorers, magnets and jet pads in the SHOP, then drop them wherever you like. Drag them around any time in BUILD mode.'],
       ['🏓', 'You flip it', 'Two flippers at the bottom to start. Buy Paddles to add your own flippers on higher floors and bind them to any of six control panels.'],
       ['🔷', 'Chips × Mult', 'Every hit pays CHIPS, and most hits also raise your MULT. Score is chips × mult, so keep the ball alive and keep the streak hot.'],
+      ['💨', 'How to climb', 'Each floor has one opening, and the next one is 25 units to the side. Jet Pads are the only part you may hang directly over an opening — put one there and it blows arriving balls up through the next.'],
       ['🪙', 'It keeps earning', 'Chips convert to coins as you play, and Chip Mints keep printing even when the tab is closed.'],
     ].forEach(([e, t, d]) => body.appendChild(el('div.trow', el('div.te', e), el('div', el('b', t), el('p', d)))));
     modal('HOW TO PLAY', [body], [{ label: "LET'S GO", cls: 'primary', onclick: () => { g.state.tutorialSeen = true; G.save(); } }]);

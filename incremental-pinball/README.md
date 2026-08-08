@@ -78,6 +78,19 @@ node tests/tower-probe.mjs 20    # this game only, with a progress trace
 `setDemo(true)` turns on the self-playing AI (which buys and places parts as it
 goes), `state()` returns a progress snapshot, and `give(n)` adds coins.
 
+## How you actually climb
+
+Each deck has exactly one opening, and the openings zig-zag in 25-unit steps
+(`25 → 50 → 75 → 50 → …`) rather than flipping wall to wall — one well-placed
+bumper can cover 25 units, which is what makes chaining floors possible at all.
+
+A ball arriving on a floor has almost no energy left, so it will roll back down
+the way it came unless something catches it. **Jet Pads are the answer**: they
+are force fields, not solid bodies, so they are the one part allowed to hang
+directly over an opening. A jet above the hole blows arriving balls straight
+up through the next one. Everything else — lifts, pistons, trampolines,
+paddles, portals, cannons — is a different answer to the same question.
+
 ## Notes on the physics
 
 Decks are the one piece of geometry doing double duty: the top slopes gently
