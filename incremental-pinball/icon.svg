@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#1b262c"/>
+  <rect x="46" y="46" width="420" height="420" rx="68" fill="none" stroke="#0a0d11" stroke-width="14"/>
+
+  <!-- tower decks -->
+  <g stroke="#f4ead6" stroke-width="20" stroke-linecap="round">
+    <path d="M96 372 H250"/><path d="M310 372 H416"/>
+    <path d="M96 252 H200"/><path d="M262 252 H416"/>
+    <path d="M96 132 H250"/><path d="M310 132 H416"/>
+  </g>
+
+  <!-- bumpers -->
+  <circle cx="180" cy="190" r="30" fill="#fe5f55" stroke="#0a0d11" stroke-width="12"/>
+  <circle cx="180" cy="190" r="12" fill="#f4ead6"/>
+  <circle cx="332" cy="310" r="30" fill="#0093ff" stroke="#0a0d11" stroke-width="12"/>
+  <circle cx="332" cy="310" r="12" fill="#f4ead6"/>
+
+  <!-- ball -->
+  <circle cx="300" cy="196" r="26" fill="#ffb61e" stroke="#0a0d11" stroke-width="10"/>
+  <circle cx="292" cy="188" r="8" fill="#fff" opacity=".85"/>
+
+  <!-- flippers -->
+  <g stroke="#0a0d11" stroke-width="12" stroke-linecap="round">
+    <path d="M150 424 L216 400" stroke="#ffb61e" stroke-width="30"/>
+    <path d="M362 424 L296 400" stroke="#ffb61e" stroke-width="30"/>
+  </g>
+</svg>

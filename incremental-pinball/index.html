@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Tower of Chips — Incremental Pinball</title>
+  <meta name="description" content="An incremental pinball tower: flip by hand, buy bouncers, drag them where you want, and climb floor by floor for bigger multipliers." />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#1b262c" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Tower of Chips" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============ SCREEN 1: THE TABLE ============ -->
+  <div id="stage">
+    <canvas id="cv" aria-label="Pinball table" role="img"></canvas>
+
+    <div id="hud"></div>
+    <div id="flash"></div>
+    <div id="tableUI"></div>
+    <div id="buildBar"></div>
+  </div>
+
+  <!-- ============ SCREEN 2: THE MENU (collapses away) ============ -->
+  <div id="menu">
+    <div id="menuHead"></div>
+    <div id="menuTabs" role="tablist" aria-label="Menu sections"></div>
+    <div id="menuBody"></div>
+  </div>
+
+  <div id="modal" role="dialog" aria-modal="true"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/table.js"></script>
+<script src="js/render.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/demo.js"></script>
+<script>
+  // PWA: offline play once visited. Harmless (and skipped) over file://.
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
+</body>
+</html>

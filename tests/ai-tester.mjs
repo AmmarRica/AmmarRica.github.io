@@ -26,6 +26,7 @@ const BASE = process.env.BASE_URL || pathToFileURL(repoRoot).href;
 // game dir · window hook · metric key in state() that should grow · play time (ms)
 const GAMES = [
   { name: 'pinball',           hook: '__pinball',   metric: 'score',    ms: 7000 },
+  { name: 'incremental-pinball', hook: '__incpinball', metric: 'score',  ms: 9000 },
   { name: 'football-cards',    hook: '__gridiron',  metric: 'score',    ms: 7000 },
   { name: 'crab-breed-swiper', hook: '__crab',      metric: 'score',    ms: 6000 },
   { name: 'dog-swiper',        hook: '__dog',       metric: 'progress', ms: 6000 },
