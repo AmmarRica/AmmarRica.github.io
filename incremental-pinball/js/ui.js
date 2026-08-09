@@ -220,6 +220,18 @@
           el('span.owned', owned ? '×' + owned : ''),
           lockedFloor ? el('span.lock', 'Needs floor ' + def.floor) : el('span.cost', '🪙 ' + fmt(cost)),
         ));
+        // Milestone progress: the reason to keep buying the same part.
+        const next = D.nextMilestone(owned);
+        const mult = D.milestoneMult(owned);
+        if (next) {
+          const pct = U.clamp(owned / next, 0, 1);
+          c.appendChild(el('div.mstone',
+            el('div.bar.sm', el('div.fill', { style: { width: (pct * 100).toFixed(0) + '%' } })),
+            el('small', (mult > 1 ? '×' + mult + ' now · ' : '') + '×' + (mult * 2) + ' at ' + next + ' owned'),
+          ));
+        } else if (mult > 1) {
+          c.appendChild(el('div.mstone', el('small.maxed', '×' + mult + ' — all milestones banked')));
+        }
         c.appendChild(btn(lockedFloor ? 'LOCKED' : 'BUY & PLACE', {
           cls: 'buy', disabled: !afford,
           onclick: () => armPlacement(def.id),
@@ -266,11 +278,12 @@
         const maxed = inst.lvl >= def.maxLevel;
         const row = el('div.prow');
         row.appendChild(el('div.pico.sm', { style: { background: def.color } }, def.emoji));
+        const earned = inst.earned ? '🔷 ' + fmt(inst.earned) + ' earned' : 'not scored yet';
         const sub = def.uses
-          ? def.usesLeft(inst) + ' / ' + def.maxUses(inst) + ' pops left'
+          ? def.usesLeft(inst) + ' / ' + def.maxUses(inst) + ' pops · ' + earned
           : def.idle
-            ? '+' + fmt(def.idle(inst) * (1 + 0.16 * G.up('idleRate'))) + ' coins/s'
-            : def.desc.slice(0, 46);
+            ? '+' + fmt(def.idle(inst) * (1 + 0.16 * G.up('idleRate'))) + ' coins/s · ' + earned
+            : earned;
         row.appendChild(el('div.pinfo',
           el('b', def.name + ' · Lv' + inst.lvl),
           el('small', sub),

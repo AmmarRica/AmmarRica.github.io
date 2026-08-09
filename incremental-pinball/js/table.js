@@ -108,10 +108,11 @@
     // Inlane guides funnelling toward the flippers.
     seg(PLAY_L, 64, 24, 30, { e: 0.4 });
     seg(LANE_X, 64, 76, 30, { e: 0.4 });
-    // Built-in slingshot faces just above each flipper. These pay a little on
-    // their own, so an empty table still earns while you save up.
-    seg(19, 36, 28, 24, { e: 0.55, kick: 34, tag: 'shellSling', pay: 5 });
-    seg(81, 36, 72, 24, { e: 0.55, kick: 34, tag: 'shellSling', pay: 5 });
+    // Built-in slingshot faces just above each flipper. Pure geometry — they
+    // keep the ball in play but pay nothing, so at the start the flippers are
+    // the only thing on the table earning anything at all.
+    seg(19, 36, 28, 24, { e: 0.55, kick: 34, tag: 'shellSling' });
+    seg(81, 36, 72, 24, { e: 0.55, kick: 34, tag: 'shellSling' });
     // Outlane drains at the very sides.
     seg(PLAY_L, 30, 12, 6, { e: 0.35 });
     seg(LANE_X, 30, 76, 6, { e: 0.35 });
@@ -150,8 +151,8 @@
     buildShell(state, colliders, meta);
 
     /* --- main flippers --------------------------------------------- */
-    flippers.push(flipperFrom({ id: 'mainL', x: 30, y: 24, side: 'L', panel: 0, len: 18, power: 205 }, ups));
-    flippers.push(flipperFrom({ id: 'mainR', x: 70, y: 24, side: 'R', panel: 1, len: 18, power: 205 }, ups));
+    flippers.push(flipperFrom({ id: 'mainL', x: 32, y: 24, side: 'L', panel: 0, len: 15, power: 205 }, ups));
+    flippers.push(flipperFrom({ id: 'mainR', x: 68, y: 24, side: 'R', panel: 1, len: 15, power: 205 }, ups));
 
     /* --- placed parts ---------------------------------------------- */
     for (const inst of state.parts) {
@@ -162,7 +163,7 @@
         const f = flipperFrom({
           id: inst.uid, part: inst, x: inst.x, y: inst.y, a: inst.a || 0,
           side: inst.side || 'L', panel: inst.panel != null ? inst.panel : (inst.side === 'R' ? 1 : 0),
-          len: def.wheel ? 9 + inst.lvl * 0.5 : 12 + inst.lvl * 0.6,
+          len: def.wheel ? 9 + inst.lvl * 0.5 : 10 + inst.lvl * 0.55,
           power: def.wheel ? 0 : 118 + inst.lvl * 9,
           auto: !!def.auto, color: def.color,
         }, ups);

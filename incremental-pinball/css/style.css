@@ -433,6 +433,11 @@ html, body {
   border: 2.5px solid var(--ink2); border-radius: 7px; overflow: hidden;
 }
 .bar .fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--teal)); transition: width .3s; }
+.bar.sm { height: 7px; border-width: 2px; border-radius: 5px; }
+.mstone { display: flex; flex-direction: column; gap: 3px; }
+.mstone small { font-size: 8.5px; font-weight: 800; color: #6d6252; letter-spacing: .3px; }
+.mstone small.maxed { color: var(--green-d); }
+.mstone .bar .fill { background: linear-gradient(90deg, var(--gold), var(--orange)); }
 .card.task.done .bar .fill { background: var(--green); }
 .taskacts { display: flex; gap: 6px; align-items: stretch; }
 .taskacts .btn.buy { flex: 1; margin-top: 0; }

@@ -94,11 +94,34 @@
   /** Chip payout for a part at a given level. */
   const chipsFor = (base, lvl) => Math.round(base * (1 + 0.75 * (lvl - 1)) * (1 + 0.05 * (lvl - 1) * (lvl - 1)));
 
+  /* ---------------------------------------------------------------------
+   * MILESTONES
+   * Part cost grows exponentially (base × growth^owned) while one part's
+   * output is flat, so buying the tenth copy of anything is strictly worse
+   * value than the first — the classic idle-game squeeze. Milestones are the
+   * classic answer: owning a round number of one part type doubles the
+   * output of every copy of it, which turns "buy more of the same" back into
+   * a real decision and gives the curve its sawtooth.
+   * ------------------------------------------------------------------ */
+  const MILESTONES = [5, 10, 25, 50, 100];
+
+  /** ×2 for every milestone passed, for `n` copies of one part type. */
+  function milestoneMult(n) {
+    let m = 1;
+    for (const t of MILESTONES) if (n >= t) m *= 2;
+    return m;
+  }
+  /** The next milestone for a type, or null once they are all banked. */
+  function nextMilestone(n) {
+    for (const t of MILESTONES) if (n < t) return t;
+    return null;
+  }
+
   const PARTS = [
     /* ---------------------------------------------------------- BOUNCE */
     {
       id: 'bumper', name: 'Pop Bumper', emoji: '⭕', cat: 'bounce', color: C.red,
-      cost: 12, growth: 1.16, floor: 0, r: 5.2, rot: false, maxLevel: 20,
+      cost: 25, growth: 1.16, floor: 0, r: 5.2, rot: false, maxLevel: 20,
       desc: 'Kicks hard and pays chips — but only for a limited number of pops. '
           + 'The counter above it is what is left. It trickles back on its own and refills at the start of every ball.',
       chips: 8, kick: 62, uses: true,
@@ -999,6 +1022,7 @@
   IP.data = {
     W, C, FLOORS, floorMult, floorCost,
     PARTS, PART_BY_ID, chipsFor,
+    MILESTONES, milestoneMult, nextMilestone,
     BALLS, BALL_BY_ID,
     UPGRADES, UP_BY_ID, upgradeCost,
     TRINKETS, TRINKET_BY_ID, RARITY,

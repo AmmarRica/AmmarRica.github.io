@@ -224,6 +224,7 @@
   function rebuild() {
     g.state.gapCache = [];
     for (let k = 1; k < g.state.floors; k++) g.state.gapCache.push({ floor: k, x: IP.table.gapX(k), y: IP.table.deckY(k) });
+    recountTypes();
     g.world = IP.table.build(g.state);
     g.world.gravity = W.GRAVITY * (1 - 0.026 * up('lowGrav')) * (g.trinketFx.gravMult || 1);
     g.world.fieldMult = g.trinketFx.fieldMult || 1;
@@ -264,9 +265,25 @@
   /* ===================================================================
    * SCORING PIPELINE  (chips × mult, Balatro-style)
    * ================================================================ */
+  /** How many copies of a part type are installed (cached per rebuild). */
+  function typeCount(id) {
+    if (!g.typeCounts) return 0;
+    return g.typeCounts[id] || 0;
+  }
+  function recountTypes() {
+    const c = {};
+    for (const p of g.state.parts) {
+      if (p.floor >= g.state.floors) continue;
+      c[p.id] = (c[p.id] || 0) + 1;
+    }
+    g.typeCounts = c;
+  }
+
   function chipMultiplier(ev) {
     let m = (1 + 0.12 * up('chipGain')) * ballScoreMul() * gemMul() * (1 + 0.25 * perk('chips'));
     if (ev.tag === 'bumper' || ev.tag === 'sling' || ev.tag === 'tramp') m *= (1 + 0.15 * up('bumperV'));
+    // Owning a round number of one part type doubles that whole type's output.
+    if (ev.inst) m *= D.milestoneMult(typeCount(ev.inst.id));
     for (const f of g.trinketFx.chipMults || []) m *= f(A, ev);
     return m;
   }
@@ -295,7 +312,7 @@
     count('coins', cn);
     if (g.activeBall) g.activeBall.chips += gained;
 
-    if (inst) inst._glow = 1;
+    if (inst) { inst._glow = 1; inst.earned = (inst.earned || 0) + gained; }
     if (!opts.silent) {
       const px = inst ? inst.x : (g.balls[0] ? g.balls[0].p.x : 50);
       const py = (inst ? inst.y : (g.balls[0] ? g.balls[0].p.y : 50)) + 6;
@@ -423,7 +440,7 @@
       f.lastPay = g.time;
       const solid = info.speed > 95;
       const floor = floorOf(f.pivot.y);
-      score(Math.round(7 + info.speed * 0.16), null, {
+      score(Math.round(2 + info.speed * 0.06), null, {
         floor, tag: 'flipper', pop: solid, label: solid ? 'SMACK' : null,
       });
       addMult(solid ? 0.14 : 0.05);
@@ -710,7 +727,7 @@
     g.awaitLaunch = false;
     g.state.stats.launches++;
     count('launches');
-    score(Math.round(18 + 40 * pw), null, { floor: 0, tag: 'launch', pop: pw > 0.9, label: pw > 0.9 ? 'FULL PLUNGE' : null });
+    score(Math.round(5 + 12 * pw), null, { floor: 0, tag: 'launch', pop: pw > 0.9, label: pw > 0.9 ? 'FULL PLUNGE' : null });
     sfx('launch');
     shake(4);
     // Skill shot: a full-power plunge that flies straight into the first gap.
@@ -1334,7 +1351,7 @@
     buyUpgrade, buyBall, selectBall, buyTrinket, sellTrinket, buyFloor, prestige,
     buyPerk, polishBall, perk, ballLevel, ballScoreMul, ballCoinMul,
     canAfford, pay, coins, up, idlePerSec, coinRate, baseMult, ballsPerRun,
-    trinketSlots, slotsUsed, floorOf, checkMedals,
+    trinketSlots, slotsUsed, floorOf, checkMedals, typeCount,
     count, missionProgress, ensureMissions, claimMission, rerollMission, comboWindow,
     on, emit, freshState,
     setDemo: (v) => { g.demo = !!v; if (v && !g.run.active) startRun(); },

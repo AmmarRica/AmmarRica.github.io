@@ -11,12 +11,14 @@ Live at [`/incremental-pinball/`](https://ammarrica.github.io/incremental-pinbal
 ## Starting from nothing
 
 There are no free parts. A new save is a bare playfield, two flippers and zero
-coins — so the first income has to come from playing: **every solid flipper
-contact pays chips**, scaled by how hard you hit the ball, as do the two
-built-in slingshot faces above the flippers, the plunge itself, and every
-upward pass through a floor opening. Twenty seconds of honest flipping buys
-your first Pop Bumper (12 coins), and from there each part you place makes the
-next one faster to afford.
+coins. The only things on the table that pay anything are **the flippers
+themselves** — every solid contact scores, scaled by how hard you hit the ball
+— plus a token amount for the plunge and for each upward pass through a floor
+opening. The built-in slingshot faces above the flippers are geometry only.
+
+That first stretch is deliberately lean: a minute or so of honest flipping buys
+your first Pop Bumper (25 coins). It is meant to feel like scraping together
+seed money, because everything after it compounds.
 
 Flipper income never scales with floor height, so it fades to noise on its own
 once the tower is doing the work — it is a bootstrap, not a strategy.
@@ -37,6 +39,23 @@ outgrown it.
 5. **Climb.** Buy the next floor. Repeat with a bigger multiplier.
 6. **Reforge.** Melt the tower down for gems, which permanently multiply
    everything and buy perks that survive every future reset.
+
+## Milestones, and why you buy ten of the same thing
+
+Part cost grows exponentially — `base × growth^owned`, with growth between 1.09
+and 1.42 depending on the part — while a single part's output is flat. Left
+alone that makes the tenth bumper strictly worse value than the first, and the
+game stalls.
+
+The fix is the standard idle-game one: **owning a round number of one part type
+doubles the output of every copy of it.** Milestones sit at 5, 10, 25, 50 and
+100, so a shop card reading "×2 now · ×4 at 10 owned" is telling you the real
+decision — spread wide for coverage, or go deep on one type for the multiplier.
+Each milestone briefly out-runs the cost curve, which is what gives progression
+its sawtooth instead of a slow grind to a wall.
+
+The BUILD tab shows lifetime chips earned per individual part, so "which of
+these is actually paying" is a question you can answer rather than guess.
 
 ## Pop bumpers wear out
 
