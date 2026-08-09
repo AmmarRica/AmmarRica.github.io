@@ -37,6 +37,8 @@
         { key: 'e', label: 'PANEL 6' },
       ],
       medals: {},
+      known: null,          // unlocks already announced (null = seed on first load)
+      seen: {},             // unlocks the player has actually looked at
       missions: [],
       counters: {},
       perks: {},
@@ -1017,6 +1019,48 @@
   }
 
   /* ===================================================================
+   * UNLOCK ANNOUNCEMENTS
+   * Content reveals itself as lifetime chips grow; this notices the moment
+   * something crosses the line and says so, one item at a time so a burst
+   * of unlocks does not turn into a wall of toast.
+   * ================================================================ */
+  let unlockT = 0;
+  const unlockQueue = [];
+
+  function checkUnlocks(dt) {
+    unlockT -= dt;
+    if (unlockT > 0) return;
+    unlockT = 0.75;
+
+    const now = D.unlockedSet(g.state);
+    // First load of an existing save: adopt the current state silently.
+    if (!Array.isArray(g.state.known)) {
+      g.state.known = now;
+      for (const k of now) g.state.seen[k] = 1;
+      return;
+    }
+    const known = new Set(g.state.known);
+    for (const k of now) {
+      if (known.has(k)) continue;
+      g.state.known.push(k);
+      unlockQueue.push(k);
+    }
+    if (!unlockQueue.length) return;
+    const key = unlockQueue.shift();
+    const info = D.unlockLabel(key);
+    popupScreen(info.emoji + '  ' + info.what + ' UNLOCKED', D.C.gold);
+    sfx('levelup');
+    emit('unlock', { key, info });
+  }
+
+  const isSeen = (key) => !!(g.state.seen && g.state.seen[key]);
+  function markSeen(keys) {
+    let changed = false;
+    for (const k of keys) if (!g.state.seen[k]) { g.state.seen[k] = 1; changed = true; }
+    return changed;
+  }
+
+  /* ===================================================================
    * MEDALS
    * ================================================================ */
   function checkMedals() {
@@ -1054,6 +1098,8 @@
     g.state.trinkets = (s.trinkets || []).filter((t) => D.TRINKET_BY_ID[t]);
     g.state.panels = (s.panels && s.panels.length === 6) ? s.panels : base.panels;
     g.state.perks = s.perks || {};
+    g.state.known = Array.isArray(s.known) ? s.known : null;
+    g.state.seen = s.seen || {};
     g.state.ballLevels = Object.assign({ steel: 1 }, s.ballLevels || {});
     g.state.counters = s.counters || {};
     return true;
@@ -1183,6 +1229,8 @@
 
     /* --- camera --- */
     updateCamera(dt);
+
+    checkUnlocks(dt);
 
     /* --- housekeeping --- */
     if (g.time - g.lastSave > SAVE_EVERY) { g.lastSave = g.time; checkMedals(); save(); }
@@ -1352,6 +1400,7 @@
     buyPerk, polishBall, perk, ballLevel, ballScoreMul, ballCoinMul,
     canAfford, pay, coins, up, idlePerSec, coinRate, baseMult, ballsPerRun,
     trinketSlots, slotsUsed, floorOf, checkMedals, typeCount,
+    isSeen, markSeen,
     count, missionProgress, ensureMissions, claimMission, rerollMission, comboWindow,
     on, emit, freshState,
     setDemo: (v) => { g.demo = !!v; if (v && !g.run.active) startRun(); },

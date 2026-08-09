@@ -23,6 +23,7 @@
     dirty: true,
     lastCoins: 0,
     rebinding: -1,
+    viewedTab: null,
   };
 
   /* ==================================================================
@@ -132,6 +133,37 @@
     { id: 'stats', name: 'STATS', emoji: '📊' },
   ];
 
+  /* ------------------------------------------------------------------
+   * Progressive disclosure helpers.
+   * ---------------------------------------------------------------- */
+  /** Prefixed unlock keys that belong to a tab, for NEW badges. */
+  function keysForTab(id) {
+    if (id === 'shop') return D.PART_ORDER.filter(([p]) => D.partUnlocked(p, g.state)).map(([p]) => 'part:' + p);
+    if (id === 'balls') return D.BALLS.filter((b) => D.ballUnlocked(b, g.state)).map((b) => 'ball:' + b.id);
+    if (id === 'trinkets') return D.TRINKETS.filter((t) => D.trinketUnlocked(t, g.state)).map((t) => 'trinket:' + t.id);
+    if (id === 'upgrades') return D.UPGRADES.filter((u) => D.upgradeUnlocked(u, g.state)).map((u) => 'upgrade:' + u.id);
+    return [];
+  }
+  const unseenCount = (tabId) => keysForTab(tabId).filter((k) => !G.isSeen(k)).length;
+
+  /** The "there is more coming" card shown at the frontier of each list. */
+  function lockedTeaser(gate, what) {
+    const c = card({ cls: 'locked', accent: D.C.steel });
+    c.appendChild(el('div.qmark', '?'));
+    c.appendChild(el('div.pname', 'LOCKED'));
+    c.appendChild(el('div.pdesc', 'Another ' + what + ' opens up at ' + fmt(gate) + ' lifetime chips.'));
+    const have = D.lifetime(g.state);
+    c.appendChild(el('div.bar.sm', el('div.fill', { style: { width: (U.clamp(have / gate, 0, 1) * 100).toFixed(0) + '%' } })));
+    c.appendChild(el('div.pmeta', el('span.owned', fmt(have) + ' / ' + fmt(gate))));
+    return c;
+  }
+
+  /** Wraps a card so newly-revealed content announces itself in the list. */
+  function withNew(node, key) {
+    if (G.isSeen(key)) return node;
+    return el('div.newwrap', node, el('div.newtag', 'NEW'));
+  }
+
   function buildMenu() {
     const head = $('menuHead');
     head.innerHTML = '';
@@ -142,17 +174,36 @@
     ));
     head.appendChild(btn('▼ PLAY', { cls: 'collapse', onclick: () => setMenu(false) }));
 
+    buildTabs();
+  }
+
+  /** Rebuilt whenever a tab unlocks, so the strip grows with the player. */
+  function buildTabs() {
     const tabs = $('menuTabs');
+    const open = TABS.filter((t) => D.tabUnlocked(t.id, g.state));
+    const sig = open.map((t) => t.id).join(',');
+    if (tabs.dataset.sig === sig) return;
+    tabs.dataset.sig = sig;
     tabs.innerHTML = '';
-    for (const t of TABS) {
+    for (const t of open) {
       tabs.appendChild(el('button.tab', {
         type: 'button', role: 'tab', 'data-tab': t.id, 'aria-label': t.name,
-        onclick: () => { UI.tab = t.id; renderMenu(); },
-      }, el('span.temoji', { 'aria-hidden': 'true' }, t.emoji), el('span.tname', t.name)));
+        onclick: () => { markViewed(); UI.tab = t.id; renderMenu(); },
+      }, el('span.temoji', { 'aria-hidden': 'true' }, t.emoji), el('span.tname', t.name),
+        el('span.dot')));
     }
+    if (!open.some((t) => t.id === UI.tab)) UI.tab = 'shop';
+  }
+
+  /** Paint the unseen-content dots without rebuilding the strip. */
+  function refreshTabDots() {
+    U.$$('#menuTabs .tab').forEach((el2) => {
+      el2.classList.toggle('hasnew', unseenCount(el2.dataset.tab) > 0);
+    });
   }
 
   function setMenu(open) {
+    if (!open) markViewed();
     UI.menuOpen = open;
     $('menu').classList.toggle('collapsed', !open);
     $('app').classList.toggle('menu-open', open);
@@ -165,6 +216,7 @@
   }
 
   function renderMenu() {
+    buildTabs();
     U.$$('#menuTabs .tab').forEach((t) => {
       const on = t.dataset.tab === UI.tab;
       t.classList.toggle('on', on);
@@ -178,7 +230,20 @@
       trinkets: renderTrinkets, upgrades: renderUpgrades, tower: renderTower,
       panels: renderPanels, stats: renderStats, tasks: renderTasks,
     }[UI.tab] || renderShop)(body);
+    UI.viewedTab = UI.tab;
+    refreshTabDots();
     updatePurse();
+  }
+
+  /**
+   * Content is marked seen when the player *leaves* a tab, not when it
+   * renders — otherwise an unlock arriving a moment later re-renders the
+   * list and clears the NEW badges before anyone has looked at them.
+   */
+  function markViewed() {
+    if (!UI.viewedTab) return;
+    if (G.markSeen(keysForTab(UI.viewedTab))) refreshTabDots();
+    UI.viewedTab = null;
   }
 
   function updatePurse() {
@@ -203,7 +268,7 @@
 
     const openFloors = g.state.floors;
     for (const cat of CATS) {
-      const list = D.PARTS.filter((p) => p.cat === cat.id);
+      const list = D.PARTS.filter((p) => p.cat === cat.id && D.partUnlocked(p.id, g.state));
       if (!list.length) continue;
       root.appendChild(el('div.cathead', { style: { '--accent': cat.color } }, cat.name));
       const grid = el('div.grid');
@@ -236,9 +301,17 @@
           cls: 'buy', disabled: !afford,
           onclick: () => armPlacement(def.id),
         }));
-        grid.appendChild(c);
+        grid.appendChild(withNew(c, 'part:' + def.id));
       }
       root.appendChild(grid);
+    }
+
+    // One locked card at the frontier: enough to promise more without
+    // dumping the whole catalogue on a new player.
+    const next = D.PART_ORDER.find(([id]) => !D.partUnlocked(id, g.state));
+    if (next) {
+      root.appendChild(el('div.cathead', { style: { '--accent': D.C.steel } }, 'COMING UP'));
+      root.appendChild(el('div.grid', lockedTeaser(next[1], 'part')));
     }
   }
 
@@ -312,7 +385,7 @@
   function renderBalls(root) {
     root.appendChild(section('BALL COLLECTION', 'Each ball rewrites how the table plays. The selected ball is used for every ball of every run.'));
     const grid = el('div.grid.balls');
-    for (const b of D.BALLS) {
+    for (const b of D.BALLS.filter((x) => D.ballUnlocked(x, g.state))) {
       const owned = !!g.state.balls[b.id];
       const sel = g.state.loadout === b.id;
       const c = card({ cls: 'ball' + (sel ? ' sel' : '') + (owned ? '' : ' dim'), accent: b.color });
@@ -338,8 +411,10 @@
           onclick: () => { G.polishBall(b.id); renderMenu(); },
         }));
       }
-      grid.appendChild(c);
+      grid.appendChild(withNew(c, 'ball:' + b.id));
     }
+    const nextBall = D.BALLS.find((x) => !D.ballUnlocked(x, g.state));
+    if (nextBall) grid.appendChild(lockedTeaser(D.ballGate(nextBall), 'ball'));
     root.appendChild(grid);
   }
 
@@ -371,7 +446,7 @@
 
     root.appendChild(el('div.cathead', { style: { '--accent': D.C.purple } }, 'AVAILABLE'));
     const grid = el('div.grid');
-    for (const t of D.TRINKETS) {
+    for (const t of D.TRINKETS.filter((x) => D.trinketUnlocked(x, g.state))) {
       const have = g.state.trinkets.includes(t.id);
       const r = D.RARITY[t.rarity];
       const full = g.state.trinkets.length >= slots;
@@ -383,8 +458,10 @@
       c.appendChild(have
         ? btn('OWNED', { cls: 'buy on', disabled: true })
         : btn('🪙 ' + fmt(t.cost), { cls: 'buy', disabled: g.state.coins < t.cost || full, onclick: () => { if (G.buyTrinket(t.id)) renderMenu(); else toast(full ? 'No free trinket slots' : 'Not enough coins'); } }));
-      grid.appendChild(c);
+      grid.appendChild(withNew(c, 'trinket:' + t.id));
     }
+    const nextT = D.TRINKETS.find((x) => !D.trinketUnlocked(x, g.state));
+    if (nextT) grid.appendChild(lockedTeaser(D.trinketGate(nextT), 'trinket'));
     root.appendChild(grid);
   }
 
@@ -476,9 +553,11 @@
     root.appendChild(picker);
 
     for (const grp of UGROUPS) {
+      const shown = D.UPGRADES.filter((x) => x.group === grp.id && D.upgradeUnlocked(x, g.state));
+      if (!shown.length) continue;
       root.appendChild(el('div.cathead', { style: { '--accent': grp.color } }, grp.name));
       const list = el('div.plist');
-      for (const u of D.UPGRADES.filter((x) => x.group === grp.id)) {
+      for (const u of shown) {
         const lvl = G.up(u.id);
         const maxed = lvl >= u.max;
         const want = UI.bulk === 'MAX' ? u.max - lvl : UI.bulk;
@@ -496,9 +575,14 @@
           cls: 'sm', disabled: maxed || cost <= 0 || g.state.coins < cost,
           onclick: () => { for (let i = 0; i < buyN; i++) if (!G.buyUpgrade(u.id)) break; renderMenu(); },
         }));
-        list.appendChild(row);
+        list.appendChild(withNew(row, 'upgrade:' + u.id));
       }
       root.appendChild(list);
+    }
+    const nextU = D.UPGRADES.find((x) => !D.upgradeUnlocked(x, g.state));
+    if (nextU) {
+      root.appendChild(el('div.cathead', { style: { '--accent': D.C.steel } }, 'COMING UP'));
+      root.appendChild(el('div.grid', lockedTeaser(D.upgradeGate(nextU), 'upgrade')));
     }
   }
 
@@ -1009,7 +1093,7 @@
 
     ui.appendChild(el('button.guide#guide', { type: 'button', onclick: () => {
       const step = D.nextGuide(g.state);
-      if (step && step.tab) { UI.tab = step.tab; setMenu(true); }
+      if (step && step.tab) { markViewed(); UI.tab = step.tab; setMenu(true); }
     } }, el('span.gmark', '▶'), el('span.gtext#guideText', '')));
 
     const launch = el('button.launchbtn#launchBtn', 'PULL & LAUNCH');
@@ -1108,6 +1192,7 @@
   function showTutorial() {
     const body = el('div.tut');
     [
+      ['📂', 'It opens up slowly', 'You start with one menu tab and one part. Everything else — parts, balls, trinkets, upgrades, whole sections of the menu — reveals itself as your lifetime chips grow. A LOCKED card at the end of each list tells you what the next one costs.'],
       ['🏗️', 'It is a tower', 'The table stacks upward. Chips scored on floor 4 are worth ' + fmt(D.floorMult(4)) + '× what they are worth on floor 0. Getting the ball higher is the whole game.'],
       ['🔧', 'You build it', 'The table starts completely empty. Flipping the ball pays chips on its own — that is your seed money. Spend it in the SHOP, drop parts wherever you like, and drag them around any time in BUILD mode.'],
       ['⭕', 'Bumpers wear out', 'Each pop bumper only has so many pops in it. The number above it counts down; it trickles back on its own and refills at the start of every ball. Spread the load, or buy Bumper Coils.'],
@@ -1174,6 +1259,12 @@
       if (UI.menuOpen) updatePurse();
     });
     G.on('cannon', (c) => { $('app').classList.toggle('aiming', !!c); });
+    G.on('unlock', ({ info }) => {
+      toast(info.emoji + '  ' + info.what + ' UNLOCKED: ' + info.name);
+      buildTabs();
+      refreshTabDots();
+      if (UI.menuOpen) renderMenu();
+    });
 
     global.addEventListener('resize', layout);
     global.addEventListener('orientationchange', () => setTimeout(layout, 200));

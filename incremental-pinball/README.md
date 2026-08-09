@@ -27,6 +27,28 @@ A one-line prompt at the bottom of the table always names the next worthwhile
 step, and tapping it jumps to the right menu tab. It disappears once you have
 outgrown it.
 
+## It opens up gradually
+
+Thirty parts, fifteen balls, twenty-four trinkets and nine menu tabs is a wall
+of choice for someone who has just launched their first ball, so almost none of
+it is visible at the start. A fresh save has **one menu tab and one part**.
+
+Everything gates on lifetime chips, which only ever goes up, so the game
+reveals itself at the pace you are actually earning:
+
+| | Appears at |
+|---|---|
+| Parts | a fixed ladder — Pop Bumper at 0, Jet Pad at 250, Slingshot at 700, … Ball Splitter at 200M |
+| Balls, trinkets, upgrades | when lifetime chips pass a multiple of the item's own price |
+| BUILD / TASKS tabs | first and second part placed |
+| UPGRADES · TOWER · BALLS · TRINKETS | 4K chips · first floor climbed · 20K · 90K |
+| PANELS | your first paddle |
+
+Each list ends with a single **LOCKED** card showing what the next reveal costs
+and how close you are — enough to promise more without becoming a catalogue.
+Newly revealed things get a **NEW** ribbon and put a dot on their tab, and both
+clear only once you have actually opened that tab and looked.
+
 ## The loop
 
 1. **Flip.** Launch with the plunger, keep the ball alive, hit things.

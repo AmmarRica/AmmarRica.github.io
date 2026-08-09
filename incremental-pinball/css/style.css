@@ -301,6 +301,45 @@ html, body {
 .tab .temoji { font-size: 14px; }
 .tab .tname { font-size: 8.5px; letter-spacing: .8px; font-weight: 900; }
 .tab.on { background: var(--gold); color: var(--ink); transform: translateY(3px); box-shadow: none; }
+/* Unseen-content dot on a tab. */
+.tab { position: relative; }
+.tab .dot {
+  position: absolute; top: -4px; right: -4px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--red); border: 2.5px solid #000;
+  display: none;
+}
+.tab.hasnew .dot { display: block; }
+
+/* NEW ribbon on a freshly-revealed card or row. Lives on a wrapper, not on
+   the card itself: a card the player cannot afford is dimmed, and opacity
+   always cascades to children. */
+.newwrap { position: relative; display: flex; flex-direction: column; }
+.newwrap > .card, .newwrap > .prow { flex: 1; }
+.newtag {
+  position: absolute; top: -7px; right: 2px; z-index: 3;
+  padding: 2px 7px; border-radius: 6px;
+  font: 900 8px/1.4 var(--font); letter-spacing: 1.2px;
+  color: #fff; background: var(--red);
+  border: 2.5px solid var(--ink2); box-shadow: 0 2px 0 var(--ink2);
+  transform: rotate(6deg);
+}
+
+/* Locked frontier card. */
+.card.locked {
+  background: rgba(0,0,0,.3); color: var(--cream2);
+  border-style: dashed; border-color: var(--cream3);
+  box-shadow: none; align-items: center; text-align: center;
+}
+.card.locked .pdesc { color: var(--cream3); text-align: center; }
+.card.locked .pmeta { justify-content: center; }
+.card.locked .owned { color: var(--cream3); margin: 0 auto; }
+.qmark {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font: 900 20px/1 var(--font); color: var(--cream3);
+  background: rgba(0,0,0,.35); border: 3px dashed var(--cream3);
+}
 
 #menuBody { flex: 1; overflow-y: auto; padding: 10px 10px 40px; -webkit-overflow-scrolling: touch; }
 

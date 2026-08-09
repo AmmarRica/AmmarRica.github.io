@@ -940,6 +940,92 @@
   const ballCoin = (ball, lvl) => ball.coin * (1 + 0.09 * (lvl - 1));
 
   /* =====================================================================
+   * PROGRESSIVE DISCLOSURE
+   * ---------------------------------------------------------------------
+   * Thirty parts, fifteen balls, twenty-four trinkets and nine menu tabs is
+   * a wall of choice for someone who has just launched their first ball.
+   * Everything below gates on LIFETIME CHIPS, which only ever goes up, so
+   * the game reveals itself at the pace you are actually earning.
+   *
+   * Each category also shows exactly one locked item beyond the frontier —
+   * enough to say "there is more coming" without becoming a catalogue.
+   * ================================================================== */
+
+  /** Reveal ladder for parts, in the order a player should meet them. */
+  const PART_ORDER = [
+    ['bumper', 0], ['jet', 250], ['sling', 700], ['wall', 1500],
+    ['tramp', 3000], ['target', 5500], ['mint', 9000], ['rollover', 15000],
+    ['gate', 24000], ['bell', 38000], ['kicker', 60000], ['magnet', 90000],
+    ['spinner', 140000], ['piston', 210000], ['paddle', 320000], ['laser', 480000],
+    ['orbit', 700000], ['conveyor', 1e6], ['jackpot', 1.5e6], ['saucer', 2.2e6],
+    ['multgate', 3.2e6], ['wheel', 4.6e6], ['totem', 6.5e6], ['lift', 9e6],
+    ['antigrav', 1.3e7], ['portal', 1.9e7], ['battery', 2.7e7], ['roulette', 4e7],
+    ['cannon', 6e7], ['ratchet', 9e7], ['autopaddle', 1.4e8], ['splitter', 2e8],
+  ];
+  const PART_GATE = {};
+  PART_ORDER.forEach(([id, chips]) => { PART_GATE[id] = chips; });
+
+  /* Balls, trinkets and upgrades gate off their own price: if you have never
+   * earned a few times what a thing costs, seeing it is just noise. */
+  const BALL_REVEAL = 6;
+  const TRINKET_REVEAL = 5;
+  const UPGRADE_REVEAL = 40;
+
+  const lifetime = (s) => (s.stats ? s.stats.totalChips : 0) || 0;
+
+  function partGate(id) { return PART_GATE[id] != null ? PART_GATE[id] : 0; }
+  function partUnlocked(id, s) { return lifetime(s) >= partGate(id); }
+  function ballGate(b) { return b.cost * BALL_REVEAL; }
+  function ballUnlocked(b, s) { return !!(s.balls && s.balls[b.id]) || lifetime(s) >= ballGate(b); }
+  function trinketGate(t) { return t.cost * TRINKET_REVEAL; }
+  function trinketUnlocked(t, s) { return s.trinkets.includes(t.id) || lifetime(s) >= trinketGate(t); }
+  function upgradeGate(u) { return u.cost * UPGRADE_REVEAL; }
+  function upgradeUnlocked(u, s) { return (s.upgrades[u.id] || 0) > 0 || lifetime(s) >= upgradeGate(u); }
+
+  /** Menu tabs earn their place too — you start with two. */
+  const TAB_GATE = {
+    shop: () => true,
+    build: (s) => s.stats.placed >= 1,
+    tasks: (s) => s.stats.placed >= 2,
+    upgrades: (s) => lifetime(s) >= 4000,
+    tower: (s) => s.stats.bestFloor >= 1,
+    balls: (s) => lifetime(s) >= 20000,
+    trinkets: (s) => lifetime(s) >= 90000,
+    panels: (s) => (s.stats.paddles || 0) >= 1,
+    stats: (s) => s.stats.runs >= 2 || s.stats.drains >= 1,
+  };
+  function tabUnlocked(id, s) {
+    const f = TAB_GATE[id];
+    if (!f) return true;
+    try { return !!f(s); } catch (e) { return true; }
+  }
+
+  /**
+   * Every currently-visible thing, as prefixed ids. Used to spot what is
+   * newly available so it can be announced and badged.
+   */
+  function unlockedSet(s) {
+    const out = [];
+    for (const [id] of PART_ORDER) if (partUnlocked(id, s)) out.push('part:' + id);
+    for (const b of BALLS) if (ballUnlocked(b, s)) out.push('ball:' + b.id);
+    for (const t of TRINKETS) if (trinketUnlocked(t, s)) out.push('trinket:' + t.id);
+    for (const u of UPGRADES) if (upgradeUnlocked(u, s)) out.push('upgrade:' + u.id);
+    for (const k in TAB_GATE) if (tabUnlocked(k, s)) out.push('tab:' + k);
+    return out;
+  }
+
+  /** Human-readable name for a prefixed id, for the unlock announcement. */
+  function unlockLabel(key) {
+    const [kind, id] = key.split(':');
+    if (kind === 'part') return { what: 'PART', name: (PART_BY_ID[id] || {}).name || id, emoji: (PART_BY_ID[id] || {}).emoji || '🧩' };
+    if (kind === 'ball') return { what: 'BALL', name: (BALL_BY_ID[id] || {}).name || id, emoji: (BALL_BY_ID[id] || {}).emoji || '⚪' };
+    if (kind === 'trinket') return { what: 'TRINKET', name: (TRINKET_BY_ID[id] || {}).name || id, emoji: (TRINKET_BY_ID[id] || {}).emoji || '🃏' };
+    if (kind === 'upgrade') return { what: 'UPGRADE', name: (UP_BY_ID[id] || {}).name || id, emoji: (UP_BY_ID[id] || {}).emoji || '⬆️' };
+    if (kind === 'tab') return { what: 'MENU', name: id.toUpperCase(), emoji: '📂' };
+    return { what: '', name: id, emoji: '✨' };
+  }
+
+  /* =====================================================================
    * GUIDE — the next thing worth doing, given where you are. Shown as a
    * single line on the table so a bare board is never a blank stare.
    * ================================================================== */
@@ -1030,6 +1116,9 @@
     MISSION_POOL, MISSION_BY_KEY, missionNeed, missionPay,
     PERKS, PERK_BY_ID, perkCost,
     GUIDE, nextGuide,
+    PART_ORDER, PART_GATE, partGate, partUnlocked,
+    ballGate, ballUnlocked, trinketGate, trinketUnlocked, upgradeGate, upgradeUnlocked,
+    TAB_GATE, tabUnlocked, unlockedSet, unlockLabel, lifetime,
     BALL_MAX_LEVEL, ballPolishCost, ballScore, ballCoin,
   };
 })(window);
