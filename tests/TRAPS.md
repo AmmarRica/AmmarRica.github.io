@@ -89,6 +89,26 @@ failing one that was measuring the wrong thing.
   (cream) passes every text check and still has no visible button edge. Text
   contrast is necessary, not sufficient — look at the rendered screenshot too.
 
+## Environment
+
+- **`file://` is not the environment half this code runs in.** `Update.check()`
+  returns at its first line off HTTP — there are no deploys on a local file —
+  so the entire required-update suite passed while never executing the rule it
+  tested, *including its sabotage check*. The suite now serves over real HTTP
+  and asserts the check actually reached the network (`attempts === 5`,
+  `lastCheck` moved) before asserting anything about what it decided.
+  This is the second time a suite has passed its own sabotage; both times the
+  cause was a scenario that never reached the code.
+
+## Rendered vs. computed
+
+- **A helper returning the right string is not the UI showing it.** The
+  update countdown was correct in `updateBanner()` and frozen in the DOM,
+  because `refreshInstallUI()` toggled a class on a bar built once at boot.
+  Every assertion about the countdown passed. A bar still reading "Update
+  available" on the day the game locks is worse than no warning at all, so
+  the test now reads `#updateBar.textContent` at three points on the clock.
+
 ## Reversible actions
 
 - **Testing only the happy path of an undo passes on two different exploits.**

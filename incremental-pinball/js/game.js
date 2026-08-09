@@ -47,6 +47,11 @@
       perks: {},
       ballLevels: { steel: 1 },
       settings: { sound: true, shake: true, particles: true, depth: true, autoRun: true, assist: false },
+      // Update enforcement. `seen`/`seenAt` are only ever written from a
+      // check that actually reached the server — a failed check must never
+      // start the clock, or a month offline would lock a game whose whole
+      // selling point is that it plays offline.
+      update: { seen: null, seenAt: 0, notesFor: null, ran: null },
       stats: {
         totalChips: 0, bestRun: 0, bestFloor: 0, bestMult: 1, runs: 0,
         placed: 0, prestiges: 0, bestIdle: 0, drains: 0, playTime: 0, launches: 0,
@@ -127,6 +132,9 @@
     demo: false,
     awaitLaunch: true,
     plunger: { pull: 0, holding: false },
+    // Set when a required update is overdue. The table stops; the menu does
+    // not, so the save can still be exported.
+    locked: false,
     build: { on: false, raze: false, floor: 0, sel: null, ghost: null, ghostErr: null, dragging: null },
     cannon: null,
     run: { active: false, score: 0, ballsLeft: 0, ballNo: 0, startedAt: 0, chipsThisBall: 0, floorsThisRun: 0 },
@@ -659,6 +667,7 @@
   }
 
   function startRun() {
+    if (g.locked) return;
     // ⚠️ Reseed per run: the same save replays the same run, and a bug
     // report only needs the seed and the run number to reproduce.
     IP.reseed((g.state.seed ^ Math.imul(g.state.stats.runs + 1, 2654435761)) >>> 0);
@@ -731,6 +740,7 @@
   function plungerDown() { if (g.awaitLaunch) g.plunger.holding = true; }
 
   function plungerRelease() {
+    if (g.locked) return;
     if (!g.awaitLaunch) return;
     g.plunger.holding = false;
     const pw = U.clamp(g.plunger.pull, 0.06, 1);
@@ -770,6 +780,72 @@
   /* ===================================================================
    * ECONOMY
    * ================================================================ */
+  /* ===================================================================
+   * UPDATE ENFORCEMENT
+   *
+   * A newer build becomes mandatory GRACE_DAYS after this install first saw
+   * it. Two rules keep that from bricking a legitimate player:
+   *
+   *  1. The clock starts from a check that reached the server. Being offline
+   *     is not evidence that an update exists, and an offline-capable game
+   *     that locks you out for being offline is broken, not strict.
+   *  2. A clock that has moved backwards resets rather than accumulating.
+   *     Otherwise a device with a wrong date locks a player out on day one
+   *     with no way to argue.
+   * ================================================================ */
+  const GRACE_DAYS = 30;
+  const DAY_MS = 86400000;
+
+  function updRec() {
+    if (!g.state.update) g.state.update = { seen: null, seenAt: 0, notesFor: null, ran: null };
+    return g.state.update;
+  }
+
+  /**
+   * Record a version observed on the server. Only a strictly newer version
+   * starts the clock — a rollback is not something to lock anyone out over.
+   */
+  function noteVersionSeen(v) {
+    const u = updRec();
+    if (!v) return u;
+    if (U.cmpVer(v, IP.VERSION) <= 0) {           // we are current (or ahead)
+      u.seen = null; u.seenAt = 0;
+      save();
+      return u;
+    }
+    if (!u.seen || U.cmpVer(v, u.seen) > 0) {     // a newer one than we knew
+      u.seen = v;
+      u.seenAt = Date.now();
+      save();
+    }
+    return u;
+  }
+
+  /** Days left before the pending update becomes mandatory, or null. */
+  function updateDeadline() {
+    const u = updRec();
+    if (!u.seen || U.cmpVer(u.seen, IP.VERSION) <= 0) return null;
+    const now = Date.now();
+    if (!u.seenAt || u.seenAt > now) {            // clock moved back — restart it
+      u.seenAt = now;
+      save();
+    }
+    const elapsed = (now - u.seenAt) / DAY_MS;
+    return { version: u.seen, elapsed, daysLeft: Math.max(0, GRACE_DAYS - elapsed), overdue: elapsed >= GRACE_DAYS };
+  }
+
+  /** Re-evaluate the lock. Returns true if the game is locked. */
+  function enforceUpdate() {
+    const d = updateDeadline();
+    const locked = !!(d && d.overdue);
+    if (locked !== g.locked) {
+      g.locked = locked;
+      if (locked) { g.paused = true; save(); }
+      emit('locked', locked);
+    }
+    return locked;
+  }
+
   /** A part without its runtime cache — safe to store, clone or serialise. */
   function cleanPart(p) {
     const q = {};
@@ -1267,7 +1343,7 @@
   }
 
   function update(dt) {
-    if (g.paused) return;
+    if (g.paused || g.locked) return;
     // Snapshot for render interpolation, before anything moves.
     g.prevCamY = g.camY;
     for (const b of g.balls) {
@@ -1678,6 +1754,7 @@
     startRun, startBall, endRun, spawnBall, makeBall,
     plungerDown, plungerRelease, nudge, fireCannon,
     buyPart, sellPart, sellFloor, removeParts, undoSell, undoInfo, levelPart, movePart, rotatePart,
+    noteVersionSeen, updateDeadline, enforceUpdate, GRACE_DAYS,
     buyUpgrade, buyBall, selectBall, buyTrinket, sellTrinket, buyFloor, prestige,
     buyPerk, polishBall, perk, ballLevel, ballScoreMul, ballCoinMul,
     canAfford, pay, coins, up, idlePerSec, coinRate, baseMult, ballsPerRun,

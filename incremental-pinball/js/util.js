@@ -284,6 +284,21 @@
 
   const isTouch = () => ('ontouchstart' in global) || (navigator.maxTouchPoints || 0) > 0;
 
+  /**
+   * Compare dotted numeric versions: -1, 0 or 1. Needed because "different
+   * from mine" and "newer than mine" are not the same question — a rollback
+   * must not read as an update to install, and must never start a countdown
+   * to locking the game.
+   */
+  function cmpVer(a, b) {
+    const pa = String(a || '0').split('.'), pb = String(b || '0').split('.');
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const x = parseInt(pa[i], 10) || 0, y = parseInt(pb[i], 10) || 0;
+      if (x !== y) return x < y ? -1 : 1;
+    }
+    return 0;
+  }
+
   IP.util = {
     $, $$, el,
     clamp, lerp, invLerp, approach, norm, angLerp, TAU,
@@ -292,6 +307,6 @@
     mkRng, rnd, rand, randInt, pick, chance, shuffle,
     fmt, fmtFull, fmtTime, ordinal,
     saveJSON, loadJSON, dropKey,
-    uid, now, nowSec, clone, rgba, shade, mixHex, luminance, contrast, isTouch,
+    uid, now, nowSec, clone, rgba, shade, mixHex, luminance, contrast, isTouch, cmpVer,
   };
 })(window);

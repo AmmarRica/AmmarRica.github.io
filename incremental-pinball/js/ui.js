@@ -828,8 +828,13 @@
       box.appendChild(statRow('App', Install.isInstalled() ? 'Installed ✔' : 'Running in the browser'));
       box.appendChild(statRow('Version', IP.VERSION));
       box.appendChild(statRow('Offline play', 'Ready'));
+      const dl = G.updateDeadline();
+      box.appendChild(statRow('Update status', dl
+        ? (dl.overdue ? 'Required now' : 'Required in ' + Math.ceil(dl.daysLeft) + 'd')
+        : 'Up to date'));
       root.appendChild(box);
     }
+    root.appendChild(btn('📋 WHAT\'S NEW', { cls: 'wide ghost', onclick: () => showChangelog() }));
     root.appendChild(btn(Update.found ? 'UPDATE TO ' + Update.found : 'CHECK FOR UPDATES', {
       cls: 'wide' + (Update.found ? ' primary' : ' ghost'),
       onclick: () => (Update.found ? Update.apply() : Update.check(true)),
@@ -1232,7 +1237,13 @@
     const bar = $('installBar');
     if (bar) bar.classList.toggle('on', Install.offerable() && !Install.dismissed);
     const ub = $('updateBar');
-    if (ub) ub.classList.toggle('on', !!Update.found && Update.found !== Update.declined);
+    if (ub) {
+      // ⚠️ Repaint, do not just toggle. The bar carries a countdown, and it
+      // was built once at boot — a bar that still says "Update available" on
+      // the day the game locks is worse than no warning at all.
+      paintUpdateBar(ub);
+      ub.classList.toggle('on', !!Update.found && Update.found !== Update.declined);
+    }
     if (UI.menuOpen && UI.tab === 'stats') renderMenu();
   }
 
@@ -1279,7 +1290,17 @@
         Update.lastCheck = Date.now();
         if (!m) return null;
         const v = m[1];
-        if (v === IP.VERSION) { if (manual) toast('You are on the latest version (' + v + ')'); return null; }
+        // Feed the clock from every successful check, including the ones
+        // that say we are current — that is what clears a stale deadline
+        // after an update lands.
+        G.noteVersionSeen(v);
+        enforceLock();
+        if (U.cmpVer(v, IP.VERSION) <= 0) {
+          Update.found = null;
+          refreshInstallUI();
+          if (manual) toast('You are on the latest version (' + v + ')');
+          return null;
+        }
         Update.found = v;
         refreshInstallUI();
         return v;
@@ -1289,9 +1310,15 @@
       } finally { Update.checking = false; }
     },
 
-    /** Auto-check is throttled and never nags about a declined version. */
+    /**
+     * Checked on every launch and every return to the foreground. The old
+     * 15-minute throttle is gone deliberately; the only guard left is a few
+     * seconds, purely so one tab-switch does not fire two overlapping
+     * requests. A deadline the player cannot see coming would be unfair, so
+     * the check has to be frequent enough to surface one.
+     */
     maybeCheck() {
-      if (Date.now() - Update.lastCheck < 15 * 60 * 1000) return;
+      if (Date.now() - Update.lastCheck < 4000) return;
       Update.check(false);
     },
 
@@ -1308,15 +1335,104 @@
   };
 
   function buildUpdateBar() {
-    return el('div.installbar.update#updateBar',
-      el('div.iico', '⬆️'),
-      el('div.itext', el('b', 'Update available'), el('small', 'Reload to get the newest build')),
-      btn('UPDATE', { cls: 'sm primary', onclick: () => Update.apply() }),
-      btn('✕', {
+    const bar = el('div.installbar.update#updateBar');
+    paintUpdateBar(bar);
+    return bar;
+  }
+
+  /** Rewrite the bar from the current deadline. Called on every refresh. */
+  function paintUpdateBar(bar) {
+    const b = updateBanner() || { head: 'Update available', sub: 'Reload to get the newest build', urgent: false };
+    bar.classList.toggle('urgent', !!b.urgent);
+    bar.innerHTML = '';
+    bar.appendChild(el('div.iico', b.urgent ? '⚠️' : '⬆️'));
+    bar.appendChild(el('div.itext', el('b', b.head), el('small', b.sub)));
+    bar.appendChild(btn('UPDATE', { cls: 'sm primary', onclick: () => Update.apply() }));
+    // Past the deadline there is no "not now" — declining is the thing the
+    // 30 days were for.
+    if (!b.urgent) {
+      bar.appendChild(btn('✕', {
         cls: 'sm ghost', aria: 'Not now',
         onclick: () => { Update.declined = Update.found; refreshInstallUI(); },
-      }),
-    );
+      }));
+    }
+  }
+
+  /* ==================================================================
+   * REQUIRED UPDATES
+   *
+   * An update becomes mandatory 30 days after this install first saw it.
+   * The bar counts down long before then, and the lock screen still offers
+   * the save file — locking someone out of their progress as well as the
+   * game would be a different thing entirely.
+   * =============================================================== */
+  function updateBanner() {
+    const d = G.updateDeadline();
+    if (!d) return null;
+    const days = Math.ceil(d.daysLeft);
+    if (d.overdue) return { urgent: true, head: 'Update required', sub: 'Version ' + d.version + ' is out and this build is no longer supported' };
+    if (days <= 7) return { urgent: true, head: 'Update required in ' + days + (days === 1 ? ' day' : ' days'), sub: 'Version ' + d.version + ' is out' };
+    return { urgent: false, head: 'Update available', sub: 'Version ' + d.version + ' · required in ' + days + ' days' };
+  }
+
+  /** Patch notes. `since` shows only what landed after that version. */
+  function showChangelog(since) {
+    const list = since ? D.changesSince(since) : D.CHANGELOG;
+    const body = [];
+    if (!list.length) body.push(el('p', 'Nothing new since you last played.'));
+    for (const c of list) {
+      const box = el('div.patch');
+      box.appendChild(el('div.phead', el('b', 'v' + c.v + (c.title ? ' — ' + c.title : '')), el('small', c.date)));
+      const ul = el('ul.pnotes');
+      for (const n of c.notes) ul.appendChild(el('li', n));
+      if (c.fixes) ul.appendChild(el('li.pfix', c.fixes));
+      box.appendChild(ul);
+      body.push(box);
+    }
+    modal(since ? "WHAT'S NEW" : 'PATCH NOTES', body, [{ label: 'GOT IT', cls: 'primary' }]);
+  }
+
+  /**
+   * After an update lands, show what changed — once, and only for someone
+   * who was actually running an older build. A fresh install has nothing to
+   * catch up on and should not be handed a wall of release notes.
+   */
+  function maybeShowPatchNotes() {
+    const u = g.state.update || {};
+    const ran = u.ran;
+    if (ran !== IP.VERSION) {
+      const first = !ran;
+      u.ran = IP.VERSION;
+      u.notesFor = IP.VERSION;
+      G.save();
+      if (!first && D.changesSince(ran).length) {
+        setTimeout(() => showChangelog(ran), 400);
+      }
+    }
+  }
+
+  let lockShown = false;
+  function enforceLock() {
+    const locked = G.enforceUpdate();
+    $('app').classList.toggle('locked', locked);
+    if (!locked) { lockShown = false; return false; }
+    if (lockShown) return true;
+    lockShown = true;
+    showLockScreen();
+    return true;
+  }
+
+  function showLockScreen() {
+    const d = G.updateDeadline();
+    const body = [
+      el('p', 'This build is ' + Math.floor(d ? d.elapsed : G.GRACE_DAYS) + ' days behind. Version '
+        + (d ? d.version : '') + ' has been out for more than ' + G.GRACE_DAYS + ' days, so play is paused until you update.'),
+      el('p', 'Updating keeps your tower — it is stored on this device, not in the build. You can also export it to a file first if you would rather have a copy.'),
+    ];
+    modal('UPDATE REQUIRED', body, [
+      { label: '⬇ EXPORT SAVE', cls: 'ghost', keepOpen: true, onclick: () => SaveFile.download() },
+      { label: 'UPDATE NOW', cls: 'primary', keepOpen: true, onclick: () => Update.apply() },
+    ], { sticky: true });
   }
 
   /** Dismissible banner that appears once the browser says it can install. */
@@ -1598,24 +1714,41 @@
   /* ==================================================================
    * MODALS / TOASTS / FLASHES
    * =============================================================== */
-  function modal(title, bodyNodes, actions) {
+  /**
+   * `opts.sticky` marks a modal the player is not allowed to dismiss — the
+   * required-update screen. An action can set `keepOpen` so it runs without
+   * closing, which is what lets EXPORT SAVE work from behind the lock.
+   */
+  function modal(title, bodyNodes, actions, opts) {
+    const o = opts || {};
     const host = $('modal');
     host.innerHTML = '';
     host.classList.add('on');
-    const box = el('div.modalbox');
+    host.classList.toggle('sticky', !!o.sticky);
+    const box = el('div.modalbox' + (o.sticky ? '.sticky' : ''));
     box.appendChild(el('h2', title));
     const body = el('div.mbody');
     [].concat(bodyNodes).forEach((n) => body.appendChild(typeof n === 'string' ? el('p', n) : n));
     box.appendChild(body);
     const act = el('div.macts');
     (actions || [{ label: 'OK', cls: 'primary' }]).forEach((a) => {
-      act.appendChild(btn(a.label, { cls: a.cls, onclick: () => { closeModal(); if (a.onclick) a.onclick(); } }));
+      act.appendChild(btn(a.label, {
+        cls: a.cls,
+        onclick: () => { if (!a.keepOpen) closeModal(); if (a.onclick) a.onclick(); },
+      }));
     });
     box.appendChild(act);
     host.appendChild(box);
     return box;
   }
-  function closeModal() { const h = $('modal'); h.classList.remove('on'); h.innerHTML = ''; }
+  function closeModal(force) {
+    const h = $('modal');
+    // A sticky modal only closes when the code that raised it says so; ESC,
+    // a backdrop tap and a stray closeModal() all have to bounce off it.
+    if (h.classList.contains('sticky') && !force) return;
+    h.classList.remove('on', 'sticky');
+    h.innerHTML = '';
+  }
 
   function confirmModal(title, text, onYes) {
     modal(title, [text], [
@@ -1805,7 +1938,18 @@
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { G.save(); return; }
       g.world.flippers.forEach((f) => { f.humanPress = false; f.pressed = false; });
+      // Coming back to the app counts as opening it. This is also the only
+      // thing that moves an installed copy forward — a PWA can sit
+      // foregrounded for days without ever reloading.
+      enforceLock();
+      Update.maybeCheck();
     });
+
+    // Launch check, before anything else touches the table: if this build is
+    // already past its deadline the run should never start.
+    enforceLock();
+    Update.check(false);
+    maybeShowPatchNotes();
 
     const off = G.collectOffline();
     G.startRun();
@@ -1823,7 +1967,8 @@
   IP.ui = {
     boot, setMenu, renderMenu, toast, modal, closeModal, enterBuild, exitBuild,
     renderBuildBar, refreshPanelButtons, UI, layout,
-    __t: { Install, Update, refreshInstallUI, showUndo, setRaze },   // test surface
+    __t: { Install, Update, refreshInstallUI, showUndo, setRaze,
+           enforceLock, showChangelog, maybeShowPatchNotes, updateBanner },   // test surface
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

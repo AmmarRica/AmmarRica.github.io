@@ -22,7 +22,7 @@ const ctx = await b.newContext({ viewport: { width: 400, height: 880 }, isMobile
 const p = await ctx.newPage();
 const errs=[]; p.on('pageerror', e=>errs.push('ERR '+e.message));
 const SHOT='/tmp/claude-0/-home-user-AmmarRica-github-io/43501a1b-6782-59a1-beb0-8b30e9215300/scratchpad/';
-const ok = (label, cond, extra='') => console.log((cond ? 'PASS ' : 'FAIL ') + label + (extra ? '  ' + extra : ''));
+const ok = (label, cond, extra='') => { console.log((cond ? 'PASS ' : 'FAIL ') + label + (extra ? '  ' + extra : '')); if (!cond) process.exitCode = 1; };
 
 await p.goto('http://localhost:8099/incremental-pinball/index.html');
 await p.waitForTimeout(1500);

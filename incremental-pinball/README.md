@@ -190,6 +190,49 @@ startup rather than carrying its own copy. It used to be a second literal in
 `js/util.js`, which meant any drift between the two made the update check
 compare a version against itself and report an update forever.
 
+## Updates are required, eventually
+
+The game checks for a new build **every time you open it** and every time it
+comes back to the foreground — an installed PWA can sit open for days without
+ever reloading, so a check tied only to page load would never fire on the
+copy that most needs it.
+
+Once a check that reached the server reports a newer version, a 30-day clock
+starts. The menu bar counts down the whole time, turns red in the last week,
+and at day 30 play stops behind a screen whose only ways out are UPDATE NOW
+and EXPORT SAVE.
+
+Two rules keep that from bricking a legitimate player, and both are the
+interesting part of the design:
+
+- **The clock only starts from a check that reached the server.** Being
+  offline is not evidence that an update exists. An offline-capable game that
+  locks you out *for being offline* is broken, not strict — so a failed check
+  writes nothing at all.
+- **A clock that has moved backwards resets rather than accumulating.** A
+  device with a wrong date would otherwise lock a player out on day one with
+  no way to argue.
+
+A rollback (the server serving something older) is ignored too — versions are
+compared numerically, so `1.10.0` is correctly newer than `1.9.0`, which
+string comparison gets backwards.
+
+The lock never traps progress: the save lives in this browser, not in the
+build, and the lock screen still exports it to a file.
+
+## Patch notes
+
+`CHANGELOG` in `data.js` is the whole thing — **STATS → WHAT'S NEW** renders
+it, and after an update lands the player is shown just the entries newer than
+the build they were on. A fresh install is shown nothing, because it has
+nothing to catch up on.
+
+A line earns its place by changing something a player can do, see or decide.
+Everything else — refactors, tests, internal plumbing — collapses into the one
+`fixes` line per release, and a fixed bug is only named when it cost the
+player something (data loss, a wrong payout). Otherwise it is "General fixes
+and polish" and that is the honest summary.
+
 ## Save files
 
 **STATS → SAVE FILE** exports the whole profile as `.json` and imports it back.
@@ -289,6 +332,7 @@ node tests/tower-files.mjs        # save round-trip and import validation
 node tests/tower-contrast.mjs     # WCAG 4.5:1 on every themed surface
 node tests/tower-parallax.mjs     # depth layers paint, and at their own rates
 node tests/tower-remove.mjs       # refunds, undo, and the ways undo could pay
+node tests/tower-update.mjs       # the 30-day deadline, and when NOT to lock
 ```
 
 `tests/TRAPS.md` lists the measurement mistakes already made here — several of

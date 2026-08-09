@@ -1105,8 +1105,73 @@
   PERKS.forEach((p) => { PERK_BY_ID[p.id] = p; });
   const perkCost = (p, lvl) => Math.round(p.cost * Math.pow(p.growth, lvl));
 
+  /* ===================================================================
+   * PATCH NOTES
+   *
+   * Newest first. A line earns its place by changing something a player can
+   * do, see or decide. Everything else — refactors, tests, internal plumbing
+   * — collapses into the one `fixes` line rather than becoming a changelog
+   * nobody asked to read. A fixed bug is only worth naming when it cost the
+   * player something; otherwise it is generic too.
+   * ================================================================ */
+  const CHANGELOG = [
+    {
+      v: '1.9.0', date: '2026-08-09', title: 'Updates and patch notes',
+      notes: [
+        'The game now checks for a new version every time you open it.',
+        'This screen: every patch, newest first, with what actually changed.',
+        'Updates become required 30 days after one is released. You get a countdown long before that, and your save is never at risk — you can always export it.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
+    {
+      v: '1.8.0', date: '2026-08-09', title: 'Take it apart again',
+      notes: [
+        'Parts can be removed properly: one at a time, a whole floor at once, or by arming REMOVE in the build bar and tapping them.',
+        'Every removal can be undone, and puts the part back exactly as it was — level, earnings, position and panel.',
+        'Sell buttons now show what you get back, instead of just a coin icon.',
+      ],
+      fixes: 'Batch refunds paid out more than selling the same parts one by one.',
+    },
+    {
+      v: '1.7.0', date: '2026-08-09', title: 'Depth',
+      notes: [
+        'The shaft has a background now: a distant skyline, drifting suits, girders behind the table and beams passing in front, all moving at their own speed as you climb.',
+        'Turn it off under STATS → SETTINGS if you prefer a flat table.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
+    {
+      v: '1.6.0', date: '2026-08-09', title: 'Save files and controls',
+      notes: [
+        'Export your tower to a file and import it on another device.',
+        'Fullscreen, and tilt-to-nudge on phones that have the sensor.',
+        'Runs are seeded, so the same save replays the same run.',
+      ],
+      fixes: 'Saving could fail silently once you had placed a part, losing progress. Fixed, and now tested.',
+    },
+    {
+      v: '1.5.0', date: '2026-08-09', title: 'Install it',
+      notes: [
+        'Install the game as an app: own icon, no browser bars, plays with no connection.',
+        'Buttons are bigger and easier to hit on a phone.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
+  ];
+
+  const CHANGELOG_BY_V = {};
+  for (const c of CHANGELOG) CHANGELOG_BY_V[c.v] = c;
+
+  /** Entries newer than `v`, so "what changed since you last played" is cheap. */
+  function changesSince(v) {
+    if (!v) return [];
+    return CHANGELOG.filter((c) => IP.util.cmpVer(c.v, v) > 0);
+  }
+
   IP.data = {
     W, C, FLOORS, floorMult, floorCost,
+    CHANGELOG, CHANGELOG_BY_V, changesSince,
     PARTS, PART_BY_ID, chipsFor,
     MILESTONES, milestoneMult, nextMilestone,
     BALLS, BALL_BY_ID,
