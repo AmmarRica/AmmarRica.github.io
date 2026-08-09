@@ -59,7 +59,7 @@
   /* ------------------------------------------------------------------ */
   function makeRenderer(canvas) {
     const ctx = canvas.getContext('2d');
-    const view = { w: 0, h: 0, scale: 4, camY: 0, shake: 0, sx: 0, sy: 0, dpr: 1 };
+    const view = { w: 0, h: 0, scale: 4, camY: 0, shake: 0, sx: 0, sy: 0, dpr: 1, alpha: 0 };
 
     function resize(cssW, cssH) {
       const dpr = Math.min(global.devicePixelRatio || 1, 2.5);
@@ -83,8 +83,10 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, view.w, view.h);
 
-      view.sx = view.shake ? U.rand(-view.shake, view.shake) : 0;
-      view.sy = view.shake ? U.rand(-view.shake, view.shake) : 0;
+      view.alpha = g.alpha || 0;
+      view.sx = g.shakeX || 0;
+      view.sy = g.shakeY || 0;
+      view.camY = U.lerp(g.prevCamY != null ? g.prevCamY : g.camY, g.camY, g.alpha || 0);
 
       drawBackground(g);
       drawFloors(g);
@@ -255,7 +257,6 @@
           }
           ctx.restore();
         }
-        f.hot = Math.max(0, hot - 0.06);
       }
     }
 
@@ -589,16 +590,17 @@
         inkCircle(ctx, px, py, 8, C.gold, 2.5);
         inkText(ctx, String(lvl), px, py + 0.5, 10, C.ink2, 900, 0);
       }
-      inst._glow = Math.max(0, glow - 0.055);
     }
 
     /* ------------------------------------------------------------- */
     function drawFlippers(g) {
+      const alpha = view.alpha;
       for (const f of g.world.flippers) {
         const y = sy(f.pivot.y);
         if (y < -80 || y > view.h + 80) continue;
+        const ang = f.prevAng != null ? U.angLerp(f.prevAng, f.ang, alpha) : f.ang;
         const px = sx(f.pivot.x), py = y;
-        const tx = sx(f.tip.x), ty = sy(f.tip.y);
+        const tx = sx(f.pivot.x + Math.cos(ang) * f.len), ty = sy(f.pivot.y + Math.sin(ang) * f.len);
         const w = s(f.thick + 0.6);
         if (f.wheel) {
           // Batter wheel: a windmilling arm on a fat hub.
@@ -656,12 +658,20 @@
     }
 
     /* ------------------------------------------------------------- */
+    /** Render position of a body, interpolated across the current step. */
+    function ipos(b) {
+      const a = view.alpha;
+      if (!b.pp || !a) return b.p;
+      return { x: U.lerp(b.pp.x, b.p.x, a), y: U.lerp(b.pp.y, b.p.y, a) };
+    }
+
     function drawBalls(g) {
       for (const b of g.balls) {
         if (!b.alive) continue;
-        const y = sy(b.p.y);
+        const ip = ipos(b);
+        const y = sy(ip.y);
         if (y < -60 || y > view.h + 60) continue;
-        const x = sx(b.p.x), r = s(b.r);
+        const x = sx(ip.x), r = s(b.r);
 
         if (b.def.trail && b.trail.length > 1) {
           ctx.save();
@@ -700,9 +710,10 @@
       // Off-screen ball pointer so you never lose track of the play.
       for (const b of g.balls) {
         if (!b.alive) continue;
-        const y = sy(b.p.y);
+        const ip = ipos(b);
+        const y = sy(ip.y);
         if (y >= -20 && y <= view.h + 20) continue;
-        const x = U.clamp(sx(b.p.x), 22, view.w - 22);
+        const x = U.clamp(sx(ip.x), 22, view.w - 22);
         const yy = y < 0 ? 26 : view.h - 26;
         ctx.save();
         inkCircle(ctx, x, yy, 13, U.rgba(b.def.color, 0.9), 3);
@@ -873,7 +884,7 @@
       // Balls.
       for (const b of g.balls) {
         if (!b.alive) continue;
-        inkCircle(ctx, x0 + mw / 2, my(b.p.y), 3.4, b.def.color, 1.5);
+        inkCircle(ctx, x0 + mw / 2, my(ipos(b).y), 3.4, b.def.color, 1.5);
       }
       ctx.restore();
     }

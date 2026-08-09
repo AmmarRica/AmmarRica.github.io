@@ -9,6 +9,9 @@
 
   const IP = global.IP || (global.IP = {});
 
+  /** Must match <meta name="app-version"> in index.html. */
+  IP.VERSION = '1.5.0';
+
   /* ---------------------------------------------------------------- DOM */
   const $ = (id) => document.getElementById(id);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));

@@ -135,6 +135,43 @@ Content lives in `data.js` and nothing else needs to know about it: a part is a
 `build()` that pushes colliders and an `onHit(A, inst, ball)` that talks to the
 game API, so adding one is a single object literal.
 
+## Installing it
+
+The game is a PWA. On Chrome/Edge/Android a green **Install** banner appears
+at the top of the menu once the browser fires `beforeinstallprompt`, with a
+matching button under **STATS → APP**. On iOS, where there is no prompt API,
+the same button opens Add-to-Home-Screen instructions instead.
+
+⚠️ The button only exists while an install is genuinely on offer — it is
+hidden in standalone, after `appinstalled`, and in browsers that will never
+offer one. `beforeinstallprompt` cannot be summoned; it arrives once, as an
+event, so an always-on install button is a dead button.
+
+Updates are detected by fetching `index.html` with `cache: 'reload'` and
+reading `<meta name="app-version">` out of it — **not** via
+`registration.update()`, which fires `updatefound` for almost no real deploys
+and would report "up to date" through every release. The service worker is
+network-first for HTML and cache-first for everything else, classified by URL
+extension rather than `request.mode` (the update check is a `fetch()`, not a
+navigation, so mode-based classification would pin it to the precache
+forever). The update prompt only ever appears in the menu, never over a live
+ball, and declining silences the automatic check only.
+
+Bump **both** `<meta name="app-version">` in `index.html` and `IP.VERSION` in
+`js/util.js` on every deploy.
+
+## Timing
+
+Fixed timestep at 120 Hz with an accumulator; the renderer interpolates
+between the last two states with `g.alpha`. Everything that advances over
+time — particle life, part glow, field heat, camera easing, screen shake —
+lives in `update()`, and draw functions only draw. `tests/tower-timing.mjs`
+asserts that drawing twice with no step between produces an identical image.
+
+Balls and flippers are interpolated for render; particles are not, since they
+are independent short-lived bodies rather than something anchored to a moving
+one.
+
 ## Testing
 
 The game exposes the site-standard demo hook, so it runs under the shared

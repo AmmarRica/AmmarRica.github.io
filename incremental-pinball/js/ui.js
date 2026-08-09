@@ -208,7 +208,7 @@
     $('menu').classList.toggle('collapsed', !open);
     $('app').classList.toggle('menu-open', open);
     $('menu').setAttribute('aria-hidden', String(!open));
-    if (open) renderMenu();
+    if (open) { renderMenu(); Update.maybeCheck(); }
     // On desktop the drawer docks beside the table, so the canvas resizes.
     setTimeout(layout, 20);
     setTimeout(layout, 380);
@@ -771,6 +771,30 @@
     }
     root.appendChild(st);
 
+    // ⚠️ `beforeinstallprompt` cannot be summoned — it arrives once, as an
+    // event. So the install button only exists while that event is live, or
+    // on iOS where the manual route is the only route. An always-on button
+    // is dead in standalone and in browsers that will never offer it.
+    root.appendChild(el('div.cathead', { style: { '--accent': D.C.green } }, 'APP'));
+    if (Install.offerable()) {
+      const inst = card({ cls: 'installcard', accent: D.C.green });
+      inst.appendChild(el('div.pname', '📲 Install as an app'));
+      inst.appendChild(el('div.pdesc', 'Add Tower of Chips to your home screen or desktop: its own icon, no browser bars, and it keeps working offline.'));
+      inst.appendChild(btn(Install.prompt ? 'INSTALL NOW' : 'HOW TO INSTALL',
+        { cls: 'buy', onclick: () => Install.run() }));
+      root.appendChild(inst);
+    } else {
+      const box = el('div.statbox');
+      box.appendChild(statRow('App', Install.isInstalled() ? 'Installed ✔' : 'Running in the browser'));
+      box.appendChild(statRow('Version', IP.VERSION));
+      box.appendChild(statRow('Offline play', 'Ready'));
+      root.appendChild(box);
+    }
+    root.appendChild(btn(Update.found ? 'UPDATE TO ' + Update.found : 'CHECK FOR UPDATES', {
+      cls: 'wide' + (Update.found ? ' primary' : ' ghost'),
+      onclick: () => (Update.found ? Update.apply() : Update.check(true)),
+    }));
+
     root.appendChild(el('div.dangerrow',
       btn('HOW TO PLAY', { cls: 'ghost', onclick: showTutorial }),
       btn('WIPE SAVE', { cls: 'danger', onclick: () => confirmModal('Wipe your save?', 'Everything goes: coins, parts, floors, gems. There is no undo.', () => { G.wipe(); renderMenu(); }) }),
@@ -1034,6 +1058,165 @@
   }
 
   /* ==================================================================
+   * INSTALL — the game is a PWA, so it can be added to the home screen
+   * or installed as a desktop app and then played offline.
+   * =============================================================== */
+  const Install = {
+    prompt: null,          // the deferred beforeinstallprompt event
+    dismissed: false,
+
+    /** Already running as an installed app? */
+    isInstalled() {
+      return (global.matchMedia && global.matchMedia('(display-mode: standalone)').matches)
+        || global.navigator.standalone === true;
+    },
+    /** iOS has no install prompt API — it needs written instructions. */
+    isIOS() {
+      const ua = navigator.userAgent || '';
+      return /iPad|iPhone|iPod/.test(ua)
+        || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+    },
+    /** Can we offer the banner? Either the browser told us, or it is iOS,
+     *  where installing is manual and the hint is worth more, not less. */
+    offerable() {
+      return !Install.isInstalled() && (!!Install.prompt || Install.isIOS());
+    },
+
+    async run() {
+      if (Install.isInstalled()) { toast('Already installed'); return; }
+      if (Install.prompt) {
+        const ev = Install.prompt;
+        Install.prompt = null;
+        ev.prompt();
+        let outcome = 'dismissed';
+        try { outcome = (await ev.userChoice).outcome; } catch (e) { /* user closed it */ }
+        if (outcome === 'accepted') toast('Installing…');
+        refreshInstallUI();
+        return;
+      }
+      Install.howTo();
+    },
+
+    /** Fallback for browsers that never fire beforeinstallprompt. */
+    howTo() {
+      const rows = Install.isIOS()
+        ? [['1.', 'Tap the Share button in Safari’s toolbar.'],
+           ['2.', 'Scroll down and choose “Add to Home Screen”.'],
+           ['3.', 'Tap Add. The tower gets its own icon and runs full screen.']]
+        : [['1.', 'Open your browser’s menu (⋮ or ⋯) while on this page.'],
+           ['2.', 'Choose “Install app”, “Add to Home screen” or “Create shortcut”.'],
+           ['3.', 'Confirm. It then launches in its own window and plays offline.']];
+      const body = el('div.tut');
+      rows.forEach(([n, t]) => body.appendChild(el('div.trow', el('div.te', n), el('div', el('p', t)))));
+      body.appendChild(el('p.hintline',
+        'Your save lives in this browser either way — installing does not move it, it just gives the game its own icon, removes the browser bars and lets it run with no connection.'));
+      modal('INSTALL THE GAME', [body], [{ label: 'GOT IT', cls: 'primary' }]);
+    },
+  };
+
+  function refreshInstallUI() {
+    const bar = $('installBar');
+    if (bar) bar.classList.toggle('on', Install.offerable() && !Install.dismissed);
+    const ub = $('updateBar');
+    if (ub) ub.classList.toggle('on', !!Update.found && Update.found !== Update.declined);
+    if (UI.menuOpen && UI.tab === 'stats') renderMenu();
+  }
+
+  function setupInstall() {
+    global.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      Install.prompt = e;
+      refreshInstallUI();
+    });
+    global.addEventListener('appinstalled', () => {
+      Install.prompt = null;
+      toast('🎉 Installed — you can play offline now');
+      refreshInstallUI();
+    });
+  }
+
+  /* ==================================================================
+   * UPDATES
+   * ⚠️ Version is read out of the served HTML, NOT from the service
+   * worker. `registration.update()` fires `updatefound` for almost no
+   * real deploys, so an SW-based check reports "up to date" through
+   * every release. Installed players would never see a new build.
+   * =============================================================== */
+  const Update = {
+    found: null,        // version string of a newer build
+    declined: null,     // version the player said no to (silences auto only)
+    lastCheck: 0,
+    checking: false,
+
+    async check(manual) {
+      if (Update.checking) return null;
+      if (!location.protocol.startsWith('http')) return null;   // file:// has no deploys
+      Update.checking = true;
+      try {
+        // ⚠️ `cache: 'reload'` rather than a `?v=` buster: a query string
+        // adds a junk cache entry per check, and reloading the clean URL
+        // also refreshes the cached copy, which is what makes the reload
+        // afterwards actually land on the new build.
+        const res = await fetch('index.html', { cache: 'reload' });
+        const html = await res.text();
+        // ⚠️ requires a digit after the quote so this pattern can never
+        // match its own text if it ever ends up in the fetched reply.
+        const m = /name="app-version"\s+content="(\d[\w.\-]*)"/.exec(html);
+        Update.lastCheck = Date.now();
+        if (!m) return null;
+        const v = m[1];
+        if (v === IP.VERSION) { if (manual) toast('You are on the latest version (' + v + ')'); return null; }
+        Update.found = v;
+        refreshInstallUI();
+        return v;
+      } catch (e) {
+        if (manual) toast('Could not check — you are offline');
+        return null;
+      } finally { Update.checking = false; }
+    },
+
+    /** Auto-check is throttled and never nags about a declined version. */
+    maybeCheck() {
+      if (Date.now() - Update.lastCheck < 15 * 60 * 1000) return;
+      Update.check(false);
+    },
+
+    async apply() {
+      G.save();
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      } catch (e) { /* no SW here; a reload is still the right move */ }
+      location.reload();
+    },
+  };
+
+  function buildUpdateBar() {
+    return el('div.installbar.update#updateBar',
+      el('div.iico', '⬆️'),
+      el('div.itext', el('b', 'Update available'), el('small', 'Reload to get the newest build')),
+      btn('UPDATE', { cls: 'sm primary', onclick: () => Update.apply() }),
+      btn('✕', {
+        cls: 'sm ghost', aria: 'Not now',
+        onclick: () => { Update.declined = Update.found; refreshInstallUI(); },
+      }),
+    );
+  }
+
+  /** Dismissible banner that appears once the browser says it can install. */
+  function buildInstallBar() {
+    const bar = el('div.installbar#installBar',
+      el('div.iico', '📲'),
+      el('div.itext', el('b', 'Install Tower of Chips'), el('small', 'Own icon, full screen, plays offline')),
+      btn('INSTALL', { cls: 'sm primary', onclick: () => Install.run() }),
+      btn('✕', { cls: 'sm ghost', aria: 'Dismiss', onclick: () => { Install.dismissed = true; refreshInstallUI(); } }),
+    );
+    return bar;
+  }
+
+  /* ==================================================================
    * GAMEPAD — shoulder buttons are flippers, exactly like a real cabinet.
    * =============================================================== */
   const PAD_MAP = [
@@ -1239,6 +1422,12 @@
     buildHud();
     buildMenu();
     buildTableUI();
+    setupInstall();
+    $('menu').insertBefore(buildInstallBar(), $('menuTabs'));
+    $('menu').insertBefore(buildUpdateBar(), $('menuTabs'));
+    refreshInstallUI();
+    // ⚠️ Update prompts live in the menu only. Never interrupt a live ball.
+    setTimeout(() => Update.check(false), 4000);
     G.init($('cv'));
     layout();
     setupCanvas();
@@ -1289,7 +1478,11 @@
     if (q.get('play') === '1' || q.get('demo') === '1') setMenu(false);
   }
 
-  IP.ui = { boot, setMenu, renderMenu, toast, modal, closeModal, enterBuild, exitBuild, renderBuildBar, refreshPanelButtons, UI, layout };
+  IP.ui = {
+    boot, setMenu, renderMenu, toast, modal, closeModal, enterBuild, exitBuild,
+    renderBuildBar, refreshPanelButtons, UI, layout,
+    __t: { Install, Update, refreshInstallUI },   // test surface
+  };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

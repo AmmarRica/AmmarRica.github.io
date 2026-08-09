@@ -129,6 +129,7 @@
     flags: {},
     trinketFx: {},
     idleRate: 0,
+    alpha: 0, prevCamY: 0, shakeX: 0, shakeY: 0,
     lastSave: 0,
     tilt: 0, nudgesLeft: 0,
     ballSaveT: 0,
@@ -250,6 +251,7 @@
       trail: [], held: null, holdTo: null, holdCd: 0, portalCd: 0,
       chips: 0, maxFloor: 0, phantom: false, hits: 0,
       lastHit: g.time, dryKicked: false, slowT: 0, searches: 0,
+      pp: { x: x, y: y },          // previous position, for render interpolation
     };
   }
 
@@ -1126,20 +1128,42 @@
   /* ===================================================================
    * MAIN LOOP
    * ================================================================ */
+  /**
+   * ⚠️ Fixed timestep. Everything that advances over time runs here at a
+   * constant rate and the renderer interpolates between the last two states
+   * with `g.alpha`. A variable dt (or worse, a per-draw decay) runs 2.4×
+   * fast on a 144Hz display and crawls on a throttled tab.
+   */
+  const STEP = 1 / 120;
+  const MAX_CATCHUP = 6;      // after a stall, drop time rather than spiral
   let lastT = 0;
+  let acc = 0;
 
   function frame(t) {
     if (!g.running) return;
     requestAnimationFrame(frame);
-    const raw = (t - lastT) / 1000;
+    const raw = U.clamp((t - lastT) / 1000 || 0, 0, 0.25);
     lastT = t;
-    const dt = U.clamp(raw || 0.016, 0, 0.05);
-    update(dt);
+
+    if (!g.paused) {
+      acc += raw;
+      let n = 0;
+      while (acc >= STEP && n < MAX_CATCHUP) { update(STEP); acc -= STEP; n++; }
+      if (n === MAX_CATCHUP) acc = 0;
+      g.alpha = acc / STEP;
+    }
     if (g.renderer) g.renderer.draw(g);
   }
 
   function update(dt) {
-    if (g.paused) { if (g.renderer) g.renderer.view.camY = g.camY; return; }
+    if (g.paused) return;
+    // Snapshot for render interpolation, before anything moves.
+    g.prevCamY = g.camY;
+    for (const b of g.balls) {
+      if (!b.pp) b.pp = { x: b.p.x, y: b.p.y };
+      else { b.pp.x = b.p.x; b.pp.y = b.p.y; }
+    }
+    if (g.world) for (const f of g.world.flippers) f.prevAng = f.ang;
     g.time += dt;
     g.state.stats.playTime += dt;
 
@@ -1226,6 +1250,13 @@
       if (g.popups[i].life <= 0) g.popups.splice(i, 1);
     }
     g.shake = Math.max(0, g.shake - dt * 34);
+    // ⚠️ These used to decay once per DRAW. Part glow and field heat are
+    // simulation state, so they tick here at a fixed rate; the shake offset
+    // is chosen here too so two draws of one frame are identical.
+    g.shakeX = g.shake ? U.rand(-g.shake, g.shake) : 0;
+    g.shakeY = g.shake ? U.rand(-g.shake, g.shake) : 0;
+    for (const p of g.state.parts) if (p._glow > 0) p._glow = Math.max(0, p._glow - dt * 3.3);
+    if (g.world) for (const f of g.world.fields) if (f.hot > 0) f.hot = Math.max(0, f.hot - dt * 3.6);
 
     /* --- camera --- */
     updateCamera(dt);
