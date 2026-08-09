@@ -99,16 +99,53 @@
     {
       id: 'bumper', name: 'Pop Bumper', emoji: '⭕', cat: 'bounce', color: C.red,
       cost: 25, growth: 1.16, floor: 0, r: 5.2, rot: false, maxLevel: 20,
-      desc: 'The bread and butter. Kicks hard, pays chips every hit.',
-      chips: 8, kick: 62,
+      desc: 'Kicks hard and pays chips — but only for a limited number of pops. '
+          + 'The counter above it is what is left. It trickles back on its own and refills at the start of every ball.',
+      chips: 8, kick: 62, uses: true,
+      /** Pops available when fully charged. */
+      maxUses(inst) {
+        const coils = (IP.game && IP.game.up('bumperUses')) || 0;
+        return 10 + 5 * (inst.lvl - 1) + 3 * coils;
+      },
+      /** Seconds to win one pop back. */
+      rechargeTime(inst) { return Math.max(1.6, 5.5 - 0.2 * inst.lvl); },
+      usesLeft(inst) { return Math.max(0, this.maxUses(inst) - (inst.used || 0)); },
       build(inst, out) {
-        out.push({ k: 'circ', c: { x: inst.x, y: inst.y }, r: 5.2, e: 0.62, kick: this.kick * (1 + 0.04 * (inst.lvl - 1)), tag: 'bumper' });
+        const live = this.usesLeft(inst) > 0;
+        out.push({
+          k: 'circ', c: { x: inst.x, y: inst.y }, r: 5.2,
+          e: live ? 0.62 : 0.34,
+          kick: live ? this.kick * (1 + 0.04 * (inst.lvl - 1)) : 0,
+          tag: 'bumper',
+        });
       },
       onHit(A, inst) {
+        // Spent bumpers are dead weight: they still deflect, but nothing else.
+        if (this.usesLeft(inst) <= 0) { A.sfx('error', -0.4); return; }
+        inst.used = (inst.used || 0) + 1;
+        if (this.usesLeft(inst) === 0) {
+          A.popup(inst.x, inst.y + 8, 'SPENT', C.red, 12);
+          A.sfx('drain');
+        }
         A.score(chipsFor(this.chips, inst.lvl), inst, { pop: true });
         A.addMult(0.09 + 0.03 * inst.lvl);
         A.burst(inst.x, inst.y, C.red, 10);
         A.sfx('pop');
+      },
+      tick(A, inst, dt) {
+        const max = this.maxUses(inst);
+        if ((inst.used || 0) > 0) {
+          inst.rech = (inst.rech || 0) + dt;
+          const period = this.rechargeTime(inst);
+          while (inst.rech >= period && inst.used > 0) { inst.rech -= period; inst.used--; }
+        } else inst.rech = 0;
+        // The collider is rebuilt rarely, so keep its kick in step with the count.
+        const col = inst._cols && inst._cols[0];
+        if (col) {
+          const live = (max - (inst.used || 0)) > 0;
+          col.kick = live ? this.kick * (1 + 0.04 * (inst.lvl - 1)) : 0;
+          col.e = live ? 0.62 : 0.34;
+        }
       },
     },
     {
@@ -700,6 +737,8 @@
       desc: 'Lift the table — everything falls slower.', fmt: (l) => `-${(l * 2.6).toFixed(1)}% gravity` },
     { id: 'nudge',     name: 'Nudge Charges',  emoji: '👊', cost: 260,  growth: 1.5,  max: 8,  group: 'table',
       desc: 'Bump the table mid-ball without tilting.', fmt: (l) => `${2 + l} nudges per ball` },
+    { id: 'bumperUses', name: 'Bumper Coils',   emoji: '🌀', cost: 180,  growth: 1.34, max: 25, group: 'table',
+      desc: 'Every pop bumper holds more pops before it goes flat.', fmt: (l) => `+${l * 3} pops per bumper` },
 
     { id: 'balls',     name: 'Balls Per Run',  emoji: '🎳', cost: 400,  growth: 1.85, max: 9,  group: 'run',
       desc: 'More balls before the run ends.', fmt: (l) => `${3 + l} balls` },

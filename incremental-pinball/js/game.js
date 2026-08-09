@@ -21,10 +21,8 @@
   function starterParts() {
     const mk = (id, x, y, floor, a) => IP.table.newInstance(id, x, y, floor, a || 0);
     return [
-      mk('bumper', 34, 72, 0), mk('bumper', 50, 88, 0), mk('bumper', 66, 72, 0),
       mk('sling', 20, 56, 0, -0.7), mk('sling', 66, 56, 0, 0.7),
       mk('target', 40, 96, 0, 0), mk('rollover', 58, 96, 0),
-      mk('bumper', 34, 148, 1), mk('bumper', 62, 166, 1),
       mk('jet', 50, 132, 1, 0), mk('jet', 52, 62, 0, 0),
     ];
   }
@@ -32,7 +30,7 @@
   function freshState() {
     return {
       v: 1,
-      coins: 250,
+      coins: 400,
       gems: 0,
       floors: 3,
       parts: starterParts(),
@@ -258,6 +256,7 @@
       slick: !!def.slick, alive: true, age: 0,
       trail: [], held: null, holdTo: null, holdCd: 0, portalCd: 0,
       chips: 0, maxFloor: 0, phantom: false, hits: 0,
+      lastHit: g.time, dryKicked: false, slowT: 0, searches: 0,
     };
   }
 
@@ -396,6 +395,8 @@
     ball._cd = ball._cd || {};
     if (g.time - (ball._cd[key] || -9) < TRIGGER_CD) return;
     ball._cd[key] = g.time;
+    ball.lastHit = g.time;
+    ball.dryKicked = false;
     g.activeBall = ball;
     count('hits');
     if (inst.id === 'target' && inst.t_down <= 0) count('targets');
@@ -442,6 +443,8 @@
     const climbed = f > ball.band;
     ball.band = f;
     if (!climbed) return;
+    ball.lastHit = g.time;
+    ball.dryKicked = false;
     score(140, null, { pop: true, label: 'CLIMB', floor: f });
     addMult(0.45);
     count('climbs');
@@ -663,11 +666,12 @@
 
   function resetPartRuntime() {
     for (const p of g.state.parts) {
-      p.t_down = 0; p.lit = false; p.hits = 0; p.used = 0; p.cd = 0; p.charge = 0;
+      p.t_down = 0; p.lit = false; p.hits = 0; p.used = 0; p.rech = 0; p.cd = 0; p.charge = 0;
     }
   }
   function resetPerBallRuntime() {
-    for (const p of g.state.parts) { p.used = 0; p.lit = false; p.t_down = 0; }
+    // Bumper pops and kicker charges both refill at the start of a ball.
+    for (const p of g.state.parts) { p.used = 0; p.rech = 0; p.lit = false; p.t_down = 0; }
     g.flags = {};
   }
 
@@ -1153,10 +1157,32 @@
    * plus a part somebody dropped in an awkward spot can always cradle a ball.
    * Three escalating shoves, then we give the ball back to the drain.
    */
+  const DRY_KICK = 12;      // seconds without scoring before we shove the ball
+  const DRY_DRAIN = 26;     // …and before we give up on it
+
   function ballSearch(dt) {
     if (g.awaitLaunch) return;
     for (const b of g.balls) {
       if (!b.alive || b.held) continue;
+
+      /* A ball can find a quiet orbit between two decks and circle there
+       * forever, scoring nothing. It is still moving, so the slow-ball check
+       * below never fires — this is the separate "it is alive but the run has
+       * stopped happening" case. Shove it, then drain it. */
+      const dry = g.time - (b.lastHit || 0);
+      if (dry > DRY_DRAIN) {
+        popupScreen('BALL LOST', D.C.red);
+        drain(b);
+        continue;
+      }
+      if (dry > DRY_KICK && !b.dryKicked) {
+        b.dryKicked = true;
+        b.v.x = U.rand(-90, 90);
+        b.v.y = 150;
+        shake(5);
+        popup(b.p.x, b.p.y + 6, 'SHAKE', D.C.cream, 11);
+        sfx('flip');
+      }
       // A ball that found its way back into the shooter lane gets re-fired.
       if (b.p.x > IP.table.LANE_X && b.p.y < IP.table.LANE_TOP && Math.abs(b.v.y) < 40) {
         b.v.y = 210 * (1 + 0.06 * up('plunger'));
@@ -1246,6 +1272,7 @@
    * ================================================================ */
   const A = {
     score, addMult, freezeMult, burst, shake, sfx, coins, count,
+    up,
     holdBall, liftBall, grantBallSave, splitBall, otherPortal, loadCannon, fireCannon,
     now: () => g.time,
     checkTargetBank, checkLaneSet,

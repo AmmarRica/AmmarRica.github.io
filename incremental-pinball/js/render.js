@@ -274,6 +274,38 @@
       }
     }
 
+    /**
+     * Pops-remaining readout that sits above a bumper. Colour-coded rather
+     * than number-only so you can read a whole floor's state at a glance:
+     * gold healthy, orange low, red spent.
+     */
+    function drawUseCounter(g, inst, def, x, y, r, left) {
+      const max = def.maxUses(inst);
+      const frac = max ? left / max : 0;
+      const col = left <= 0 ? C.red : frac < 0.34 ? C.orange : C.gold;
+      const label = String(left);
+      const w = 15 + label.length * 6;
+      const cy = y - r - 11;
+
+      ctx.save();
+      // Recharge sweep: shows the next pop ticking back in.
+      if (left < max) {
+        const p = U.clamp((inst.rech || 0) / def.rechargeTime(inst), 0, 1);
+        ctx.beginPath();
+        ctx.arc(x, y, r + 3.5, -Math.PI / 2, -Math.PI / 2 + U.TAU * p);
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = U.rgba(C.gold, 0.75);
+        ctx.stroke();
+      }
+      roundRect(ctx, x - w / 2, cy - 8 + 2, w, 16, 6);
+      ctx.fillStyle = C.ink2; ctx.fill();
+      roundRect(ctx, x - w / 2, cy - 8, w, 16, 6);
+      ctx.fillStyle = C.ink; ctx.fill();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = col; ctx.stroke();
+      inkText(ctx, label, x, cy + 0.5, 11, col, 900, 2);
+      ctx.restore();
+    }
+
     function drawPart(g, inst, def, x, y) {
       const t = g.time;
       const r = s(def.r);
@@ -282,11 +314,15 @@
 
       switch (def.id) {
         case 'bumper': {
+          const left = def.usesLeft(inst);
+          const spent = left <= 0;
           const pulse = 1 + glow * 0.35;
+          const body = spent ? '#4a3b3a' : U.shade(def.color, glow * 0.35);
           inkCircle(ctx, x, y + 3, r * pulse, C.ink2, 0);
-          inkCircle(ctx, x, y, r * pulse, U.shade(def.color, glow * 0.35), 4);
-          inkCircle(ctx, x, y, r * 0.62 * pulse, C.cream, 3);
-          inkCircle(ctx, x, y, r * 0.3 * pulse, def.color, 2);
+          inkCircle(ctx, x, y, r * pulse, body, 4);
+          inkCircle(ctx, x, y, r * 0.62 * pulse, spent ? '#6b6157' : C.cream, 3);
+          inkCircle(ctx, x, y, r * 0.3 * pulse, spent ? '#4a3b3a' : def.color, 2);
+          drawUseCounter(g, inst, def, x, y, r, left);
           break;
         }
         case 'sling': case 'tramp': case 'wall': case 'conveyor': {
@@ -546,9 +582,10 @@
         }
       }
 
-      // Level pip for anything above level 1.
+      // Level pip for anything above level 1. Sits low-right so it never
+      // collides with a pops-remaining counter riding above the part.
       if (lvl > 1) {
-        const px = x + r * 0.85, py = y - r * 0.85;
+        const px = x + r * 0.85, py = y + r * 0.85;
         inkCircle(ctx, px, py, 8, C.gold, 2.5);
         inkText(ctx, String(lvl), px, py + 0.5, 10, C.ink2, 900, 0);
       }

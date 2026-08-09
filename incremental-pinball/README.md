@@ -2,7 +2,7 @@
 
 Pinball played *upward*. The table is a tower of floors, and the chips you
 score on floor `k` are multiplied by `1.95^k` — so height is score. You start
-with two flippers and a handful of bumpers, and you spend everything you earn
+with two flippers and an almost bare table, and you spend everything you earn
 on more table: bouncers, jets, lifts, paddles, and eventually more floors to
 put them on.
 
@@ -20,6 +20,19 @@ Live at [`/incremental-pinball/`](https://ammarrica.github.io/incremental-pinbal
 5. **Climb.** Buy the next floor. Repeat with a bigger multiplier.
 6. **Reforge.** Melt the tower down for gems, which permanently multiply
    everything and buy perks that survive every future reset.
+
+## Pop bumpers wear out
+
+Nothing on the table comes with a bumper on it — every pop bumper is one you
+bought and placed. Each has a limited number of pops, shown as a counter above
+it: gold when healthy, orange when low, red when spent. A spent bumper still
+deflects the ball but pays nothing and kicks nothing, and it goes visibly dark.
+
+Pops come back on their own, one every few seconds (a ring around the bumper
+shows the next one arriving), and every bumper refills completely at the start
+of each ball. So the pressure is on *concentration*: hammering one bumper burns
+it out, while a table that spreads its hits across several never notices. The
+**Bumper Coils** upgrade and levelling a bumper both raise its capacity.
 
 ## Two screens
 
@@ -98,5 +111,6 @@ into the floor opening so a ball that runs out of energy rolls to the hole and
 drops rather than parking forever, and two funnel rails hang underneath fanning
 out to the walls so a ball rising anywhere on the floor below gets nudged toward
 the opening. There is still a ball-search relay — three escalating shoves, then
-the drain — because a player can always build a cradle the geometry did not
+the drain, plus a dry-spell rule that ends any ball which stops scoring —
+because a player can always build a cradle the geometry did not
 anticipate.

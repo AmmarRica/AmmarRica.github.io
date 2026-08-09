@@ -266,9 +266,14 @@
         const maxed = inst.lvl >= def.maxLevel;
         const row = el('div.prow');
         row.appendChild(el('div.pico.sm', { style: { background: def.color } }, def.emoji));
+        const sub = def.uses
+          ? def.usesLeft(inst) + ' / ' + def.maxUses(inst) + ' pops left'
+          : def.idle
+            ? '+' + fmt(def.idle(inst) * (1 + 0.16 * G.up('idleRate'))) + ' coins/s'
+            : def.desc.slice(0, 46);
         row.appendChild(el('div.pinfo',
           el('b', def.name + ' · Lv' + inst.lvl),
-          el('small', def.idle ? '+' + fmt(def.idle(inst) * (1 + 0.16 * G.up('idleRate'))) + ' coins/s' : def.desc.slice(0, 46)),
+          el('small', sub),
         ));
         row.appendChild(btn(maxed ? 'MAX' : '⬆ ' + fmt(cost), {
           cls: 'sm', disabled: maxed || g.state.coins < cost,
@@ -1069,7 +1074,8 @@
     const body = el('div.tut');
     [
       ['🏗️', 'It is a tower', 'The table stacks upward. Chips scored on floor 4 are worth ' + fmt(D.floorMult(4)) + '× what they are worth on floor 0. Getting the ball higher is the whole game.'],
-      ['🔧', 'You build it', 'Buy bouncers, scorers, magnets and jet pads in the SHOP, then drop them wherever you like. Drag them around any time in BUILD mode.'],
+      ['🔧', 'You build it', 'The table starts almost bare — every pop bumper on it is one you bought and placed. Drop parts wherever you like in the SHOP, and drag them around any time in BUILD mode.'],
+      ['⭕', 'Bumpers wear out', 'Each pop bumper only has so many pops in it. The number above it counts down; it trickles back on its own and refills at the start of every ball. Spread the load, or buy Bumper Coils.'],
       ['🏓', 'You flip it', 'Two flippers at the bottom to start. Buy Paddles to add your own flippers on higher floors and bind them to any of six control panels.'],
       ['🔷', 'Chips × Mult', 'Every hit pays CHIPS, and most hits also raise your MULT. Score is chips × mult, so keep the ball alive and keep the streak hot.'],
       ['💨', 'How to climb', 'Each floor has one opening, and the next one is 25 units to the side. Jet Pads are the only part you may hang directly over an opening — put one there and it blows arriving balls up through the next.'],
