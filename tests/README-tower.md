@@ -12,6 +12,7 @@ node tests/tower-determinism.mjs # seeded replay, stream separation, no Math.ran
 node tests/tower-files.mjs      # save round-trip, export/import, malformed input
 node tests/tower-contrast.mjs   # WCAG 4.5:1 on every themed surface
 node tests/tower-parallax.mjs   # depth layers paint, and at their own rates
+node tests/tower-remove.mjs     # refunds, undo, and the ways undo could pay
 ```
 
 `tower-pwa.mjs` serves the repo over real HTTP on :8099 — service workers and
@@ -33,6 +34,11 @@ text below 4.5:1 against the first non-transparent background above it.
 renderer's own transform, and counts what each one painted via `view.drawn` —
 "the canvas changed when depth was on" would pass while three of the four
 layers rendered nothing.
+
+`tower-remove.mjs` is mostly assertions that undo is *refused*: a refund is
+below the purchase price, so an undo that does not charge it back is a coin
+pump, and one that ignores what you spent in between gives parts away. The
+happy path alone passes on both.
 
 Set `PW_CHROME` if Playwright cannot find a browser.
 

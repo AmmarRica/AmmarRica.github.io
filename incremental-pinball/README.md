@@ -92,6 +92,33 @@ of each ball. So the pressure is on *concentration*: hammering one bumper burns
 it out, while a table that spreads its hits across several never notices. The
 **Bumper Coils** upgrade and levelling a bumper both raise its capacity.
 
+## Taking things off again
+
+Every part can come back off the table, and there are three ways to do it
+depending on what you are actually trying to change:
+
+- **One part** — select it in build mode and hit **💰 REMOVE**, or use the row
+  button in the BUILD tab. Both show the refund on the button itself.
+- **A lot of parts** — arm **🧨 REMOVE** in the build bar and tap them. Every
+  part on the floor is ringed in red while it is armed, so the mode is visible
+  on the table rather than only in the bar.
+- **The whole floor** — **🧹 CLEAR FLOOR** in the BUILD tab, behind a confirm.
+
+Refunds are 40% of what you paid, rising to 65% with the Fair Trade upgrade and
+to the full price with one trinket. A part is priced off how many of its type
+you still own, so a batch is refunded part by part as it comes off — pricing
+the whole batch up front would pay out about 40% more than selling the same
+parts one at a time.
+
+Because a refund is worth less than what you paid, **every removal offers an
+undo**. The bar names what went and what it paid, and undo puts it back exactly
+as it was — level, earnings, position, panel binding — for the price of the
+refund. It refuses if you have already spent that refund, and if the space has
+since been built over; both cases say which. Undoing costs nothing net, so
+sell → undo → sell cannot be farmed for coins.
+
+Trinkets can also be removed, but that one is not undoable and says so.
+
 ## Two screens
 
 The page is the table, and the menu is a drawer over it. Hit **▼ PLAY** to
@@ -261,6 +288,7 @@ node tests/tower-determinism.mjs  # seeded replay and stream separation
 node tests/tower-files.mjs        # save round-trip and import validation
 node tests/tower-contrast.mjs     # WCAG 4.5:1 on every themed surface
 node tests/tower-parallax.mjs     # depth layers paint, and at their own rates
+node tests/tower-remove.mjs       # refunds, undo, and the ways undo could pay
 ```
 
 `tests/TRAPS.md` lists the measurement mistakes already made here — several of

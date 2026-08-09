@@ -49,6 +49,40 @@ for (const tab of ['shop', 'build', 'balls', 'trinkets', 'tasks', 'upgrades', 't
 }
 ok('all themed text meets ' + MIN + ':1 against its own background', worst.length === 0, worst.join(' | '));
 
+/* The menu is not the only light surface. `.btn.ghost` is written for the dark
+ * menu ground and has to be re-scoped for every cream panel that appears — the
+ * undo bar was the next one to be missed, and shipped an invisible dismiss
+ * button. Walk the in-table surfaces too, so the next one fails here instead. */
+const tableRows = await p.evaluate((MIN) => {
+  const G = window.IP.game, g = G.g, C = window.IP.util.contrast;
+  window.IP.ui.setMenu(false);
+  g.state.coins = 1e7;
+  G.buyPart('bumper', 30, 60, 0, 0);
+  G.buyPart('bumper', 55, 75, 0, 0);
+  window.IP.ui.enterBuild(0);
+  G.sellPart(g.state.parts[0].uid);
+  window.IP.ui.__t.showUndo();
+  const solid = (el) => {
+    let n = el;
+    while (n && n !== document.documentElement) {
+      const bg = getComputedStyle(n).backgroundColor;
+      if (bg && !/rgba\(0, 0, 0, 0\)|transparent/.test(bg)) return bg;
+      n = n.parentElement;
+    }
+    return 'rgb(27,38,44)';
+  };
+  const out = [];
+  for (const el of document.querySelectorAll('#undoBar .btn, #undoBar b, #undoBar small, #buildBar .btn, #tableUI .btn')) {
+    const cs = getComputedStyle(el);
+    if (!el.textContent.trim()) continue;
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    const ratio = C(cs.color, solid(el));
+    if (ratio < MIN) out.push(`${el.className || el.tagName} ${ratio.toFixed(2)}:1 (${cs.color} on ${solid(el)})`);
+  }
+  return out;
+}, MIN);
+ok('in-table surfaces meet ' + MIN + ':1 too', tableRows.length === 0, [...new Set(tableRows)].join(' | '));
+
 // Pin the helper from both ends so it cannot be a rubber stamp.
 const sanity = await p.evaluate(() => {
   const C = window.IP.util.contrast;

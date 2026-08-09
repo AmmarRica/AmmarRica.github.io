@@ -118,12 +118,16 @@
     popups: [],
     floaters: [],
     time: 0,
+    // Last removal, kept so it can be put back. Deliberately on `g` and not
+    // on `g.state`: it is a session-scoped safety net, and everything hung
+    // off state gets serialised.
+    undo: null,
     running: false,
     paused: false,
     demo: false,
     awaitLaunch: true,
     plunger: { pull: 0, holding: false },
-    build: { on: false, floor: 0, sel: null, ghost: null, ghostErr: null, dragging: null },
+    build: { on: false, raze: false, floor: 0, sel: null, ghost: null, ghostErr: null, dragging: null },
     cannon: null,
     run: { active: false, score: 0, ballsLeft: 0, ballNo: 0, startedAt: 0, chipsThisBall: 0, floorsThisRun: 0 },
     mult: 1, multBase: 1, multPeak: 1, multFreeze: 0,
@@ -766,6 +770,13 @@
   /* ===================================================================
    * ECONOMY
    * ================================================================ */
+  /** A part without its runtime cache — safe to store, clone or serialise. */
+  function cleanPart(p) {
+    const q = {};
+    for (const k in p) if (k.charAt(0) !== '_') q[k] = p[k];
+    return q;
+  }
+
   function canAfford(n) { return g.state.coins >= n; }
   function pay(n) { if (g.state.coins < n) return false; g.state.coins -= n; return true; }
   function coins(n) { g.state.coins += n; }
@@ -789,15 +800,85 @@
     return { ok: true, inst, cost };
   }
 
-  function sellPart(uid) {
-    const i = g.state.parts.findIndex((p) => p.uid === uid);
-    if (i < 0) return false;
-    const refund = IP.table.refundValue(g.state, g.state.parts[i]);
-    g.state.parts.splice(i, 1);
+  /**
+   * Remove a set of parts and bank the refund, keeping enough to put them
+   * back. Refunds are summed as the parts leave one at a time, because
+   * refundValue() prices a part off how many of its type you still own —
+   * charging every copy the top-of-stack price would pay out more for a
+   * batch than for the same parts sold individually.
+   */
+  function removeParts(list, label) {
+    const ids = new Set(list.map((p) => p.uid));
+    if (!ids.size) return 0;
+    const gone = [];
+    let refund = 0;
+    for (let i = g.state.parts.length - 1; i >= 0; i--) {
+      const p = g.state.parts[i];
+      if (!ids.has(p.uid)) continue;
+      refund += IP.table.refundValue(g.state, p);
+      gone.push(cleanPart(p));
+      g.state.parts.splice(i, 1);
+    }
+    if (!gone.length) return 0;
     coins(refund);
+    g.undo = { parts: gone.reverse(), refund, label: label || gone.length + ' parts' };
     rebuild(); save();
     sfx('coin');
     return refund;
+  }
+
+  function sellPart(uid) {
+    const p = g.state.parts.find((x) => x.uid === uid);
+    if (!p) return false;
+    const def = D.PART_BY_ID[p.id];
+    return removeParts([p], (def && def.name) || 'part');
+  }
+
+  /** Clear a floor in one go, as one undoable step. */
+  function sellFloor(floor) {
+    const on = g.state.parts.filter((p) => p.floor === floor);
+    return removeParts(on, on.length + ' parts from floor ' + floor);
+  }
+
+  /** What undoSell() would cost and whether it can run right now. */
+  function undoInfo() {
+    const u = g.undo;
+    if (!u) return null;
+    return {
+      n: u.parts.length, refund: u.refund, label: u.label,
+      afford: g.state.coins >= u.refund,
+    };
+  }
+
+  /**
+   * Put the last removal back, at the price it paid out.
+   *
+   * ⚠️ Charging the refund back is not politeness — parts refund less than
+   * they cost, so a free undo makes sell → undo → sell a coin pump, and
+   * sell → spend → undo hands out parts for nothing. The blocked case is
+   * reported rather than silently ignored, or the button looks broken.
+   */
+  function undoSell() {
+    const u = g.undo;
+    if (!u) return { ok: false, err: 'Nothing to put back' };
+    if (g.state.coins < u.refund) {
+      return { ok: false, err: 'That refund is already spent — you need ' + U.fmt(u.refund) + ' coins back' };
+    }
+    // The space may have been built over in the meantime; restoring on top
+    // of another part would put two colliders in the same place.
+    for (const p of u.parts) {
+      const def = D.PART_BY_ID[p.id];
+      if (!def) continue;
+      const err = IP.table.placeError(g.state, def, p.x, p.y, p.floor, p.uid);
+      if (err) return { ok: false, err: 'Cannot put it back: ' + err.toLowerCase() };
+    }
+    pay(u.refund);
+    for (const p of u.parts) g.state.parts.push(Object.assign({}, p));
+    const n = u.parts.length;
+    g.undo = null;
+    rebuild(); save();
+    sfx('place');
+    return { ok: true, n };
   }
 
   function levelPart(uid) {
@@ -942,6 +1023,7 @@
     s.floors = Math.min(W.MAX_FLOORS, 3 + perk('floors'));
     s.coins = 500 + earn * 250 + (perk('seed') ? 1000 * Math.pow(3, perk('seed')) : 0);
     g.state = s;
+    g.undo = null;
     recomputeTrinkets(); rebuild(); save();
     startRun();
     sfx('win');
@@ -1104,11 +1186,7 @@
       if (k === 'trinketFx' || k === 'gapCache') continue;   // derived, and holds functions
       out[k] = src[k];
     }
-    out.parts = (src.parts || []).map((p) => {
-      const q = {};
-      for (const k in p) if (k.charAt(0) !== '_') q[k] = p[k];
-      return q;
-    });
+    out.parts = (src.parts || []).map(cleanPart);
     return out;
   }
 
@@ -1122,6 +1200,7 @@
     if (!s || !s.v) return false;
     const base = freshState();
     g.state = Object.assign(base, s);
+    g.undo = null;
     g.state.settings = Object.assign(base.settings, s.settings || {});
     g.state.stats = Object.assign(base.stats, s.stats || {});
     g.state.upgrades = s.upgrades || {};
@@ -1141,6 +1220,7 @@
   function wipe() {
     U.dropKey(SAVE_KEY);
     g.state = freshState();
+    g.undo = null;
     recomputeTrinkets(); rebuild();
     startRun();
   }
@@ -1505,6 +1585,7 @@
     }
 
     g.state = out;
+    g.undo = null;
     ensureMissions();
     recomputeTrinkets();
     rebuild();
@@ -1596,7 +1677,7 @@
     init, save, load, wipe, rebuild, recomputeTrinkets, collectOffline,
     startRun, startBall, endRun, spawnBall, makeBall,
     plungerDown, plungerRelease, nudge, fireCannon,
-    buyPart, sellPart, levelPart, movePart, rotatePart,
+    buyPart, sellPart, sellFloor, removeParts, undoSell, undoInfo, levelPart, movePart, rotatePart,
     buyUpgrade, buyBall, selectBall, buyTrinket, sellTrinket, buyFloor, prestige,
     buyPerk, polishBall, perk, ballLevel, ballScoreMul, ballCoinMul,
     canAfford, pay, coins, up, idlePerSec, coinRate, baseMult, ballsPerRun,

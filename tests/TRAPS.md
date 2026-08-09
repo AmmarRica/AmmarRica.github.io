@@ -89,6 +89,28 @@ failing one that was measuring the wrong thing.
   (cream) passes every text check and still has no visible button edge. Text
   contrast is necessary, not sufficient — look at the rendered screenshot too.
 
+## Reversible actions
+
+- **Testing only the happy path of an undo passes on two different exploits.**
+  A part refunds less than it cost, so an undo that does not charge the refund
+  back is a coin pump (sell → undo → sell), and one that ignores what you spent
+  in between hands out free parts. Most of `tower-remove.mjs` is assertions
+  that undo is *refused*, plus a 25-cycle loop asserting the balance is
+  unchanged — a single sell/undo would not reveal either.
+- **The interesting question about an undo buffer is where it lives.** Holding
+  the removed part on `g.state` puts a whole part — collider cache and all —
+  into the save, which is exactly the shape that made `JSON.stringify` throw
+  before. There is an assertion that the save file does not contain it.
+
+## Colour, continued
+
+- **`.btn.ghost` is written for the dark menu ground and has to be re-scoped
+  for every new light surface.** The undo bar was the next one missed: an
+  invisible dismiss button, cream on cream, in a panel the contrast audit did
+  not walk because it only visited menu tabs. A test that covers one region
+  will keep passing as new regions are added; `tower-contrast.mjs` now walks
+  the in-table surfaces too. The same gap still exists in `tower-touch.mjs`.
+
 ## Predicates
 
 - **Pin a gate from both ends.** `Install.offerable()` returning `false`

@@ -1020,6 +1020,29 @@
       }
       ctx.restore();
 
+      // Bulldozer armed: ring every part on this floor in red, so the mode
+      // is visible on the table and not only in the bar you are not looking at.
+      if (b.raze) {
+        ctx.save();
+        ctx.setLineDash([5, 4]);
+        ctx.lineDashOffset = -g.time * 26;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = C.red;
+        for (const inst of g.state.parts) {
+          if (inst.floor !== b.floor) continue;
+          const def = D.PART_BY_ID[inst.id];
+          if (!def) continue;
+          const x = sx(inst.x), y = sy(inst.y);
+          if (y < -40 || y > view.h + 40) continue;
+          const r = s(def.r) + 6;
+          ctx.beginPath(); ctx.arc(x, y, r, 0, U.TAU); ctx.stroke();
+          ctx.setLineDash([]);
+          inkText(ctx, '✕', x, y, s(5.5), C.red, 900, 3);
+          ctx.setLineDash([5, 4]);
+        }
+        ctx.restore();
+      }
+
       // Highlight the selected part.
       if (b.sel) {
         const def = D.PART_BY_ID[b.sel.id];

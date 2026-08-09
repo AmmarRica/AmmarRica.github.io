@@ -345,6 +345,15 @@
         'FLOOR ' + f + ' · ' + fl.name + '  ×' + fmt(D.floorMult(f)),
         el('span.slots', ps.length + '/' + IP.table.slotLimit(g.state))));
       if (!ps.length) { root.appendChild(el('div.empty.sm', 'Empty floor.')); continue; }
+      if (ps.length > 1) {
+        const worth = ps.reduce((n, p) => n + IP.table.refundValue(g.state, p), 0);
+        root.appendChild(btn('🧹 CLEAR FLOOR ' + f + ' — 🪙 ' + fmt(worth), {
+          cls: 'sm ghost wide',
+          onclick: () => confirmModal('Clear floor ' + f + '?',
+            'Removes all ' + ps.length + ' parts and refunds about 🪙 ' + fmt(worth) + '. You can undo it straight after.',
+            () => { G.sellFloor(f); showUndo(); renderMenu(); }),
+        }));
+      }
       const list = el('div.plist');
       for (const inst of ps) {
         const def = D.PART_BY_ID[inst.id];
@@ -370,9 +379,14 @@
           cls: 'sm ghost', title: 'Locate on table',
           onclick: () => { enterBuild(inst.floor); g.build.sel = inst; setMenu(false); renderBuildBar(); },
         }));
-        row.appendChild(btn('💰', {
-          cls: 'sm ghost', title: 'Sell for ' + fmt(IP.table.refundValue(g.state, inst)),
-          onclick: () => confirmModal('Sell ' + def.name + '?', 'You get back 🪙 ' + fmt(IP.table.refundValue(g.state, inst)) + '.', () => { G.sellPart(inst.uid); renderMenu(); }),
+        // ⚠️ Was a bare 💰 with the meaning only in `title`, which does not
+        // exist on touch — the one destructive control on the row was the
+        // one you had to guess at.
+        row.appendChild(btn('💰 ' + fmt(IP.table.refundValue(g.state, inst)), {
+          cls: 'sm ghost', title: 'Remove and refund',
+          onclick: () => confirmModal('Remove ' + def.name + '?',
+            'You get back 🪙 ' + fmt(IP.table.refundValue(g.state, inst)) + ' of what you paid.',
+            () => { G.sellPart(inst.uid); showUndo(); renderMenu(); }),
         }));
         list.appendChild(row);
       }
@@ -439,7 +453,12 @@
       if (t) {
         s.appendChild(el('div.temoji', t.emoji));
         s.appendChild(el('div.tname', t.name));
-        s.appendChild(btn('SELL', { cls: 'sm ghost', onclick: () => { G.sellTrinket(t.id); renderMenu(); } }));
+        s.appendChild(btn('REMOVE', {
+          cls: 'sm ghost',
+          onclick: () => confirmModal('Remove ' + t.name + '?',
+            'It goes back to the shop and you are refunded part of the price. This one cannot be undone.',
+            () => { G.sellTrinket(t.id); renderMenu(); }),
+        }));
       } else s.appendChild(el('div.tempty', 'EMPTY'));
       held.appendChild(s);
     }
@@ -873,7 +892,21 @@
     g.build.sel = null;
     g.build.ghost = null;
     UI.armed = null;
+    g.build.raze = false;
+    $('app').classList.remove('razing');
     $('app').classList.remove('building');
+    renderBuildBar();
+  }
+
+  /**
+   * Bulldozer mode: while it is on, tapping a part removes it. Arming a
+   * mode is what makes clearing a floor bearable — the alternative is
+   * select, hunt for the button, confirm, repeat.
+   */
+  function setRaze(on) {
+    g.build.raze = !!on;
+    if (on) { UI.armed = null; g.build.ghost = null; g.build.sel = null; }
+    $('app').classList.toggle('razing', !!on);
     renderBuildBar();
   }
 
@@ -888,8 +921,20 @@
       el('b', 'FLOOR ' + g.build.floor),
       el('small', (D.FLOORS[g.build.floor] || {}).name + ' · ' + G.slotsUsed(g.build.floor) + '/' + IP.table.slotLimit(g.state) + ' slots')));
     top.appendChild(btn('▶', { cls: 'sm', disabled: g.build.floor >= g.state.floors - 1, onclick: () => { g.build.floor++; renderBuildBar(); } }));
+    top.appendChild(btn('🧨 REMOVE', {
+      cls: 'sm raze' + (g.build.raze ? ' on' : ' ghost'),
+      title: 'Tap parts on the table to remove them',
+      'aria-pressed': g.build.raze ? 'true' : 'false',
+      onclick: () => { setRaze(!g.build.raze); },
+    }));
     top.appendChild(btn('✕ DONE', { cls: 'sm primary', onclick: exitBuild }));
     bar.appendChild(top);
+
+    if (g.build.raze) {
+      bar.appendChild(el('div.bbhint.raze', 'Tap any part to remove it — every removal can be undone. ',
+        btn('DONE REMOVING', { cls: 'sm primary', onclick: () => setRaze(false) })));
+      return;
+    }
 
     if (UI.armed) {
       const def = D.PART_BY_ID[UI.armed];
@@ -918,8 +963,9 @@
         cls: 'sm', disabled: sel.lvl >= def.maxLevel || g.state.coins < cost,
         onclick: () => { G.levelPart(sel.uid); renderBuildBar(); },
       }));
-      row.appendChild(btn('💰 ' + fmt(IP.table.refundValue(g.state, sel)), {
-        cls: 'sm ghost', onclick: () => { G.sellPart(sel.uid); g.build.sel = null; renderBuildBar(); },
+      row.appendChild(btn('💰 REMOVE ' + fmt(IP.table.refundValue(g.state, sel)), {
+        cls: 'sm ghost',
+        onclick: () => { G.sellPart(sel.uid); g.build.sel = null; showUndo(); renderBuildBar(); },
       }));
       bar.appendChild(row);
     } else {
@@ -977,6 +1023,17 @@
       if (g.build.on) {
         if (UI.armed) { P.mode = 'ghost'; updateGhost(w); return; }
         const hit = hitPart(w);
+        if (g.build.raze) {
+          P.mode = 'pan';
+          if (hit) {
+            const def = D.PART_BY_ID[hit.id];
+            G.sellPart(hit.uid);
+            showUndo();
+            toast('Removed ' + ((def && def.name) || 'part'));
+            renderBuildBar();
+          }
+          return;
+        }
         if (hit) { g.build.sel = hit; P.mode = 'drag'; P.uid = hit.uid; P.off = { x: hit.x - w.x, y: hit.y - w.y }; renderBuildBar(); }
         else { g.build.sel = null; P.mode = 'pan'; renderBuildBar(); }
         return;
@@ -1567,6 +1624,46 @@
     ]);
   }
 
+  /**
+   * Undo bar. Removing a part is the only destructive thing you can do to a
+   * table you spent an hour arranging, and the refund is well under what you
+   * paid — so every removal offers to put it back before the price of a
+   * mis-tap is locked in.
+   */
+  let undoT = 0;
+  function showUndo() {
+    const bar = $('undoBar');
+    const info = G.undoInfo();
+    clearTimeout(undoT);
+    if (!info) { bar.classList.remove('on'); bar.innerHTML = ''; return; }
+    bar.innerHTML = '';
+    bar.appendChild(el('div.undotext',
+      el('b', 'Removed ' + info.label),
+      el('small', '+🪙 ' + fmt(info.refund) + (info.afford ? '' : ' · spent, cannot undo'))));
+    bar.appendChild(btn('↶ UNDO', {
+      cls: 'sm' + (info.afford ? '' : ' ghost'), disabled: !info.afford,
+      onclick: () => {
+        const r = G.undoSell();
+        hideUndo();
+        if (!r.ok) { toast(r.err); return; }
+        toast('Put back ' + r.n + (r.n === 1 ? ' part' : ' parts'));
+        renderBuildBar(); if (UI.menuOpen) renderMenu();
+      },
+    }));
+    bar.appendChild(btn('✕', { cls: 'sm ghost', 'aria-label': 'Dismiss', onclick: hideUndo }));
+    bar.classList.add('on');
+    // Long enough to notice and react to, short enough not to sit over the
+    // table. Dismissing only hides the bar; the undo itself stays available
+    // until the next removal replaces it.
+    undoT = setTimeout(() => bar.classList.remove('on'), 9000);
+  }
+  function hideUndo() {
+    clearTimeout(undoT);
+    const bar = $('undoBar');
+    bar.classList.remove('on');
+    bar.innerHTML = '';
+  }
+
   let toastT = 0;
   function toast(msg) {
     const t = $('toast');
@@ -1726,7 +1823,7 @@
   IP.ui = {
     boot, setMenu, renderMenu, toast, modal, closeModal, enterBuild, exitBuild,
     renderBuildBar, refreshPanelButtons, UI, layout,
-    __t: { Install, Update, refreshInstallUI },   // test surface
+    __t: { Install, Update, refreshInstallUI, showUndo, setRaze },   // test surface
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
