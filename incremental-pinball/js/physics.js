@@ -251,7 +251,9 @@
         hit.hit = false;
         resolveStatic(ball, { x: dx / dist, y: dy / dist }, rad - dist, c, hit);
         if (hit.hit && c.part) cb.onHit(ball, c, hit);
-        else if (hit.hit && c.tag === 'wallOuter') cb.onWall && cb.onWall(ball, c, hit);
+        // Built-in table features (the shell slingshots) pay without being
+        // a bought part — that is what keeps a bare table earning.
+        else if (hit.hit && c.pay && cb.onShell) cb.onShell(ball, c, hit);
 
       } else if (c.k === 'circ') {
         const dx = ball.p.x - c.c.x, dy = ball.p.y - c.c.y;

@@ -17,23 +17,13 @@
   /* ===================================================================
    * DEFAULT SAVE
    * ================================================================ */
-  /** A handful of free parts so a brand-new table already does something. */
-  function starterParts() {
-    const mk = (id, x, y, floor, a) => IP.table.newInstance(id, x, y, floor, a || 0);
-    return [
-      mk('sling', 20, 56, 0, -0.7), mk('sling', 66, 56, 0, 0.7),
-      mk('target', 40, 96, 0, 0), mk('rollover', 58, 96, 0),
-      mk('jet', 50, 132, 1, 0), mk('jet', 52, 62, 0, 0),
-    ];
-  }
-
   function freshState() {
     return {
       v: 1,
-      coins: 400,
+      coins: 0,
       gems: 0,
       floors: 3,
-      parts: starterParts(),
+      parts: [],            // an empty table: everything on it is bought
       upgrades: {},
       balls: { steel: 1 },
       loadout: 'steel',
@@ -418,13 +408,41 @@
 
   function sensorHit(ball, col) { partHit(ball, col, { speed: U.vlen(ball.v) }); }
 
+  /**
+   * Flipping pays. On an empty table this is the player's entire income, and
+   * it never stops mattering because it rewards the one thing no purchase can
+   * do for you: a clean, hard hit. Payout scales with impact speed.
+   */
   function flipperHit(ball, f, info) {
     if (info.speed > 25) sfx('flip', U.rand(-0.1, 0.1));
     if (f.part) {
       const def = D.PART_BY_ID[f.part.id];
       if (def) { f.part._glow = 1; def.onHit(A, f.part, ball, null, info); }
     }
+    if (g.time - (f.lastPay || -9) > 0.25 && info.speed > 18) {
+      f.lastPay = g.time;
+      const solid = info.speed > 95;
+      const floor = floorOf(f.pivot.y);
+      score(Math.round(7 + info.speed * 0.16), null, {
+        floor, tag: 'flipper', pop: solid, label: solid ? 'SMACK' : null,
+      });
+      addMult(solid ? 0.14 : 0.05);
+      ball.lastHit = g.time;
+      ball.dryKicked = false;
+      if (solid) burst(ball.p.x, ball.p.y, D.C.gold, 6);
+    }
     checkFloorProgress(ball);
+  }
+
+  /** Scoring for built-in table furniture (the shell slingshots). */
+  function shellHit(ball, col, info) {
+    if (g.time - (col.lastPay || -9) < 0.2) return;
+    col.lastPay = g.time;
+    score(col.pay, null, { floor: floorOf(ball.p.y), tag: 'shell' });
+    addMult(0.04);
+    ball.lastHit = g.time;
+    ball.dryKicked = false;
+    sfx('sling');
   }
 
   /* ===================================================================
@@ -692,6 +710,7 @@
     g.awaitLaunch = false;
     g.state.stats.launches++;
     count('launches');
+    score(Math.round(18 + 40 * pw), null, { floor: 0, tag: 'launch', pop: pw > 0.9, label: pw > 0.9 ? 'FULL PLUNGE' : null });
     sfx('launch');
     shake(4);
     // Skill shot: a full-power plunge that flies straight into the first gap.
@@ -1092,6 +1111,7 @@
         onHit: partHit,
         onSensor: sensorHit,
         onFlipper: flipperHit,
+        onShell: shellHit,
         onDrain: drain,
       });
     } else if (g.world) {

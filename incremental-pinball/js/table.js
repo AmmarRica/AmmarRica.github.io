@@ -108,9 +108,10 @@
     // Inlane guides funnelling toward the flippers.
     seg(PLAY_L, 64, 24, 30, { e: 0.4 });
     seg(LANE_X, 64, 76, 30, { e: 0.4 });
-    // Built-in slingshot faces just above each flipper.
-    seg(19, 36, 28, 24, { e: 0.55, kick: 34, tag: 'shellSling' });
-    seg(81, 36, 72, 24, { e: 0.55, kick: 34, tag: 'shellSling' });
+    // Built-in slingshot faces just above each flipper. These pay a little on
+    // their own, so an empty table still earns while you save up.
+    seg(19, 36, 28, 24, { e: 0.55, kick: 34, tag: 'shellSling', pay: 5 });
+    seg(81, 36, 72, 24, { e: 0.55, kick: 34, tag: 'shellSling', pay: 5 });
     // Outlane drains at the very sides.
     seg(PLAY_L, 30, 12, 6, { e: 0.35 });
     seg(LANE_X, 30, 76, 6, { e: 0.35 });

@@ -98,7 +98,7 @@
     /* ---------------------------------------------------------- BOUNCE */
     {
       id: 'bumper', name: 'Pop Bumper', emoji: '⭕', cat: 'bounce', color: C.red,
-      cost: 25, growth: 1.16, floor: 0, r: 5.2, rot: false, maxLevel: 20,
+      cost: 12, growth: 1.16, floor: 0, r: 5.2, rot: false, maxLevel: 20,
       desc: 'Kicks hard and pays chips — but only for a limited number of pops. '
           + 'The counter above it is what is left. It trickles back on its own and refills at the start of every ball.',
       chips: 8, kick: 62, uses: true,
@@ -307,7 +307,7 @@
     /* ------------------------------------------------------------ FLOW */
     {
       id: 'jet', name: 'Jet Pad', emoji: '💨', cat: 'flow', color: C.teal,
-      cost: 120, growth: 1.2, floor: 0, r: 8, rot: true, maxLevel: 15, field: true,
+      cost: 85, growth: 1.2, floor: 0, r: 8, rot: true, maxLevel: 15, field: true,
       desc: 'Blows a constant gust. Nothing solid, so it is the one part you may hang directly over a floor opening — which is exactly where it belongs.',
       chips: 3,
       build(inst, out) {
@@ -917,6 +917,50 @@
   const ballCoin = (ball, lvl) => ball.coin * (1 + 0.09 * (lvl - 1));
 
   /* =====================================================================
+   * GUIDE — the next thing worth doing, given where you are. Shown as a
+   * single line on the table so a bare board is never a blank stare.
+   * ================================================================== */
+  const has = (s, id) => s.parts.some((p) => p.id === id);
+  const countOf = (s, id) => s.parts.filter((p) => p.id === id).length;
+
+  const GUIDE = [
+    { done: (s) => s.stats.placed >= 1, tab: 'shop', part: 'bumper',
+      text: 'Flip the ball to earn chips — then buy your first Pop Bumper' },
+    { done: (s) => countOf(s, 'bumper') >= 3, tab: 'shop', part: 'bumper',
+      text: 'Add more bumpers. Each one you place pays on every pass' },
+    { done: (s) => has(s, 'jet'), tab: 'shop', part: 'jet',
+      text: 'Buy a Jet Pad — it is the only part you may hang over a floor opening' },
+    { done: (s) => s.stats.bestFloor >= 1, tab: null,
+      text: 'Put the jet under the opening and ride it up: floor 1 pays double' },
+    { done: (s) => s.parts.some((p) => p.floor >= 1), tab: 'shop',
+      text: 'Build on floor 1 — everything up there scores at ×2' },
+    { done: (s) => s.floors >= 4, tab: 'tower',
+      text: 'Buy floor 3 in TOWER to keep climbing' },
+    { done: (s) => s.trinkets.length >= 1, tab: 'trinkets',
+      text: 'Buy a trinket — they rewrite the rules, not just the numbers' },
+    { done: (s) => Object.keys(s.balls).length >= 2, tab: 'balls',
+      text: 'Buy a second ball: each one plays completely differently' },
+    { done: (s) => Object.keys(s.upgrades).length >= 3, tab: 'upgrades',
+      text: 'Spend on permanent UPGRADES — they outlast every run' },
+    { done: (s) => s.stats.paddles >= 1, tab: 'shop', part: 'paddle',
+      text: 'Buy a Paddle so you can flip on a higher floor yourself' },
+    { done: (s) => s.stats.bestFloor >= 4, tab: null,
+      text: 'Reach floor 4 — the multipliers get silly from here' },
+    { done: (s) => s.stats.prestiges >= 1, tab: 'tower',
+      text: 'Reforge the tower for gems once the payout looks worth it' },
+  ];
+
+  /** First unfinished step, or null when the player has outgrown the guide. */
+  function nextGuide(state) {
+    for (const step of GUIDE) {
+      let ok = false;
+      try { ok = step.done(state); } catch (e) { ok = true; }
+      if (!ok) return step;
+    }
+    return null;
+  }
+
+  /* =====================================================================
    * PRESTIGE
    * ================================================================== */
   const prestigeGems = (lifetimeChips) => Math.floor(Math.pow(Math.max(0, lifetimeChips) / 1e6, 0.42));
@@ -961,6 +1005,7 @@
     MEDALS, prestigeGems, gemBonus,
     MISSION_POOL, MISSION_BY_KEY, missionNeed, missionPay,
     PERKS, PERK_BY_ID, perkCost,
+    GUIDE, nextGuide,
     BALL_MAX_LEVEL, ballPolishCost, ballScore, ballCoin,
   };
 })(window);

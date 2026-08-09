@@ -42,7 +42,16 @@
       .sort((a, b) => (b.c - a.c));
     if (!candidates.length) return;
 
-    const cycle = WANT[(g.state.parts.length) % WANT.length];
+    // Follow the same nudge the player gets: if the guide is asking for a
+    // specific part, save up for that instead of frittering coins away on
+    // whatever happens to be cheap.
+    const step = D.nextGuide(g.state);
+    if (step && step.part) {
+      const want = D.PART_BY_ID[step.part];
+      const wantCost = want ? IP.table.partCost(g.state, want) : 0;
+      if (want && want.floor < g.state.floors && g.state.coins < wantCost * 1.15) return;
+    }
+    const cycle = (step && step.part) || WANT[(g.state.parts.length) % WANT.length];
     const preferred = candidates.find((x) => x.p.id === cycle) || candidates[0];
     const def = preferred.p;
     for (let attempt = 0; attempt < 16; attempt++) {

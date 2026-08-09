@@ -994,6 +994,11 @@
     const pads = el('div.panelbtns#panelBtns');
     ui.appendChild(pads);
 
+    ui.appendChild(el('button.guide#guide', { type: 'button', onclick: () => {
+      const step = D.nextGuide(g.state);
+      if (step && step.tab) { UI.tab = step.tab; setMenu(true); }
+    } }, el('span.gmark', '▶'), el('span.gtext#guideText', '')));
+
     const launch = el('button.launchbtn#launchBtn', 'PULL & LAUNCH');
     launch.addEventListener('pointerdown', (e) => { e.preventDefault(); G.plungerDown(); });
     launch.addEventListener('pointerup', () => G.plungerRelease());
@@ -1017,6 +1022,23 @@
       b.addEventListener('pointerup', () => { pressPanel(i, false); b.classList.remove('on'); });
       b.addEventListener('pointerleave', () => { pressPanel(i, false); b.classList.remove('on'); });
       host.appendChild(b);
+    }
+  }
+
+  /** One-line "do this next" prompt; disappears once you have outgrown it. */
+  function updateGuide() {
+    const host = $('guide');
+    if (!host) return;
+    const step = D.nextGuide(g.state);
+    const show = !!step && !g.build.on && !g.demo;
+    host.classList.toggle('on', show);
+    if (!show) return;
+    const txt = $('guideText');
+    if (txt && txt.textContent !== step.text) {
+      txt.textContent = step.text;
+      host.classList.remove('pulse');
+      void host.offsetWidth;      // restart the attention animation
+      host.classList.add('pulse');
     }
   }
 
@@ -1074,7 +1096,7 @@
     const body = el('div.tut');
     [
       ['🏗️', 'It is a tower', 'The table stacks upward. Chips scored on floor 4 are worth ' + fmt(D.floorMult(4)) + '× what they are worth on floor 0. Getting the ball higher is the whole game.'],
-      ['🔧', 'You build it', 'The table starts almost bare — every pop bumper on it is one you bought and placed. Drop parts wherever you like in the SHOP, and drag them around any time in BUILD mode.'],
+      ['🔧', 'You build it', 'The table starts completely empty. Flipping the ball pays chips on its own — that is your seed money. Spend it in the SHOP, drop parts wherever you like, and drag them around any time in BUILD mode.'],
       ['⭕', 'Bumpers wear out', 'Each pop bumper only has so many pops in it. The number above it counts down; it trickles back on its own and refills at the start of every ball. Spread the load, or buy Bumper Coils.'],
       ['🏓', 'You flip it', 'Two flippers at the bottom to start. Buy Paddles to add your own flippers on higher floors and bind them to any of six control panels.'],
       ['🔷', 'Chips × Mult', 'Every hit pays CHIPS, and most hits also raise your MULT. Score is chips × mult, so keep the ball alive and keep the streak hot.'],
@@ -1134,6 +1156,7 @@
     G.on('rebuild', () => { refreshPanelButtons(); });
     G.on('tick', () => {
       updateHud();
+      updateGuide();
       pollGamepads();
       if (UI.menuOpen) updatePurse();
     });

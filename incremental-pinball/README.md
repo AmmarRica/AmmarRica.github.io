@@ -2,11 +2,28 @@
 
 Pinball played *upward*. The table is a tower of floors, and the chips you
 score on floor `k` are multiplied by `1.95^k` — so height is score. You start
-with two flippers and an almost bare table, and you spend everything you earn
+with two flippers, an empty table and no coins, and you spend everything you earn
 on more table: bouncers, jets, lifts, paddles, and eventually more floors to
 put them on.
 
 Live at [`/incremental-pinball/`](https://ammarrica.github.io/incremental-pinball/).
+
+## Starting from nothing
+
+There are no free parts. A new save is a bare playfield, two flippers and zero
+coins — so the first income has to come from playing: **every solid flipper
+contact pays chips**, scaled by how hard you hit the ball, as do the two
+built-in slingshot faces above the flippers, the plunge itself, and every
+upward pass through a floor opening. Twenty seconds of honest flipping buys
+your first Pop Bumper (12 coins), and from there each part you place makes the
+next one faster to afford.
+
+Flipper income never scales with floor height, so it fades to noise on its own
+once the tower is doing the work — it is a bootstrap, not a strategy.
+
+A one-line prompt at the bottom of the table always names the next worthwhile
+step, and tapping it jumps to the right menu tab. It disappears once you have
+outgrown it.
 
 ## The loop
 

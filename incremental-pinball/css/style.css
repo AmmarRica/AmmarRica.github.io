@@ -162,6 +162,29 @@ html, body {
 .launchbtn:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--red-d); }
 #app.launched .launchbtn { opacity: .35; }
 
+/* "Do this next" prompt — the whole onboarding for an empty table. */
+.guide {
+  position: absolute; left: 8px; right: 8px; bottom: 10px;
+  display: none; align-items: center; gap: 8px;
+  padding: 9px 11px;
+  font: 800 11px/1.35 var(--font); text-align: left;
+  color: var(--ink); background: var(--gold);
+  border: 3px solid var(--ink2); border-radius: 11px;
+  box-shadow: 0 4px 0 var(--gold-d), 0 8px 16px rgba(0,0,0,.4);
+  cursor: pointer;
+}
+.guide.on { display: flex; }
+.guide:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--gold-d); }
+.guide .gmark {
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: var(--gold); background: var(--ink2);
+}
+.guide.pulse { animation: guidepop .5s cubic-bezier(.2,1.5,.4,1); }
+@keyframes guidepop { from { transform: scale(.9) rotate(-1.5deg); } }
+/* Keep the launch button clear of the prompt. */
+.guide.on ~ .launchbtn { bottom: 66px; }
+
 .panelbtns { position: absolute; right: 8px; bottom: 68px; display: flex; flex-direction: column; gap: 6px; }
 .pbtn {
   width: 46px; height: 42px;
