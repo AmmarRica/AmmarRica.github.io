@@ -772,7 +772,8 @@
     const st = el('div.plist');
     const toggles = [
       ['sound', 'Sound effects'], ['shake', 'Screen shake'],
-      ['particles', 'Particles'], ['autoRun', 'Start the next run automatically'],
+      ['particles', 'Particles'], ['depth', 'Parallax depth layers'],
+      ['autoRun', 'Start the next run automatically'],
       ['assist', 'Flipper assist (needs the Autoplunger upgrade)'],
     ];
     for (const [k, name] of toggles) {

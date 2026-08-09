@@ -11,6 +11,7 @@ node tests/tower-pwa.mjs        # manifest, icons, install gating, update check
 node tests/tower-determinism.mjs # seeded replay, stream separation, no Math.random
 node tests/tower-files.mjs      # save round-trip, export/import, malformed input
 node tests/tower-contrast.mjs   # WCAG 4.5:1 on every themed surface
+node tests/tower-parallax.mjs   # depth layers paint, and at their own rates
 ```
 
 `tower-pwa.mjs` serves the repo over real HTTP on :8099 — service workers and
@@ -27,6 +28,11 @@ a circular part graph, which had been losing every save silently.
 
 `tower-contrast.mjs` walks each menu tab, reads computed colours, and fails any
 text below 4.5:1 against the first non-transparent background above it.
+
+`tower-parallax.mjs` pins the scroll rate of each depth layer through the
+renderer's own transform, and counts what each one painted via `view.drawn` —
+"the canvas changed when depth was on" would pass while three of the four
+layers rendered nothing.
 
 Set `PW_CHROME` if Playwright cannot find a browser.
 

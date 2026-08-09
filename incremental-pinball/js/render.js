@@ -93,6 +93,55 @@
     const sy = (wy) => view.h - (wy - view.camY) * view.scale + view.sy;
     const s = (n) => n * view.scale;
 
+    /* -----------------------------------------------------------------
+     * PARALLAX
+     *
+     * Depth is faked by giving each layer its own camera: at depth p the
+     * layer scrolls at p × the real camera, so p = 0 is painted on the
+     * glass, p = 1 moves with the world, and p > 1 races past in front of
+     * it. Shake is scaled by p too — near things jolt further than far
+     * ones, and that is most of what sells the effect.
+     *
+     * ⚠️ Layer content comes from a pure hash of its lattice index, never
+     * from IP.rng. draw() has to be idempotent (tests/tower-timing.mjs),
+     * and a renderer that drew from a random stream would desync the sim
+     * from its seed (tests/tower-determinism.mjs).
+     */
+    const DEPTH = { far: 0.15, mid: 0.42, struct: 0.74, fore: 1.34 };
+
+    function hash01(a, b) {
+      let h = Math.imul((a | 0) ^ 0x9e3779b9, 0x85ebca6b);
+      h = Math.imul(h ^ ((b | 0) + 0x165667b1), 0xc2b2ae35);
+      h ^= h >>> 15;
+      return (h >>> 0) / 4294967296;
+    }
+
+    /** World → screen on the layer at depth p. */
+    const dx = (wx, p) => wx * view.scale + view.sx * p;
+    const dy = (wy, p) => view.h - (wy - view.camY * p) * view.scale + view.sy * p;
+
+    /**
+     * Visit every row of a layer's repeating lattice that can reach the
+     * screen. Content repeats every `period` world units, so a layer
+     * dresses a tower of any height without storing anything.
+     */
+    function lattice(p, period, cb) {
+      const bot = view.camY * p, top = bot + view.viewH;
+      const i0 = Math.floor(bot / period) - 1, i1 = Math.ceil(top / period) + 1;
+      for (let i = i0; i <= i1; i++) cb(i, i * period);
+    }
+
+    /**
+     * How many pieces each layer painted last frame. A test cannot tell a
+     * layer that renders nothing from one that renders behind something
+     * else, and "the canvas changed" passes as long as *any* layer works.
+     */
+    view.drawn = { far: 0, mid: 0, struct: 0, fore: 0 };
+
+    const depthOn = (g) => g.state.settings.depth !== false;
+    /** Idle drift is motion for its own sake; the parallax itself is not. */
+    const driftOn = (g) => depthOn(g) && g.state.settings.particles !== false;
+
     /* --------------------------------------------------------------- */
     function draw(g) {
       const dpr = view.dpr;
@@ -103,9 +152,13 @@
       view.sx = g.shakeX || 0;
       view.sy = g.shakeY || 0;
       view.camY = U.lerp(g.prevCamY != null ? g.prevCamY : g.camY, g.camY, g.alpha || 0);
+      view.drawn.far = view.drawn.mid = view.drawn.struct = view.drawn.fore = 0;
 
       drawBackground(g);
+      drawFarCity(g);
+      drawMidMotes(g);
       drawFloors(g);
+      drawGirders(g);
       drawShell(g);
       drawFields(g);
       drawParts(g);
@@ -114,6 +167,7 @@
       drawBalls(g);
       drawCannon(g);
       drawParticles(g);
+      drawForeBeams(g);
       drawPopups(g);
       if (g.build.on) drawBuildOverlay(g);
       drawMinimap(g);
@@ -146,6 +200,146 @@
       ctx.translate(0, -off);
       ctx.fillStyle = hatch;
       ctx.fillRect(0, 0, view.w, view.h + 16);
+      ctx.restore();
+    }
+
+    /**
+     * FAR — a skyline of other towers, a long way behind this one. Blocks
+     * are stacked on a repeating ground line and lit window-by-window.
+     */
+    function drawFarCity(g) {
+      if (!depthOn(g)) return;
+      const p = DEPTH.far, PER = 150;
+      const k = U.clamp(Math.floor(view.camY / D.W.FLOOR_H), 0, D.FLOORS.length - 1);
+      // Mixed toward a cold haze rather than shaded: shading a nearly-black
+      // tint moves it almost nowhere, and a block that does not separate from
+      // the sky leaves its lit windows floating with nothing behind them.
+      const tint = (D.FLOORS[k] || D.FLOORS[0]).tint;
+      const body = U.mixHex(tint, '#7d93ab', 0.34);
+      const edge = U.mixHex(tint, '#aebfd0', 0.5);
+      ctx.save();
+      lattice(p, PER, (i, base) => {
+        for (let j = 0; j < 3; j++) {
+          const bx = -9 + hash01(i, j * 9 + 1) * 118;
+          const bw = 15 + hash01(i, j * 9 + 2) * 20;
+          const bh = 55 + hash01(i, j * 9 + 3) * 135;
+          const y0 = dy(base, p), y1 = dy(base + bh, p);
+          if (y1 > view.h + 24 || y0 < -24) continue;
+          view.drawn.far++;
+          const x0 = dx(bx, p), w = s(bw);
+          ctx.globalAlpha = 0.34;
+          ctx.fillStyle = body;
+          ctx.fillRect(x0, y1, w, y0 - y1);
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = edge;
+          ctx.fillRect(x0, y1, w, s(1.2));            // catch-light on the roof
+          ctx.globalAlpha = 0.22;
+          ctx.fillRect(x0, y1, s(0.9), y0 - y1);      // lit corner, to give it a face
+          // Only lit windows are drawn — the dark ones are already the wall.
+          const cols = Math.max(1, Math.floor(bw / 7));
+          const rows = Math.max(1, Math.floor(bh / 11));
+          const ww = s(2.1), wh = s(2.6);
+          for (let c = 0; c < cols; c++) {
+            for (let r = 0; r < rows; r++) {
+              const lit = hash01(i * 131 + j * 17 + c, r);
+              if (lit < 0.74) continue;
+              ctx.globalAlpha = 0.07 + lit * 0.13;
+              ctx.fillStyle = lit > 0.94 ? C.gold : C.cream;
+              ctx.fillRect(x0 + s(2.6 + c * 7), y1 + s(5 + r * 11), ww, wh);
+            }
+          }
+        }
+      });
+      ctx.restore();
+    }
+
+    /** MID — suit glyphs adrift between the skyline and the tower. */
+    function drawMidMotes(g) {
+      if (!depthOn(g)) return;
+      const p = DEPTH.mid, PER = 62;
+      const glyphs = ['♠', '♥', '♦', '♣', '★'];
+      const drift = driftOn(g);
+      ctx.save();
+      lattice(p, PER, (i, base) => {
+        for (let j = 0; j < 2; j++) {
+          const h1 = hash01(i, j * 5 + 1), h2 = hash01(i, j * 5 + 2), h3 = hash01(i, j * 5 + 3);
+          const bob = drift ? Math.sin(g.time * 0.6 + h1 * U.TAU) * 5 : 0;
+          const wy = base + h2 * PER + bob;
+          const y = dy(wy, p);
+          if (y < -40 || y > view.h + 40) continue;
+          view.drawn.mid++;
+          ctx.globalAlpha = 0.05 + h3 * 0.04;
+          inkText(ctx, glyphs[Math.floor(h1 * glyphs.length)], dx(4 + h1 * 92, p), y,
+            s(7 + h3 * 9), h2 > 0.5 ? C.cream : C.gold, 900);
+        }
+      });
+      ctx.restore();
+    }
+
+    /**
+     * STRUCT — the steelwork the tower is bolted to, one bay behind the
+     * play surface. Close enough to p = 1 to read as part of the building,
+     * far enough to visibly lag the decks as you climb.
+     */
+    function drawGirders(g) {
+      if (!depthOn(g)) return;
+      const p = DEPTH.struct, BAY = 54;
+      ctx.save();
+      ctx.globalAlpha = 0.07;
+      ctx.strokeStyle = C.cream2;
+      ctx.lineCap = 'round';
+      const L = 6, R = 94;
+      lattice(p, BAY, (i, base) => {
+        const y0 = dy(base, p), y1 = dy(base + BAY, p);
+        if (y1 > view.h + 40 || y0 < -40) return;
+        view.drawn.struct++;
+        ctx.lineWidth = Math.max(1, s(0.7));
+        ctx.beginPath();
+        ctx.moveTo(dx(L, p), y0); ctx.lineTo(dx(R, p), y1);   // X-brace
+        ctx.moveTo(dx(R, p), y0); ctx.lineTo(dx(L, p), y1);
+        ctx.stroke();
+        ctx.lineWidth = Math.max(1.5, s(1.2));
+        ctx.beginPath();
+        ctx.moveTo(dx(L, p), y0); ctx.lineTo(dx(R, p), y0);   // bay tie
+        ctx.moveTo(dx(L, p), y0); ctx.lineTo(dx(L, p), y1);   // posts
+        ctx.moveTo(dx(R, p), y0); ctx.lineTo(dx(R, p), y1);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    /**
+     * FORE — beams passing in front of the glass. At p > 1 they sweep by
+     * faster than the table, which is the cue that reads as "nearer".
+     * Kept dark, soft-edged and rare so a ball is never lost behind one.
+     */
+    function drawForeBeams(g) {
+      if (!depthOn(g)) return;
+      const p = DEPTH.fore, PER = 260;
+      ctx.save();
+      lattice(p, PER, (i, base) => {
+        const wy = base + hash01(i, 1) * PER * 0.7;
+        const th = 7 + hash01(i, 2) * 6;
+        const y1 = dy(wy + th, p), y0 = dy(wy, p);
+        if (y1 > view.h + 30 || y0 < -30) return;
+        view.drawn.fore++;
+        const grd = ctx.createLinearGradient(0, y1, 0, y0);
+        grd.addColorStop(0, 'rgba(0,0,0,0)');
+        grd.addColorStop(0.35, 'rgba(3,6,9,0.52)');
+        grd.addColorStop(0.65, 'rgba(3,6,9,0.52)');
+        grd.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, y1, view.w, y0 - y1);
+        // Rivets, so the beam has a surface rather than being a smear.
+        ctx.globalAlpha = 0.07;
+        ctx.fillStyle = C.cream;
+        for (let c = 0; c < 7; c++) {
+          ctx.beginPath();
+          ctx.arc(dx(8 + c * 14, p), (y0 + y1) / 2, Math.max(1, s(0.55)), 0, U.TAU);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      });
       ctx.restore();
     }
 
@@ -915,7 +1109,7 @@
       return { x: px / view.scale, y: view.camY + (view.h - py) / view.scale };
     }
 
-    return { ctx, view, resize, draw, toWorld, sx, sy, s, inkText, roundRect };
+    return { ctx, view, resize, draw, toWorld, sx, sy, s, dx, dy, DEPTH, inkText, roundRect };
   }
 
   IP.render = { makeRenderer, roundRect, inkText, inkCircle, capsule };

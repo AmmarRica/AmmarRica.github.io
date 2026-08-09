@@ -46,7 +46,7 @@
       counters: {},
       perks: {},
       ballLevels: { steel: 1 },
-      settings: { sound: true, shake: true, particles: true, autoRun: true, assist: false },
+      settings: { sound: true, shake: true, particles: true, depth: true, autoRun: true, assist: false },
       stats: {
         totalChips: 0, bestRun: 0, bestFloor: 0, bestMult: 1, runs: 0,
         placed: 0, prestiges: 0, bestIdle: 0, drains: 0, playTime: 0, launches: 0,

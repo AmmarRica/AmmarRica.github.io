@@ -17,6 +17,20 @@ failing one that was measuring the wrong thing.
   step slips in between and the difference is legitimate.
 - `getImageData` outside the canvas returns zeros, which reads convincingly
   as "that area is black". Sample in screen space and clamp.
+- **"The canvas changed when I turned the feature on" is the weakest possible
+  assertion about a multi-part effect.** Four parallax layers, and that check
+  passes while three of them render nothing at all. The renderer now counts
+  what each layer painted into `view.drawn`, so "painted nothing" is
+  distinguishable from "painted behind something else".
+- **Screen y grows downward; world y grows upward.** The parallax rate test
+  first reported every layer moving a *negative* distance and failed four
+  assertions on a renderer that was completely correct. If a geometry test
+  fails by exactly a sign, suspect the harness before the code.
+- **Anything a draw function generates must be a pure function of the frame.**
+  Layer content is hashed from its lattice index rather than drawn from
+  `IP.rng`, because a renderer that consumes a random stream breaks draw
+  idempotency *and* desyncs the sim from its seed — two suites away from the
+  file you edited. The parallax test asserts zero rng draws during 21 frames.
 
 ## DOM / UI
 

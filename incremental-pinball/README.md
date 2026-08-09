@@ -179,6 +179,31 @@ at the part, so the state graph is circular; when that went in unstripped,
 at all — with no symptom, for three passes, until `tests/tower-files.mjs`
 round-tripped a save.
 
+## Depth
+
+Four parallax layers give the shaft some space. Each one gets its own camera:
+at depth `p` the layer scrolls at `p ×` the real camera, so `p = 0` would be
+painted on the glass, `p = 1` moves with the world, and `p > 1` sweeps past in
+front of it.
+
+| Layer | `p` | What it is |
+|---|---|---|
+| `far` | 0.15 | A skyline of other towers, lit window by window |
+| `mid` | 0.42 | Suit glyphs adrift in the gap |
+| `struct` | 0.74 | The steelwork this tower is bolted to |
+| `fore` | 1.34 | Beams passing in front of the glass |
+
+Screen shake is scaled by `p` too — near things jolt further than far ones,
+and that is most of what actually sells it.
+
+Layer content is a pure hash of its lattice index, so a layer dresses a tower
+of any height while storing nothing, and the same height looks the same on
+every visit. It is deliberately *not* drawn from `IP.rng`: `draw()` has to be
+idempotent, and a renderer that consumed a random stream would desync the sim
+from its seed. Cost is about **0.11 ms/frame** at 2× DPR. **STATS → SETTINGS →
+Parallax depth layers** turns the whole thing off; the idle bobbing (but not
+the parallax, which is just the camera) also follows the Particles setting.
+
 ## Determinism
 
 Nothing in the simulation calls `Math.random`. `IP.rng` holds four independent
@@ -235,6 +260,7 @@ node tests/tower-pwa.mjs          # manifest, icons, install gating, updates
 node tests/tower-determinism.mjs  # seeded replay and stream separation
 node tests/tower-files.mjs        # save round-trip and import validation
 node tests/tower-contrast.mjs     # WCAG 4.5:1 on every themed surface
+node tests/tower-parallax.mjs     # depth layers paint, and at their own rates
 ```
 
 `tests/TRAPS.md` lists the measurement mistakes already made here — several of
