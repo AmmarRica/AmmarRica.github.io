@@ -24,6 +24,7 @@
     lastCoins: 0,
     rebinding: -1,
     viewedTab: null,
+    helpOpen: false,
   };
 
   /* ==================================================================
@@ -698,16 +699,35 @@
       root.appendChild(row);
     }
 
+    // Gameplay-affecting help stays visible; the rest folds away. Built by
+    // walking the list, so a new row cannot arrive without a home.
+    const always = [
+      ['SPACE / hold', 'Charge and fire the plunger'],
+      ['Tap left / right of the table', 'Panels 1 and 2'],
+      ['N / ←→ while playing', 'Nudge the table (limited, tilts if spammed)'],
+    ];
+    const extra = [
+      ['B', 'Toggle build mode'],
+      ['TAB or ESC', 'Open and close the menu'],
+      ['Drag in build mode', 'Move parts around'],
+      ['Drag from a loaded cannon', 'Aim, release to fire'],
+    ];
+    if (padPresent) extra.push(['Gamepad', 'Shoulders flip · A plunges · D-pad nudges · Start opens the menu']);
+
     root.appendChild(el('div.cathead', { style: { '--accent': D.C.purple } }, 'OTHER CONTROLS'));
-    const help = el('div.helpgrid');
-    [['SPACE / hold', 'Charge and fire the plunger'],
-     ['N / ←→ while playing', 'Nudge the table (limited, tilts if spammed)'],
-     ['B', 'Toggle build mode'],
-     ['TAB or ESC', 'Open and close the menu'],
-     ['Tap left / right of the table', 'Panels 1 and 2'],
-     ['Drag in build mode', 'Move parts around'],
-     ['Drag from a loaded cannon', 'Aim, release to fire']].forEach(([k, v]) => help.appendChild(el('div.hrow', el('kbd', k), el('span', v))));
-    root.appendChild(help);
+    const mkHelp = (rows) => {
+      const h = el('div.helpgrid');
+      rows.forEach(([k, v]) => h.appendChild(el('div.hrow', el('kbd', k), el('span', v))));
+      return h;
+    };
+    root.appendChild(mkHelp(always));
+    const more = mkHelp(extra);
+    more.style.display = UI.helpOpen ? 'flex' : 'none';
+    root.appendChild(btn(UI.helpOpen ? 'FEWER CONTROLS ▲' : 'MORE CONTROLS ▼', {
+      cls: 'sm ghost wide',
+      onclick: () => { UI.helpOpen = !UI.helpOpen; renderMenu(); },
+    }));
+    root.appendChild(more);
   }
 
   function keyLabel(k) {
@@ -794,6 +814,42 @@
       cls: 'wide' + (Update.found ? ' primary' : ' ghost'),
       onclick: () => (Update.found ? Update.apply() : Update.check(true)),
     }));
+
+    root.appendChild(el('div.cathead', { style: { '--accent': D.C.blue } }, 'SAVE FILE'));
+    const sf = el('div.plist');
+    const srow = (name, note, label, fn, cls) => {
+      const row = el('div.prow');
+      row.appendChild(el('div.pinfo', el('b', name), el('small', note)));
+      row.appendChild(btn(label, { cls: 'sm ' + (cls || ''), onclick: fn }));
+      return row;
+    };
+    sf.appendChild(srow('Export save', 'Downloads a .json you can back up or move to another device', '⬇ EXPORT', () => SaveFile.download(), 'primary'));
+    sf.appendChild(srow('Import save', 'Replaces this tower with one from a file', '⬆ IMPORT', () => SaveFile.pick(), 'ghost'));
+    root.appendChild(sf);
+
+    // Device controls, each shown only where it has a job to do.
+    const dev = [];
+    if (Full.supported()) {
+      dev.push(srow('Fullscreen', 'Hide the browser chrome while you play',
+        Full.active() ? '⤢ EXIT FULL' : '⤢ FULLSCREEN', () => Full.toggle().then(renderMenu), 'ghost'));
+    }
+    if (Tilt.supported()) {
+      dev.push(srow('Tilt to nudge', 'Lean the device to nudge the table. Uses the motion sensor.',
+        Tilt.enabled ? 'ON' : 'OFF',
+        async () => {
+          if (Tilt.enabled) Tilt.disable();
+          else await Tilt.enable();      // may prompt; only ever from this tap
+          renderMenu();
+        },
+        Tilt.enabled ? 'primary' : 'ghost'));
+    }
+    if (padPresent) {
+      dev.push(srow('Gamepad', 'Shoulders flip · A plunges · D-pad nudges · Start opens the menu', 'CONNECTED', () => {}, 'ghost'));
+    }
+    if (dev.length) {
+      root.appendChild(el('div.cathead', { style: { '--accent': D.C.purple } }, 'DEVICE'));
+      const dl = el('div.plist'); dev.forEach((d) => dl.appendChild(d)); root.appendChild(dl);
+    }
 
     root.appendChild(el('div.dangerrow',
       btn('HOW TO PLAY', { cls: 'ghost', onclick: showTutorial }),
@@ -1217,6 +1273,156 @@
   }
 
   /* ==================================================================
+   * SAVE FILES
+   * =============================================================== */
+  const SaveFile = {
+    download() {
+      let data;
+      try { data = G.exportSave(); } catch (e) { toast('Could not read your save'); return; }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), { href: url, download: G.suggestedFileName() });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // ⚠️ Safari is not finished with the blob when click() returns.
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      toast('Save exported');
+    },
+
+    /** ⚠️ One reused input, and `value` reset in the handler — otherwise
+     *  picking the same file twice never fires `change`. */
+    input: null,
+    pick() {
+      if (!SaveFile.input) {
+        SaveFile.input = el('input', {
+          type: 'file', accept: 'application/json,.json',
+          style: { position: 'fixed', left: '-9999px', width: '1px', height: '1px' },
+          onchange: (e) => {
+            const f = e.target.files && e.target.files[0];
+            e.target.value = '';
+            if (f) SaveFile.read(f);
+          },
+        });
+        document.body.appendChild(SaveFile.input);
+      }
+      SaveFile.input.click();
+    },
+
+    read(file) {
+      const fr = new FileReader();
+      fr.onerror = () => toast('Could not read that file');
+      fr.onload = () => {
+        let obj;
+        try { obj = JSON.parse(fr.result); }
+        catch (e) { modal('IMPORT FAILED', ['That file is not valid JSON.'], [{ label: 'OK', cls: 'primary' }]); return; }
+        confirmModal('Load this save?', 'It replaces the tower you have now. Export the current one first if you want to keep it.', () => {
+          try {
+            const r = G.importSave(obj);
+            renderMenu();
+            toast('Loaded: ' + r.parts + ' parts, ' + r.floors + ' floors');
+          } catch (e) {
+            modal('IMPORT FAILED', [String(e.message || e)], [{ label: 'OK', cls: 'primary' }]);
+          }
+        });
+      };
+      fr.readAsText(file);
+    },
+  };
+
+  /* ==================================================================
+   * FULLSCREEN — verify it actually entered/exited; the promise rejects
+   * silently in plenty of contexts and the label must track reality.
+   * =============================================================== */
+  const Full = {
+    supported() {
+      const e = document.documentElement;
+      return !!(e.requestFullscreen || e.webkitRequestFullscreen);
+    },
+    active() { return !!(document.fullscreenElement || document.webkitFullscreenElement); },
+    async toggle() {
+      const e = document.documentElement;
+      try {
+        if (!Full.active()) await (e.requestFullscreen ? e.requestFullscreen() : e.webkitRequestFullscreen());
+        else await (document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen());
+      } catch (err) { /* refused — fall through and report actual state */ }
+      Full.sync();
+      if (!Full.active() && !Full.wanted) toast('Fullscreen was refused here');
+    },
+    wanted: false,
+    sync() {
+      Full.wanted = Full.active();
+      const b = $('fsBtn');
+      if (b) b.textContent = Full.active() ? '⤢ EXIT FULL' : '⤢ FULLSCREEN';
+      setTimeout(layout, 60);
+    },
+  };
+
+  /* ==================================================================
+   * MOTION — reduced-motion and tilt-to-nudge.
+   * =============================================================== */
+  // ⚠️ Built once. This used to be queried per entity per frame.
+  const reducedMotionMQ = global.matchMedia ? global.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const prefersReducedMotion = () => !!(reducedMotionMQ && reducedMotionMQ.matches);
+
+  const Tilt = {
+    enabled: false,
+    granted: false,
+    raw: null,          // ⚠️ written by the sensor at ITS rate; smoothed in step
+    neutral: 0,
+    value: 0,
+    supported() { return typeof global.DeviceOrientationEvent !== 'undefined'; },
+    needsPermission() {
+      return typeof global.DeviceOrientationEvent !== 'undefined'
+        && typeof global.DeviceOrientationEvent.requestPermission === 'function';
+    },
+    async enable() {
+      if (!Tilt.supported()) { toast('This device has no tilt sensor'); return false; }
+      // ⚠️ iOS only grants this from a user gesture, never from page load.
+      if (Tilt.needsPermission() && !Tilt.granted) {
+        try {
+          const res = await global.DeviceOrientationEvent.requestPermission();
+          if (res !== 'granted') { toast('Motion access denied'); return false; }
+        } catch (e) { toast('Motion access denied'); return false; }
+      }
+      Tilt.granted = true;
+      Tilt.enabled = true;
+      global.addEventListener('deviceorientation', Tilt.onEvent);
+      toast('Tilt nudge on — lean the phone to nudge');
+      return true;
+    },
+    disable() {
+      Tilt.enabled = false;
+      global.removeEventListener('deviceorientation', Tilt.onEvent);
+      Tilt.raw = null; Tilt.value = 0;
+    },
+    onEvent(e) {
+      // ⚠️ Readings are fixed to the DEVICE, not the screen. Rotate by the
+      // screen angle or the effect goes sideways in landscape. And only
+      // store here — all smoothing happens in the step loop.
+      const beta = e.beta || 0, gamma = e.gamma || 0;
+      const ang = ((screen.orientation && screen.orientation.angle) || global.orientation || 0) * Math.PI / 180;
+      const c = Math.cos(ang), s = Math.sin(ang);
+      Tilt.raw = gamma * c - beta * s;
+    },
+    /** Called from the game tick: smoothing and neutral drift live here. */
+    step(dt) {
+      if (!Tilt.enabled || Tilt.raw == null) return;
+      // ⚠️ The neutral drifts toward how the device is actually being held.
+      // Assuming "level = flat on a table" pins someone playing lying down
+      // at full deflection forever.
+      Tilt.neutral = U.approach(Tilt.neutral, Tilt.raw, 0.25, dt);
+      const off = U.clamp((Tilt.raw - Tilt.neutral) / 22, -1, 1);
+      Tilt.value = U.approach(Tilt.value, off, 9, dt);
+      if (Math.abs(Tilt.value) > 0.72) {
+        Tilt.value = 0;
+        Tilt.neutral = Tilt.raw;
+        G.nudge(off > 0 ? 1 : -1);
+      }
+    },
+  };
+
+  /* ==================================================================
    * GAMEPAD — shoulder buttons are flippers, exactly like a real cabinet.
    * =============================================================== */
   const PAD_MAP = [
@@ -1231,9 +1437,18 @@
     { btns: [9], act: 'menu' },
   ];
   const padPrev = {};
+  // ⚠️ Never decide once at boot: pads come and go. Re-evaluated on
+  // gamepadconnected/disconnected, and nothing gamepad-shaped is offered in
+  // the UI while this is false.
+  let padPresent = false;
+  function padsAttached() {
+    if (!navigator.getGamepads) return false;
+    for (const pad of navigator.getGamepads()) if (pad && pad.connected) return true;
+    return false;
+  }
 
   function pollGamepads() {
-    if (!navigator.getGamepads) return;
+    if (!padPresent || !navigator.getGamepads) return;
     const pads = navigator.getGamepads();
     let any = null;
     for (const p of pads) if (p && p.connected) { any = p; break; }
@@ -1441,10 +1656,11 @@
       flash({ text: 'BALL ' + run.ballNo + ' / ' + (run.ballNo + run.ballsLeft - 1), color: D.C.cream });
     });
     G.on('rebuild', () => { refreshPanelButtons(); });
-    G.on('tick', () => {
+    G.on('tick', (dt) => {
       updateHud();
       updateGuide();
       pollGamepads();
+      Tilt.step(dt);
       if (UI.menuOpen) updatePurse();
     });
     G.on('cannon', (c) => { $('app').classList.toggle('aiming', !!c); });
@@ -1454,6 +1670,34 @@
       refreshTabDots();
       if (UI.menuOpen) renderMenu();
     });
+
+    // Gamepad presence drives what the UI offers; re-checked, never assumed.
+    const syncPads = () => {
+      const now = padsAttached();
+      if (now === padPresent) return;
+      padPresent = now;
+      if (UI.menuOpen && UI.tab === 'panels') renderMenu();
+    };
+    global.addEventListener('gamepadconnected', syncPads);
+    global.addEventListener('gamepaddisconnected', syncPads);
+    global.addEventListener('resize', syncPads);
+    syncPads();
+
+    document.addEventListener('fullscreenchange', Full.sync);
+    document.addEventListener('webkitfullscreenchange', Full.sync);
+
+    // ⚠️ Reduced motion: default the loud settings off rather than deciding
+    // per frame, and follow the user if they change it mid-session.
+    if (prefersReducedMotion() && g.state.settings.shake !== false) {
+      g.state.settings.shake = false;
+      g.state.settings.particles = false;
+    }
+    if (reducedMotionMQ && reducedMotionMQ.addEventListener) {
+      reducedMotionMQ.addEventListener('change', (e) => {
+        if (e.matches) { g.state.settings.shake = false; g.state.settings.particles = false; G.save(); }
+        if (UI.menuOpen) renderMenu();
+      });
+    }
 
     global.addEventListener('resize', layout);
     global.addEventListener('orientationchange', () => setTimeout(layout, 200));

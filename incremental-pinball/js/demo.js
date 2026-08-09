@@ -30,7 +30,7 @@
       .map((u) => ({ u, lvl: G.up(u.id), c: D.upgradeCost(u, G.up(u.id)) }))
       .filter((x) => x.lvl < x.u.max && g.state.coins > x.c * 6)
       .sort((a, b) => a.c - b.c);
-    if (ups.length && Math.random() < 0.45) { G.buyUpgrade(ups[0].u.id); return; }
+    if (ups.length && IP.rng.ui.chance(0.45)) { G.buyUpgrade(ups[0].u.id); return; }
 
     // Build like a player would: climbing gear first, then scorers, then
     // income — and always the priciest affordable option in that class.
@@ -55,7 +55,7 @@
     const preferred = candidates.find((x) => x.p.id === cycle) || candidates[0];
     const def = preferred.p;
     for (let attempt = 0; attempt < 16; attempt++) {
-      const floor = U.randInt(Math.max(def.floor, 0), g.state.floors - 1);
+      const floor = IP.rng.ui.int(Math.max(def.floor, 0), g.state.floors - 1);
       if (IP.table.partsOnFloor(g.state, floor).length >= IP.table.slotLimit(g.state)) continue;
       const base = floor * D.W.FLOOR_H;
       // Build along the line a ball has to travel: from where it enters this
@@ -63,11 +63,11 @@
       const entry = IP.table.gapX(floor);
       const exit = IP.table.gapX(floor + 1);
       // Jet pads are the one part allowed over an opening, so hang them there.
-      const gx = def.field ? (Math.random() < 0.5 ? entry : exit) : U.lerp(entry, exit, Math.random());
+      const gx = def.field ? (IP.rng.ui.chance(0.5) ? entry : exit) : U.lerp(entry, exit, IP.rng.ui.next());
       const spread = def.field ? 5 : 16;
-      const x = IP.table.snap(U.clamp(gx + U.rand(-spread, spread), 8, 92));
-      const y = IP.table.snap(base + U.rand(floor === 0 ? 52 : 14, D.W.FLOOR_H - 22));
-      const a = def.id === 'jet' ? 0 : U.rand(-1, 1);
+      const x = IP.table.snap(U.clamp(gx + IP.rng.ui.rand(-spread, spread), 8, 92));
+      const y = IP.table.snap(base + IP.rng.ui.rand(floor === 0 ? 52 : 14, D.W.FLOOR_H - 22));
+      const a = def.id === 'jet' ? 0 : IP.rng.ui.rand(-1, 1);
       const res = G.buyPart(def.id, x, y, floor, a);
       if (res.ok) return;
     }

@@ -412,7 +412,7 @@
           A.count('jackpots');
           A.score(chipsFor(this.chips, inst.lvl), inst, { pop: true, label: 'VAULT' });
           A.addMult(0.5 + 0.2 * inst.lvl);
-          ball.v.x = U.rand(-14, 14);
+          ball.v.x = IP.rng.sim.rand(-14, 14);
           ball.v.y = 160 + 9 * inst.lvl;
           A.burst(inst.x, inst.y, C.gold, 22);
           A.shake(7);
@@ -523,7 +523,7 @@
           A.score(chipsFor(this.chips, inst.lvl), inst, { pop: true, label: 'LIFT' });
           A.addMult(0.3 + 0.1 * inst.lvl);
           ball.v.y = 55 + 6 * inst.lvl;
-          ball.v.x = U.rand(-12, 12);
+          ball.v.x = IP.rng.sim.rand(-12, 12);
           A.burst(ball.p.x, ball.p.y, C.teal, 16);
           A.sfx('vault');
         });
@@ -599,7 +599,7 @@
       build(inst, out) { out.push({ k: 'circ', c: { x: inst.x, y: inst.y }, r: 6.5, e: 0.65, kick: 38, tag: 'roulette' }); },
       onHit(A, inst, ball) {
         const base = chipsFor(this.chips, inst.lvl);
-        const roll = Math.random();
+        const roll = IP.rng.sim.next();
         inst.face = Math.floor(roll * 5);
         if (roll < 0.34) { A.score(base * 4, inst, { pop: true, label: 'CHIPS' }); }
         else if (roll < 0.60) { A.score(base, inst); A.addMult(0.8 + 0.2 * inst.lvl, true); }
@@ -832,7 +832,7 @@
       desc: 'Chips scored on floor 4+ are doubled.', chipMult: (A, ev) => (ev.floor >= 4 ? 2 : 1) },
     { id: 'gambler',  name: "Gambler's Chip", emoji: '🎲', rarity: 2, cost: 5600,
       desc: '25% of hits pay nothing; the rest pay 1.8×.',
-      chipMult: () => (Math.random() < 0.25 ? 0 : 1.8) },
+      chipMult: () => (IP.rng.sim.chance(0.25) ? 0 : 1.8) },
     { id: 'echo',     name: 'Echo Chamber', emoji: '📢', rarity: 2, cost: 7400,
       desc: 'Every hit re-triggers once for half chips.', echo: 0.5 },
     { id: 'lodestar', name: 'Lodestar', emoji: '⭐', rarity: 2, cost: 8200,

@@ -9,8 +9,18 @@
 
   const IP = global.IP || (global.IP = {});
 
-  /** Must match <meta name="app-version"> in index.html. */
-  IP.VERSION = '1.5.0';
+  /**
+   * ⚠️ Single source of truth: the version lives in <meta name="app-version">
+   * in index.html and is read from the DOM here. Duplicating it as a literal
+   * meant two values that drift the moment one is bumped, and the update
+   * check compares them — so drift reads as "update available", forever.
+   */
+  IP.VERSION = (function () {
+    try {
+      const m = document.querySelector('meta[name="app-version"]');
+      return (m && m.getAttribute('content')) || '0';
+    } catch (e) { return '0'; }
+  })();
 
   /* ---------------------------------------------------------------- DOM */
   const $ = (id) => document.getElementById(id);
@@ -112,6 +122,41 @@
     f.chance = (p) => f() < p;
     return f;
   }
+  /* -------------------------------------------------------- rng streams */
+  /**
+   * ⚠️ Never call Math.random() inside the step loop — the sim must replay
+   * identically from a seed. Streams are kept SEPARATE on purpose: if spark
+   * particles drew from the sim stream, how many sparks happened to fly
+   * would perturb every later gameplay decision.
+   *
+   *   sim   — anything that changes the outcome (ball velocities, procs)
+   *   fx    — particles, screen shake, popup tilt: cosmetic only
+   *   audio — pitch jitter
+   *   ui    — shop rolls, mission picks; runs outside the step loop
+   */
+  function makeStreams(seed) {
+    const mk = (salt) => {
+      const raw = mkRng((seed ^ (salt * 0x9E3779B1)) >>> 0);
+      // `draws` exists so a test can assert a stream was actually USED.
+      // Without it, "no Math.random during the run" passes trivially when
+      // the scenario never reaches the random code at all.
+      const o = { draws: 0 };
+      const f = () => { o.draws++; return raw(); };
+      o.next = f;
+      o.rand = (lo, hi) => lo + f() * (hi - lo);
+      o.int = (lo, hi) => Math.floor(lo + f() * (hi - lo + 1));
+      o.pick = (arr) => arr[Math.floor(f() * arr.length)];
+      o.chance = (p) => f() < p;
+      o.angle = () => f() * TAU;
+      return o;
+    };
+    return { seed, sim: mk(1), fx: mk(2), audio: mk(3), ui: mk(4) };
+  }
+
+  /** Replaced wholesale on reseed so every holder sees the new streams. */
+  IP.rng = makeStreams((Date.now() ^ 0x5f3759df) >>> 0);
+  IP.reseed = (seed) => { IP.rng = makeStreams(seed >>> 0); return IP.rng; };
+
   const rnd = mkRng((Math.random() * 1e9) | 0);
   const rand = (lo, hi) => lo + Math.random() * (hi - lo);
   const randInt = (lo, hi) => Math.floor(lo + Math.random() * (hi - lo + 1));
@@ -180,8 +225,12 @@
   function dropKey(key) { try { localStorage.removeItem(key); } catch (e) { /* private mode */ } }
 
   /* --------------------------------------------------------------- misc */
+  // ⚠️ Pure counter, not Math.random: splitBall() mints a ball id inside the
+  // step loop. The per-session prefix keeps ids unique across saves without
+  // making the sim depend on entropy.
   let _uid = 1;
-  const uid = (p) => (p || 'x') + (_uid++).toString(36) + Math.floor(Math.random() * 1296).toString(36);
+  const _uidTag = IP.rng.ui.int(0, 1679615).toString(36);
+  const uid = (p) => (p || 'x') + _uidTag + (_uid++).toString(36);
   const now = () => (global.performance && performance.now ? performance.now() : Date.now());
   const nowSec = () => Date.now() / 1000;
 
@@ -200,6 +249,31 @@
     const f = (v) => clamp(Math.round(v + 255 * amt), 0, 255);
     return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
   }
+  /** WCAG relative luminance of a hex or rgb() colour. */
+  function luminance(col) {
+    let r, g, b;
+    const m = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(col);
+    if (m) { r = +m[1]; g = +m[2]; b = +m[3]; }
+    else {
+      const h = String(col).replace('#', '');
+      const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+      r = (n >> 16) & 255; g = (n >> 8) & 255; b = n & 255;
+    }
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  }
+
+  /**
+   * Contrast ratio between two colours, 1..21.
+   * ⚠️ Any UI colour taken from the theme has to be MEASURED against what is
+   * actually behind it — a hard-coded marker colour vanishes the moment the
+   * surface under it changes.
+   */
+  function contrast(a, b) {
+    const la = luminance(a), lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  }
+
   function mixHex(a, b, t) {
     const pa = parseInt(a.replace('#', ''), 16), pb = parseInt(b.replace('#', ''), 16);
     const r = Math.round(lerp((pa >> 16) & 255, (pb >> 16) & 255, t));
@@ -218,6 +292,6 @@
     mkRng, rnd, rand, randInt, pick, chance, shuffle,
     fmt, fmtFull, fmtTime, ordinal,
     saveJSON, loadJSON, dropKey,
-    uid, now, nowSec, clone, rgba, shade, mixHex, isTouch,
+    uid, now, nowSec, clone, rgba, shade, mixHex, luminance, contrast, isTouch,
   };
 })(window);

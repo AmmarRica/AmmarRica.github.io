@@ -33,6 +33,48 @@ failing one that was measuring the wrong thing.
 - **An element being in the viewport is not the same as being reachable.**
   Scroll it into view and hit-test its centre with `elementFromPoint`.
 
+## Determinism
+
+- **A scenario that never reaches the code under test passes everything —
+  including its own sabotage checks.** The first determinism test used a
+  Steel ball, which has neither `luck` nor `splitChance`, so every random
+  call site short-circuited before drawing. "No `Math.random()` during 4000
+  steps" passed trivially, and so did both sabotage runs. The fix was to make
+  usage observable: each RNG stream carries a `draws` counter, and the test
+  now asserts `simDraws > 50`, `fxDraws > 50` and `maxBalls > 1` before it
+  asserts anything about hashes.
+- **One setup function, shared by every scenario.** When the stream-separation
+  scenario kept its own copy of the setup, the copy drifted to a non-proccing
+  ball and quietly stopped catching a sim proc that read the cosmetic stream.
+- **Pin the clock, not just the seed.** `g.time` is part of the initial state,
+  and the page had been running rAF for a different length of time before each
+  scenario. Runs diverged for a reason that reads exactly like a sim bug. Set
+  `g.time = 0` (and `lastSave`, and per-ball `lastHit`) before stepping.
+- **Stub `Math.random` to throw, not to return a constant.** A constant lets a
+  non-deterministic call site sail through the test while staying
+  non-deterministic in the real game.
+
+## Saving
+
+- **`JSON.stringify` throwing inside a `try` is a silent data-loss bug.**
+  `inst._cols` points back at the part that owns it, so the state graph was
+  circular, `stringify` threw, and `saveJSON` swallowed it. Saving had been
+  failing on every profile with a part placed, for three passes, with no
+  symptom until a test round-tripped the save. Underscore-prefixed keys are
+  now stripped by `cleanState()`, and the round-trip is asserted rather than
+  assumed.
+
+## Colour
+
+- **Measure contrast against what is actually behind the element, not against
+  the theme it was designed for.** `.btn.ghost` was written for the dark menu
+  ground; inside a cream card it rendered cream-on-cream at **1:1** — text
+  that is not merely low-contrast but invisible. Read both colours from
+  `getComputedStyle`, walking up for the first non-transparent background.
+- **A contrast audit only sees text.** A default `.btn` (cream2) on a `.prow`
+  (cream) passes every text check and still has no visible button edge. Text
+  contrast is necessary, not sufficient — look at the rendered screenshot too.
+
 ## Predicates
 
 - **Pin a gate from both ends.** `Install.offerable()` returning `false`

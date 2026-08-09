@@ -73,6 +73,22 @@
       view.viewH = cssH / view.scale;
     }
 
+    /** Repeating 45° hatch tile; built once, stretched forever. */
+    let hatch = null;
+    function buildHatch() {
+      const c = document.createElement('canvas');
+      c.width = 16; c.height = 16;
+      const x = c.getContext('2d');
+      x.globalAlpha = 0.055;
+      x.strokeStyle = '#ffffff';
+      x.lineWidth = 1;
+      x.beginPath(); x.moveTo(-1, -1); x.lineTo(17, 17);
+      x.moveTo(-17, -1); x.lineTo(1, 17);
+      x.moveTo(15, -1); x.lineTo(33, 17);
+      x.stroke();
+      hatch = ctx.createPattern(c, 'repeat');
+    }
+
     const sx = (wx) => wx * view.scale + view.sx;
     const sy = (wy) => view.h - (wy - view.camY) * view.scale + view.sy;
     const s = (n) => n * view.scale;
@@ -121,19 +137,15 @@
       ctx.fillStyle = grd;
       ctx.fillRect(0, 0, view.w, view.h);
 
-      // Soft diagonal felt hatching.
+      // ⚠️ Baked once into a 16px tile. This used to stroke one line per
+      // 16px of (width + height) EVERY frame — ~50 stroked paths a frame for
+      // a static texture.
+      if (!hatch) buildHatch();
+      const off = (view.camY * view.scale) % 16;
       ctx.save();
-      ctx.globalAlpha = 0.055;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      const step = 16;
-      const off = (view.camY * view.scale) % (step * 2);
-      for (let x = -view.h; x < view.w + view.h; x += step) {
-        ctx.beginPath();
-        ctx.moveTo(x, -off);
-        ctx.lineTo(x + view.h, view.h - off);
-        ctx.stroke();
-      }
+      ctx.translate(0, -off);
+      ctx.fillStyle = hatch;
+      ctx.fillRect(0, 0, view.w, view.h + 16);
       ctx.restore();
     }
 

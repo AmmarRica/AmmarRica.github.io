@@ -11,6 +11,8 @@
   const D = IP.data;
   const W = D.W;
 
+  const R = () => IP.rng;   // read live: IP.reseed() swaps the streams
+
   const SAVE_KEY = 'towerOfChips.v1';
   const SAVE_EVERY = 6;         // seconds
 
@@ -36,6 +38,7 @@
         { key: 'q', label: 'PANEL 5' },
         { key: 'e', label: 'PANEL 6' },
       ],
+      seed: (Date.now() ^ 0x9e3779b9) >>> 0,
       medals: {},
       known: null,          // unlocks already announced (null = seed on first load)
       seen: {},             // unlocks the player has actually looked at
@@ -371,17 +374,18 @@
     if (!g.state.settings.particles) return;
     n = Math.min(n, 30);
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * U.TAU, sp = U.rand(12, 62);
+      const a = R().fx.angle(), sp = R().fx.rand(12, 62);
       g.particles.push({
         x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        life: U.rand(0.3, 0.75), max: 0.75, color, size: U.rand(3, 7), rot: Math.random() * 6, vr: U.rand(-8, 8),
+        life: R().fx.rand(0.3, 0.75), max: 0.75, color, size: R().fx.rand(3, 7),
+        rot: R().fx.rand(0, 6), vr: R().fx.rand(-8, 8),
       });
     }
     if (g.particles.length > 620) g.particles.splice(0, g.particles.length - 620);
   }
 
   function popup(x, y, text, color, size) {
-    g.popups.push({ x, y, text, color: color || D.C.cream, size: size || 14, life: 0.85, max: 0.85, tilt: U.rand(-0.16, 0.16) });
+    g.popups.push({ x, y, text, color: color || D.C.cream, size: size || 14, life: 0.85, max: 0.85, tilt: R().fx.rand(-0.16, 0.16) });
     if (g.popups.length > 60) g.popups.shift();
   }
 
@@ -413,7 +417,7 @@
     if (inst.id === 'target' && inst.t_down <= 0) count('targets');
     trinketHook('hit', inst);
     const luck = (ball.def.luck || 0) + 0.015 * perk('luck');
-    if (luck > 0 && Math.random() < luck) {
+    if (luck > 0 && R().sim.chance(luck)) {
       score(400, inst, { pop: true, label: 'LUCKY', luckJackpot: true });
       burst(inst.x, inst.y, D.C.green, 20);
       sfx('jackpot');
@@ -421,7 +425,7 @@
     def.onHit(A, inst, ball, col, info);
     // Plasma re-lights drop targets it smashes; quantum sometimes splits.
     if (ball.def.plasma && inst.id === 'target') inst.t_down = 0;
-    if (ball.def.splitChance && col.tag === 'bumper' && Math.random() < ball.def.splitChance && g.balls.length < 9) {
+    if (ball.def.splitChance && col.tag === 'bumper' && R().sim.chance(ball.def.splitChance) && g.balls.length < 9) {
       splitBall(ball);
     }
     checkFloorProgress(ball);
@@ -435,7 +439,7 @@
    * do for you: a clean, hard hit. Payout scales with impact speed.
    */
   function flipperHit(ball, f, info) {
-    if (info.speed > 25) sfx('flip', U.rand(-0.1, 0.1));
+    if (info.speed > 25) sfx('flip', R().audio.rand(-0.1, 0.1));
     if (f.part) {
       const def = D.PART_BY_ID[f.part.id];
       if (def) { f.part._glow = 1; def.onHit(A, f.part, ball, null, info); }
@@ -503,8 +507,8 @@
       trinketHook('newFloor', f);
       // Multiball reward for opening up a new floor.
       const mb = up('multiball');
-      if (mb > 0 && Math.random() < mb * 0.06 && g.balls.length < 8) {
-        spawnBall({ x: ball.p.x, y: ball.p.y, vx: U.rand(-30, 30), vy: 40, phantom: true });
+      if (mb > 0 && R().sim.chance(mb * 0.06) && g.balls.length < 8) {
+        spawnBall({ x: ball.p.x, y: ball.p.y, vx: R().sim.rand(-30, 30), vy: 40, phantom: true });
         popupScreen('MULTIBALL!', D.C.teal);
         sfx('split');
       }
@@ -576,7 +580,7 @@
     if (g.balls.length >= 10) return;
     const nb = spawnBall({
       type: src.def.id, x: src.p.x, y: src.p.y,
-      vx: -src.v.x * 0.7 + U.rand(-20, 20), vy: Math.abs(src.v.y) * 0.7 + 30, phantom: true,
+      vx: -src.v.x * 0.7 + R().sim.rand(-20, 20), vy: Math.abs(src.v.y) * 0.7 + 30, phantom: true,
     });
     nb.phantom = true;
     popupScreen('SPLIT!', D.C.teal);
@@ -651,6 +655,9 @@
   }
 
   function startRun() {
+    // ⚠️ Reseed per run: the same save replays the same run, and a bug
+    // report only needs the seed and the run number to reproduce.
+    IP.reseed((g.state.seed ^ Math.imul(g.state.stats.runs + 1, 2654435761)) >>> 0);
     g.run.active = true;
     g.run.score = 0;
     g.run.ballsLeft = ballsPerRun();
@@ -726,7 +733,7 @@
     const power = (108 + 124 * pw) * (1 + 0.06 * up('plunger'));
     const b = g.balls.find((x) => x.alive && x.p.y < 30 && x.p.x > IP.table.LANE_X);
     const targets = b ? [b] : g.balls.filter((x) => x.alive);
-    for (const bb of targets) { bb.v.y = power; bb.v.x = U.rand(-3, 3); }
+    for (const bb of targets) { bb.v.y = power; bb.v.x = R().sim.rand(-3, 3); }
     g.plunger.pull = 0;
     g.awaitLaunch = false;
     g.state.stats.launches++;
@@ -974,7 +981,7 @@
   function rollMission(slot) {
     const taken = new Set(g.state.missions.filter((_, i) => i !== slot).map((m) => m && m.key));
     const pool = D.MISSION_POOL.filter((d) => !taken.has(d.key));
-    const def = U.pick(pool.length ? pool : D.MISSION_POOL);
+    const def = R().ui.pick(pool.length ? pool : D.MISSION_POOL);
     const seen = (g.state.counters['_tier_' + def.key] || 0);
     // Start the tier near where the player already is so it is neither
     // instantly complete nor hopeless.
@@ -1082,9 +1089,32 @@
   /* ===================================================================
    * SAVE / LOAD
    * ================================================================ */
+  /**
+   * ⚠️ A plain, self-contained snapshot. Parts carry underscore-prefixed
+   * runtime fields — notably `_cols`, the live collider objects, which point
+   * back at the part and make the state a CYCLE. `JSON.stringify` throws on
+   * that, `saveJSON` swallows the throw and returns false, and the game
+   * stops saving the moment a single part is placed. Everything that
+   * serialises state must go through here.
+   */
+  function cleanState() {
+    const src = g.state;
+    const out = {};
+    for (const k in src) {
+      if (k === 'trinketFx' || k === 'gapCache') continue;   // derived, and holds functions
+      out[k] = src[k];
+    }
+    out.parts = (src.parts || []).map((p) => {
+      const q = {};
+      for (const k in p) if (k.charAt(0) !== '_') q[k] = p[k];
+      return q;
+    });
+    return out;
+  }
+
   function save() {
     g.state.lastSeen = Date.now();
-    U.saveJSON(SAVE_KEY, g.state);
+    return U.saveJSON(SAVE_KEY, cleanState());
   }
 
   function load() {
@@ -1099,6 +1129,7 @@
     g.state.parts = (s.parts || []).filter((p) => D.PART_BY_ID[p.id]);
     g.state.trinkets = (s.trinkets || []).filter((t) => D.TRINKET_BY_ID[t]);
     g.state.panels = (s.panels && s.panels.length === 6) ? s.panels : base.panels;
+    g.state.seed = (s.seed >>> 0) || ((Date.now() ^ 0x9e3779b9) >>> 0);
     g.state.perks = s.perks || {};
     g.state.known = Array.isArray(s.known) ? s.known : null;
     g.state.seen = s.seen || {};
@@ -1213,7 +1244,7 @@
       if (b.lift) {
         b.lift.t = Math.min(b.lift.T, b.lift.t + dt);
         b.holdTo.y = U.lerp(b.lift.y0, b.lift.y1, U.easeInOut(b.lift.t / b.lift.T));
-        if (g.state.settings.particles && Math.random() < 0.4) burst(b.p.x, b.p.y - 4, D.C.teal, 1);
+        if (g.state.settings.particles && R().fx.chance(0.4)) burst(b.p.x, b.p.y - 4, D.C.teal, 1);
       }
       if (b.holdT <= 0) {
         const cb = b.holdCb;
@@ -1253,8 +1284,8 @@
     // ⚠️ These used to decay once per DRAW. Part glow and field heat are
     // simulation state, so they tick here at a fixed rate; the shake offset
     // is chosen here too so two draws of one frame are identical.
-    g.shakeX = g.shake ? U.rand(-g.shake, g.shake) : 0;
-    g.shakeY = g.shake ? U.rand(-g.shake, g.shake) : 0;
+    g.shakeX = g.shake ? R().fx.rand(-g.shake, g.shake) : 0;
+    g.shakeY = g.shake ? R().fx.rand(-g.shake, g.shake) : 0;
     for (const p of g.state.parts) if (p._glow > 0) p._glow = Math.max(0, p._glow - dt * 3.3);
     if (g.world) for (const f of g.world.fields) if (f.hot > 0) f.hot = Math.max(0, f.hot - dt * 3.6);
 
@@ -1293,7 +1324,7 @@
       }
       if (dry > DRY_KICK && !b.dryKicked) {
         b.dryKicked = true;
-        b.v.x = U.rand(-90, 90);
+        b.v.x = R().sim.rand(-90, 90);
         b.v.y = 150;
         shake(5);
         popup(b.p.x, b.p.y + 6, 'SHAKE', D.C.cream, 11);
@@ -1302,7 +1333,7 @@
       // A ball that found its way back into the shooter lane gets re-fired.
       if (b.p.x > IP.table.LANE_X && b.p.y < IP.table.LANE_TOP && Math.abs(b.v.y) < 40) {
         b.v.y = 210 * (1 + 0.06 * up('plunger'));
-        b.v.x = U.rand(-3, 3);
+        b.v.x = R().sim.rand(-3, 3);
         sfx('launch');
         continue;
       }
@@ -1312,8 +1343,8 @@
       b.slowT = 0;
       b.searches = (b.searches || 0) + 1;
       if (b.searches > 3) { drain(b); continue; }
-      b.v.x += U.rand(-70, 70);
-      b.v.y += U.rand(60, 130);
+      b.v.x += R().sim.rand(-70, 70);
+      b.v.y += R().sim.rand(60, 130);
       shake(5);
       popup(b.p.x, b.p.y + 6, 'BALL SEARCH', D.C.cream, 11);
       sfx('flip');
@@ -1384,6 +1415,145 @@
   }
 
   /* ===================================================================
+   * SAVE FILES
+   * ---------------------------------------------------------------------
+   * ⚠️ `.json`, not an invented extension: an invented one buys a file
+   * picker filter and costs every editor, viewer and diff tool. The price
+   * is that the picker will hand us ANY json, so the magic field below is
+   * checked before anything is indexed into. The content type is in the
+   * filename too, since that is all that distinguishes it in a downloads
+   * folder.
+   * ================================================================ */
+  const FILE_MAGIC = 'tower-of-chips-save';
+  const FILE_V = 1;
+
+  function exportSave() {
+    save();
+    return {
+      format: FILE_MAGIC,
+      v: FILE_V,
+      app: IP.VERSION,
+      exported: new Date().toISOString(),
+      state: cleanState(),
+    };
+  }
+
+  function suggestedFileName() {
+    const d = new Date().toISOString().slice(0, 10);
+    return `${FILE_MAGIC}-f${g.state.floors}-${d}.json`;
+  }
+
+  const isNum = (v) => typeof v === 'number' && isFinite(v);
+  const asInt = (v, lo, hi, dflt) => (isNum(v) ? U.clamp(Math.round(v), lo, hi) : dflt);
+
+  /**
+   * Validate then apply. Throws with a message a human can act on.
+   * ⚠️ Parts are rebuilt through `newInstance` — the same constructor the
+   * game uses — rather than trusting the literal in the file. Two
+   * implementations of a part would drift the moment one gained a field.
+   */
+  function importSave(obj) {
+    if (!obj || typeof obj !== 'object') throw new Error('That file is not readable.');
+    if (obj.format !== FILE_MAGIC) {
+      throw new Error('That is a .json file, but not a Tower of Chips save.');
+    }
+    if (!isNum(obj.v)) throw new Error('That save has no version and cannot be trusted.');
+    if (obj.v > FILE_V) {
+      throw new Error(`That save was written by a newer version of the game (format v${obj.v}, this build reads v${FILE_V}). Update the game first.`);
+    }
+    const src = obj.state;
+    if (!src || typeof src !== 'object') throw new Error('That save has no game state in it.');
+
+    const base = freshState();
+    const out = Object.assign(base, src);
+    out.settings = Object.assign(freshState().settings, src.settings || {});
+    out.stats = Object.assign(freshState().stats, src.stats || {});
+    out.floors = asInt(src.floors, 1, W.MAX_FLOORS, 3);
+    out.coins = isNum(src.coins) ? Math.max(0, src.coins) : 0;
+    out.gems = asInt(src.gems, 0, 1e9, 0);
+    out.upgrades = (src.upgrades && typeof src.upgrades === 'object') ? src.upgrades : {};
+    out.perks = (src.perks && typeof src.perks === 'object') ? src.perks : {};
+    out.balls = (src.balls && typeof src.balls === 'object') ? src.balls : { steel: 1 };
+    out.ballLevels = Object.assign({ steel: 1 }, src.ballLevels || {});
+    out.trinkets = Array.isArray(src.trinkets) ? src.trinkets.filter((t) => D.TRINKET_BY_ID[t]) : [];
+    out.panels = (Array.isArray(src.panels) && src.panels.length === 6) ? src.panels : base.panels;
+    out.seen = (src.seen && typeof src.seen === 'object') ? src.seen : {};
+    out.known = Array.isArray(src.known) ? src.known : null;
+    out.medals = (src.medals && typeof src.medals === 'object') ? src.medals : {};
+    out.counters = (src.counters && typeof src.counters === 'object') ? src.counters : {};
+    out.missions = Array.isArray(src.missions) ? src.missions.filter((m) => m && D.MISSION_BY_KEY[m.key]) : [];
+
+    // ⚠️ Validate the shape of every row before indexing into it. A short or
+    // malformed row fails later as a blank screen, which reads as a
+    // rendering bug rather than a file error.
+    out.parts = [];
+    if (Array.isArray(src.parts)) {
+      for (const raw of src.parts) {
+        if (!raw || typeof raw !== 'object') continue;
+        const def = D.PART_BY_ID[raw.id];
+        if (!def) continue;
+        if (!isNum(raw.x) || !isNum(raw.y)) continue;
+        const floor = asInt(raw.floor, 0, W.MAX_FLOORS - 1, 0);
+        const inst = IP.table.newInstance(raw.id, raw.x, raw.y, floor, isNum(raw.a) ? raw.a : 0);
+        inst.lvl = asInt(raw.lvl, 1, def.maxLevel || 1, 1);
+        inst.side = raw.side === 'R' ? 'R' : 'L';
+        inst.panel = asInt(raw.panel, 0, 5, 0);
+        inst.armed = raw.armed !== false;
+        inst.earned = isNum(raw.earned) ? raw.earned : 0;
+        out.parts.push(inst);
+      }
+    }
+
+    g.state = out;
+    ensureMissions();
+    recomputeTrinkets();
+    rebuild();
+    save();
+    startRun();
+    return { parts: out.parts.length, floors: out.floors };
+  }
+
+  /* ===================================================================
+   * DETERMINISM SUPPORT
+   * The sim must replay identically from a seed on the same engine. These
+   * two functions are what the determinism test drives; they are also handy
+   * for reproducing a bug report.
+   * ================================================================ */
+
+  /** Run `n` fixed steps with no rendering and no rAF. */
+  function stepFor(n, opts) {
+    const quiet = !opts || opts.save !== true;
+    const wasSave = g.lastSave;
+    for (let i = 0; i < n; i++) {
+      update(STEP);
+      // Saving stamps Date.now(), which is not sim state; keep it out.
+      if (quiet) g.lastSave = g.time;
+    }
+    if (quiet) g.lastSave = wasSave;
+  }
+
+  /** FNV-1a over everything that must replay identically. */
+  function hashState() {
+    const q = (v) => Math.round(v * 4096) / 4096;      // tame float noise
+    const parts = [
+      'T', q(g.time), 'S', Math.round(g.run.score), 'M', q(g.mult),
+      'C', g.combo | 0, 'B', g.run.ballsLeft | 0, 'K', Math.round(g.state.coins),
+      'X', Math.round(g.state.stats.totalChips), 'D', g.state.stats.drains | 0,
+    ];
+    for (const b of g.balls) {
+      parts.push('b', q(b.p.x), q(b.p.y), q(b.v.x), q(b.v.y), b.alive ? 1 : 0, b.held ? 1 : 0);
+    }
+    for (const p of g.state.parts) {
+      parts.push('p', p.id, p.used | 0, q(p.charge || 0), q(p.t_down || 0), p.lit ? 1 : 0, p.hits | 0);
+    }
+    for (const f of g.world.flippers) parts.push('f', q(f.ang));
+    const str = parts.join('|');
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16).padStart(8, '0');
+  }
+
+  /* ===================================================================
    * PUBLIC API handed to parts & trinkets
    * ================================================================ */
   const A = {
@@ -1431,6 +1601,8 @@
     buyPerk, polishBall, perk, ballLevel, ballScoreMul, ballCoinMul,
     canAfford, pay, coins, up, idlePerSec, coinRate, baseMult, ballsPerRun,
     trinketSlots, slotsUsed, floorOf, checkMedals, typeCount,
+    stepFor, hashState, STEP, cleanState,
+    exportSave, importSave, suggestedFileName, FILE_MAGIC, FILE_V,
     isSeen, markSeen,
     count, missionProgress, ensureMissions, claimMission, rerollMission, comboWindow,
     on, emit, freshState,

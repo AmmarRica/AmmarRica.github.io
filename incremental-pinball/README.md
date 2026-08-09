@@ -157,8 +157,57 @@ navigation, so mode-based classification would pin it to the precache
 forever). The update prompt only ever appears in the menu, never over a live
 ball, and declining silences the automatic check only.
 
-Bump **both** `<meta name="app-version">` in `index.html` and `IP.VERSION` in
-`js/util.js` on every deploy.
+Bump `<meta name="app-version">` in `index.html` on every deploy. That tag is
+the single source of the version — `IP.VERSION` reads it out of the DOM at
+startup rather than carrying its own copy. It used to be a second literal in
+`js/util.js`, which meant any drift between the two made the update check
+compare a version against itself and report an update forever.
+
+## Save files
+
+**STATS → SAVE FILE** exports the whole profile as `.json` and imports it back.
+The file carries a magic field and a format version; import validates both,
+then validates the shape of the state before touching anything, drops rows it
+does not recognise, clamps numbers back into range, and rebuilds every part
+through the real `IP.table.newInstance` constructor rather than trusting the
+object in the file.
+
+⚠️ Anything cached on a part at runtime is prefixed with `_` and stripped by
+`cleanState()` before serialising. `inst._cols` holds colliders that point back
+at the part, so the state graph is circular; when that went in unstripped,
+`JSON.stringify` threw inside `saveJSON`'s `try`, and the game stopped saving
+at all — with no symptom, for three passes, until `tests/tower-files.mjs`
+round-tripped a save.
+
+## Determinism
+
+Nothing in the simulation calls `Math.random`. `IP.rng` holds four independent
+mulberry32 streams — `sim`, `fx`, `audio`, `ui` — seeded together from the run
+seed by `IP.reseed(seed)`, so a run replays identically from its seed and a
+cosmetic draw can never shift a physics outcome. `G.hashState()` folds the
+clock, score, mult, combo, coins, ball states, parts and flipper angles into an
+FNV-1a hash for comparison.
+
+The split matters in both directions: particles and screen shake read `fx`, so
+turning effects down does not change the game, and a proc that reads `sim` is
+unaffected by how many frames have been drawn.
+
+## Device controls
+
+Under **STATS → DEVICE**, each row appears only where it has a job to do:
+
+- **Fullscreen** — `requestFullscreen()` can reject, and on iOS Safari it is
+  simply absent, so the row is gated on support and the label is set from
+  `Full.active()` after the promise settles rather than from the intent.
+- **Tilt to nudge** — `DeviceOrientationEvent.requestPermission()` exists only
+  on iOS and *must* be called from inside a user gesture, so it is requested on
+  the tap, never at load. Neutral drifts, so the reading is measured against a
+  slow-moving baseline and rotated by `screen.orientation.angle`.
+- **Gamepad** — listed only once a pad has actually reported a button press;
+  `navigator.getGamepads()` returns ghost entries otherwise.
+
+`prefers-reduced-motion` is read once through `matchMedia` and cuts screen
+shake and particle counts.
 
 ## Timing
 
@@ -178,9 +227,19 @@ The game exposes the site-standard demo hook, so it runs under the shared
 harness:
 
 ```sh
-node tests/ai-tester.mjs         # all games
-node tests/tower-probe.mjs 20    # this game only, with a progress trace
+node tests/ai-tester.mjs          # all games
+node tests/tower-probe.mjs 20     # this game only, with a progress trace
+node tests/tower-timing.mjs       # fixed step, draw idempotency, interpolation
+node tests/tower-touch.mjs        # 44px tap targets, every tab
+node tests/tower-pwa.mjs          # manifest, icons, install gating, updates
+node tests/tower-determinism.mjs  # seeded replay and stream separation
+node tests/tower-files.mjs        # save round-trip and import validation
+node tests/tower-contrast.mjs     # WCAG 4.5:1 on every themed surface
 ```
+
+`tests/TRAPS.md` lists the measurement mistakes already made here — several of
+these suites passed convincingly while proving nothing before they were fixed.
+Read it before adding a test.
 
 `window.__incpinball` also works from the browser console:
 `setDemo(true)` turns on the self-playing AI (which buys and places parts as it
