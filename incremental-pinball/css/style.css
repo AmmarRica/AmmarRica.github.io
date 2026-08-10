@@ -667,6 +667,26 @@ kbd {
 .pnotes li { font-size: 11px; font-weight: 700; line-height: 1.45; }
 .pnotes li.pfix { color: #5a5145; font-weight: 600; font-style: italic; }
 
+/* Run-over unlock list */
+.unlist { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.unrow {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  background: var(--cream); color: var(--ink);
+  border: 3px solid var(--ink2); border-radius: 10px;
+  box-shadow: 0 3px 0 var(--ink2);
+}
+.unrow .unico {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; background: var(--gold); border: 2px solid var(--ink2);
+}
+/* ⚠️ .pinfo only gets its column layout from `.prow .pinfo, .trow2 .pinfo`.
+   Reusing the class elsewhere lays the name and the kind out inline, which
+   reads as "Jet PadPART". */
+.unrow .pinfo { flex: 1; display: flex; flex-direction: column; line-height: 1.25; min-width: 0; text-align: left; }
+.unrow .pinfo b { font-size: 11.5px; }
+.unrow .pinfo small { font-size: 9px; letter-spacing: 1px; color: #5a5145; }
+
 #toast {
   position: absolute; left: 50%; bottom: 96px; transform: translate(-50%, 12px);
   padding: 8px 14px; font-size: 11px; font-weight: 900; letter-spacing: .6px;

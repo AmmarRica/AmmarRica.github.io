@@ -85,6 +85,18 @@ single best part and let it rattle. The decay makes covering ground the
 better line, and it resets every run so a fresh ball is a fresh table. The
 floor stops a toured table from going completely dead mid-ball.
 
+## The run-over screen
+
+Unlock toasts fire during play, which is exactly when you are watching a ball
+and not the top of the screen. So the run-over screen lists **everything the
+run opened up** — parts, balls, trinkets, upgrades and menu tabs — with what
+each one is.
+
+Unlocks are recorded the moment they are *detected*, not when their toast
+fires. Toasts drain one per 0.75s tick, so a run ending on a burst would
+otherwise list only the handful that happened to be announced before the last
+ball drained — 4 of 99, in the test that covers it.
+
 ## The white line
 
 A white dashed line marks the highest point any ball has ever reached, drawn

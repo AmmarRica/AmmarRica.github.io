@@ -1843,6 +1843,22 @@
     box.appendChild(statRow('Best run', U.fmtFull(res.best)));
     box.appendChild(statRow('Highest floor this run', 'F' + g.run.floorsThisRun));
     body.appendChild(box);
+
+    // What the run actually opened up. Toasts during play are easy to miss
+    // with a ball in flight, so the run-over screen is where they land.
+    const un = (res.unlocks || []).map((k) => ({ k, info: D.unlockLabel(k) }));
+    if (un.length) {
+      body.appendChild(el('div.cathead', { style: { '--accent': D.C.gold } },
+        'UNLOCKED THIS RUN', el('span.slots', String(un.length))));
+      const list = el('div.unlist');
+      for (const { info } of un) {
+        list.appendChild(el('div.unrow',
+          el('div.unico', info.emoji),
+          el('div.pinfo', el('b', info.name), el('small', info.what))));
+      }
+      body.appendChild(list);
+    }
+
     modal('RUN OVER', [body], [
       { label: 'SPEND COINS', cls: 'ghost', onclick: () => { setMenu(true); UI.tab = 'shop'; renderMenu(); } },
       { label: 'PLAY AGAIN', cls: 'primary', onclick: () => G.startRun() },

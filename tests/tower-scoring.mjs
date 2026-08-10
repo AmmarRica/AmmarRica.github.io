@@ -170,5 +170,59 @@ ok('paddles unlock early', gate.gate <= 2000, 'at ' + gate.gate + ' lifetime chi
 ok('paddles are listed exactly once', gate.count === 1, 'entries=' + gate.count);
 ok('a paddle is affordable when it unlocks', gate.cost <= 400, 'cost=' + gate.cost);
 
+/* ---- the run-over screen lists what the run unlocked ------------------ */
+await setup();
+const runend = await p.evaluate(() => {
+  const G = window.IP.game, g = G.g;
+  g.demo = false; g.running = false;
+  g.state.settings.autoRun = false;
+  window.IP.ui.closeModal(true);
+  G.startRun(); g.running = false;
+  const fresh = g.run.unlocks.length;                 // a new run starts empty
+  g.run.unlocks = ['part:jet', 'ball:nova', 'tab:upgrades'];
+  G.endRun();
+  const box = document.querySelector('#modal .modalbox');
+  const rows = [...box.querySelectorAll('.unrow')].map((r) => r.textContent);
+  window.IP.ui.closeModal(true);
+  return { fresh, rows, count: (box.querySelector('.slots') || {}).textContent };
+});
+ok('a new run starts with no unlocks banked', runend.fresh === 0, 'had ' + runend.fresh);
+ok('the run-over screen lists every unlock', runend.rows.length === 3, runend.rows.join(' | '));
+ok('each row names the thing and its kind',
+  /Jet Pad/.test(runend.rows[0]) && /PART/.test(runend.rows[0]), runend.rows[0]);
+ok('menu unlocks are listed too', runend.rows.some((r) => /UPGRADES/.test(r)), runend.rows.join(' | '));
+ok('the count matches the list', runend.count === '3', String(runend.count));
+
+// A quiet run must not show an empty header.
+const quiet = await p.evaluate(() => {
+  const G = window.IP.game, g = G.g;
+  window.IP.ui.closeModal(true);
+  G.startRun(); g.running = false;
+  g.run.unlocks = [];
+  G.endRun();
+  const box = document.querySelector('#modal .modalbox');
+  const has = box.textContent.includes('UNLOCKED THIS RUN');
+  window.IP.ui.closeModal(true);
+  return has;
+});
+ok('a run that unlocked nothing shows no unlock section', quiet === false);
+
+// ⚠️ Unlocks are recorded when detected, not when the toast fires — toasts
+// drain one per tick, so a run ending on a burst would list only some.
+const burst = await p.evaluate(() => {
+  const G = window.IP.game, g = G.g;
+  G.startRun(); g.running = false; g.paused = false; g.locked = false;
+  g.state.known = [];
+  g.state.stats.totalChips = 1e9;                     // opens a lot at once
+  G.stepFor(400);
+  return { n: g.run.unlocks.length, paused: g.paused, known: g.state.known.length };
+});
+// ⚠️ `> 1` is not enough here. Toasts drain one per 0.75s tick, so a version
+// that records only what it announced still banks a handful over 400 steps
+// and sails past a loose threshold. The property is ALL of them.
+ok('every unlock in a burst is recorded, not just the announced ones',
+  burst.n === burst.known && burst.n > 20,
+  'recorded=' + burst.n + ' of ' + burst.known + ' detected');
+
 console.log(errs.length ? 'PAGE ERRORS:\n' + [...new Set(errs)].join('\n') : 'no page errors');
 await b.close();

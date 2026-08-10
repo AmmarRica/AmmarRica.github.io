@@ -1158,6 +1158,13 @@
 
   const CHANGELOG = [
     {
+      v: '1.12.0', date: '2026-08-10', title: 'What you opened up',
+      notes: [
+        'The run-over screen now lists everything the run unlocked — parts, balls, trinkets, upgrades and menus — so a toast missed with a ball in flight is not a thing you missed entirely.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
+    {
       v: '1.11.0', date: '2026-08-10', title: 'Twice the tower',
       notes: [
         'The tower goes to 40 floors. Past floor 19 it keeps building itself — every deck up there is named and coloured.',

@@ -137,7 +137,7 @@
     locked: false,
     build: { on: false, raze: false, floor: 0, sel: null, ghost: null, ghostErr: null, dragging: null },
     cannon: null,
-    run: { active: false, score: 0, ballsLeft: 0, ballNo: 0, startedAt: 0, chipsThisBall: 0, floorsThisRun: 0 },
+    run: { active: false, score: 0, ballsLeft: 0, ballNo: 0, startedAt: 0, chipsThisBall: 0, floorsThisRun: 0, unlocks: [] },
     mult: 1, multBase: 1, multPeak: 1, multFreeze: 0,
     camY: 0, camTarget: 0,
     shake: 0,
@@ -698,6 +698,7 @@
     g.run.ballsLeft = ballsPerRun();
     g.run.ballNo = 1;
     g.run.floorsThisRun = 0;
+    g.run.unlocks = [];
     g.run.startedAt = g.time;
     g.state.stats.runs++;
     g.balls = [];
@@ -738,7 +739,10 @@
     if (sc > g.state.stats.bestRun) g.state.stats.bestRun = sc;
     const bonus = Math.round(sc * coinRate() * 0.5);
     g.state.coins += bonus;
-    emit('runEnd', { score: sc, bonus, best: g.state.stats.bestRun });
+    emit('runEnd', {
+      score: sc, bonus, best: g.state.stats.bestRun,
+      unlocks: (g.run.unlocks || []).slice(),
+    });
     save();
     if (g.state.settings.autoRun || g.demo) {
       setTimeout(() => { if (!g.run.active) startRun(); }, g.demo ? 300 : 1400);
@@ -1234,6 +1238,10 @@
       if (known.has(k)) continue;
       g.state.known.push(k);
       unlockQueue.push(k);
+      // Recorded here rather than when the toast fires: toasts drain one per
+      // 0.75s tick, so a run that ends on a burst of unlocks would list only
+      // the ones that happened to be announced before the last ball drained.
+      if (!g.run.unlocks.includes(k)) g.run.unlocks.push(k);
     }
     if (!unlockQueue.length) return;
     const key = unlockQueue.shift();
