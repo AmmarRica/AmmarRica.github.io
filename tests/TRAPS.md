@@ -131,6 +131,16 @@ failing one that was measuring the wrong thing.
   will keep passing as new regions are added; `tower-contrast.mjs` now walks
   the in-table surfaces too. The same gap still exists in `tower-touch.mjs`.
 
+## Constants copied into tests
+
+- **A test that hardcodes a product constant fails when the product changes,
+  and reads as a regression.** Raising the tower from 12 floors to 20 failed
+  `out-of-range values are clamped`, which had `junk.floor < 12` written into
+  it — the clamp was working perfectly. Same for the release-notes test, which
+  asserted a frozen list of version strings and so failed on every release.
+  Read the constant from the game (`W.MAX_FLOORS`) or assert the property
+  ("everything returned is newer than X"), never a literal copy.
+
 ## Predicates
 
 - **Pin a gate from both ends.** `Install.offerable()` returning `false`

@@ -151,8 +151,10 @@
     buildShell(state, colliders, meta);
 
     /* --- main flippers --------------------------------------------- */
-    flippers.push(flipperFrom({ id: 'mainL', x: 32, y: 24, side: 'L', panel: 0, len: 15, power: 205 }, ups));
-    flippers.push(flipperFrom({ id: 'mainR', x: 68, y: 24, side: 'R', panel: 1, len: 15, power: 205 }, ups));
+    // A wider stance leaves a real drain to defend: the tips now sit ~18
+    // units apart instead of ~6, so a centred ball is lost unless you move it.
+    flippers.push(flipperFrom({ id: 'mainL', x: 27, y: 24, side: 'L', panel: 0, len: 15, power: 205 }, ups));
+    flippers.push(flipperFrom({ id: 'mainR', x: 73, y: 24, side: 'R', panel: 1, len: 15, power: 205 }, ups));
 
     /* --- placed parts ---------------------------------------------- */
     for (const inst of state.parts) {
@@ -241,6 +243,15 @@
     if (!def.gate && !def.field) {
       for (const gp of state.gapCache || []) {
         if (Math.abs(gp.y - y) < r + 5 && Math.abs(gp.x - x) < GAP_HALF + r) return 'Blocking a floor opening';
+      }
+    }
+    // One flipper per floor. Otherwise a floor becomes a wall of paddles and
+    // the climb stops being about aim.
+    if (def.pad) {
+      for (const p of state.parts) {
+        if (p.uid === excludeUid || p.floor !== floor) continue;
+        const od = D.PART_BY_ID[p.id];
+        if (od && od.pad) return 'Only one flipper per floor';
       }
     }
     for (const p of state.parts) {

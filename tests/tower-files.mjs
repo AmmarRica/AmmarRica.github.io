@@ -74,10 +74,15 @@ const junk = await p.evaluate(() => {
   window.IP.game.importSave(o);
   const g = window.IP.game.g;
   return { n: g.state.parts.length, floor: g.state.parts[1] && g.state.parts[1].floor,
-           lvl: g.state.parts[1] && g.state.parts[1].lvl, uid: !!(g.state.parts[0] && g.state.parts[0].uid) };
+           lvl: g.state.parts[1] && g.state.parts[1].lvl, uid: !!(g.state.parts[0] && g.state.parts[0].uid),
+           maxFloors: window.IP.data.W.MAX_FLOORS };
 });
 ok('malformed rows are dropped', junk.n === 2, 'kept ' + junk.n + ' of 8');
-ok('out-of-range values are clamped', junk.floor >= 0 && junk.floor < 12 && junk.lvl <= 20, `floor=${junk.floor} lvl=${junk.lvl}`);
+// ⚠️ Read the cap from the game, not a literal. Hardcoding 12 here meant
+// adding floors failed a save test that was working perfectly.
+ok('out-of-range values are clamped',
+  junk.floor >= 0 && junk.floor < junk.maxFloors && junk.lvl <= 20,
+  `floor=${junk.floor} lvl=${junk.lvl} max=${junk.maxFloors}`);
 ok('rebuilt through the real constructor', junk.uid === true);
 
 // Device controls appear only where they have a job.

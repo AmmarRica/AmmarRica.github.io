@@ -53,7 +53,7 @@
       // selling point is that it plays offline.
       update: { seen: null, seenAt: 0, notesFor: null, ran: null },
       stats: {
-        totalChips: 0, bestRun: 0, bestFloor: 0, bestMult: 1, runs: 0,
+        totalChips: 0, bestRun: 0, bestFloor: 0, bestY: 0, bestMult: 1, runs: 0,
         placed: 0, prestiges: 0, bestIdle: 0, drains: 0, playTime: 0, launches: 0,
         bestCombo: 0, missionsDone: 0, paddles: 0,
       },
@@ -307,11 +307,29 @@
     return m;
   }
 
+  /**
+   * Payout scale for the Nth time one part scores in a run. Geometric decay
+   * with a floor: a worn part stays worth *something*, so a table you have
+   * already toured does not go completely dead mid-ball.
+   */
+  const REPEAT_DECAY = 0.87;
+  const REPEAT_FLOOR = 0.12;
+  function repeatFactor(hits) {
+    return Math.max(REPEAT_FLOOR, Math.pow(REPEAT_DECAY, Math.max(0, hits - 1)));
+  }
+
   function score(chips, inst, opts) {
     opts = opts || {};
     const floor = opts.floor != null ? opts.floor : (inst ? inst.floor : (g.balls[0] ? floorOf(g.balls[0].p.y) : 0));
     const ev = { tag: opts.tag || (inst ? inst.id : 'misc'), floor, inst };
     let base = chips * D.floorMult(floor) * chipMultiplier(ev);
+    // Tony Hawk rule: a part pays less every time you hit it again in the
+    // same run, so parking the ball on one bumper stops being a strategy and
+    // covering ground starts being one. Counted per part, reset per run.
+    if (inst) {
+      inst._runHits = (inst._runHits || 0) + 1;
+      base *= repeatFactor(inst._runHits);
+    }
     if (opts.luckJackpot) base *= 25;
     const gained = Math.max(0, Math.round(base * g.mult));
     if (gained <= 0) return 0;
@@ -509,6 +527,10 @@
 
   function checkFloorProgress(ball) {
     checkCrossing(ball);
+    // Sampled every frame, before any early return: the high-water mark is
+    // wherever the ball actually peaked, not wherever it happened to be when
+    // it last crossed into a new floor.
+    if (ball.p.y > (g.state.stats.bestY || 0)) g.state.stats.bestY = ball.p.y;
     const f = floorOf(ball.p.y);
     if (f <= ball.maxFloor) return;
     ball.maxFloor = f;
@@ -726,6 +748,7 @@
   function resetPartRuntime() {
     for (const p of g.state.parts) {
       p.t_down = 0; p.lit = false; p.hits = 0; p.used = 0; p.rech = 0; p.cd = 0; p.charge = 0;
+      p._runHits = 0;
     }
   }
   function resetPerBallRuntime() {
@@ -1754,6 +1777,7 @@
     startRun, startBall, endRun, spawnBall, makeBall,
     plungerDown, plungerRelease, nudge, fireCannon,
     buyPart, sellPart, sellFloor, removeParts, undoSell, undoInfo, levelPart, movePart, rotatePart,
+    repeatFactor,
     noteVersionSeen, updateDeadline, enforceUpdate, GRACE_DAYS,
     buyUpgrade, buyBall, selectBall, buyTrinket, sellTrinket, buyFloor, prestige,
     buyPerk, polishBall, perk, ballLevel, ballScoreMul, ballCoinMul,

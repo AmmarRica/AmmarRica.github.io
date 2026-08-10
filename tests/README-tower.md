@@ -14,6 +14,7 @@ node tests/tower-contrast.mjs   # WCAG 4.5:1 on every themed surface
 node tests/tower-parallax.mjs   # depth layers paint, and at their own rates
 node tests/tower-remove.mjs     # refunds, undo, and the ways undo could pay
 node tests/tower-update.mjs     # the 30-day deadline, and when NOT to lock
+node tests/tower-scoring.mjs    # repeat decay, one flipper per floor, best line
 ```
 
 `tower-pwa.mjs` serves the repo over real HTTP on :8099 — service workers and

@@ -230,7 +230,9 @@ ok('an early bar can be dismissed', barDom.early.dismissable === true);
 /* ---- patch notes ------------------------------------------------------ */
 const notes = await p.evaluate(() => {
   const D = window.IP.data;
-  const since = D.changesSince('1.6.0').map((c) => c.v);
+  const list = D.changesSince('1.6.0');
+  const since = list.map((c) => c.v);
+  const cmp = window.IP.util.cmpVer;
   window.IP.ui.closeModal(true);
   window.IP.ui.__t.showChangelog();
   const box = document.querySelector('#modal .modalbox');
@@ -239,12 +241,17 @@ const notes = await p.evaluate(() => {
   window.IP.ui.closeModal(true);
   return {
     since, entries, total: D.CHANGELOG.length,
+    sinceAllNewer: list.every((c) => cmp(c.v, '1.6.0') > 0),
+    sinceHasOlder: D.CHANGELOG.some((c) => cmp(c.v, '1.6.0') <= 0 && since.includes(c.v)),
     ordered: D.CHANGELOG.every((c, i, a) => i === 0 || window.IP.util.cmpVer(a[i - 1].v, c.v) > 0),
     everyEntryHasNotes: D.CHANGELOG.every((c) => Array.isArray(c.notes) && c.notes.length > 0),
     mentionsUndo: /undone/i.test(text),
   };
 });
-ok('changesSince() returns only newer versions', JSON.stringify(notes.since) === '["1.9.0","1.8.0","1.7.0"]',
+// ⚠️ Assert the property, not a frozen list. The literal here had to be
+// edited every release, which makes shipping a patch look like a failure.
+ok('changesSince() returns only newer versions',
+  notes.since.length > 0 && notes.sinceAllNewer && !notes.sinceHasOlder,
   JSON.stringify(notes.since));
 ok('patch notes render every version', notes.entries === notes.total, notes.entries + '/' + notes.total);
 ok('patch notes are newest first', notes.ordered);

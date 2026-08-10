@@ -167,6 +167,7 @@
       drawBalls(g);
       drawCannon(g);
       drawParticles(g);
+      drawBestLine(g);
       drawForeBeams(g);
       drawPopups(g);
       if (g.build.on) drawBuildOverlay(g);
@@ -1115,6 +1116,31 @@
         if (!b.alive) continue;
         inkCircle(ctx, x0 + mw / 2, my(ipos(b).y), 3.4, b.def.color, 1.5);
       }
+      ctx.restore();
+    }
+
+    /**
+     * High-water mark: a white line at the highest any ball has ever reached.
+     * Drawn over the table but under the HUD, so it reads as a target rather
+     * than as part of the machine.
+     */
+    function drawBestLine(g) {
+      const by = g.state.stats.bestY || 0;
+      if (by <= 0) return;
+      const y = sy(by);
+      if (y < -20 || y > view.h + 20) return;
+      const L = sx(T().PLAY_L), R = sx(T().PLAY_R);
+      ctx.save();
+      ctx.lineCap = 'butt';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath(); ctx.moveTo(L, y + 1); ctx.lineTo(R, y + 1); ctx.stroke();
+      ctx.setLineDash([9, 6]);
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(R, y); ctx.stroke();
+      ctx.setLineDash([]);
+      inkText(ctx, 'BEST', R - s(9), y - s(3.4), 10, '#ffffff', 900, 3);
       ctx.restore();
     }
 

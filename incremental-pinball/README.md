@@ -62,6 +62,24 @@ clear only once you have actually opened that tab and looked.
 6. **Reforge.** Melt the tower down for gems, which permanently multiply
    everything and buy perks that survive every future reset.
 
+## Repeats pay less
+
+Borrowed from Tony Hawk: **every time one part scores in a run, it pays less
+than the time before** — `0.87^(n-1)`, floored at 12%. The tenth hit on a
+bumper is worth 29% of the first; the twentieth is at the floor.
+
+It exists because the optimal play without it is to park the ball on the
+single best part and let it rattle. The decay makes covering ground the
+better line, and it resets every run so a fresh ball is a fresh table. The
+floor stops a toured table from going completely dead mid-ball.
+
+## The white line
+
+A white dashed line marks the highest point any ball has ever reached, drawn
+across the table with a `BEST` tag. It is sampled every frame — not on floor
+crossings — so it sits at the actual peak rather than wherever the ball
+happened to be when it last entered a new floor.
+
 ## Milestones, and why you buy ten of the same thing
 
 Part cost grows exponentially — `base × growth^owned`, with growth between 1.09
@@ -333,6 +351,7 @@ node tests/tower-contrast.mjs     # WCAG 4.5:1 on every themed surface
 node tests/tower-parallax.mjs     # depth layers paint, and at their own rates
 node tests/tower-remove.mjs       # refunds, undo, and the ways undo could pay
 node tests/tower-update.mjs       # the 30-day deadline, and when NOT to lock
+node tests/tower-scoring.mjs      # repeat decay, one flipper per floor, best line
 ```
 
 `tests/TRAPS.md` lists the measurement mistakes already made here — several of

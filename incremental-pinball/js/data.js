@@ -21,7 +21,7 @@
     FLOOR_H: 116,        // height of one tower floor
     WALL: 2.5,           // outer wall thickness
     LANE_X: 88,          // plunger lane divider
-    MAX_FLOORS: 12,
+    MAX_FLOORS: 20,
     GRAVITY: 92,         // world units / s²
     DRAIN_Y: -6,         // below this the ball is gone
     GRID: 2,             // build-mode snap
@@ -66,7 +66,15 @@
     { name: 'CLOUD DECK',    tint: '#28414f', accent: C.cream,  blurb: 'Gravity gets lazy up here.' },
     { name: 'SOLAR CROWN',   tint: '#4a3520', accent: C.gold,   blurb: 'Everything glitters.' },
     { name: 'ASTRAL GATE',   tint: '#241f45', accent: C.purple, blurb: 'Rules bend. Chips do not.' },
-    { name: 'THE APEX',      tint: '#3d1f27', accent: C.red,    blurb: 'Nothing above but score.' },
+    { name: 'STORM DECK',    tint: '#1f2b40', accent: C.blue,   blurb: 'The weather starts below you.' },
+    { name: 'MIRROR HALL',   tint: '#293845', accent: C.teal,   blurb: 'Every bounce, twice over.' },
+    { name: 'VELVET SUITE',  tint: '#3a2030', accent: C.pink,   blurb: 'High rollers only.' },
+    { name: 'THE COUNTING',  tint: '#2f3a22', accent: C.green,  blurb: 'Nobody leaves owed.' },
+    { name: 'NIGHT MARKET',  tint: '#432b1f', accent: C.orange, blurb: 'Everything is for sale up here.' },
+    { name: 'THE APEX',      tint: '#3d1f27', accent: C.red,    blurb: 'It used to be the top.' },
+    { name: 'ORBIT LOUNGE',  tint: '#1b2d3d', accent: C.cream,  blurb: 'The tower stops pretending.' },
+    { name: 'THE VAULT DOOR',tint: '#3b3320', accent: C.gold,   blurb: 'What the whole climb was for.' },
+    { name: 'PENTHOUSE',     tint: '#2a1f3d', accent: C.purple, blurb: 'Nothing above but score.' },
   ];
 
   /** Chip multiplier for landing a hit on floor k. Steep on purpose. */
@@ -614,8 +622,8 @@
     /* --------------------------------------------------------- CONTROL */
     {
       id: 'paddle', name: 'Paddle', emoji: '🏓', cat: 'control', color: C.cream,
-      cost: 700, growth: 1.42, floor: 1, r: 12, rot: true, maxLevel: 15,
-      desc: 'A flipper YOU control on any floor. Bind it to a panel key in CONTROLS.',
+      cost: 260, growth: 1.34, floor: 1, r: 12, rot: true, maxLevel: 15, pad: true,
+      desc: 'A flipper YOU control, one per floor. Bind it to a panel key in PANELS.',
       chips: 4, manual: true, flipper: true,
       build() { /* flippers are dynamic — see table.js */ },
       onHit(A, inst) { A.score(chipsFor(this.chips, inst.lvl), inst, { silent: true }); },
@@ -624,7 +632,7 @@
       id: 'autopaddle', name: 'Auto Paddle', emoji: '🤖', cat: 'control', color: C.purple,
       cost: 2600, growth: 1.4, floor: 2, r: 12, rot: true, maxLevel: 15,
       desc: 'A paddle that flips itself whenever a ball drops into range. Set and forget.',
-      chips: 6, flipper: true, auto: true,
+      chips: 6, flipper: true, auto: true, pad: true,
       build() { /* dynamic */ },
       onHit(A, inst) { A.score(chipsFor(this.chips, inst.lvl), inst, { silent: true }); },
     },
@@ -953,10 +961,10 @@
 
   /** Reveal ladder for parts, in the order a player should meet them. */
   const PART_ORDER = [
-    ['bumper', 0], ['jet', 250], ['sling', 700], ['wall', 1500],
+    ['bumper', 0], ['jet', 250], ['sling', 700], ['paddle', 1200], ['wall', 1500],
     ['tramp', 3000], ['target', 5500], ['mint', 9000], ['rollover', 15000],
     ['gate', 24000], ['bell', 38000], ['kicker', 60000], ['magnet', 90000],
-    ['spinner', 140000], ['piston', 210000], ['paddle', 320000], ['laser', 480000],
+    ['spinner', 140000], ['piston', 210000], ['laser', 480000],
     ['orbit', 700000], ['conveyor', 1e6], ['jackpot', 1.5e6], ['saucer', 2.2e6],
     ['multgate', 3.2e6], ['wheel', 4.6e6], ['totem', 6.5e6], ['lift', 9e6],
     ['antigrav', 1.3e7], ['portal', 1.9e7], ['battery', 2.7e7], ['roulette', 4e7],
@@ -1115,6 +1123,17 @@
    * player something; otherwise it is generic too.
    * ================================================================ */
   const CHANGELOG = [
+    {
+      v: '1.10.0', date: '2026-08-10', title: 'A taller, meaner tower',
+      notes: [
+        'A white line marks the highest any ball has ever reached. Beat it.',
+        'The tower goes to 20 floors, up from 12.',
+        'Paddles are cheap and unlock early — buy your own flippers almost straight away. One per floor.',
+        'Hitting the same part over and over pays less each time for the rest of the run, so touring the table beats parking on one bumper.',
+        'The main flippers sit further apart. The drain is a real gap now.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
     {
       v: '1.9.0', date: '2026-08-09', title: 'Updates and patch notes',
       notes: [
