@@ -69,6 +69,8 @@ navigation:
     url: /pinball/
   - title: Tower of Chips
     url: /incremental-pinball/
+  - title: Birdex
+    url: /birdex/
   - title: Magnetball
     url: /magnetball/
 

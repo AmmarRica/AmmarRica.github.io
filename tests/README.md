@@ -28,6 +28,18 @@ distinct **mode** the demo passes through (e.g. nonogram board sizes).
 | dog-swiper | `__dog` | auto-swipes the deck | `progress` |
 | nonogram | `__nonogram` | auto-solves, cycling through board sizes | `progress` |
 
+## Other suites
+
+`birdex.mjs` is a full smoke test for the birding dex rather than a demo
+player: it drives the real app in a headless browser through geolocation,
+dex unlocking, photo storage, collections, history and a reload, and checks
+the seasonal / off-range rarity model. Birdex also exposes the standard
+`window.__birdex` demo hook, so `ai-tester.mjs` conventions apply to it too.
+
+```sh
+node tests/birdex.mjs
+```
+
 ## Run
 
 ```sh
