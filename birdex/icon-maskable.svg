@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Birdex">
+  <defs>
+    <linearGradient id="skyM" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f6b4f"/>
+      <stop offset="1" stop-color="#1d4433"/>
+    </linearGradient>
+    <linearGradient id="featherM" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0d9a8"/>
+      <stop offset="1" stop-color="#c2703a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#skyM)"/>
+
+  <!-- Everything important sits inside the 80% safe circle. -->
+  <g transform="translate(146 150) scale(1.95)">
+    <polygon points="34,58 6,86 12,90 40,66" fill="#1a3628"/>
+    <ellipse cx="52" cy="56" rx="26" ry="18" transform="rotate(-14 52 56)" fill="url(#featherM)"/>
+    <ellipse cx="58" cy="62" rx="17" ry="10" transform="rotate(-14 58 62)" fill="#f7ecd6"/>
+    <ellipse cx="49" cy="57" rx="16" ry="9" transform="rotate(-16 49 57)" fill="#a4552a"/>
+    <circle cx="74" cy="36" r="13" fill="#f0d9a8"/>
+    <polygon points="83,31 99,37 83,42" fill="#2b2016"/>
+    <circle cx="78" cy="33" r="3.4" fill="#1a1d21"/>
+    <rect x="46" y="72" width="3.4" height="16" rx="1.7" fill="#1a3628"/>
+    <rect x="58" y="72" width="3.4" height="16" rx="1.7" fill="#1a3628"/>
+  </g>
+</svg>

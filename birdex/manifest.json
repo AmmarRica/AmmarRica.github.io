@@ -1,0 +1,18 @@
+{
+  "id": "/birdex/",
+  "name": "Birdex — a birding pokédex",
+  "short_name": "Birdex",
+  "description": "Photograph birds, unlock dex entries, build collections, and see how rare each species is where you are standing.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#f4f1e8",
+  "theme_color": "#f4f1e8",
+  "categories": ["lifestyle", "education", "utilities"],
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
