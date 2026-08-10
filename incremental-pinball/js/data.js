@@ -21,7 +21,7 @@
     FLOOR_H: 116,        // height of one tower floor
     WALL: 2.5,           // outer wall thickness
     LANE_X: 88,          // plunger lane divider
-    MAX_FLOORS: 20,
+    MAX_FLOORS: 40,
     GRAVITY: 92,         // world units / s²
     DRAIN_Y: -6,         // below this the ball is gone
     GRID: 2,             // build-mode snap
@@ -84,7 +84,12 @@
   /** Coin cost to unlock floor k (floors 0-2 are free). */
   function floorCost(k) {
     if (k <= 2) return 0;
-    return Math.round(520 * Math.pow(5.4, k - 3));
+    // ⚠️ Growth used to be 5.4x per floor against income growing 1.95x, so
+    // each floor was ~2.8x harder than the last *relative to what you earn*.
+    // Compounded over a 40-floor tower that puts the top out of reach by
+    // astronomical margins — the floors existed but could never be bought.
+    // 3.2 keeps a floor a real goal while leaving the climb finishable.
+    return Math.round(900 * Math.pow(3.2, k - 3));
   }
 
   /* =====================================================================
@@ -1122,7 +1127,44 @@
    * nobody asked to read. A fixed bug is only worth naming when it cost the
    * player something; otherwise it is generic too.
    * ================================================================ */
+  /**
+   * Floor descriptor for any k. The first 20 are hand-authored; above that
+   * the tower keeps going with generated decks, so raising MAX_FLOORS never
+   * means "an undefined floor with no name and no colour".
+   */
+  const SPIRE_WORDS = ['SPIRE', 'CROWN', 'REACH', 'SUMMIT', 'HEIGHTS', 'ASCENT', 'PINNACLE', 'ZENITH'];
+  const SPIRE_TINTS = ['#22283f', '#2c2438', '#1f3340', '#332338', '#243a38', '#382a26', '#26243d', '#303423'];
+  const SPIRE_ACCENTS = [C.purple, C.teal, C.pink, C.gold, C.green, C.blue, C.orange, C.cream];
+  const _floorCache = {};
+  function floorAt(k) {
+    k = Math.max(0, Math.floor(k) || 0);
+    if (k < FLOORS.length) return FLOORS[k];
+    if (_floorCache[k]) return _floorCache[k];
+    const i = k - FLOORS.length;
+    const f = {
+      name: SPIRE_WORDS[i % SPIRE_WORDS.length] + ' ' + romanish(Math.floor(i / SPIRE_WORDS.length) + 1),
+      tint: SPIRE_TINTS[i % SPIRE_TINTS.length],
+      accent: SPIRE_ACCENTS[(i * 3) % SPIRE_ACCENTS.length],
+      blurb: 'Above the tower proper. The air is thin and the chips are not.',
+      generated: true,
+    };
+    _floorCache[k] = f;
+    return f;
+  }
+  function romanish(n) {
+    const R = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+    return R[n - 1] || String(n);
+  }
+
   const CHANGELOG = [
+    {
+      v: '1.11.0', date: '2026-08-10', title: 'Twice the tower',
+      notes: [
+        'The tower goes to 40 floors. Past floor 19 it keeps building itself — every deck up there is named and coloured.',
+        'Floor prices grow far more slowly than before, so the upper tower is something you can actually reach instead of something you look at.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
     {
       v: '1.10.0', date: '2026-08-10', title: 'A taller, meaner tower',
       notes: [
@@ -1189,7 +1231,7 @@
   }
 
   IP.data = {
-    W, C, FLOORS, floorMult, floorCost,
+    W, C, FLOORS, floorAt, floorMult, floorCost,
     CHANGELOG, CHANGELOG_BY_V, changesSince,
     PARTS, PART_BY_ID, chipsFor,
     MILESTONES, milestoneMult, nextMilestone,

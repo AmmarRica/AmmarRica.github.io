@@ -62,6 +62,18 @@ clear only once you have actually opened that tab and looked.
 6. **Reforge.** Melt the tower down for gems, which permanently multiply
    everything and buy perks that survive every future reset.
 
+## Forty floors
+
+The tower runs to 40. The first 20 are hand-authored; above that `floorAt(k)`
+generates named, tinted decks on demand, so raising the cap never produces a
+floor with no name and no colour. Nothing reads `FLOORS[k]` directly any more.
+
+Floor prices grow at **3.2× per floor** against income growing 1.95×. They
+used to grow at 5.4×, which is ~2.8× harder per floor *relative to what that
+floor earns* — compounded over a tall tower that puts the top out of reach by
+astronomical margins, so the upper floors existed but could never be bought.
+`tower-scoring.mjs` now asserts the ratio directly rather than trusting it.
+
 ## Repeats pay less
 
 Borrowed from Tony Hawk: **every time one part scores in a run, it pays less

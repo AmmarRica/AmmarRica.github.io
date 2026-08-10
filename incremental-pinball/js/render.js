@@ -185,8 +185,8 @@
     function drawBackground(g) {
       const grd = ctx.createLinearGradient(0, 0, 0, view.h);
       const { lo, hi } = visibleFloors(g);
-      const topTint = (D.FLOORS[U.clamp(hi, 0, D.FLOORS.length - 1)] || D.FLOORS[0]).tint;
-      const botTint = (D.FLOORS[U.clamp(lo, 0, D.FLOORS.length - 1)] || D.FLOORS[0]).tint;
+      const topTint = D.floorAt(U.clamp(hi, 0, g.state.floors)).tint;
+      const botTint = D.floorAt(U.clamp(lo, 0, g.state.floors)).tint;
       grd.addColorStop(0, U.shade(topTint, 0.02));
       grd.addColorStop(1, U.shade(botTint, -0.06));
       ctx.fillStyle = grd;
@@ -215,7 +215,7 @@
       // Mixed toward a cold haze rather than shaded: shading a nearly-black
       // tint moves it almost nowhere, and a block that does not separate from
       // the sky leaves its lit windows floating with nothing behind them.
-      const tint = (D.FLOORS[k] || D.FLOORS[0]).tint;
+      const tint = D.floorAt(k).tint;
       const body = U.mixHex(tint, '#7d93ab', 0.34);
       const edge = U.mixHex(tint, '#aebfd0', 0.5);
       ctx.save();
@@ -348,7 +348,7 @@
       const { lo, hi } = visibleFloors(g);
       for (let k = lo; k <= hi; k++) {
         const base = k * D.W.FLOOR_H;
-        const f = D.FLOORS[k] || D.FLOORS[D.FLOORS.length - 1];
+        const f = D.floorAt(k);
         const unlocked = k < g.state.floors;
         const y0 = sy(base + D.W.FLOOR_H), y1 = sy(base);
         if (y1 < -60 || y0 > view.h + 60) continue;
@@ -1095,7 +1095,7 @@
       ctx.lineWidth = 2; ctx.strokeStyle = U.rgba(C.ink2, 0.8); ctx.stroke();
 
       for (let k = 0; k < g.state.floors; k++) {
-        const f = D.FLOORS[k] || D.FLOORS[0];
+        const f = D.floorAt(k);
         const ya = my((k + 1) * D.W.FLOOR_H), yb = my(k * D.W.FLOOR_H);
         ctx.fillStyle = U.rgba(f.accent, 0.3);
         ctx.fillRect(x0, ya, mw, yb - ya - 1);

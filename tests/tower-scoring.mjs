@@ -132,14 +132,32 @@ ok('the line lands on screen at that height', line.y > 0 && line.y < line.h,
 /* ---- more tower to climb ---------------------------------------------- */
 const floors = await p.evaluate(() => {
   const D = window.IP.data;
-  return { max: D.W.MAX_FLOORS, named: D.FLOORS.length,
-           allNamed: D.FLOORS.every((f) => f.name && f.tint && f.accent),
-           topMult: D.floorMult(D.W.MAX_FLOORS - 1) };
+  const max = D.W.MAX_FLOORS;
+  const names = new Set(), bad = [];
+  for (let k = 0; k < max; k++) {
+    const f = D.floorAt(k);
+    if (!f || !f.name || !f.tint || !f.accent) bad.push(k);
+    if (!isFinite(D.floorCost(k)) || !isFinite(D.floorMult(k))) bad.push('inf@' + k);
+    names.add(f && f.name);
+  }
+  return { max, hand: D.FLOORS.length, unique: names.size, bad,
+           topMult: D.floorMult(max - 1),
+           // Cost has to stay within reach of income, or the upper floors are
+           // decoration. Compare how much harder the top floor is than an
+           // early one, relative to what that floor earns.
+           reachRatio: (D.floorCost(max - 1) / D.floorMult(max - 1)) / (D.floorCost(5) / D.floorMult(5)) };
 });
-ok('the tower is 20 floors', floors.max === 20, String(floors.max));
-ok('every floor is named and themed', floors.named === floors.max && floors.allNamed,
-  floors.named + ' named');
+// ⚠️ No literal here. This assertion used to read `max === 20` and failed the
+// next time the tower grew — see the constants section of TRAPS.md.
+ok('the tower is deep', floors.max >= 20, String(floors.max) + ' floors');
+ok('every floor is named and themed, generated ones included',
+  floors.bad.length === 0 && floors.unique === floors.max,
+  floors.unique + ' unique names, bad=' + JSON.stringify(floors.bad));
+ok('the tower goes beyond the hand-authored floors', floors.max > floors.hand,
+  floors.hand + ' authored of ' + floors.max);
 ok('the top floor multiplier is worth climbing for', floors.topMult > 1e5, '×' + floors.topMult);
+ok('the top floor stays within reach of its own income',
+  floors.reachRatio < 1e11, 'x' + floors.reachRatio.toExponential(1) + ' harder than floor 5');
 
 /* ---- flippers are an early purchase ----------------------------------- */
 const gate = await p.evaluate(() => {

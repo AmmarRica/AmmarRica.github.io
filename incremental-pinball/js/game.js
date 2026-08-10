@@ -549,7 +549,7 @@
     }
     if (f > g.state.stats.bestFloor) {
       g.state.stats.bestFloor = f;
-      popupScreen('FLOOR ' + f + ' — ' + (D.FLOORS[f] ? D.FLOORS[f].name : ''), D.C.gold);
+      popupScreen('FLOOR ' + f + ' — ' + D.floorAt(f).name, D.C.gold);
       sfx('levelup');
       shake(6);
     }

@@ -340,7 +340,7 @@
     }
     for (let f = g.state.floors - 1; f >= 0; f--) {
       const ps = g.state.parts.filter((p) => p.floor === f);
-      const fl = D.FLOORS[f];
+      const fl = D.floorAt(f);
       root.appendChild(el('div.cathead', { style: { '--accent': fl.accent } },
         'FLOOR ' + f + ' · ' + fl.name + '  ×' + fmt(D.floorMult(f)),
         el('span.slots', ps.length + '/' + IP.table.slotLimit(g.state))));
@@ -615,7 +615,7 @@
     for (let k = D.W.MAX_FLOORS - 1; k >= 0; k--) {
       const open = k < g.state.floors;
       const next = k === g.state.floors;
-      const f = D.FLOORS[k];
+      const f = D.floorAt(k);
       const row = el('div.frow' + (open ? ' open' : next ? ' next' : ' locked'), { style: { '--accent': f.accent } });
       row.appendChild(el('div.fnum', 'F' + k));
       row.appendChild(el('div.finfo', el('b', f.name), el('small', f.blurb)));
@@ -764,7 +764,7 @@
     [
       ['Lifetime chips', U.fmtFull(s.totalChips)],
       ['Best run', U.fmtFull(s.bestRun)],
-      ['Highest floor', 'F' + s.bestFloor + (D.FLOORS[s.bestFloor] ? ' · ' + D.FLOORS[s.bestFloor].name : '')],
+      ['Highest floor', 'F' + s.bestFloor + ' · ' + D.floorAt(s.bestFloor).name],
       ['Best MULT', '×' + s.bestMult.toFixed(1)],
       ['Runs played', fmt(s.runs)],
       ['Balls drained', fmt(s.drains)],
@@ -924,7 +924,7 @@
     top.appendChild(btn('◀', { cls: 'sm', disabled: g.build.floor <= 0, onclick: () => { g.build.floor--; renderBuildBar(); } }));
     top.appendChild(el('div.bfloor',
       el('b', 'FLOOR ' + g.build.floor),
-      el('small', (D.FLOORS[g.build.floor] || {}).name + ' · ' + G.slotsUsed(g.build.floor) + '/' + IP.table.slotLimit(g.state) + ' slots')));
+      el('small', D.floorAt(g.build.floor).name + ' · ' + G.slotsUsed(g.build.floor) + '/' + IP.table.slotLimit(g.state) + ' slots')));
     top.appendChild(btn('▶', { cls: 'sm', disabled: g.build.floor >= g.state.floors - 1, onclick: () => { g.build.floor++; renderBuildBar(); } }));
     top.appendChild(btn('🧨 REMOVE', {
       cls: 'sm raze' + (g.build.raze ? ' on' : ' ghost'),
