@@ -32,6 +32,37 @@ logged.
 
 Everything works offline after the first visit, and it installs as a PWA.
 
+## Running it locally
+
+**Download the single file.** Settings → Offline copy → *Download Birdex*, or
+grab [`birdex-offline.html`](birdex-offline.html) from this folder. It is one
+~320 kB HTML file with the stylesheet, all ten scripts and the icon inlined.
+Save it anywhere and open it — no server, no install, no network. All 201
+entries, the rarity model and the camera flow work exactly as they do online,
+and your sightings persist across quitting the browser.
+
+Chrome, Edge and Firefox allow local files to use browser storage. Safari does
+not, so if you want to open it in Safari, serve the folder instead:
+
+```sh
+python3 -m http.server 8000    # then open http://localhost:8000/birdex/
+```
+
+`localhost` also counts as a secure origin, which is what GPS needs. A file
+opened directly gets no GPS in some browsers — set your region by hand on the
+Nearby tab and every rarity figure works the same.
+
+Two things worth knowing about the downloaded copy: browsers keep storage for
+local files separate from storage for websites, so its dex is its own (export a
+JSON backup if you want to carry sightings across); and all local files share
+one storage origin, so moving or renaming the file keeps your dex intact.
+
+Rebuild it after changing any source:
+
+```sh
+node birdex/build-offline.mjs
+```
+
 ## How the rarity model works
 
 Rarity is not a single number attached to a species — it is a function of
@@ -82,6 +113,9 @@ js/photos.js             import pipeline — re-encode, thumbnail
 js/views.js              rendering, one pass from state
 js/app.js                state, routing, geolocation, actions
 sw.js, manifest.json     offline + installable
+build-offline.mjs        inlines all of the above into one file
+birdex-offline.html      generated: the downloadable copy (committed so the
+                         site can serve it; regenerate, don't hand-edit)
 ```
 
 ## Storage
@@ -96,12 +130,19 @@ included, since they never leave the device.
 
 ```sh
 npm i -D playwright
-node tests/birdex.mjs
+node tests/birdex.mjs                                  # the hosted app
+node birdex/build-offline.mjs && node tests/birdex-offline.mjs   # the downloadable copy
 ```
 
-Drives the real app in a headless browser: geolocation resolving to a region,
-dex unlocking, photo storage, collections, history, persistence across a
-reload, and the seasonal/off-range rarity reasoning.
+`birdex.mjs` drives the real app in a headless browser: geolocation resolving
+to a region, dex unlocking, photo storage, collections, history, persistence
+across a reload, and the seasonal/off-range rarity reasoning.
+
+`birdex-offline.mjs` opens the built file over `file://` from an unrelated
+directory with all network requests blocked, then quits the browser and
+reopens it — so "works offline from a double-click, and keeps your dex" is
+checked rather than assumed. It also fails if the committed build has drifted
+from its sources.
 
 There is also the site-wide demo hook, `window.__birdex`, matching the
 convention the other apps here use:

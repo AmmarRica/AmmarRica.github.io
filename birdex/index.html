@@ -35,10 +35,18 @@
 <script>
   Birdex.app.boot().catch(function (err) {
     console.error(err);
+    // The usual causes are a private window and, for a file opened straight
+    // from disk, a browser that refuses storage to file:// pages (Safari).
+    var local = location.protocol === 'file:';
     document.getElementById('app').innerHTML =
-      '<div style="padding:24px;max-width:520px;margin:0 auto">' +
+      '<div style="padding:24px;max-width:560px;margin:0 auto;line-height:1.5">' +
       '<h1>Birdex could not start</h1>' +
-      '<p style="color:#888">Storage is unavailable in this browser session — private windows sometimes block IndexedDB.</p>' +
+      '<p style="color:#888">It could not open browser storage, so there is nowhere to keep your photos.</p>' +
+      (local
+        ? '<p style="color:#888">This copy was opened directly from a file. Chrome, Edge and Firefox allow that; ' +
+          'Safari does not. Either open this file in one of those, or serve the folder — ' +
+          '<code>python3 -m http.server 8000</code> — and visit <code>localhost:8000</code>.</p>'
+        : '<p style="color:#888">Private windows often block IndexedDB. Try an ordinary window.</p>') +
       '<pre style="white-space:pre-wrap;font-size:12px;color:#888">' + String(err && err.message || err) + '</pre></div>';
   });
 

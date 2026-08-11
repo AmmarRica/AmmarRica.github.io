@@ -838,6 +838,22 @@
       '</div>' +
 
       '<div class="panel">' +
+        '<h2>Offline copy</h2>' +
+        (global.BIRDEX_OFFLINE
+          ? '<p class="muted">You are running the offline copy. Everything — all ' + Birdex.count() +
+              ' dex entries, the rarity model, your photos — is already on this device, and it works with no ' +
+              'network at all. To move it to another machine, just copy the .html file across; your sightings ' +
+              'stay behind on this one, so export a backup first if you want them too.</p>'
+          : '<p class="muted">Download Birdex as a single self-contained file. Open it from your desktop and the ' +
+              'whole app runs locally — no server, no install, no network.</p>' +
+            '<div class="actions">' +
+              '<a class="btn primary" href="birdex-offline.html" download="birdex-offline.html">Download Birdex</a>' +
+            '</div>' +
+            '<p class="muted small">Sightings saved in the downloaded copy are separate from the ones saved here: ' +
+              'a browser keeps storage for local files apart from storage for websites.</p>') +
+      '</div>' +
+
+      '<div class="panel">' +
         '<h2>Backup</h2>' +
         '<p class="muted">Export your sightings, notes and collection lists as JSON. Photo files are not included — they stay in this browser only.</p>' +
         '<div class="actions"><button class="btn" data-act="export">Export JSON</button></div>' +

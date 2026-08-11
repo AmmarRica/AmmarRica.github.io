@@ -40,6 +40,14 @@ the seasonal / off-range rarity model. Birdex also exposes the standard
 node tests/birdex.mjs
 ```
 
+`birdex-offline.mjs` covers the downloadable single-file build: it opens
+`birdex/birdex-offline.html` over `file://` with the network blocked, and
+restarts the browser to check saved sightings survive.
+
+```sh
+node birdex/build-offline.mjs && node tests/birdex-offline.mjs
+```
+
 ## Run
 
 ```sh

@@ -127,8 +127,10 @@ const run = async () => {
   await page.locator('button.tab', { hasText: 'Album' }).click();
   page.once('dialog', d => d.accept('Best of Boston'));
   await page.locator('button', { hasText: 'New collection' }).first().click();
-  await page.waitForSelector('.pane .photogrid, .pane .empty', { timeout: 8000 });
-  ok('collection is created', (await page.locator('h1').innerText()).includes('Best of Boston'));
+  /* Wait for the route, not for a selector: the Album page it navigates away
+   * from already has a .photogrid, so a selector wait can resolve too early. */
+  await page.waitForFunction(() => location.hash.startsWith('#/collection/'), null, { timeout: 8000 });
+  ok('collection is created', (await page.locator('.pane h1').first().innerText()).includes('Best of Boston'));
 
   await page.locator('button', { hasText: 'Add photos' }).click();
   await page.waitForSelector('.sheet .ph', { timeout: 8000 });
@@ -172,6 +174,14 @@ const run = async () => {
   ok('off-range species are flagged', checks.snowyFlorida === true);
   ok('an abundant bird rates Common', checks.robinCommon === 'Common');
   ok('a near-extinct bird rates Legendary', checks.condor === 'Legendary');
+
+  /* ---- the hosted copy offers a local download ---------------------- */
+  await page.evaluate(() => location.hash = '#/settings');
+  await page.waitForSelector('.pane', { timeout: 8000 });
+  const dl = page.locator('a[download]');
+  ok('settings offer a downloadable copy', await dl.count() === 1);
+  ok('download points at the single-file build',
+    (await dl.getAttribute('href')) === 'birdex-offline.html');
 
   /* ---- demo mode (the repo's shared game-tester convention) ---------- */
   await page.evaluate(() => window.__birdex.setDemo(true));
