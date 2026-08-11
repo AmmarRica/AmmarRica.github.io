@@ -61,6 +61,16 @@
     const ctx = canvas.getContext('2d');
     const view = { w: 0, h: 0, scale: 4, camY: 0, shake: 0, sx: 0, sy: 0, dpr: 1, alpha: 0 };
 
+    /**
+     * ⚠️ The tower minimap is docked to the right edge, so the playfield has
+     * to stop short of it. It used to be scaled to the full canvas width,
+     * which put the right wall at x=407 and the minimap panel at x=404 —
+     * the wall, every deck's right end and any ball out there were drawn
+     * underneath it. GUTTER is the reserved strip; drawMinimap() sizes
+     * itself from the same constant so the two cannot drift apart.
+     */
+    const GUTTER = 20;
+
     function resize(cssW, cssH) {
       const dpr = Math.min(global.devicePixelRatio || 1, 2.5);
       view.dpr = dpr;
@@ -69,7 +79,8 @@
       canvas.style.width = cssW + 'px';
       canvas.style.height = cssH + 'px';
       view.w = cssW; view.h = cssH;
-      view.scale = cssW / D.W.WIDTH;
+      view.gutter = Math.min(GUTTER, cssW * 0.09);
+      view.scale = (cssW - view.gutter) / D.W.WIDTH;
       view.viewH = cssH / view.scale;
     }
 
@@ -1081,8 +1092,8 @@
      */
     function drawMinimap(g) {
       const totalH = g.world.totalH || 1;
-      const mw = 10;
-      const x0 = view.w - mw - 4;
+      const mw = Math.max(7, (view.gutter || GUTTER) - 8);
+      const x0 = view.w - mw - 3;
       const top = 152, bot = view.h - 120;
       const h = bot - top;
       if (h < 90) return;

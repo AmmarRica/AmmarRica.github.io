@@ -100,6 +100,16 @@ failing one that was measuring the wrong thing.
   This is the second time a suite has passed its own sabotage; both times the
   cause was a scenario that never reached the code.
 
+## Overlays
+
+- **An overlay docked to a screen edge needs the world to stop short of it.**
+  The tower minimap sits at the right edge and the playfield was scaled to the
+  full canvas width, so the right wall landed at x=407 and the minimap panel
+  at x=404 — the wall, every deck's right end and any ball out there were
+  drawn underneath it. The renderer now reserves a gutter and the minimap
+  sizes itself from the same constant. Assert the clearance at several widths;
+  one width can pass on a layout that collides at every other size.
+
 ## Rendered vs. computed
 
 - **A helper returning the right string is not the UI showing it.** The

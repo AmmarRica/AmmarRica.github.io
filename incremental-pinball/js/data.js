@@ -1158,6 +1158,11 @@
 
   const CHANGELOG = [
     {
+      v: '1.13.0', date: '2026-08-10', title: 'Get off the wall',
+      notes: [],
+      fixes: 'The tower minimap was drawn on top of the right wall, hiding the end of every deck and any ball out there. It now has its own lane beside the table.',
+    },
+    {
       v: '1.12.0', date: '2026-08-10', title: 'What you opened up',
       notes: [
         'The run-over screen now lists everything the run unlocked — parts, balls, trinkets, upgrades and menus — so a toast missed with a ball in flight is not a thing you missed entirely.',

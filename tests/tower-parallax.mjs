@@ -85,6 +85,43 @@ ok('layers are strictly ordered by depth',
   [rates.far, rates.mid, rates.struct, rates.world, rates.fore].map((n) => n.toFixed(1)).join(' < '));
 ok('the foreground overtakes the world', rates.fore > 100, rates.fore.toFixed(1));
 
+/* ---- the minimap must not sit on top of the playfield ----------------- */
+// It is docked to the right edge and the table used to be scaled to the full
+// canvas width, so the right wall, every deck's right end and any ball out
+// there were drawn underneath it. Checked at several widths because the
+// gutter is clamped on narrow screens.
+const gutter = await p.evaluate(() => {
+  const g = window.IP.game.g, r = g.renderer, T = window.IP.table;
+  const out = [];
+  for (const w of [320, 380, 420, 560, 900]) {
+    r.resize(w, 900);
+    r.draw(g);
+    const wallOuter = r.sx(T.PLAY_R) + r.s(1.4) + 3;      // wall stroke + cap
+    const mapLeft = r.view.w - Math.max(7, (r.view.gutter || 20) - 8) - 5;
+    out.push({ w, clear: +(mapLeft - wallOuter).toFixed(1), scale: +r.view.scale.toFixed(2) });
+  }
+  r.resize(420, 900);
+  return out;
+});
+for (const row of gutter) {
+  ok('at ' + row.w + 'px the minimap clears the right wall', row.clear > 0,
+    row.clear + 'px of clearance');
+}
+
+/* ---- and taps still land where they look ------------------------------ */
+// Narrowing the world changes view.scale, which toWorld() divides by. If the
+// two ever disagree, build mode drops parts somewhere other than the tap.
+const roundTrip = await p.evaluate(() => {
+  const r = window.IP.game.g.renderer;
+  const bad = [];
+  for (const wx of [3, 25, 50, 75, 97]) {
+    const back = r.toWorld(r.sx(wx), r.sy(100)).x;
+    if (Math.abs(back - wx) > 0.01) bad.push(wx + '->' + back.toFixed(3));
+  }
+  return bad;
+});
+ok('screen and world coordinates round-trip', roundTrip.length === 0, roundTrip.join(', '));
+
 /* ---- still idempotent, still no randomness ---------------------------- */
 const purity = await p.evaluate(() => {
   const g = window.IP.game.g, r = g.renderer;
