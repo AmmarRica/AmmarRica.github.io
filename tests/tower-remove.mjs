@@ -24,8 +24,11 @@ const ok = (l, c, x = '') => { console.log((c ? 'PASS ' : 'FAIL ') + l + (x ? ' 
 const board = (n = 6, coins = 1e6) => p.evaluate(({ n, coins }) => {
   const G = window.IP.game, g = G.g;
   g.running = false; g.demo = false;
+  // ⚠️ wipe() starts a run, and the table is frozen during one. End it the
+  // way a player would before building anything.
   G.wipe();
   g.running = false;
+  g.state.settings.autoRun = false; G.endRun();
   g.state.floors = 3;
   g.state.coins = coins;
   for (let i = 0; i < n; i++) G.buyPart('bumper', 16 + i * 11, 58 + (i % 3) * 16, 0, 0);
@@ -155,7 +158,7 @@ const wiped = await p.evaluate(() => {
   g.state.coins = 1e6;
   G.buyPart('bumper', 30, 60, 0, 0);
   G.sellPart(g.state.parts[0].uid);
-  G.wipe(); g.running = false;
+  G.wipe(); g.running = false; g.state.settings.autoRun = false; G.endRun();
   return { info: G.undoInfo(), parts: g.state.parts.length };
 });
 ok('a wipe drops the pending undo', wiped.info === null, JSON.stringify(wiped.info));

@@ -57,6 +57,7 @@ const tableRows = await p.evaluate((MIN) => {
   const G = window.IP.game, g = G.g, C = window.IP.util.contrast;
   window.IP.ui.setMenu(false);
   g.state.coins = 1e7;
+  g.state.settings.autoRun = false; G.endRun();   // the table is frozen during a run
   G.buyPart('bumper', 30, 60, 0, 0);
   G.buyPart('bumper', 55, 75, 0, 0);
   window.IP.ui.enterBuild(0);

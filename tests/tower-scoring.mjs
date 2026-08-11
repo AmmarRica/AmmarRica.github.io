@@ -19,10 +19,30 @@ const ok = (l, c, x = '') => { console.log((c ? 'PASS ' : 'FAIL ') + l + (x ? ' 
 const setup = () => p.evaluate(() => {
   const G = window.IP.game, g = G.g;
   g.running = false; g.demo = false;
+  // ⚠️ wipe() starts a run, and the table is frozen during one. End it the
+  // way a player would before building anything.
   G.wipe(); g.running = false;
+  g.state.settings.autoRun = false; G.endRun();
   g.state.coins = 1e7;
   g.mult = 1; g.multBase = 1;
 });
+
+/* ---- the setup can actually build ------------------------------------- */
+// ⚠️ Guard, not a courtesy. Building is now refused during a run, so a bug
+// that leaves the table permanently locked makes every later block crash on
+// `parts[0]` instead of failing by name — and a crash is easy to miss in a
+// harness that greps for "FAIL".
+const canBuild = await p.evaluate(() => {
+  const G = window.IP.game, g = G.g;
+  g.running = false; g.demo = false;
+  G.wipe(); g.running = false;
+  g.state.settings.autoRun = false; G.endRun();
+  g.state.coins = 1e7;
+  const r = G.buyPart('bumper', 30, 60, 0, 0);
+  return { ok: r.ok, err: r.err, locked: G.buildLocked() };
+});
+ok('the table can be built on between runs', canBuild.ok === true,
+  'locked=' + canBuild.locked + ' err=' + canBuild.err);
 
 /* ---- repeats pay less, measured through real scoring ------------------ */
 await setup();
@@ -30,6 +50,7 @@ const decay = await p.evaluate(() => {
   const G = window.IP.game, g = G.g;
   G.buyPart('bumper', 30, 60, 0, 0);
   const inst = g.state.parts[0];
+  if (!inst) throw new Error('setup could not place a part — is the table locked?');
   const pays = [];
   for (let i = 0; i < 12; i++) {
     const before = g.run.score;
@@ -258,6 +279,88 @@ const burst = await p.evaluate(() => {
 ok('every unlock in a burst is recorded, not just the announced ones',
   burst.n === burst.known && burst.n > 20,
   'recorded=' + burst.n + ' of ' + burst.known + ' detected');
+
+/* ---- the table is fixed during a run ---------------------------------- */
+// ⚠️ Asserted in the model, not the UI. Greying out a button leaves the
+// keyboard shortcut, the demo and the console able to build mid-ball, and
+// dropping a part in front of a live ball is a way to score without playing.
+await setup();
+const locked = await p.evaluate(() => {
+  const G = window.IP.game, g = G.g, H = window.IP.data.W.FLOOR_H;
+  g.state.coins = 1e7; g.state.floors = 3;
+  G.buyPart('bumper', 30, 60, 0, 0);           // one part to manipulate later
+  const uid = g.state.parts[0].uid;
+  const before = g.state.parts.length;
+  G.startRun(); g.running = false;             // now in a run
+  const buy = G.buyPart('bumper', 60, 75, 0, 0);
+  const move = G.movePart(uid, 45, 70, 0);
+  const level = G.levelPart(uid);
+  const sell = G.sellPart(uid);
+  const floor = G.buyFloor();
+  const build = window.IP.ui.enterBuild(0);
+  return {
+    active: g.run.active, locked: G.buildLocked(),
+    buy: buy.ok, buyErr: buy.err, move, level, sell, floor,
+    build, buildOn: g.build.on, parts: g.state.parts.length, was: before,
+  };
+});
+ok('a run reports the table as locked', locked.active === true && locked.locked === true);
+ok('buying a part mid-run is refused', locked.buy === false, locked.buyErr);
+ok('the refusal explains itself', /finish the run/i.test(locked.buyErr || ''), locked.buyErr);
+ok('moving a part mid-run is refused', typeof locked.move === 'string', String(locked.move));
+ok('levelling a part mid-run is refused', locked.level === false);
+ok('selling a part mid-run is refused', locked.sell === 0 || locked.sell === false, String(locked.sell));
+ok('buying a floor mid-run is refused', locked.floor === false);
+ok('build mode will not open mid-run', locked.build === false && locked.buildOn === false);
+ok('nothing on the table changed', locked.parts === locked.was, locked.parts + ' vs ' + locked.was);
+
+/* ---- and free again once the run is over ------------------------------ */
+const freed = await p.evaluate(() => {
+  const G = window.IP.game, g = G.g;
+  g.state.settings.autoRun = false;
+  G.endRun();
+  const buy = G.buyPart('bumper', 60, 75, 0, 0);
+  const build = window.IP.ui.enterBuild(0);
+  const on = g.build.on;
+  window.IP.ui.exitBuild();
+  return { locked: G.buildLocked(), buy: buy.ok, on };
+});
+ok('the lock lifts when the run ends', freed.locked === false);
+ok('buying works again between runs', freed.buy === true);
+ok('build mode opens again between runs', freed.on === true);
+
+/* ---- the demo still builds, or the harness cannot play ---------------- */
+const demo = await p.evaluate(() => {
+  const G = window.IP.game, g = G.g;
+  g.state.coins = 1e7;
+  g.demo = true;
+  G.startRun(); g.running = false;
+  const lockedNow = G.buildLocked();
+  const buy = G.buyPart('bumper', 20, 80, 0, 0);
+  g.demo = false;
+  return { lockedNow, active: g.run.active, buy: buy.ok, err: buy.err };
+});
+ok('the self-playing demo is exempt',
+  demo.lockedNow === false && demo.buy === true,
+  'active=' + demo.active + ' locked=' + demo.lockedNow + ' err=' + demo.err);
+
+/* ---- auto-run does not restart under someone mid-build ---------------- */
+// Without this the two rules deadlock: a run restarts 1.4s after the last
+// one, so a player who must build between runs never gets a window.
+const held = await p.evaluate(() => {
+  const U = window.IP.ui, g = window.IP.game.g;
+  U.setMenu(true);
+  const withMenu = U.__t.autoRunHeld();
+  U.setMenu(false);
+  const bare = U.__t.autoRunHeld();
+  g.build.on = true;
+  const withBuild = U.__t.autoRunHeld();
+  g.build.on = false;
+  return { withMenu, bare, withBuild };
+});
+ok('auto-run is held while the menu is open', held.withMenu === true);
+ok('auto-run is held while build mode is on', held.withBuild === true);
+ok('auto-run is free on a bare table', held.bare === false);
 
 console.log(errs.length ? 'PAGE ERRORS:\n' + [...new Set(errs)].join('\n') : 'no page errors');
 await b.close();

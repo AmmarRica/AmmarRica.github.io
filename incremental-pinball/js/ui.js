@@ -55,6 +55,21 @@
     return el('div.sectitle', el('h2', title), sub ? el('p', sub) : null);
   }
 
+  /**
+   * Shown on any tab that can change the table while a ball is in play. The
+   * buttons are disabled anyway, but a disabled button with no explanation
+   * reads as a bug — and "end the run" is an action, so it is offered here.
+   */
+  function buildLockNote() {
+    if (!G.buildLocked()) return null;
+    return el('div.locknote',
+      el('div.lnico', '🔒'),
+      el('div.pinfo',
+        el('b', 'The table is fixed during a run'),
+        el('small', 'Parts cannot be bought, moved, levelled or sold until this run is over.')),
+      btn('END RUN', { cls: 'sm', onclick: () => { G.endRun(); renderMenu(); } }));
+  }
+
   /* ==================================================================
    * HUD
    * =============================================================== */
@@ -269,6 +284,8 @@
 
   function renderShop(root) {
     root.appendChild(section('THE SHOP', 'Buy a part, then drop it anywhere on an unlocked floor. Every part can be moved, levelled and sold later.'));
+    const shopLock = buildLockNote();
+    if (shopLock) root.appendChild(shopLock);
 
     const openFloors = g.state.floors;
     for (const cat of CATS) {
@@ -301,8 +318,8 @@
         } else if (mult > 1) {
           c.appendChild(el('div.mstone', el('small.maxed', '×' + mult + ' — all milestones banked')));
         }
-        c.appendChild(btn(lockedFloor ? 'LOCKED' : 'BUY & PLACE', {
-          cls: 'buy', disabled: !afford,
+        c.appendChild(btn(G.buildLocked() ? 'RUN IN PLAY' : (lockedFloor ? 'LOCKED' : 'BUY & PLACE'), {
+          cls: 'buy', disabled: !afford || G.buildLocked(),
           onclick: () => armPlacement(def.id),
         }));
         grid.appendChild(withNew(c, 'part:' + def.id));
@@ -320,6 +337,7 @@
   }
 
   function armPlacement(id) {
+    if (G.buildLocked()) { toast(G.BUILD_LOCKED_MSG); G.Sfx.play('error'); return; }
     const def = D.PART_BY_ID[id];
     const cost = IP.table.partCost(g.state, def);
     if (g.state.coins < cost) { toast('Not enough coins'); G.Sfx.play('error'); return; }
@@ -335,7 +353,12 @@
    * =============================================================== */
   function renderBuild(root) {
     root.appendChild(section('YOUR TOWER', 'Everything you own, floor by floor. Level parts up for more chips, or move them from the table view.'));
-    root.appendChild(btn('🔧 OPEN BUILD MODE', { cls: 'wide primary', onclick: () => { enterBuild(g.build.floor); setMenu(false); } }));
+    const towerLock = buildLockNote();
+    if (towerLock) root.appendChild(towerLock);
+    root.appendChild(btn('🔧 OPEN BUILD MODE', {
+      cls: 'wide primary', disabled: G.buildLocked(),
+      onclick: () => { if (enterBuild(g.build.floor) !== false) setMenu(false); },
+    }));
 
     if (!g.state.parts.length) {
       root.appendChild(el('div.empty', 'No parts yet. Head to the SHOP and buy a Pop Bumper — it pays for itself fast.'));
@@ -351,7 +374,7 @@
       if (ps.length > 1) {
         const worth = ps.reduce((n, p) => n + IP.table.refundValue(g.state, p), 0);
         root.appendChild(btn('🧹 CLEAR FLOOR ' + f + ' — 🪙 ' + fmt(worth), {
-          cls: 'sm ghost wide',
+          cls: 'sm ghost wide', disabled: G.buildLocked(),
           onclick: () => confirmModal('Clear floor ' + f + '?',
             'Removes all ' + ps.length + ' parts and refunds about 🪙 ' + fmt(worth) + '. You can undo it straight after.',
             () => { G.sellFloor(f); showUndo(); renderMenu(); }),
@@ -375,7 +398,7 @@
           el('small', sub),
         ));
         row.appendChild(btn(maxed ? 'MAX' : '⬆ ' + fmt(cost), {
-          cls: 'sm', disabled: maxed || g.state.coins < cost,
+          cls: 'sm', disabled: maxed || g.state.coins < cost || G.buildLocked(),
           onclick: () => { if (G.levelPart(inst.uid)) renderMenu(); },
         }));
         row.appendChild(btn('📍', {
@@ -386,7 +409,7 @@
         // exist on touch — the one destructive control on the row was the
         // one you had to guess at.
         row.appendChild(btn('💰 ' + fmt(IP.table.refundValue(g.state, inst)), {
-          cls: 'sm ghost', title: 'Remove and refund',
+          cls: 'sm ghost', title: 'Remove and refund', disabled: G.buildLocked(),
           onclick: () => confirmModal('Remove ' + def.name + '?',
             'You get back 🪙 ' + fmt(IP.table.refundValue(g.state, inst)) + ' of what you paid.',
             () => { G.sellPart(inst.uid); showUndo(); renderMenu(); }),
@@ -889,6 +912,7 @@
    * BUILD MODE
    * =============================================================== */
   function enterBuild(floor) {
+    if (G.buildLocked()) { toast(G.BUILD_LOCKED_MSG); return false; }
     g.build.on = true;
     g.build.floor = U.clamp(floor != null ? floor : g.build.floor, 0, g.state.floors - 1);
     $('app').classList.add('building');
@@ -905,6 +929,15 @@
     $('app').classList.remove('building');
     renderBuildBar();
   }
+
+  /**
+   * ⚠️ Auto-run and the no-building-mid-run rule would deadlock each other:
+   * a run restarts 1.4s after the last one ends, so a player who has to build
+   * between runs would never get a window. Auto-run therefore holds while the
+   * menu is open or build mode is on — the moment you go back to the table,
+   * the next ball is on its way.
+   */
+  function autoRunHeld() { return UI.menuOpen || g.build.on; }
 
   /**
    * Bulldozer mode: while it is on, tapping a part removes it. Arming a
@@ -1656,7 +1689,10 @@
     ui.innerHTML = '';
     ui.appendChild(el('div.tleft',
       btn('☰ MENU', { cls: 'chip', onclick: () => setMenu(true) }),
-      btn('🔧 BUILD', { cls: 'chip', onclick: () => { g.build.on ? exitBuild() : enterBuild(g.build.floor); } }),
+      btn('🔧 BUILD', {
+        cls: 'chip' + (G.buildLocked() ? ' off' : ''),
+        onclick: () => { g.build.on ? exitBuild() : enterBuild(g.build.floor); },
+      }),
     ));
     ui.appendChild(el('div.tright',
       btn('👊 NUDGE', { cls: 'chip', id: 'hNudge', onclick: () => G.nudge(U.chance(0.5) ? -1 : 1) }),
@@ -1986,7 +2022,8 @@
   IP.ui = {
     boot, setMenu, renderMenu, toast, modal, closeModal, enterBuild, exitBuild,
     renderBuildBar, refreshPanelButtons, UI, layout,
-    __t: { Install, Update, refreshInstallUI, showUndo, setRaze,
+    autoRunHeld,
+    __t: { Install, Update, refreshInstallUI, showUndo, setRaze, autoRunHeld,
            enforceLock, showChangelog, maybeShowPatchNotes, updateBanner },   // test surface
   };
 

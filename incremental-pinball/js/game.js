@@ -745,7 +745,17 @@
     });
     save();
     if (g.state.settings.autoRun || g.demo) {
-      setTimeout(() => { if (!g.run.active) startRun(); }, g.demo ? 300 : 1400);
+      // Retried rather than cancelled: the player may be mid-build, and the
+      // run should start when they put the tools down, not never.
+      const tryStart = () => {
+        if (g.run.active || g.locked) return;
+        if (!g.demo && IP.ui && IP.ui.autoRunHeld && IP.ui.autoRunHeld()) {
+          setTimeout(tryStart, 600);
+          return;
+        }
+        startRun();
+      };
+      setTimeout(tryStart, g.demo ? 300 : 1400);
     }
   }
 
@@ -873,6 +883,21 @@
     return locked;
   }
 
+  /**
+   * The table is fixed once a run starts.
+   *
+   * Building mid-ball is not a small convenience: parts can be dropped in the
+   * ball's path, a floor bought under it, or the bumper it is about to hit
+   * sold out from under it. Every one of those is a way to score without
+   * playing. So anything that changes the geometry is refused for the length
+   * of a run, and refused in the model rather than only greyed out in the UI —
+   * the demo, the keyboard shortcuts and the tests all go through here too.
+   */
+  function buildLocked() {
+    return !!(g.run.active && !g.demo);
+  }
+  const BUILD_LOCKED_MSG = 'Finish the run first — the table is fixed once a ball is in play';
+
   /** A part without its runtime cache — safe to store, clone or serialise. */
   function cleanPart(p) {
     const q = {};
@@ -885,6 +910,7 @@
   function coins(n) { g.state.coins += n; }
 
   function buyPart(defId, x, y, floor, a) {
+    if (buildLocked()) return { ok: false, err: BUILD_LOCKED_MSG };
     const def = D.PART_BY_ID[defId];
     if (!def) return { ok: false, err: 'Unknown part' };
     if (floor < def.floor) return { ok: false, err: 'Unlocks on floor ' + def.floor };
@@ -911,6 +937,7 @@
    * batch than for the same parts sold individually.
    */
   function removeParts(list, label) {
+    if (buildLocked()) return 0;
     const ids = new Set(list.map((p) => p.uid));
     if (!ids.size) return 0;
     const gone = [];
@@ -962,6 +989,7 @@
    * reported rather than silently ignored, or the button looks broken.
    */
   function undoSell() {
+    if (buildLocked()) return { ok: false, err: BUILD_LOCKED_MSG };
     const u = g.undo;
     if (!u) return { ok: false, err: 'Nothing to put back' };
     if (g.state.coins < u.refund) {
@@ -985,6 +1013,7 @@
   }
 
   function levelPart(uid) {
+    if (buildLocked()) return false;
     const inst = g.state.parts.find((p) => p.uid === uid);
     if (!inst) return false;
     const def = D.PART_BY_ID[inst.id];
@@ -998,6 +1027,7 @@
   }
 
   function movePart(uid, x, y, floor) {
+    if (buildLocked()) return BUILD_LOCKED_MSG;
     const inst = g.state.parts.find((p) => p.uid === uid);
     if (!inst) return 'Missing part';
     const def = D.PART_BY_ID[inst.id];
@@ -1009,6 +1039,7 @@
   }
 
   function rotatePart(uid, delta) {
+    if (buildLocked()) return;
     const inst = g.state.parts.find((p) => p.uid === uid);
     if (!inst) return;
     inst.a = U.norm((inst.a || 0) + delta);
@@ -1068,6 +1099,7 @@
   }
 
   function buyFloor() {
+    if (buildLocked()) return false;
     const k = g.state.floors;
     if (k >= W.MAX_FLOORS) return false;
     const cost = D.floorCost(k);
@@ -1787,6 +1819,7 @@
     buyPart, sellPart, sellFloor, removeParts, undoSell, undoInfo, levelPart, movePart, rotatePart,
     repeatFactor,
     noteVersionSeen, updateDeadline, enforceUpdate, GRACE_DAYS,
+    buildLocked, BUILD_LOCKED_MSG,
     buyUpgrade, buyBall, selectBall, buyTrinket, sellTrinket, buyFloor, prestige,
     buyPerk, polishBall, perk, ballLevel, ballScoreMul, ballCoinMul,
     canAfford, pay, coins, up, idlePerSec, coinRate, baseMult, ballsPerRun,

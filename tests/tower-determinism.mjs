@@ -38,6 +38,7 @@ const run = (seed, opts = {}) => p.evaluate(({ seed, STEPS, burnFx, guard }) => 
   g.demo = false;
   G.wipe();
   g.running = false;
+  g.state.settings.autoRun = false; G.endRun();
 
   g.state.coins = 1e9;
   g.state.floors = 4;

@@ -119,6 +119,15 @@ failing one that was measuring the wrong thing.
   available" on the day the game locks is worse than no warning at all, so
   the test now reads `#updateBar.textContent` at three points on the clock.
 
+## Crashes hide behind grep
+
+- **A sabotage that crashes the suite is not the same as one that fails it.**
+  Making `buildLocked()` always true left every later block dereferencing a
+  part that was never placed, so the run died on a TypeError and a harness
+  grepping for `^FAIL` reported nothing at all. Check the exit code, and give
+  a suite an early guard that the setup could do the thing everything else
+  depends on — the failure then has a name.
+
 ## Reversible actions
 
 - **Testing only the happy path of an undo passes on two different exploits.**

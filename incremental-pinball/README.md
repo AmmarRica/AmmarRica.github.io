@@ -161,6 +161,30 @@ of each ball. So the pressure is on *concentration*: hammering one bumper burns
 it out, while a table that spreads its hits across several never notices. The
 **Bumper Coils** upgrade and levelling a bumper both raise its capacity.
 
+## The table is fixed during a run
+
+Nothing that changes the geometry — buying, placing, moving, rotating,
+levelling, selling, buying a floor, or opening build mode — works while a ball
+is in play. Building mid-ball is not a small convenience: a part can be
+dropped in the ball's path, a floor bought under it, or the bumper it is about
+to hit sold out from under it. Each of those is a way to score without
+playing.
+
+⚠️ The rule lives in `buildLocked()` in **game.js**, not in the UI. Greying out
+a button still leaves the keyboard shortcuts, the demo AI and the console able
+to build mid-ball; the test asserts the refusals through the model for exactly
+that reason. The self-playing demo is the one exemption, or the shared harness
+could not play at all.
+
+**Auto-run and this rule would deadlock each other**: a run restarts 1.4 s
+after the last one ends, so a player who must build between runs would never
+get a window. Auto-run therefore *holds* — not cancels — while the menu is
+open or build mode is on, and starts the moment you go back to the table.
+
+Every tab that can change the table shows why its buttons are dead, with an
+**END RUN** button on it. A disabled control with no explanation reads as a
+bug.
+
 ## Taking things off again
 
 Every part can come back off the table, and there are three ways to do it

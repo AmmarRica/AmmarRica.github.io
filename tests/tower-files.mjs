@@ -13,7 +13,8 @@ const ok = (l, c, x = '') => { console.log((c ? 'PASS ' : 'FAIL ') + l + (x ? ' 
 // Build a distinctive tower to round-trip.
 await p.evaluate(() => {
   const G = window.IP.game, g = G.g;
-  G.wipe(); g.state.coins = 5e5; g.state.floors = 5; G.rebuild();
+  G.wipe(); g.state.settings.autoRun = false; G.endRun();
+  g.state.coins = 5e5; g.state.floors = 5; G.rebuild();
   for (let i = 0; i < 5; i++) G.buyPart('bumper', 20 + i * 12, 60 + (i % 2) * 18, 0, 0);
   G.buyPart('jet', 50, 62, 0, 0.3);
   const inst = g.state.parts[0]; inst.lvl = 4;
@@ -102,7 +103,8 @@ ok('gamepad row hidden with no pad attached', dev.hasPad === false);
 // directly instead of PLACING a part.
 const persisted = await p.evaluate(() => {
   const G = window.IP.game, g = G.g;
-  G.wipe(); g.state.coins = 1e5; G.rebuild();
+  G.wipe(); g.state.settings.autoRun = false; G.endRun();
+  g.state.coins = 1e5; G.rebuild();
   G.buyPart('bumper', 40, 70, 0, 0);
   G.buyPart('jet', 50, 62, 0, 0);
   g.state.stats.totalChips = 4321;

@@ -686,6 +686,26 @@ kbd {
 .unrow .pinfo b { font-size: 11.5px; }
 .unrow .pinfo small { font-size: 9px; letter-spacing: 1px; color: #5a5145; }
 
+/* Why a whole tab's buttons are dead. A disabled control with no explanation
+   reads as a bug. */
+.locknote {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; margin-bottom: 8px;
+  background: var(--cream); color: var(--ink);
+  border: 3px solid var(--ink2); border-radius: 12px;
+  box-shadow: 0 4px 0 var(--ink2);
+}
+.locknote .lnico {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; background: var(--gold); border: 2px solid var(--ink2);
+}
+.locknote .pinfo { flex: 1; display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.locknote .pinfo b { font-size: 11.5px; }
+.locknote .pinfo small { font-size: 9.5px; font-weight: 700; color: #5a5145; }
+
+.btn.chip.off { opacity: .45; }
+
 #toast {
   position: absolute; left: 50%; bottom: 96px; transform: translate(-50%, 12px);
   padding: 8px 14px; font-size: 11px; font-weight: 900; letter-spacing: .6px;

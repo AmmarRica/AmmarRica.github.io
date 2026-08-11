@@ -1227,6 +1227,14 @@
 
   const CHANGELOG = [
     {
+      v: '1.17.0', date: '2026-08-10', title: 'Build between runs',
+      notes: [
+        'The table is fixed once a ball is in play. Buy, move, level and sell between runs instead — there is an END RUN button in the shop if you want to stop early.',
+        'Auto-run waits while you are in the menu or in build mode, so you always get a window to work in.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
+    {
       v: '1.16.0', date: '2026-08-10', title: 'Brown, and a lighthouse',
       notes: [
         'The tower is brown now — every floor is a different shade of it, and the plaques, deck stripes and minimap match.',
