@@ -156,6 +156,36 @@ ok('every floor is named and themed, generated ones included',
 ok('the tower goes beyond the hand-authored floors', floors.max > floors.hand,
   floors.hand + ' authored of ' + floors.max);
 ok('the top floor multiplier is worth climbing for', floors.topMult > 1e5, '×' + floors.topMult);
+/* ---- every level looks like a different level ------------------------- */
+const tints = await p.evaluate(() => {
+  const D = window.IP.data, U = window.IP.util;
+  const n = D.W.MAX_FLOORS;
+  const hex = [], lum = [];
+  for (let k = 0; k < n; k++) { hex.push(D.floorAt(k).tint); lum.push(U.luminance(D.floorAt(k).tint)); }
+  const rgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const dist = (i, j) => { const a = rgb(hex[i]), b = rgb(hex[j]); return Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]); };
+  // Only floors you can see together have to differ. The hue ladder wraps
+  // after ~21 steps, so floor 0 and floor 21 being similar is fine — they
+  // are never on screen at the same time.
+  let worstNear = 1e9, pair = null;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j <= Math.min(i + 3, n - 1); j++) {
+      const d = dist(i, j);
+      if (d < worstNear) { worstNear = d; pair = i + '/' + j; }
+    }
+  }
+  return { n, unique: new Set(hex).size, worstNear: +worstNear.toFixed(1), pair,
+           maxLum: Math.max(...lum), valid: hex.every((h) => /^#[0-9a-f]{6}$/.test(h)) };
+});
+ok('every floor has a valid tint', tints.valid && tints.unique === tints.n,
+  tints.unique + ' unique of ' + tints.n);
+ok('floors within sight of each other are clearly different colours',
+  tints.worstNear > 40, 'closest nearby pair ' + tints.pair + ' at ' + tints.worstNear);
+// ⚠️ Saturation is not free: the table is cream parts on the floor tint, and
+// a bright ground would wash them out. Every tint has to stay dark.
+ok('every tint stays dark enough for cream parts to read',
+  tints.maxLum < 0.18, 'brightest ' + tints.maxLum.toFixed(3));
+
 ok('the top floor stays within reach of its own income',
   floors.reachRatio < 1e11, 'x' + floors.reachRatio.toExponential(1) + ' harder than floor 5');
 

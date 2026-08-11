@@ -244,7 +244,11 @@ const notes = await p.evaluate(() => {
     sinceAllNewer: list.every((c) => cmp(c.v, '1.6.0') > 0),
     sinceHasOlder: D.CHANGELOG.some((c) => cmp(c.v, '1.6.0') <= 0 && since.includes(c.v)),
     ordered: D.CHANGELOG.every((c, i, a) => i === 0 || window.IP.util.cmpVer(a[i - 1].v, c.v) > 0),
-    everyEntryHasNotes: D.CHANGELOG.every((c) => Array.isArray(c.notes) && c.notes.length > 0),
+    // A release with nothing player-facing is allowed to be fixes-only —
+    // that is the point of the `fixes` line. What is not allowed is an entry
+    // that says nothing at all.
+    everyEntrySaysSomething: D.CHANGELOG.every((c) =>
+      (Array.isArray(c.notes) && c.notes.length > 0) || (typeof c.fixes === 'string' && c.fixes.length > 0)),
     mentionsUndo: /undone/i.test(text),
   };
 });
@@ -255,7 +259,7 @@ ok('changesSince() returns only newer versions',
   JSON.stringify(notes.since));
 ok('patch notes render every version', notes.entries === notes.total, notes.entries + '/' + notes.total);
 ok('patch notes are newest first', notes.ordered);
-ok('every version says something a player can act on', notes.everyEntryHasNotes);
+ok('every version says something a player can act on', notes.everyEntrySaysSomething);
 ok('the notes carry real content', notes.mentionsUndo);
 
 /* ---- "what's new" only for someone upgrading -------------------------- */

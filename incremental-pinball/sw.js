@@ -7,7 +7,7 @@
  * sends `Accept: * / *`; classifying by mode alone would serve that fetch
  * from the precache forever and the game could never report a new version.
  * ====================================================================== */
-const CACHE = 'tower-of-chips-v11';
+const CACHE = 'tower-of-chips-v12';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/style.css',
   './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png',

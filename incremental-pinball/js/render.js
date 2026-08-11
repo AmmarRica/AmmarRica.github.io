@@ -438,6 +438,13 @@
           ctx.lineWidth = Math.max(1, wdt * 0.3);
           ctx.strokeStyle = U.rgba('#000000', 0.18);
           ctx.stroke();
+          // Accent stripe in the colour of the floor this deck opens onto, so
+          // crossing into a new level is legible from the table and not only
+          // from the plaque on the wall.
+          const fk = Math.round(c.a.y / D.W.FLOOR_H);
+          ctx.lineWidth = Math.max(1.5, wdt * 0.34);
+          ctx.strokeStyle = U.rgba(D.floorAt(fk).accent, 0.85);
+          ctx.stroke();
         }
       }
       // Gap arrows: show the way up.

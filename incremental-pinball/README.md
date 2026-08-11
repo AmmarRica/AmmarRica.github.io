@@ -62,6 +62,28 @@ clear only once you have actually opened that tab and looked.
 6. **Reforge.** Melt the tower down for gems, which permanently multiply
    everything and buy perks that survive every future reset.
 
+## Every level its own colour
+
+Floor tints come from one ladder, `floorTint(k)` — hue steps of 152° with a
+four-step lightness cycle — so all 40 floors including the generated ones sit
+on the same sequence. Accents are left hand-authored; they carry the floor's
+theme on plaques and the minimap.
+
+The two numbers are tuned against each other, not picked. A golden-angle step
+(137.5°) puts floors *three apart* only ~52° apart in hue, and a lightness
+cycle of 3 gave those same floors identical lightness — floors 21 and 24 came
+out 27 RGB units apart, which reads as the same level. The test asserts the
+real property: any two floors within three of each other differ by at least 40
+units, since those are the ones you can see at once. Distant floors are
+allowed to rhyme.
+
+Tints also have to stay dark — the table is cream parts on the floor ground,
+and a bright tint washes them out. That is asserted too, from both directions.
+
+Each deck carries an accent stripe in the colour of the floor it opens onto,
+so crossing into a new level is legible from the table and not only from the
+plaque on the wall.
+
 ## Forty floors
 
 The tower runs to 40. The first 20 are hand-authored; above that `floorAt(k)`

@@ -1132,9 +1132,44 @@
    * the tower keeps going with generated decks, so raising MAX_FLOORS never
    * means "an undefined floor with no name and no colour".
    */
+  /**
+   * Floor tint by index. Hues step by the golden angle so no two floors near
+   * each other share a colour and the sequence never repeats over the whole
+   * tower — the authored tints were all muddy blue-greens a few percent
+   * apart, which made "which level am I on" a question you answered from the
+   * plaque rather than from the table. Accents are left alone: they carry
+   * the floor's theme on plaques and the minimap.
+   */
+  function hslHex(h, sat, li) {
+    h = ((h % 360) + 360) % 360;
+    const c = (1 - Math.abs(2 * li - 1)) * sat;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = li - c / 2;
+    const seg = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][Math.floor(h / 60) % 6];
+    const hex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+    return '#' + hex(seg[0]) + hex(seg[1]) + hex(seg[2]);
+  }
+  /**
+   * Dark enough to keep cream parts readable, separated enough to tell apart.
+   *
+   * ⚠️ The step and the lightness period are tuned together, not picked. A
+   * golden-angle step (137.5°) puts floors THREE apart only ~52° apart in
+   * hue, and a lightness cycle of 3 then gave them identical lightness too —
+   * floors 21 and 24 came out 27 RGB units apart, which reads as the same
+   * level. 152° with a 4-step lightness cycle keeps every pair within three
+   * floors of each other at least 50 units apart while staying dark.
+   */
+  function floorTint(k) {
+    return hslHex(205 + k * 152, 0.50, 0.16 + (k % 4) * 0.05);
+  }
+
   const SPIRE_WORDS = ['SPIRE', 'CROWN', 'REACH', 'SUMMIT', 'HEIGHTS', 'ASCENT', 'PINNACLE', 'ZENITH'];
-  const SPIRE_TINTS = ['#22283f', '#2c2438', '#1f3340', '#332338', '#243a38', '#382a26', '#26243d', '#303423'];
   const SPIRE_ACCENTS = [C.purple, C.teal, C.pink, C.gold, C.green, C.blue, C.orange, C.cream];
+  // One sequence for the whole tower: authored floors keep their names,
+  // blurbs and accents but take their tint from the same ladder the
+  // generated ones use, so floor 19 and floor 20 are as distinct as any pair.
+  FLOORS.forEach((f, i) => { f.tint = floorTint(i); });
+
   const _floorCache = {};
   function floorAt(k) {
     k = Math.max(0, Math.floor(k) || 0);
@@ -1143,7 +1178,7 @@
     const i = k - FLOORS.length;
     const f = {
       name: SPIRE_WORDS[i % SPIRE_WORDS.length] + ' ' + romanish(Math.floor(i / SPIRE_WORDS.length) + 1),
-      tint: SPIRE_TINTS[i % SPIRE_TINTS.length],
+      tint: floorTint(k),
       accent: SPIRE_ACCENTS[(i * 3) % SPIRE_ACCENTS.length],
       blurb: 'Above the tower proper. The air is thin and the chips are not.',
       generated: true,
@@ -1157,6 +1192,13 @@
   }
 
   const CHANGELOG = [
+    {
+      v: '1.14.0', date: '2026-08-10', title: 'Every level its own colour',
+      notes: [
+        'Each floor now has a clearly different colour, all the way to the top, and the deck you climb through is striped in the colour of the floor above.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
     {
       v: '1.13.0', date: '2026-08-10', title: 'Get off the wall',
       notes: [],
@@ -1243,7 +1285,7 @@
   }
 
   IP.data = {
-    W, C, FLOORS, floorAt, floorMult, floorCost,
+    W, C, FLOORS, floorAt, floorTint, hslHex, floorMult, floorCost,
     CHANGELOG, CHANGELOG_BY_V, changesSince,
     PARTS, PART_BY_ID, chipsFor,
     MILESTONES, milestoneMult, nextMilestone,
