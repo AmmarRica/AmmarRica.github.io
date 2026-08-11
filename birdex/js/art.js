@@ -116,9 +116,26 @@
     spoonbill: { bx: 54, by: 46, brx: 25, bry: 15, brot: -5, nx: 23, ny: -29, hr: 10,
       neck: { w: 8 }, bill: { len: 26, dep: 5, type: 'spatula' }, tail: { len: 16, w: 9, ang: 192 },
       wing: { rx: 18, ry: 10, dx: -3, dy: 0, rot: -8 }, legs: { len: 38, w: 2.8, type: 'wade' } },
+    /* Same body as a spoonbill, but the bill is the whole point: a long
+     * sickle rather than a spatula. */
+    ibis: { bx: 54, by: 46, brx: 25, bry: 15, brot: -5, nx: 23, ny: -29, hr: 10,
+      neck: { w: 8 }, bill: { len: 26, dep: 4, curve: 10, type: 'needle' }, tail: { len: 16, w: 9, ang: 192 },
+      wing: { rx: 18, ry: 10, dx: -3, dy: 0, rot: -8 }, legs: { len: 38, w: 2.8, type: 'wade' } },
     shorebird: { bx: 54, by: 50, brx: 22, bry: 13, brot: -8, nx: 19, ny: -20, hr: 9.5,
       neck: { w: 6 }, bill: { len: 20, dep: 3, type: 'needle' }, tail: { len: 14, w: 8, ang: 190 },
       wing: { rx: 16, ry: 8, dx: -2, dy: 0, rot: -8 }, legs: { len: 26, w: 2.2, type: 'wade' } },
+    /* Snipe and woodcock: all bill, short legs, hunched into the grass. */
+    snipe: { bx: 54, by: 54, brx: 23, bry: 16, brot: -8, nx: 18, ny: -18, hr: 11,
+      bill: { len: 32, dep: 4, type: 'dagger' }, tail: { len: 11, w: 9, ang: 194 },
+      wing: { rx: 16, ry: 9, dx: -3, dy: 1, rot: -8 }, legs: { len: 11, w: 2.6, type: 'wade' } },
+    /* Nightjar: horizontal on a branch, flat head, tiny bill over a huge gape. */
+    nightjar: { bx: 54, by: 56, brx: 27, bry: 12, brot: -6, nx: 23, ny: -9, hr: 11,
+      bill: { len: 5, dep: 6, type: 'broad' }, tail: { len: 26, w: 11, ang: 178 },
+      wing: { rx: 22, ry: 7, dx: -4, dy: -1, rot: -8 }, legs: { len: 5, w: 2.2, type: 'perch' }, eye: 3.2 },
+    /* Curlews and whimbrels: a shorebird whose bill is the field mark. */
+    curlew: { bx: 54, by: 50, brx: 23, bry: 14, brot: -8, nx: 20, ny: -21, hr: 10,
+      neck: { w: 6 }, bill: { len: 26, dep: 3.4, curve: 11, type: 'needle' }, tail: { len: 14, w: 8, ang: 190 },
+      wing: { rx: 16, ry: 9, dx: -2, dy: 0, rot: -8 }, legs: { len: 26, w: 2.4, type: 'wade' } },
     plover: { bx: 54, by: 52, brx: 22, bry: 15, brot: -10, nx: 18, ny: -20, hr: 11,
       bill: { len: 9, dep: 4, type: 'dagger' }, tail: { len: 14, w: 8, ang: 190 },
       wing: { rx: 16, ry: 9, dx: -2, dy: 0, rot: -8 }, legs: { len: 20, w: 2.4, type: 'wade' } },

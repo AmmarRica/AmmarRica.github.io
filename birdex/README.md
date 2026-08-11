@@ -8,7 +8,7 @@ Live at [/birdex/](https://ammarrica.github.io/birdex/).
 
 ## What it does
 
-**Dex** — 201 species. Undiscovered ones show a locked silhouette and a number;
+**Dex** — 413 species, weighted heavily towards North America. Undiscovered ones show a locked silhouette and a number;
 once you log one, the card fills in with your photograph. Search by name,
 family or Latin name; filter by what you have, what you are missing, and what is
 findable where you are standing right now.
@@ -36,10 +36,10 @@ Everything works offline after the first visit, and it installs as a PWA.
 
 **Download the single file.** Settings → Offline copy → *Download Birdex*, or
 grab [`birdex-offline.html`](birdex-offline.html) from this folder. It is one
-~320 kB HTML file with the stylesheet, all ten scripts and the icon inlined.
-Save it anywhere and open it — no server, no install, no network. All 201
-entries, the rarity model and the camera flow work exactly as they do online,
-and your sightings persist across quitting the browser.
+HTML file with the stylesheet, every script and the icon inlined. Save it
+anywhere and open it — no server, no install, no network. All 413 entries, the
+rarity model and the camera flow work exactly as they do online, and your
+sightings persist across quitting the browser.
 
 Chrome, Edge and Firefox allow local files to use browser storage. Safari does
 not, so if you want to open it in Safari, serve the folder instead:
@@ -84,16 +84,17 @@ useful answer.
   through the floor rather than to zero — a wintering owl in July is a genuine
   find, not an impossibility, and the tier reflects that.
 
-Coverage is deepest in North America (100+ species in every region). The
-European regions carry widespread residents and visitors rather than a complete
-list.
+Coverage is deepest in North America, where every region carries 160-310
+species — enough that most of what you meet on an ordinary outing is in the
+dex. The European regions carry widespread residents and visitors rather than a
+complete list.
 
 ## Dex art
 
-Shipping 201 bird photographs is not an option in a static app, so every entry
+Shipping 413 bird photographs is not an option in a static app, so every entry
 has a generated portrait: each species carries a body plan (`shape`) and a
 four-colour palette, and `js/art.js` assembles a stylised bird from parts —
-body, wing, neck, head, bill, tail, legs. There are 45 body plans, from
+body, wing, neck, head, bill, tail, legs. There are 48 body plans, from
 `hummingbird` to `spoonbill`. An optional fifth colour paints the wing for
 birds whose wing patch is the field mark.
 
@@ -106,7 +107,7 @@ you it is a duck without telling you which duck.
 index.html               app shell
 css/style.css            paper-warm light theme, deep forest dark
 js/core.js               regions, seasons, abundance, rarity, registry
-js/species-*.js          the 201 dex entries
+js/species-*.js          the 413 dex entries
 js/art.js                parametric portrait generator
 js/store.js              IndexedDB: sightings, photos, collections, settings
 js/photos.js             import pipeline — re-encode, thumbnail
