@@ -226,6 +226,31 @@ Content lives in `data.js` and nothing else needs to know about it: a part is a
 `build()` that pushes colliders and an `onHit(A, inst, ball)` that talks to the
 game API, so adding one is a single object literal.
 
+## The mark
+
+`icon.svg` is the single source: the PNGs are rendered from it, and the menu
+header shows the same file rather than a stand-in emoji. Three shapes — a
+tower of coloured levels, a ball, a flipper — designed at **32px first**,
+because that is where an app icon actually lives.
+
+Two things were tried and dropped, both because they only worked large:
+
+- **Openings cut into the deck bands**, echoing the real table. At icon size a
+  band with a hole in it does not read as an opening, it reads as a broken
+  stripe, and the tapering edge left stray slivers.
+- **A dotted trajectory** from flipper to ball. Any dash pattern fine enough
+  to look like a trail becomes speckle when scaled down.
+
+The taper matters: a strong one reads as a traffic cone, none at all reads as
+a door. The narrow crown is what settles it as a tower.
+
+⚠️ The maskable icon is a *different render*, not the same file renamed.
+Launchers crop to a circle and only the centre 80% is guaranteed, so the
+artwork is scaled about its measured bounding-box centre (`getBBox()`, not an
+eyeballed number) to fit the safe circle, over the same gradient full-bleed —
+pasting the normal icon smaller onto a flat panel leaves a visible seam where
+its sky meets the ground.
+
 ## Installing it
 
 The game is a PWA. On Chrome/Edge/Android a green **Install** banner appears

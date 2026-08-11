@@ -1193,6 +1193,13 @@
 
   const CHANGELOG = [
     {
+      v: '1.15.0', date: '2026-08-10', title: 'New icon',
+      notes: [
+        'A new app icon: a flipper firing a ball up a tower of coloured levels. The old one was a scatter of dashes that turned to mush on a home screen.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
+    {
       v: '1.14.0', date: '2026-08-10', title: 'Every level its own colour',
       notes: [
         'Each floor now has a clearly different colour, all the way to the top, and the deck you climb through is striped in the colour of the floor above.',

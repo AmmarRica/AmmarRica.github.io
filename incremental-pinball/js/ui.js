@@ -168,7 +168,10 @@
   function buildMenu() {
     const head = $('menuHead');
     head.innerHTML = '';
-    head.appendChild(el('div.brand', el('span.bmark', '🏛'), el('span', 'TOWER OF CHIPS')));
+    // The app icon, not a stand-in emoji: one source of truth for the mark.
+    head.appendChild(el('div.brand',
+      el('img.bmark', { src: 'icon.svg', alt: '', width: 26, height: 26 }),
+      el('span', 'TOWER OF CHIPS')));
     head.appendChild(el('div.purse',
       el('div.pcoin', el('span', '🪙'), el('b#mCoins', '0')),
       el('div.pgem', el('span', '💎'), el('b#mGems', '0')),

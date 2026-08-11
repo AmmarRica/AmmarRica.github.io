@@ -273,9 +273,8 @@ html, body {
 }
 .brand { display: flex; align-items: center; gap: 6px; font-size: 12px; letter-spacing: 1px; font-weight: 900; white-space: nowrap; }
 .bmark {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border-radius: 7px;
-  background: var(--gold); color: var(--ink); border: 2.5px solid var(--ink2);
+  display: block; width: 26px; height: 26px; flex: 0 0 auto;
+  border-radius: 7px; border: 2.5px solid var(--ink2);
 }
 .purse { margin-left: auto; display: flex; gap: 6px; }
 .pcoin, .pgem {
