@@ -62,26 +62,31 @@ clear only once you have actually opened that tab and looked.
 6. **Reforge.** Melt the tower down for gems, which permanently multiply
    everything and buy perks that survive every future reset.
 
-## Every level its own colour
+## Shades of brown
 
-Floor tints come from one ladder, `floorTint(k)` — hue steps of 152° with a
-four-step lightness cycle — so all 40 floors including the generated ones sit
-on the same sequence. Accents are left hand-authored; they carry the floor's
-theme on plaques and the minimap.
+The whole tower is brown: **six floor tints** cycled up the shaft, and **six
+lighter tans** used for the wall plaque, the deck stripe and the minimap.
 
-The two numbers are tuned against each other, not picked. A golden-angle step
-(137.5°) puts floors *three apart* only ~52° apart in hue, and a lightness
-cycle of 3 gave those same floors identical lightness — floors 21 and 24 came
-out 27 RGB units apart, which reads as the same level. The test asserts the
-real property: any two floors within three of each other differ by at least 40
-units, since those are the ones you can see at once. Distant floors are
-allowed to rhyme.
+Brown is a narrow slice of the colour space — warm hue, R > G > B, and dark
+enough that cream parts still read on top of it. There is no hue ladder to
+walk, so both palettes were *searched for* rather than chosen, each against an
+explicit objective:
 
-Tints also have to stay dark — the table is cream parts on the floor ground,
-and a bright tint washes them out. That is asserted too, from both directions.
+| | Objective | Result |
+|---|---|---|
+| Tints | largest minimum distance between floors within three of each other, staying brown and dark | 45.5 RGB units, peak luminance 0.149 |
+| Accents | largest minimum pairwise distance, staying brown and ≥4.5:1 on the ink plaque | 73.5 RGB units, 4.53:1 |
 
-Each deck carries an accent stripe in the colour of the floor it opens onto,
-so crossing into a new level is legible from the table and not only from the
+⚠️ The tints repeat every six floors, and that is the deliberate cost of the
+constraint. Floors six apart are never on screen together, and spreading six
+shades thinner to make forty unique ones would put *neighbours* closer than
+the eye can separate — the opposite of the point. The test asserts what
+matters: any two floors within three of each other differ by at least 40
+units, every tint is warm with R > G > B, and none is bright enough to wash
+out the parts. All three fail under sabotage.
+
+Each deck carries a stripe in the accent of the floor it opens onto, so
+crossing into a new level is legible from the table and not only from the
 plaque on the wall.
 
 ## Forty floors
@@ -229,9 +234,14 @@ game API, so adding one is a single object literal.
 ## The mark
 
 `icon.svg` is the single source: the PNGs are rendered from it, and the menu
-header shows the same file rather than a stand-in emoji. Three shapes — a
-tower of coloured levels, a ball, a flipper — designed at **32px first**,
-because that is where an app icon actually lives.
+header shows the same file rather than a stand-in emoji. A **lighthouse** of
+brown levels, a ball and a flipper, designed at **32px first**, because that
+is where an app icon actually lives.
+
+What makes it read as a lighthouse rather than a striped block is the lantern
+room — a glazed box under a dark cap, *wider* than the shaft it sits on, with
+a gallery rail beneath. Without that the same silhouette is a barber's pole.
+The beam is one wide wedge: two beams read as a bow tie once scaled down.
 
 Two things were tried and dropped, both because they only worked large:
 

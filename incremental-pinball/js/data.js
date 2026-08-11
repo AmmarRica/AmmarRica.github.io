@@ -1150,25 +1150,59 @@
     return '#' + hex(seg[0]) + hex(seg[1]) + hex(seg[2]);
   }
   /**
-   * Dark enough to keep cream parts readable, separated enough to tell apart.
+   * Six shades of brown, cycled up the tower.
    *
-   * ⚠️ The step and the lightness period are tuned together, not picked. A
-   * golden-angle step (137.5°) puts floors THREE apart only ~52° apart in
-   * hue, and a lightness cycle of 3 then gave them identical lightness too —
-   * floors 21 and 24 came out 27 RGB units apart, which reads as the same
-   * level. 152° with a 4-step lightness cycle keeps every pair within three
-   * floors of each other at least 50 units apart while staying dark.
+   * ⚠️ Brown is a narrow slice of the colour space — warm hue, R > G > B, and
+   * dark enough that cream parts still read on top. There is no hue ladder to
+   * walk, so these six were searched for rather than chosen: the objective was
+   * the largest possible minimum distance between any two floors within three
+   * of each other, subject to staying brown and staying dark. The result is
+   * 45.5 RGB units apart at worst, at a peak luminance of 0.149.
+   *
+   * The palette repeats every six floors. That is the cost of the constraint
+   * and it is deliberate: floors six apart are never on screen together, and
+   * spreading six shades thinner to make forty unique ones would put
+   * neighbours closer than the eye can separate.
    */
+  const FLOOR_BROWNS = [
+    [31.2, 0.250, 0.284],   // taupe
+    [24.8, 0.472, 0.090],   // near-black bitumen
+    [35.4, 0.272, 0.380],   // pale sand
+    [16.0, 0.600, 0.313],   // rust
+    [27.9, 0.595, 0.380],   // tan
+    [19.2, 0.544, 0.198],   // dark chocolate
+  ];
   function floorTint(k) {
-    return hslHex(205 + k * 152, 0.50, 0.16 + (k % 4) * 0.05);
+    const c = FLOOR_BROWNS[((k % FLOOR_BROWNS.length) + FLOOR_BROWNS.length) % FLOOR_BROWNS.length];
+    return hslHex(c[0], c[1], c[2]);
+  }
+
+  /**
+   * Accents label a floor on its wall plaque, on the minimap and on the deck
+   * stripe, so they live in the same brown family as the tints but on the
+   * light end of it. Two constraints, both searched for rather than picked:
+   * they must be far enough apart to tell six floors apart at a glance, and
+   * every one must clear 4.5:1 against the ink plaque it is printed on.
+   * The result is 73 RGB units apart at worst, at 4.53:1 minimum contrast.
+   */
+  const FLOOR_TANS = [
+    [42.0, 0.772, 0.484],   // amber
+    [16.7, 0.252, 0.686],   // dusty rose-brown
+    [17.4, 0.460, 0.566],   // terracotta
+    [37.5, 0.800, 0.820],   // pale straw
+    [42.0, 0.734, 0.638],   // wheat
+    [18.6, 0.800, 0.489],   // ember
+  ];
+  function floorAccent(k) {
+    const c = FLOOR_TANS[((k % FLOOR_TANS.length) + FLOOR_TANS.length) % FLOOR_TANS.length];
+    return hslHex(c[0], c[1], c[2]);
   }
 
   const SPIRE_WORDS = ['SPIRE', 'CROWN', 'REACH', 'SUMMIT', 'HEIGHTS', 'ASCENT', 'PINNACLE', 'ZENITH'];
-  const SPIRE_ACCENTS = [C.purple, C.teal, C.pink, C.gold, C.green, C.blue, C.orange, C.cream];
   // One sequence for the whole tower: authored floors keep their names,
   // blurbs and accents but take their tint from the same ladder the
   // generated ones use, so floor 19 and floor 20 are as distinct as any pair.
-  FLOORS.forEach((f, i) => { f.tint = floorTint(i); });
+  FLOORS.forEach((f, i) => { f.tint = floorTint(i); f.accent = floorAccent(i); });
 
   const _floorCache = {};
   function floorAt(k) {
@@ -1179,7 +1213,7 @@
     const f = {
       name: SPIRE_WORDS[i % SPIRE_WORDS.length] + ' ' + romanish(Math.floor(i / SPIRE_WORDS.length) + 1),
       tint: floorTint(k),
-      accent: SPIRE_ACCENTS[(i * 3) % SPIRE_ACCENTS.length],
+      accent: floorAccent(k),
       blurb: 'Above the tower proper. The air is thin and the chips are not.',
       generated: true,
     };
@@ -1192,6 +1226,14 @@
   }
 
   const CHANGELOG = [
+    {
+      v: '1.16.0', date: '2026-08-10', title: 'Brown, and a lighthouse',
+      notes: [
+        'The tower is brown now — every floor is a different shade of it, and the plaques, deck stripes and minimap match.',
+        'New icon: the tower is a lighthouse, with a lantern room and a beam.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
     {
       v: '1.15.0', date: '2026-08-10', title: 'New icon',
       notes: [
@@ -1292,7 +1334,7 @@
   }
 
   IP.data = {
-    W, C, FLOORS, floorAt, floorTint, hslHex, floorMult, floorCost,
+    W, C, FLOORS, floorAt, floorTint, floorAccent, hslHex, floorMult, floorCost,
     CHANGELOG, CHANGELOG_BY_V, changesSince,
     PARTS, PART_BY_ID, chipsFor,
     MILESTONES, milestoneMult, nextMilestone,

@@ -174,11 +174,16 @@ const tints = await p.evaluate(() => {
       if (d < worstNear) { worstNear = d; pair = i + '/' + j; }
     }
   }
+  // Brown means warm and R > G > B. Asserted, because "shades of brown" is
+  // the actual requirement and a palette can drift olive or red while still
+  // passing a distance check.
+  const isBrown = (h) => { const c = rgb(h); return c[0] > c[1] + 8 && c[1] > c[2] + 4; };
   return { n, unique: new Set(hex).size, worstNear: +worstNear.toFixed(1), pair,
-           maxLum: Math.max(...lum), valid: hex.every((h) => /^#[0-9a-f]{6}$/.test(h)) };
+           maxLum: Math.max(...lum), valid: hex.every((h) => /^#[0-9a-f]{6}$/.test(h)),
+           allBrown: hex.every(isBrown), notBrown: hex.filter((h) => !isBrown(h))[0] || null };
 });
-ok('every floor has a valid tint', tints.valid && tints.unique === tints.n,
-  tints.unique + ' unique of ' + tints.n);
+ok('every floor has a valid tint', tints.valid, tints.unique + ' shades over ' + tints.n + ' floors');
+ok('every floor is a shade of brown', tints.allBrown, tints.notBrown || 'all warm, R>G>B');
 ok('floors within sight of each other are clearly different colours',
   tints.worstNear > 40, 'closest nearby pair ' + tints.pair + ' at ' + tints.worstNear);
 // ⚠️ Saturation is not free: the table is cream parts on the floor tint, and
