@@ -119,6 +119,14 @@ failing one that was measuring the wrong thing.
   available" on the day the game locks is worse than no warning at all, so
   the test now reads `#updateBar.textContent` at three points on the clock.
 
+## Suites that cannot fail
+
+- **A suite that only `console.log`s cannot fail a run, and nobody notices.**
+  `tower-pwa.mjs` and `tower-touch.mjs` both printed their findings without
+  ever setting `process.exitCode`, so a sub-44px tap target or an unreachable
+  button was reported and passed — for as long as each file had existed. Both
+  now assert. If a suite prints no `PASS` lines at all, that is the symptom.
+
 ## Crashes hide behind grep
 
 - **A sabotage that crashes the suite is not the same as one that fails it.**

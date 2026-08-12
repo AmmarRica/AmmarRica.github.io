@@ -88,7 +88,7 @@ ok('rebuilt through the real constructor', junk.uid === true);
 
 // Device controls appear only where they have a job.
 const dev = await p.evaluate(() => {
-  window.IP.ui.UI.tab = 'stats'; window.IP.game.g.state.stats.runs = 2; window.IP.ui.setMenu(true);
+  window.IP.ui.UI.tab = 'app'; window.IP.game.g.state.stats.runs = 2; window.IP.ui.setMenu(true);
   const rows = [...document.querySelectorAll('#menuBody .prow')].map(r => r.textContent);
   return { hasExport: rows.some(t => /Export save/.test(t)), hasImport: rows.some(t => /Import save/.test(t)),
            hasPad: rows.some(t => /Gamepad/.test(t)) };

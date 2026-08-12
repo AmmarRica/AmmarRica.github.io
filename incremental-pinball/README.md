@@ -43,6 +43,7 @@ reveals itself at the pace you are actually earning:
 | BUILD / TASKS tabs | first and second part placed |
 | UPGRADES · TOWER · BALLS · TRINKETS | 4K chips · first floor climbed · 20K · 90K |
 | PANELS | your first paddle |
+| STATS · FEEL · APP | second run, or your first drain |
 
 Each list ends with a single **LOCKED** card showing what the next reveal costs
 and how close you are — enough to promise more without becoming a catalogue.
@@ -211,6 +212,26 @@ since been built over; both cases say which. Undoing costs nothing net, so
 sell → undo → sell cannot be farmed for coins.
 
 Trinkets can also be removed, but that one is not undoable and says so.
+
+## Three tabs instead of one
+
+STATS had grown into stats, medals, every setting, the app section, save
+files, layout sharing, device controls and a wipe button — one scroll, and
+nobody looks for "screen shake" under a page of medals. It is now:
+
+| Tab | Holds |
+|---|---|
+| **STATS** | the numbers and the medals |
+| **FEEL** | sound & motion (sound, shake, particles, parallax), play (auto-run, flipper assist), and HOW TO PLAY |
+| **APP** | the build and updates, save files, layout sharing, device controls, wipe save |
+
+All three unlock together. Splitting one crowded tab into three is only an
+improvement if all three are reachable at the same moment; gating them apart
+would just move the crowding around.
+
+⚠️ `tower-touch.mjs` asserts *where each control ended up*, not that three
+tabs exist — a split that left everything in one of them would pass the
+weaker check.
 
 ## Two screens
 

@@ -1006,6 +1006,11 @@
     trinkets: (s) => lifetime(s) >= 90000,
     panels: (s) => (s.stats.paddles || 0) >= 1,
     stats: (s) => s.stats.runs >= 2 || s.stats.drains >= 1,
+    // FEEL and APP arrive with STATS. Splitting one crowded tab into three
+    // is only an improvement if all three are reachable at the same moment;
+    // gating them apart would just move the crowding around.
+    feel: (s) => s.stats.runs >= 2 || s.stats.drains >= 1,
+    app: (s) => s.stats.runs >= 2 || s.stats.drains >= 1,
   };
   function tabUnlocked(id, s) {
     const f = TAB_GATE[id];
@@ -1226,6 +1231,13 @@
   }
 
   const CHANGELOG = [
+    {
+      v: '1.19.0', date: '2026-08-10', title: 'Three tabs, not one',
+      notes: [
+        'STATS was holding stats, medals, every setting, the app section, save files, layout sharing, device controls and the wipe button on one scroll. It is now three: STATS for the numbers, FEEL for sound and motion, APP for the build, your files and this device.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
     {
       v: '1.18.0', date: '2026-08-10', title: 'Share your table',
       notes: [

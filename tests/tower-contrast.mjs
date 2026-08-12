@@ -21,7 +21,7 @@ await p.evaluate(() => {
 // Measured from COMPUTED styles, not from the palette constants — the point
 // is what actually lands on screen after the cascade.
 const worst = [];
-for (const tab of ['shop', 'build', 'balls', 'trinkets', 'tasks', 'upgrades', 'tower', 'panels', 'stats']) {
+for (const tab of ['shop', 'build', 'balls', 'trinkets', 'tasks', 'upgrades', 'tower', 'panels', 'stats', 'feel', 'app']) {
   await p.evaluate((t) => { window.IP.ui.UI.tab = t; window.IP.ui.setMenu(true); }, tab);
   await p.waitForTimeout(180);
   const rows = await p.evaluate((MIN) => {

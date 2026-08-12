@@ -38,7 +38,7 @@ await p.click('.macts .btn.primary');
 
 // --- install button only exists while the prompt is live -----------------
 ok('no install card before the event', 0 === await p.evaluate(()=>{
-  window.IP.ui.UI.tab='stats'; window.IP.game.g.state.stats.runs=2; window.IP.ui.renderMenu();
+  window.IP.ui.UI.tab='app'; window.IP.game.g.state.stats.runs=2; window.IP.ui.renderMenu();
   return document.querySelectorAll('.card.installcard').length; }));
 ok('banner hidden before the event', false === await p.evaluate(()=>document.getElementById('installBar').classList.contains('on')));
 await p.evaluate(()=>{
@@ -49,14 +49,14 @@ await p.evaluate(()=>{
 });
 await p.waitForTimeout(300);
 ok('banner appears on the event', true === await p.evaluate(()=>document.getElementById('installBar').classList.contains('on')));
-await p.evaluate(()=>{ window.IP.ui.UI.tab='stats'; window.IP.ui.renderMenu(); });
+await p.evaluate(()=>{ window.IP.ui.UI.tab='app'; window.IP.ui.renderMenu(); });
 ok('install card appears', 'INSTALL NOW' === await p.evaluate(()=>{ const c=document.querySelector('.card.installcard'); return c && c.querySelector('.btn').textContent; }));
 await p.screenshot({ path: SHOT+'install-bar.png' });
 await p.evaluate(()=>document.querySelector('.card.installcard .btn').click());
 await p.waitForTimeout(400);
 ok('prompt() fired', true === await p.evaluate(()=>!!window.__promptCalled));
 ok('banner hides once consumed', false === await p.evaluate(()=>document.getElementById('installBar').classList.contains('on')));
-await p.evaluate(()=>{ window.IP.ui.UI.tab='stats'; window.IP.ui.renderMenu(); });
+await p.evaluate(()=>{ window.IP.ui.UI.tab='app'; window.IP.ui.renderMenu(); });
 ok('card gone once consumed', 0 === await p.evaluate(()=>document.querySelectorAll('.card.installcard').length));
 
 // --- sabotage check: a dead always-on button would pass the above --------

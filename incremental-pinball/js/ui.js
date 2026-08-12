@@ -147,6 +147,8 @@
     { id: 'tower', name: 'TOWER', emoji: '🏗️' },
     { id: 'panels', name: 'PANELS', emoji: '🎛️' },
     { id: 'stats', name: 'STATS', emoji: '📊' },
+    { id: 'feel', name: 'FEEL', emoji: '🎚️' },
+    { id: 'app', name: 'APP', emoji: '📱' },
   ];
 
   /* ------------------------------------------------------------------
@@ -247,7 +249,7 @@
     ({
       shop: renderShop, build: renderBuild, balls: renderBalls,
       trinkets: renderTrinkets, upgrades: renderUpgrades, tower: renderTower,
-      panels: renderPanels, stats: renderStats, tasks: renderTasks,
+      panels: renderPanels, stats: renderStats, feel: renderFeel, app: renderApp, tasks: renderTasks,
     }[UI.tab] || renderShop)(body);
     UI.viewedTab = UI.tab;
     refreshTabDots();
@@ -813,35 +815,66 @@
     }
     root.appendChild(mg);
 
-    root.appendChild(el('div.cathead', { style: { '--accent': D.C.teal } }, 'SETTINGS'));
-    const st = el('div.plist');
-    const toggles = [
-      ['sound', 'Sound effects'], ['shake', 'Screen shake'],
-      ['particles', 'Particles'], ['depth', 'Parallax depth layers'],
-      ['autoRun', 'Start the next run automatically'],
-      ['assist', 'Flipper assist (needs the Autoplunger upgrade)'],
+  }
+
+  /* ==================================================================
+   * TAB: FEEL — how the game sounds, moves and plays
+   *
+   * Split out of STATS, which had grown into stats, medals, settings, the
+   * app section, save files, layout sharing, device controls and a wipe
+   * button on one scroll. Nobody looks for "screen shake" under a page of
+   * medals.
+   * =============================================================== */
+  function renderFeel(root) {
+    root.appendChild(section('FEEL', 'How the game sounds, moves and plays. Nothing here changes your tower.'));
+
+    const groups = [
+      { head: 'SOUND & MOTION', accent: D.C.teal, keys: [
+        ['sound', 'Sound effects', 'Bumpers, flippers, coins'],
+        ['shake', 'Screen shake', 'The table kicks when you hit something hard'],
+        ['particles', 'Particles', 'Sparks, coins and confetti'],
+        ['depth', 'Parallax depth layers', 'The skyline, girders and beams behind and in front of the table'],
+      ] },
+      { head: 'PLAY', accent: D.C.gold, keys: [
+        ['autoRun', 'Start the next run automatically', 'Holds while you are in the menu or building'],
+        ['assist', 'Flipper assist', 'Needs the Autoplunger upgrade'],
+      ] },
     ];
-    for (const [k, name] of toggles) {
-      const row = el('div.prow');
-      row.appendChild(el('div.pinfo', el('b', name)));
-      const b = btn(g.state.settings[k] ? 'ON' : 'OFF', {
-        cls: 'sm' + (g.state.settings[k] ? '' : ' ghost'),
-        onclick: () => {
-          g.state.settings[k] = !g.state.settings[k];
-          if (k === 'sound') G.Sfx.enabled = g.state.settings[k];
-          G.save(); renderMenu();
-        },
-      });
-      row.appendChild(b);
-      st.appendChild(row);
+    for (const grp of groups) {
+      root.appendChild(el('div.cathead', { style: { '--accent': grp.accent } }, grp.head));
+      const st = el('div.plist');
+      for (const [k, name, note] of grp.keys) {
+        const row = el('div.prow');
+        row.appendChild(el('div.pinfo', el('b', name), note ? el('small', note) : null));
+        row.appendChild(btn(g.state.settings[k] ? 'ON' : 'OFF', {
+          cls: 'sm' + (g.state.settings[k] ? '' : ' ghost'),
+          onclick: () => {
+            g.state.settings[k] = !g.state.settings[k];
+            if (k === 'sound') G.Sfx.enabled = g.state.settings[k];
+            G.save(); renderMenu();
+          },
+        }));
+        st.appendChild(row);
+      }
+      root.appendChild(st);
     }
-    root.appendChild(st);
+
+    root.appendChild(el('div.dangerrow',
+      btn('HOW TO PLAY', { cls: 'ghost wide', onclick: showTutorial }),
+    ));
+  }
+
+  /* ==================================================================
+   * TAB: APP — the build, the files, the device
+   * =============================================================== */
+  function renderApp(root) {
+    root.appendChild(section('APP', 'The build you are running, your save, and this device.'));
 
     // ⚠️ `beforeinstallprompt` cannot be summoned — it arrives once, as an
     // event. So the install button only exists while that event is live, or
     // on iOS where the manual route is the only route. An always-on button
     // is dead in standalone and in browsers that will never offer it.
-    root.appendChild(el('div.cathead', { style: { '--accent': D.C.green } }, 'APP'));
+    root.appendChild(el('div.cathead', { style: { '--accent': D.C.green } }, 'THIS BUILD'));
     if (Install.offerable()) {
       const inst = card({ cls: 'installcard', accent: D.C.green });
       inst.appendChild(el('div.pname', '📲 Install as an app'));
@@ -916,8 +949,7 @@
     }
 
     root.appendChild(el('div.dangerrow',
-      btn('HOW TO PLAY', { cls: 'ghost', onclick: showTutorial }),
-      btn('WIPE SAVE', { cls: 'danger', onclick: () => confirmModal('Wipe your save?', 'Everything goes: coins, parts, floors, gems. There is no undo.', () => { G.wipe(); renderMenu(); }) }),
+      btn('WIPE SAVE', { cls: 'danger wide', onclick: () => confirmModal('Wipe your save?', 'Everything goes: coins, parts, floors, gems. There is no undo.', () => { G.wipe(); renderMenu(); }) }),
     ));
   }
 
@@ -1293,7 +1325,7 @@
       paintUpdateBar(ub);
       ub.classList.toggle('on', !!Update.found && Update.found !== Update.declined);
     }
-    if (UI.menuOpen && UI.tab === 'stats') renderMenu();
+    if (UI.menuOpen && (UI.tab === 'app' || UI.tab === 'stats')) renderMenu();
   }
 
   function setupInstall() {
