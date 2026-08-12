@@ -175,6 +175,54 @@ const run = async () => {
   ok('an abundant bird rates Common', checks.robinCommon === 'Common');
   ok('a near-extinct bird rates Legendary', checks.condor === 'Legendary');
 
+  /* ---- installable as an app, and genuinely usable offline ---------- */
+  const manifest = await page.evaluate(async () => {
+    const link = document.querySelector('link[rel=manifest]');
+    if (!link) return null;
+    return await (await fetch(link.href)).json();
+  });
+  ok('a web app manifest is served', !!manifest);
+  ok('manifest asks for a standalone window', manifest.display === 'standalone');
+  const icons = manifest.icons || [];
+  ok('manifest ships a 192px PNG icon',
+    icons.some(i => i.type === 'image/png' && i.sizes === '192x192'));
+  ok('manifest ships a 512px PNG icon',
+    icons.some(i => i.type === 'image/png' && i.sizes === '512x512'));
+  ok('manifest ships a maskable icon',
+    icons.some(i => (i.purpose || '').includes('maskable') && i.type === 'image/png'));
+  /* iOS silently ignores an SVG here and screenshots the page instead. */
+  const touch = await page.getAttribute('link[rel="apple-touch-icon"]', 'href');
+  ok('apple-touch-icon is a PNG', /\.png$/.test(touch || ''), String(touch));
+  for (const i of icons.filter(i => i.type === 'image/png')) {
+    const st = await page.evaluate(u => fetch(u).then(r => r.status), new URL(i.src, base).href);
+    ok('icon ' + i.src + ' is reachable', st === 200, 'status ' + st);
+  }
+
+  const sw = await page.evaluate(async () => {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    const keys = await caches.keys();
+    let n = 0;
+    for (const k of keys) n += (await (await caches.open(k)).keys()).length;
+    return { active: !!(regs[0] && regs[0].active), entries: n };
+  });
+  ok('service worker is active', sw.active);
+  ok('the app shell is precached', sw.entries >= 15, sw.entries + ' entries');
+
+  /* The real test of an offline app: cut the network and reload. */
+  await context.setOffline(true);
+  let offlineTotal = 0, offlineErr = null;
+  try {
+    await page.reload({ waitUntil: 'load', timeout: 20000 });
+    await page.waitForFunction(() => window.__birdex && window.__birdex.state().total > 0, null, { timeout: 20000 });
+    offlineTotal = await page.evaluate(() => window.__birdex.state().total);
+  } catch (e) { offlineErr = String(e).split('\n')[0]; }
+  ok('the app loads with the network cut', offlineTotal > 100, offlineErr || (offlineTotal + ' species'));
+  ok('your sightings are there offline',
+    (await page.evaluate(() => window.__birdex.state().sightings)) === 2);
+  ok('rarity still works offline', await page.evaluate(() =>
+    window.Birdex.rarity(window.Birdex.get('amerob'), 'NE', 6).tier.name === 'Common'));
+  await context.setOffline(false);
+
   /* ---- the hosted copy offers a local download ---------------------- */
   await page.evaluate(() => location.hash = '#/settings');
   await page.waitForSelector('.pane', { timeout: 8000 });

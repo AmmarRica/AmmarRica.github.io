@@ -9,10 +9,11 @@
  *
  * Photos never touch this cache — they live in IndexedDB.
  * ====================================================================== */
-const CACHE = 'birdex-v2';
+const CACHE = 'birdex-v3';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/style.css',
   './icon.svg', './icon-maskable.svg',
+  './icon-192.png', './icon-512.png', './icon-maskable-512.png',
   './js/core.js',
   './js/species-songbirds.js', './js/species-migrants.js',
   './js/species-water-raptors.js', './js/species-world.js',

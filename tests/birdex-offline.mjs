@@ -100,6 +100,10 @@ const run = async () => {
   const settings = (await page.locator('.pane').innerText()).toLowerCase();
   ok('settings identify it as the offline copy', settings.includes('running the offline copy'));
   ok('settings offer no download of itself', !settings.includes('download birdex'));
+  /* A file:// page cannot register a service worker or be installed, so it
+   * must not offer an install it cannot deliver. */
+  ok('offers no install it cannot perform', !settings.includes('install as an app'));
+  ok('shows no install banner', (await page.locator('.install-banner').count()) === 0);
 
   ok('nothing was fetched from the network', errors.length === 0, errors.slice(0, 3).join(' | '));
 

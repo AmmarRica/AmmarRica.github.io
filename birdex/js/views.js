@@ -281,6 +281,7 @@
       (list.length
         ? '<div class="grid">' + list.map(sp => speciesCard(sp, state, rarityOf(sp))).join('') + '</div>'
         : empty('Nothing matches', 'Try a different search or filter.')) +
+      installBanner(state) +
       '</section>';
   }
 
@@ -829,6 +830,8 @@
     return '<section class="pane">' +
       '<h1>Settings and data</h1>' +
 
+      (global.BIRDEX_OFFLINE ? '' : installPanel(state)) +
+
       '<div class="panel">' +
         '<h2>Storage</h2>' +
         '<p class="muted" id="storageLine">' + (state.storage
@@ -864,9 +867,9 @@
         '<p class="muted">Birdex carries ' + Birdex.count() + ' species across ' + Birdex.regions.length +
         ' birding regions. Abundance is a hand-built 0–5 scale per region, adjusted for the season, in the tradition of a ' +
         'field guide\'s status bars. It is a guide to what is likely, not a substitute for local checklists.</p>' +
-        '<p class="muted small">Coverage is deepest in North America, where each region carries 100+ species. The European ' +
-        'regions hold the widespread residents and visitors rather than a complete list, so treat a thin regional list as a ' +
-        'gap in the data, not an empty landscape.</p>' +
+        '<p class="muted small">Coverage is deepest in North America, where every region carries 160 to 310 species. ' +
+        'The European regions hold the widespread residents and visitors rather than a complete list, so treat a thin ' +
+        'regional list as a gap in the data, not an empty landscape.</p>' +
       '</div>' +
 
       '<div class="panel danger-zone">' +
@@ -875,6 +878,63 @@
         '<div class="actions"><button class="btn danger" data-act="wipe">Erase all data</button></div>' +
       '</div>' +
       '</section>';
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Install as an app                                                   */
+  /* ------------------------------------------------------------------ */
+
+  function installPanel(state) {
+    const app = App();
+    const ins = app.install;
+
+    if (ins.isInstalled()) {
+      return '<div class="panel">' +
+        '<h2>Installed</h2>' +
+        '<p class="muted">Birdex is installed on this device. It has its own icon, opens in its own window, ' +
+        'and all ' + Birdex.count() + ' dex entries work with no signal at all — which is the point, since the ' +
+        'places worth birding rarely have any.</p>' +
+        '</div>';
+    }
+
+    const how = {
+      ios: '<ol class="steps">' +
+        '<li>Tap the <b>Share</b> button in Safari — the square with an arrow.</li>' +
+        '<li>Scroll down and choose <b>Add to Home Screen</b>.</li>' +
+        '<li>Tap <b>Add</b>.</li></ol>' +
+        '<p class="muted small">It has to be Safari — on iOS, Chrome and Firefox cannot install web apps. ' +
+        'Installing also protects your sightings: Safari clears storage for sites you have not opened in a while, ' +
+        'but leaves installed apps alone.</p>',
+      android: '<p class="muted">Open the browser menu (⋮) and choose <b>Install app</b> or <b>Add to Home screen</b>.</p>',
+      desktop: '<p class="muted">In Chrome or Edge, click the install icon at the right-hand end of the address bar, ' +
+        'or open the browser menu and choose <b>Install Birdex</b>.</p>'
+    }[ins.platform()];
+
+    return '<div class="panel">' +
+      '<h2>Install as an app</h2>' +
+      '<p class="muted">Put Birdex on your home screen: its own icon, its own window, no browser chrome, ' +
+      'and it runs with no network at all once installed.</p>' +
+      (ins.canPrompt()
+        ? '<div class="actions"><button class="btn primary" data-act="install">Install Birdex</button></div>' +
+          '<p class="muted small">Or add it from your browser menu.</p>'
+        : how) +
+      '</div>';
+  }
+
+  /** A quiet nudge on the dex, since nobody goes looking in Settings. */
+  function installBanner(state) {
+    const ins = App().install;
+    if (global.BIRDEX_OFFLINE || state.installDismissed || ins.isInstalled()) return '';
+    if (!ins.canPrompt() && ins.platform() !== 'ios') return '';
+    return '<div class="install-banner">' +
+      '<div><b>Take Birdex birding</b>' +
+      '<span>Install it and the whole dex works with no signal.</span></div>' +
+      '<div class="install-banner-actions">' +
+        (ins.canPrompt()
+          ? '<button class="btn small primary" data-act="install">Install</button>'
+          : '<button class="btn small primary" data-act="go" data-href="#/settings">How</button>') +
+        '<button class="btn small" data-act="dismiss-install" aria-label="Dismiss">✕</button>' +
+      '</div></div>';
   }
 
   function fmtBytes(n) {
@@ -1016,6 +1076,9 @@
       case 'delete-collection':
         if (confirm('Delete this collection? Your photos are kept.')) app.deleteCollection(d.id);
         break;
+
+      case 'install': app.install.prompt(); break;
+      case 'dismiss-install': app.install.dismissBanner(); break;
 
       case 'export':
         Birdex.store.exportJSON().then(json => {

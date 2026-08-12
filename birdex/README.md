@@ -30,11 +30,29 @@ a patch. Any photo can be promoted to be a species' dex portrait.
 activity chart, twelve badges, and a day-by-day timeline of everything you have
 logged.
 
-Everything works offline after the first visit, and it installs as a PWA.
+## Getting it offline
 
-## Running it locally
+There are two ways, for two different situations.
 
-**Download the single file.** Settings → Offline copy → *Download Birdex*, or
+**Install it as an app** (what you want on a phone). Settings → *Install as an
+app*, or the banner on the dex. It gets its own icon and its own window, and
+after the install every one of the 413 entries, the rarity model and the camera
+flow work with no signal at all — which is the point, since the places worth
+birding rarely have any.
+
+- **Chrome, Edge, Android**: an Install button appears in Settings, or use the
+  browser's install icon in the address bar.
+- **iPhone/iPad**: Safari only — Share → *Add to Home Screen*. Chrome and
+  Firefox on iOS cannot install web apps. Installing on iOS also protects your
+  data: Safari clears storage for sites you have not opened in a while, and
+  leaves installed apps alone.
+
+The service worker precaches the whole app shell on first visit, so a reload
+with the network cut loads all 413 species from disk. That is checked by the
+test suite rather than assumed.
+
+**Download the single file** (what you want on a desktop, or to keep a copy).
+Settings → Offline copy → *Download Birdex*, or
 grab [`birdex-offline.html`](birdex-offline.html) from this folder. It is one
 HTML file with the stylesheet, every script and the icon inlined. Save it
 anywhere and open it — no server, no install, no network. All 413 entries, the
@@ -114,6 +132,8 @@ js/photos.js             import pipeline — re-encode, thumbnail
 js/views.js              rendering, one pass from state
 js/app.js                state, routing, geolocation, actions
 sw.js, manifest.json     offline + installable
+icon*.png                generated: home-screen icons (iOS ignores SVG)
+build-icons.mjs          rasterises the SVGs to PNG
 build-offline.mjs        inlines all of the above into one file
 birdex-offline.html      generated: the downloadable copy (committed so the
                          site can serve it; regenerate, don't hand-edit)
@@ -137,7 +157,9 @@ node birdex/build-offline.mjs && node tests/birdex-offline.mjs   # the downloada
 
 `birdex.mjs` drives the real app in a headless browser: geolocation resolving
 to a region, dex unlocking, photo storage, collections, history, persistence
-across a reload, and the seasonal/off-range rarity reasoning.
+across a reload, the seasonal/off-range rarity reasoning, and the install
+requirements — manifest, PNG icons, a PNG apple-touch-icon, an active service
+worker, and a full reload with the network switched off.
 
 `birdex-offline.mjs` opens the built file over `file://` from an unrelated
 directory with all network requests blocked, then quits the browser and

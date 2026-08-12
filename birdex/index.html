@@ -12,8 +12,10 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Birdex" />
-  <link rel="apple-touch-icon" href="icon.svg" />
+  <!-- iOS ignores SVG here and would screenshot the page instead. -->
+  <link rel="apple-touch-icon" href="icon-192.png" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon-192.png" type="image/png" sizes="192x192" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -22,6 +24,22 @@
   <noscript><p style="padding:20px">Birdex needs JavaScript: the dex, your photos and the rarity model all run in the browser.</p></noscript>
 </div>
 
+<script>
+  // Chrome fires beforeinstallprompt once, early, and only if nothing has
+  // handled it yet — so it is captured here, before the app boots, and
+  // stashed for the Install button to fire later.
+  window.__bxInstall = { event: null, installed: false };
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    window.__bxInstall.event = e;
+    document.dispatchEvent(new CustomEvent('bx-install-state'));
+  });
+  window.addEventListener('appinstalled', function () {
+    window.__bxInstall.event = null;
+    window.__bxInstall.installed = true;
+    document.dispatchEvent(new CustomEvent('bx-install-state'));
+  });
+</script>
 <script src="js/core.js"></script>
 <script src="js/species-songbirds.js"></script>
 <script src="js/species-migrants.js"></script>

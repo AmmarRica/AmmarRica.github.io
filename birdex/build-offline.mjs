@@ -31,10 +31,17 @@ html = html.replace(
   '  <style>\n' + read('css/style.css') + '  </style>\n'
 );
 
-/* --- icon: data URI, so the favicon survives with no sibling files --- */
-const iconURI = 'data:image/svg+xml;base64,' +
-  Buffer.from(read('icon.svg'), 'utf8').toString('base64');
-html = html.replace(/href="icon\.svg"/g, 'href="' + iconURI + '"');
+/* --- icons: data URIs, so they survive with no sibling files ---------
+ * The PNG favicon link is dropped rather than inlined: the SVG one covers
+ * every browser that matters here, and a second base64 PNG would only pad
+ * the download. apple-touch-icon is kept and inlined. */
+html = html.replace(/[ \t]*<link rel="icon" href="icon-192\.png"[^>]*>\n?/, '');
+
+const dataURI = (file, mime) =>
+  'data:' + mime + ';base64,' + fs.readFileSync(path.join(HERE, file)).toString('base64');
+
+html = html.replace(/href="icon\.svg"/g, 'href="' + dataURI('icon.svg', 'image/svg+xml') + '"');
+html = html.replace(/href="icon-192\.png"/g, 'href="' + dataURI('icon-192.png', 'image/png') + '"');
 
 /* --- manifest and service worker: meaningless without an http origin - */
 html = html.replace(/[ \t]*<link rel="manifest"[^>]*>\n?/, '');

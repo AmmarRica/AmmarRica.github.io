@@ -398,6 +398,56 @@
   };
 
   /* ------------------------------------------------------------------ */
+  /* Installing as an app                                                */
+  /*                                                                     */
+  /* Three worlds: Chromium fires beforeinstallprompt and gives us a     */
+  /* real button; iOS never does, and needs the Share-sheet instructions */
+  /* spelled out; everything else falls back to the browser menu.        */
+  /* ------------------------------------------------------------------ */
+
+  const install = App.install = {};
+
+  install.isInstalled = function () {
+    return !!(global.__bxInstall && global.__bxInstall.installed) ||
+      (global.matchMedia && global.matchMedia('(display-mode: standalone)').matches) ||
+      global.navigator.standalone === true;
+  };
+
+  install.canPrompt = function () {
+    return !!(global.__bxInstall && global.__bxInstall.event);
+  };
+
+  /** 'ios' | 'android' | 'desktop' — only used to pick the right wording. */
+  install.platform = function () {
+    const ua = global.navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua) ||
+        (global.navigator.platform === 'MacIntel' && global.navigator.maxTouchPoints > 1)) return 'ios';
+    if (/Android/.test(ua)) return 'android';
+    return 'desktop';
+  };
+
+  install.prompt = function () {
+    const ev = global.__bxInstall && global.__bxInstall.event;
+    if (!ev) return Promise.resolve('unavailable');
+    global.__bxInstall.event = null;      // a prompt event is single-use
+    return ev.prompt()
+      .then(() => ev.userChoice)
+      .then(choice => {
+        const outcome = choice && choice.outcome;
+        if (outcome === 'accepted') App.toast('Installing Birdex…', 'good');
+        else App.render();
+        return outcome;
+      })
+      .catch(() => { App.render(); return 'error'; });
+  };
+
+  install.dismissBanner = function () {
+    state.installDismissed = true;
+    Birdex.store.setSetting('installDismissed', true);
+    App.render();
+  };
+
+  /* ------------------------------------------------------------------ */
   /* Routing                                                             */
   /* ------------------------------------------------------------------ */
 
@@ -443,8 +493,10 @@
       Birdex.store.allCollections(),
       Birdex.store.getSetting('dexPhotos', {}),
       Birdex.store.getSetting('manualRegion', null),
-      Birdex.store.getSetting('lastGeo', null)
-    ]).then(([sightings, photos, collections, dexPhotos, manualRegion, lastGeo]) => {
+      Birdex.store.getSetting('lastGeo', null),
+      Birdex.store.getSetting('installDismissed', false)
+    ]).then(([sightings, photos, collections, dexPhotos, manualRegion, lastGeo, installDismissed]) => {
+      state.installDismissed = installDismissed;
       state.sightings = sightings;
       state.photos = photos;
       state.collections = collections;
@@ -466,6 +518,9 @@
         window.scrollTo(0, 0);
         App.render();
       });
+
+      /* The install prompt can arrive after first paint. */
+      document.addEventListener('bx-install-state', () => App.render());
 
       /* A dex without a location is only half useful, so ask early — but
        * only when the browser says we already have permission, to avoid a
