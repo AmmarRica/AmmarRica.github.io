@@ -1657,6 +1657,142 @@
     };
   }
 
+  /* ===================================================================
+   * SHAREABLE LAYOUT
+   *
+   * A layout is the table design and nothing else — where the parts are, what
+   * they are, what level, which way round. No coins, no progression, no
+   * stats. It is meant to be pasted into a chat, so it stays small and holds
+   * nothing personal.
+   *
+   * ⚠️ Importing one COSTS what the parts cost you today. A layout is a
+   * blueprint, not a delivery: a file that placed a maxed-out table for free
+   * would be a cheat with a share button on it, and every incremental game
+   * that ships one ends up with an economy nobody trusts. Your existing parts
+   * are refunded first, so swapping designs is priced like rebuilding.
+   * ================================================================ */
+  const LAYOUT_MAGIC = 'tower-of-chips-layout';
+  const LAYOUT_V = 1;
+
+  function exportLayout() {
+    return {
+      format: LAYOUT_MAGIC,
+      v: LAYOUT_V,
+      app: IP.VERSION,
+      exported: new Date().toISOString(),
+      floors: g.state.floors,
+      // Only the fields that describe the design. `earned`, `used` and the
+      // rest are this save's history, not part of the shape.
+      parts: g.state.parts.map((p) => {
+        const def = D.PART_BY_ID[p.id] || {};
+        const q = { id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), floor: p.floor, lvl: p.lvl || 1 };
+        if (def.rot && p.a) q.a = +p.a.toFixed(4);
+        // newInstance gives every part a side and a panel; only a flipper is
+        // actually steered by them, and a layout meant for a chat message
+        // should not carry fields that do nothing.
+        if (def.flipper) { q.side = p.side === 'R' ? 'R' : 'L'; q.panel = p.panel || 0; }
+        return q;
+      }),
+    };
+  }
+
+  function layoutFileName() {
+    const d = new Date().toISOString().slice(0, 10);
+    return `${LAYOUT_MAGIC}-f${g.state.floors}-${g.state.parts.length}p-${d}.json`;
+  }
+
+  /** What importing a layout would cost and place, without applying it. */
+  function previewLayout(obj) {
+    const rows = readLayout(obj);
+    const refund = g.state.parts.reduce((n, p) => n + IP.table.refundValue(g.state, p), 0);
+    // Priced against an empty table, because that is what the import starts
+    // from — pricing against the current one would charge the growth curve
+    // twice for parts you are about to sell.
+    const owned = {};
+    let cost = 0;
+    const skipped = [];
+    const place = [];
+    for (const r of rows) {
+      const def = D.PART_BY_ID[r.id];
+      if (!def) { skipped.push(r.id + ' (unknown part)'); continue; }
+      if (r.floor >= g.state.floors) { skipped.push(def.name + ' (floor ' + r.floor + ' not built)'); continue; }
+      if (!D.partUnlocked(r.id, g.state)) { skipped.push(def.name + ' (not unlocked yet)'); continue; }
+      cost += Math.round(def.cost * Math.pow(def.growth, owned[r.id] || 0));
+      for (let l = 1; l < (r.lvl || 1); l++) cost += Math.round(def.cost * 0.85 * Math.pow(1.55, l));
+      owned[r.id] = (owned[r.id] || 0) + 1;
+      place.push(r);
+    }
+    return { place, skipped, cost, refund, net: cost - refund, affordable: g.state.coins + refund >= cost };
+  }
+
+  function readLayout(obj) {
+    if (!obj || typeof obj !== 'object') throw new Error('That file is not readable.');
+    if (obj.format !== LAYOUT_MAGIC) {
+      if (obj.format === FILE_MAGIC) throw new Error('That is a full save, not a layout. Use IMPORT SAVE for it.');
+      throw new Error('That is a .json file, but not a Tower of Chips layout.');
+    }
+    if (!isNum(obj.v)) throw new Error('That layout has no version and cannot be trusted.');
+    if (obj.v > LAYOUT_V) {
+      throw new Error(`That layout was written by a newer version of the game (format v${obj.v}, this build reads v${LAYOUT_V}). Update the game first.`);
+    }
+    if (!Array.isArray(obj.parts)) throw new Error('That layout has no parts in it.');
+    const out = [];
+    for (const p of obj.parts) {
+      if (!p || typeof p !== 'object' || typeof p.id !== 'string') continue;
+      if (!isNum(p.x) || !isNum(p.y)) continue;
+      out.push({
+        id: p.id,
+        x: U.clamp(p.x, 0, W.WIDTH),
+        y: Math.max(0, p.y),
+        floor: asInt(p.floor, 0, W.MAX_FLOORS - 1, 0),
+        lvl: asInt(p.lvl, 1, 20, 1),
+        a: isNum(p.a) ? p.a : 0,
+        side: p.side === 'R' ? 'R' : (p.side === 'L' ? 'L' : null),
+        panel: asInt(p.panel, 0, 5, null),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Replace the table with a shared layout. Sells what is there, then buys
+   * the new design at today's prices. All or nothing: if it cannot be paid
+   * for, nothing is touched.
+   */
+  function importLayout(obj) {
+    if (buildLocked()) return { ok: false, err: BUILD_LOCKED_MSG };
+    const plan = previewLayout(obj);
+    if (!plan.place.length) {
+      return { ok: false, err: 'Nothing in that layout can be placed here yet.' + (plan.skipped.length ? ' ' + plan.skipped[0] : '') };
+    }
+    if (!plan.affordable) {
+      return { ok: false, err: 'That layout costs 🪙 ' + U.fmt(plan.cost) + ' to build and you have 🪙 ' + U.fmt(g.state.coins + plan.refund) + ' including what your current table is worth.' };
+    }
+    const restore = cleanState().parts;
+    const coinsBefore = g.state.coins;
+    g.state.parts = [];
+    g.state.coins += plan.refund;
+    const placed = [];
+    for (const r of plan.place) {
+      const res = buyPart(r.id, r.x, r.y, r.floor, r.a);
+      if (!res.ok) continue;                       // overlaps and slot limits still apply
+      const inst = res.inst;
+      inst.lvl = r.lvl;
+      if (r.side) inst.side = r.side;
+      if (r.panel != null) inst.panel = r.panel;
+      placed.push(inst);
+    }
+    if (!placed.length) {
+      g.state.parts = restore.map((p) => Object.assign({}, p));
+      g.state.coins = coinsBefore;
+      rebuild(); save();
+      return { ok: false, err: 'None of those parts would fit on your tower.' };
+    }
+    g.undo = null;                                  // the old table is gone for good
+    rebuild(); save();
+    return { ok: true, placed: placed.length, skipped: plan.skipped, spent: coinsBefore - g.state.coins };
+  }
+
   function suggestedFileName() {
     const d = new Date().toISOString().slice(0, 10);
     return `${FILE_MAGIC}-f${g.state.floors}-${d}.json`;
@@ -1826,6 +1962,7 @@
     trinketSlots, slotsUsed, floorOf, checkMedals, typeCount,
     stepFor, hashState, STEP, cleanState,
     exportSave, importSave, suggestedFileName, FILE_MAGIC, FILE_V,
+    exportLayout, importLayout, previewLayout, layoutFileName, LAYOUT_MAGIC, LAYOUT_V,
     isSeen, markSeen,
     count, missionProgress, ensureMissions, claimMission, rerollMission, comboWindow,
     on, emit, freshState,

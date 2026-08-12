@@ -706,6 +706,16 @@ kbd {
 
 .btn.chip.off { opacity: .45; }
 
+/* Share box: a layout small enough to paste into a chat. */
+.sharebox {
+  width: 100%; resize: vertical;
+  padding: 8px 10px;
+  font: 600 10px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink); background: var(--cream2);
+  border: 3px solid var(--ink2); border-radius: 10px;
+  user-select: text; -webkit-user-select: text;
+}
+
 #toast {
   position: absolute; left: 50%; bottom: 96px; transform: translate(-50%, 12px);
   padding: 8px 14px; font-size: 11px; font-weight: 900; letter-spacing: .6px;

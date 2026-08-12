@@ -1227,6 +1227,14 @@
 
   const CHANGELOG = [
     {
+      v: '1.18.0', date: '2026-08-10', title: 'Share your table',
+      notes: [
+        'Copy your table design as text and send it to anyone, or save it as a small .json. It is the design only — no coins, no progress.',
+        'Paste or open someone else\'s layout to build it. It costs what those parts cost you today, and your current table is sold first, so it is a blueprint rather than a handout.',
+      ],
+      fixes: 'General fixes and polish.',
+    },
+    {
       v: '1.17.0', date: '2026-08-10', title: 'Build between runs',
       notes: [
         'The table is fixed once a ball is in play. Buy, move, level and sell between runs instead — there is an END RUN button in the shop if you want to stop early.',

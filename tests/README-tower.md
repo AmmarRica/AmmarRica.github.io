@@ -15,6 +15,7 @@ node tests/tower-parallax.mjs   # depth layers paint, and at their own rates
 node tests/tower-remove.mjs     # refunds, undo, and the ways undo could pay
 node tests/tower-update.mjs     # the 30-day deadline, and when NOT to lock
 node tests/tower-scoring.mjs    # repeat decay, one flipper per floor, best line
+node tests/tower-layout.mjs     # shareable layouts, and the economy around them
 ```
 
 `tower-pwa.mjs` serves the repo over real HTTP on :8099 — service workers and
@@ -41,6 +42,11 @@ layers rendered nothing.
 one on a `file://` page, so the whole suite would pass without the code under
 test ever running (it did, once; see `TRAPS.md`). Most of it asserts the game
 must *not* lock: offline, a rollback, a wrong device clock.
+
+`tower-layout.mjs` is mostly about the economy around a shared layout. A file
+that placed a maxed-out table for free would be a cheat with a share button on
+it, so the assertions cover what importing costs, what it refuses, and that a
+failed import leaves the table untouched.
 
 `tower-remove.mjs` is mostly assertions that undo is *refused*: a refund is
 below the purchase price, so an undo that does not charge it back is a coin

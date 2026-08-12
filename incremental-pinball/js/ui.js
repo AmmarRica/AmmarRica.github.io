@@ -878,6 +878,19 @@
     sf.appendChild(srow('Import save', 'Replaces this tower with one from a file', '⬆ IMPORT', () => SaveFile.pick(), 'ghost'));
     root.appendChild(sf);
 
+    root.appendChild(el('div.cathead', { style: { '--accent': D.C.purple } }, 'SHARE A LAYOUT'));
+    const ly = el('div.plist');
+    ly.appendChild(srow('Copy layout',
+      'The table design as text — no coins, no progress. Paste it anywhere.',
+      '📋 COPY', () => Layout.copy(), 'primary'));
+    ly.appendChild(srow('Save layout to a file', 'A small .json of just the design',
+      '⬇ EXPORT', () => Layout.download(), 'ghost'));
+    ly.appendChild(srow('Paste a layout', "Build someone else's design — it costs what those parts cost you",
+      '📥 PASTE', () => Layout.paste(), 'ghost'));
+    ly.appendChild(srow('Open a layout file', 'Same, from a .json someone sent you',
+      '⬆ OPEN', () => Layout.pick(), 'ghost'));
+    root.appendChild(ly);
+
     // Device controls, each shown only where it has a job to do.
     const dev = [];
     if (Full.supported()) {
@@ -1541,6 +1554,122 @@
   };
 
   /* ==================================================================
+   * SHARING A LAYOUT
+   *
+   * A layout is the table design on its own — small enough to paste into a
+   * chat, and carrying nothing personal. Both directions are offered as a
+   * file and as text, because "share" usually means paste, not attach.
+   * =============================================================== */
+  const Layout = {
+    text() { return JSON.stringify(G.exportLayout()); },
+
+    download() {
+      const blob = new Blob([JSON.stringify(G.exportLayout(), null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), { href: url, download: G.layoutFileName() });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);   // Safari needs the delay
+      toast('Layout exported');
+    },
+
+    /**
+     * ⚠️ navigator.clipboard needs a secure context and a user gesture, and
+     * is simply missing on older mobile browsers. It is offered, never
+     * relied on: a failure falls back to a modal with the text selected, so
+     * the player can always copy it by hand.
+     */
+    async copy() {
+      const txt = Layout.text();
+      try {
+        if (!navigator.clipboard) throw new Error('no clipboard');
+        await navigator.clipboard.writeText(txt);
+        toast('Layout copied — paste it to share');
+        return;
+      } catch (e) { Layout.showText(txt); }
+    },
+
+    showText(txt) {
+      const ta = el('textarea.sharebox', { readonly: true, rows: 7, spellcheck: false });
+      ta.value = txt;
+      modal('YOUR LAYOUT', [
+        el('p', 'Copy this and send it to anyone. It is the table design only — no coins, no progress.'),
+        ta,
+      ], [{ label: 'DONE', cls: 'primary' }]);
+      setTimeout(() => { ta.focus(); ta.select(); }, 30);
+    },
+
+    paste() {
+      const ta = el('textarea.sharebox', { rows: 7, spellcheck: false, placeholder: 'Paste a layout here…' });
+      modal('PASTE A LAYOUT', [
+        el('p', 'Building it costs what those parts cost you today. Your current table is sold first.'),
+        ta,
+      ], [
+        { label: 'CANCEL', cls: 'ghost' },
+        { label: 'PREVIEW', cls: 'primary', onclick: () => Layout.apply(ta.value) },
+      ]);
+      setTimeout(() => ta.focus(), 30);
+    },
+
+    input: null,
+    pick() {
+      if (!Layout.input) {
+        Layout.input = el('input', {
+          type: 'file', accept: 'application/json,.json',
+          style: { position: 'fixed', left: '-9999px', width: '1px', height: '1px' },
+          onchange: (e) => {
+            const f = e.target.files && e.target.files[0];
+            e.target.value = '';
+            if (!f) return;
+            const fr = new FileReader();
+            fr.onerror = () => toast('Could not read that file');
+            fr.onload = () => Layout.apply(fr.result);
+            fr.readAsText(f);
+          },
+        });
+        document.body.appendChild(Layout.input);
+      }
+      Layout.input.click();
+    },
+
+    /** Price it, show what you get, and only then build it. */
+    apply(txt) {
+      let obj;
+      try { obj = JSON.parse(txt); }
+      catch (e) { modal('LAYOUT NOT READ', ['That is not valid JSON.'], [{ label: 'OK', cls: 'primary' }]); return; }
+      let plan;
+      try { plan = G.previewLayout(obj); }
+      catch (e) { modal('LAYOUT NOT READ', [String(e.message || e)], [{ label: 'OK', cls: 'primary' }]); return; }
+
+      const box = el('div.statbox');
+      box.appendChild(statRow('Parts to build', String(plan.place.length)));
+      box.appendChild(statRow('Cost', '🪙 ' + fmt(plan.cost)));
+      box.appendChild(statRow('Your table sells for', '🪙 ' + fmt(plan.refund)));
+      box.appendChild(statRow('Net', (plan.net >= 0 ? '−🪙 ' : '+🪙 ') + fmt(Math.abs(plan.net))));
+      const body = [box];
+      if (plan.skipped.length) {
+        body.push(el('div.cathead', { style: { '--accent': D.C.orange } }, 'SKIPPED', el('span.slots', String(plan.skipped.length))));
+        const ul = el('ul.pnotes');
+        for (const sk of [...new Set(plan.skipped)].slice(0, 8)) ul.appendChild(el('li', sk));
+        body.push(ul);
+      }
+      if (!plan.affordable) body.push(el('p', 'You cannot afford this yet.'));
+
+      modal('BUILD THIS LAYOUT?', body, [
+        { label: 'CANCEL', cls: 'ghost' },
+        {
+          label: 'BUILD IT', cls: 'primary',
+          onclick: () => {
+            const r = G.importLayout(obj);
+            if (!r.ok) { modal('LAYOUT NOT BUILT', [r.err], [{ label: 'OK', cls: 'primary' }]); return; }
+            renderMenu();
+            toast('Built ' + r.placed + ' parts for 🪙 ' + fmt(r.spent));
+          },
+        },
+      ]);
+    },
+  };
+
+  /* ==================================================================
    * FULLSCREEN — verify it actually entered/exited; the promise rejects
    * silently in plenty of contexts and the label must track reality.
    * =============================================================== */
@@ -2023,7 +2152,7 @@
     boot, setMenu, renderMenu, toast, modal, closeModal, enterBuild, exitBuild,
     renderBuildBar, refreshPanelButtons, UI, layout,
     autoRunHeld,
-    __t: { Install, Update, refreshInstallUI, showUndo, setRaze, autoRunHeld,
+    __t: { Install, Update, refreshInstallUI, showUndo, setRaze, autoRunHeld, Layout,
            enforceLock, showChangelog, maybeShowPatchNotes, updateBanner },   // test surface
   };
 

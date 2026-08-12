@@ -397,6 +397,32 @@ from its seed. Cost is about **0.11 ms/frame** at 2× DPR. **STATS → SETTINGS 
 Parallax depth layers** turns the whole thing off; the idle bobbing (but not
 the parallax, which is just the camera) also follows the Particles setting.
 
+## Sharing a layout
+
+A **layout** is the table design on its own — which parts, where, what level,
+which way round, and for flippers which panel. No coins, no progression, no
+stats, nothing personal. About 300 bytes for a small table, so it pastes into
+a chat. **STATS → SHARE A LAYOUT** offers it as text (with a clipboard copy
+that falls back to a selectable box, because `navigator.clipboard` needs a
+secure context and is missing on older mobile browsers) and as a `.json`.
+
+⚠️ **Importing one costs what those parts cost you today.** A file that placed
+a maxed-out table for free would be a cheat with a share button on it. Your
+current table is sold first and the difference is charged, so swapping designs
+is priced exactly like rebuilding by hand. The preview shows cost, refund and
+net before you commit.
+
+Three things a shared layout cannot do:
+
+- **Skip the unlock ladder.** Parts you have not unlocked, floors you have not
+  built, and ids that do not exist are dropped and listed by name.
+- **Break the table rules.** Placement goes through `buyPart`, so overlaps,
+  slot limits and one-flipper-per-floor all still apply.
+- **Half-apply.** If it cannot be paid for, nothing is touched; if nothing at
+  all would fit, the original table is restored and the coins refunded.
+
+Layouts are refused mid-run like every other table change.
+
 ## Determinism
 
 Nothing in the simulation calls `Math.random`. `IP.rng` holds four independent
@@ -456,6 +482,7 @@ node tests/tower-contrast.mjs     # WCAG 4.5:1 on every themed surface
 node tests/tower-parallax.mjs     # depth layers paint, and at their own rates
 node tests/tower-remove.mjs       # refunds, undo, and the ways undo could pay
 node tests/tower-update.mjs       # the 30-day deadline, and when NOT to lock
+node tests/tower-layout.mjs       # shareable layouts, and the economy around them
 node tests/tower-scoring.mjs      # repeat decay, one flipper per floor, best line
 ```
 
