@@ -73,6 +73,8 @@ navigation:
     url: /birdex/
   - title: Magnetball
     url: /magnetball/
+  - title: Perfect Pour
+    url: /beer-pour/
 
 future: true
 

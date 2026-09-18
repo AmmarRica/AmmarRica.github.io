@@ -1,0 +1,14 @@
+{
+  "name": "Perfect Pour",
+  "short_name": "Perfect Pour",
+  "description": "Hold to pour, let go to serve. Hit the fill line without overflowing the glass.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#160c06",
+  "theme_color": "#160c06",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

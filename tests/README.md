@@ -27,6 +27,7 @@ distinct **mode** the demo passes through (e.g. nonogram board sizes).
 | crab-breed-swiper | `__crab` | auto-swipes the deck | `score` (likes) |
 | dog-swiper | `__dog` | auto-swipes the deck | `progress` |
 | nonogram | `__nonogram` | auto-solves, cycling through board sizes | `progress` |
+| beer-pour | `__beer` | holds the tap and releases at the fill line, cycling glass shapes | `score` |
 
 ## Other suites
 
