@@ -31,6 +31,12 @@ distinct **mode** the demo passes through (e.g. nonogram board sizes).
 
 ## Other suites
 
+`friends-map.mjs` drives the Friends Map page end to end: onboarding,
+sample data, search and filters, adding a friend with a map-picked pin,
+importing a place from a Google Maps link or share-target URL, the
+share-link round trip into a second "phone", and persistence across a
+reload. Map tiles are blocked, so it runs offline.
+
 `birdex.mjs` is a full smoke test for the birding dex rather than a demo
 player: it drives the real app in a headless browser through geolocation,
 dex unlocking, photo storage, collections, history and a reload, and checks

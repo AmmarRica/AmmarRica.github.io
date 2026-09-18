@@ -75,6 +75,8 @@ navigation:
     url: /magnetball/
   - title: Perfect Pour
     url: /beer-pour/
+  - title: Friends Map
+    url: /friends-map/
 
 future: true
 

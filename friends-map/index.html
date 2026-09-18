@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Friends Map</title>
+  <meta name="description" content="Pin the friends you recommend around your city, say why, and share the list with a link. Everything is stored on your own phone." />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#1a73e8" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Friends Map" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="vendor/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --blue: #1a73e8; --blue-dark: #1558b8; --red: #ea4335; --amber: #f9ab00; --green: #34a853;
+      --bg: #f1f3f4; --surface: #ffffff; --text: #202124; --muted: #5f6368; --line: #dadce0;
+      --shadow: 0 1px 2px rgba(60,64,67,.3), 0 2px 6px 2px rgba(60,64,67,.15);
+      --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+      --sheet-peek: 72px;
+    }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+      font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; overscroll-behavior: none; }
+    #app { position: fixed; inset: 0; height: 100dvh; }
+    #map { position: absolute; inset: 0; background: #e8eaed
+      repeating-linear-gradient(0deg, transparent 0 39px, rgba(0,0,0,.05) 39px 40px),
+      repeating-linear-gradient(90deg, transparent 0 39px, rgba(0,0,0,.05) 39px 40px); }
+    .leaflet-container { font: inherit; }
+    .leaflet-control-attribution { font-size: 10px; background: rgba(255,255,255,.7); }
+    button { font: inherit; cursor: pointer; }
+    input, textarea, select { font: inherit; color: inherit; }
+    .hidden { display: none !important; }
+
+    /* ── Top search pill ─────────────────────────────── */
+    #topbar { position: absolute; left: 12px; right: 12px; top: calc(var(--sat) + 10px); z-index: 900; }
+    #search { display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 8px 0 12px; background: var(--surface);
+      border-radius: 24px; box-shadow: var(--shadow); }
+    #search .logo { width: 28px; height: 28px; flex: none; }
+    #search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; font-size: 16px; }
+    #search input::placeholder { color: var(--muted); }
+    .iconbtn { width: 40px; height: 40px; border-radius: 50%; border: 0; background: transparent; color: var(--muted);
+      display: grid; place-items: center; font-size: 20px; flex: none; }
+    .iconbtn:active { background: rgba(0,0,0,.06); }
+    #me-btn { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--blue); color: #fff; font-weight: 700; font-size: 14px; flex: none; }
+    #back { position: absolute; top: calc(var(--sat) + 10px); left: 12px; z-index: 901; display: none; }
+    #chips { display: flex; gap: 8px; overflow-x: auto; padding: 10px 2px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    #chips::-webkit-scrollbar { display: none; }
+    .chip { flex: none; height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid var(--line); background: var(--surface);
+      color: var(--text); font-size: 14px; font-weight: 500; box-shadow: 0 1px 2px rgba(60,64,67,.2); white-space: nowrap; }
+    .chip.on { background: #e8f0fe; color: var(--blue-dark); border-color: #c6dafc; }
+
+    /* ── Shared banner ───────────────────────────────── */
+    #shared-banner { position: absolute; left: 12px; right: 12px; top: calc(var(--sat) + 116px); z-index: 900; background: #fef7e0;
+      border: 1px solid #feefc3; border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow); font-size: 14px; }
+    #shared-banner b { color: #b06000; }
+    #shared-banner .row { display: flex; gap: 8px; margin-top: 8px; }
+    .btn { height: 40px; padding: 0 16px; border-radius: 20px; border: 0; background: var(--blue); color: #fff; font-weight: 600; font-size: 14px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+    .btn:active { background: var(--blue-dark); }
+    .btn.ghost { background: transparent; color: var(--blue); border: 1px solid var(--line); }
+    .btn.danger { background: transparent; color: var(--red); border: 1px solid var(--line); }
+    .btn.wide { width: 100%; }
+
+    /* ── Floating action buttons ─────────────────────── */
+    #fabs { position: absolute; right: 16px; bottom: calc(var(--sheet-peek) + var(--sab) + 16px); z-index: 850; display: flex; flex-direction: column; gap: 12px; align-items: flex-end;
+      transition: bottom .25s; }
+    .fab { width: 56px; height: 56px; border-radius: 16px; border: 0; background: var(--surface); box-shadow: var(--shadow); font-size: 24px; display: grid; place-items: center; color: var(--text); }
+    .fab.primary { background: var(--blue); color: #fff; font-size: 30px; }
+    .fab:active { transform: scale(.96); }
+
+    /* ── Bottom sheet ────────────────────────────────── */
+    #sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 870; background: var(--surface); border-radius: 20px 20px 0 0;
+      box-shadow: 0 -2px 12px rgba(60,64,67,.2); height: 70dvh; transform: translateY(calc(100% - var(--sheet-peek) - var(--sab)));
+      transition: transform .28s cubic-bezier(.2,.8,.2,1); display: flex; flex-direction: column; touch-action: none; }
+    #sheet.open { transform: translateY(0); }
+    #sheet.dragging { transition: none; }
+    #sheet .handle { height: 22px; display: grid; place-items: center; flex: none; }
+    #sheet .handle::before { content: ""; width: 36px; height: 4px; border-radius: 2px; background: var(--line); }
+    #sheet header { display: flex; align-items: center; gap: 8px; padding: 0 16px 10px; flex: none; }
+    #sheet header h2 { flex: 1; font-size: 18px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #sheet header .count { color: var(--muted); font-weight: 400; font-size: 14px; }
+    #list { flex: 1; overflow-y: auto; padding: 0 12px calc(var(--sab) + 16px); touch-action: pan-y; }
+    .friend { display: flex; gap: 12px; padding: 12px 6px; border-top: 1px solid #f1f3f4; align-items: flex-start; cursor: pointer; }
+    .friend:active { background: #f8f9fa; }
+    .friend .em { width: 44px; height: 44px; border-radius: 50%; background: #e8f0fe; display: grid; place-items: center; font-size: 22px; flex: none; position: relative; }
+    .friend .em.fav::after { content: "★"; position: absolute; right: -3px; top: -3px; width: 18px; height: 18px; border-radius: 50%; background: var(--amber); color: #fff; font-size: 11px; display: grid; place-items: center; }
+    .friend .body { flex: 1; min-width: 0; }
+    .friend .name { font-weight: 600; font-size: 16px; }
+    .friend .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .friend .why { font-size: 14px; margin-top: 6px; color: #3c4043; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .friend .dist { color: var(--muted); font-size: 12px; flex: none; padding-top: 2px; }
+    .empty { text-align: center; color: var(--muted); padding: 36px 20px; font-size: 15px; line-height: 1.5; }
+    .empty .btn { margin-top: 14px; }
+
+    /* ── Detail card ─────────────────────────────────── */
+    #detail { position: absolute; left: 12px; right: 12px; bottom: calc(var(--sab) + 12px); z-index: 880; background: var(--surface); border-radius: 16px;
+      box-shadow: var(--shadow); padding: 14px 16px; transform: translateY(120%); transition: transform .25s cubic-bezier(.2,.8,.2,1); max-height: 60dvh; overflow-y: auto; }
+    #detail.show { transform: translateY(0); }
+    #detail .top { display: flex; gap: 12px; align-items: flex-start; }
+    #detail .em { width: 48px; height: 48px; border-radius: 50%; background: #e8f0fe; display: grid; place-items: center; font-size: 24px; flex: none; }
+    #detail h3 { font-size: 20px; font-weight: 600; line-height: 1.2; }
+    #detail .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    #detail .close { margin-left: auto; }
+    #detail .why { margin-top: 12px; background: #f8f9fa; border-left: 3px solid var(--blue); padding: 10px 12px; border-radius: 0 10px 10px 0; font-size: 15px; line-height: 1.45; white-space: pre-wrap; }
+    #detail .why .lbl { display: block; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .tag { font-size: 12px; padding: 3px 10px; border-radius: 12px; background: #e8f0fe; color: var(--blue-dark); }
+    #detail .actions { display: flex; gap: 8px; margin-top: 14px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+    #detail .actions::-webkit-scrollbar { display: none; }
+    #detail .actions .btn { flex: none; }
+
+    /* ── Pick-on-map mode ────────────────────────────── */
+    #crosshair { position: absolute; left: 50%; top: 50%; z-index: 860; width: 40px; height: 52px; margin: -52px 0 0 -20px; pointer-events: none; display: none; }
+    #pickbar { position: absolute; left: 12px; right: 12px; bottom: calc(var(--sab) + 16px); z-index: 890; background: var(--surface); border-radius: 16px;
+      box-shadow: var(--shadow); padding: 12px 14px; display: none; }
+    #pickbar p { font-size: 14px; margin-bottom: 10px; }
+    #pickbar .row { display: flex; gap: 8px; }
+    #pickbar .row .btn { flex: 1; }
+    body.picking #crosshair, body.picking #pickbar { display: block; }
+    body.picking #topbar, body.picking #fabs, body.picking #sheet, body.picking #detail, body.picking #shared-banner { display: none; }
+
+    /* ── Markers ─────────────────────────────────────── */
+    .pin { position: relative; width: 36px; height: 44px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); transition: transform .15s; transform-origin: 50% 100%; }
+    .pin svg { position: absolute; inset: 0; width: 36px; height: 44px; z-index: 0; }   /* leaflet.css gives map-pane svgs z-index 200 */
+    .pin .em { position: absolute; left: 0; right: 0; top: 6px; text-align: center; font-size: 17px; line-height: 1; z-index: 1; }
+    .pin.sel { transform: scale(1.3); z-index: 10; }
+    .pin.fav svg path { stroke: var(--amber); stroke-width: 2; }
+    .me-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--blue); border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(26,115,232,.25); }
+
+    /* ── Dialogs ─────────────────────────────────────── */
+    dialog { border: 0; border-radius: 20px; padding: 0; width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); background: var(--surface); color: var(--text); box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+    dialog::backdrop { background: rgba(32,33,36,.5); }
+    dialog form, dialog .inner { padding: 20px 20px calc(16px + var(--sab)); display: flex; flex-direction: column; gap: 12px; max-height: calc(100dvh - 24px); overflow-y: auto; }
+    dialog h2 { font-size: 20px; font-weight: 600; }
+    dialog p.hint { font-size: 13px; color: var(--muted); line-height: 1.4; }
+    label.f { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .3px; }
+    label.f input, label.f textarea, label.f select { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; background: #fff; outline: 0; }
+    label.f input:focus, label.f textarea:focus, label.f select:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(26,115,232,.2); }
+    label.f textarea { min-height: 96px; resize: vertical; }
+    .catgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .catgrid button { height: 52px; border-radius: 12px; border: 1px solid var(--line); background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 18px; }
+    .catgrid button small { font-size: 10px; color: var(--muted); }
+    .catgrid button.on { background: #e8f0fe; border-color: var(--blue); }
+    .loc { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; font-size: 14px; }
+    .loc .txt { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .loc.set .txt { color: var(--text); }
+    .switch { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+    .switch input { width: 20px; height: 20px; accent-color: var(--blue); }
+    .dlg-actions { display: flex; gap: 8px; margin-top: 4px; }
+    .dlg-actions .btn { flex: 1; }
+    .menu { display: flex; flex-direction: column; }
+    .menu button { text-align: left; padding: 14px 8px; border: 0; background: transparent; border-top: 1px solid #f1f3f4; font-size: 16px; display: flex; gap: 12px; align-items: center; }
+    .menu button:active { background: #f8f9fa; }
+    .menu button span.ic { width: 28px; text-align: center; font-size: 20px; }
+    .menu button small { display: block; color: var(--muted); font-size: 12px; }
+    .menu button.danger { color: var(--red); }
+    #share-link { font-size: 12px; word-break: break-all; color: var(--muted); background: #f8f9fa; padding: 8px 10px; border-radius: 8px; max-height: 70px; overflow: auto; }
+
+    /* ── Toast ───────────────────────────────────────── */
+    #toast { position: absolute; left: 50%; bottom: calc(var(--sab) + 96px); transform: translate(-50%, 20px); z-index: 999; background: #323639; color: #fff; padding: 10px 18px; border-radius: 8px;
+      font-size: 14px; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; max-width: calc(100vw - 32px); text-align: center; }
+    #toast.show { opacity: 1; transform: translate(-50%, 0); }
+    body.picking #toast { bottom: calc(var(--sab) + 140px); }
+    #nomap { position: absolute; inset: 0; display: none; place-items: center; text-align: center; padding: 24px; color: var(--muted); font-size: 14px; line-height: 1.5; z-index: 1; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="map" aria-label="Map"></div>
+  <div id="nomap">Map tiles need an internet connection.<br>Your friends list still works below.</div>
+
+  <div id="topbar">
+    <div id="search">
+      <img class="logo" src="icon.svg" alt="" />
+      <input id="q" type="search" placeholder="Search your friends" autocomplete="off" />
+      <button class="iconbtn" id="clear-q" title="Clear" style="display:none">✕</button>
+      <button id="me-btn" title="Me & settings">?</button>
+    </div>
+    <div id="chips"></div>
+  </div>
+
+  <div id="shared-banner" class="hidden">
+    <div id="shared-text"></div>
+    <div class="row">
+      <button class="btn" id="shared-save">Save all to my map</button>
+      <button class="btn ghost" id="shared-exit">View my map</button>
+    </div>
+  </div>
+
+  <div id="fabs">
+    <button class="fab" id="locate" title="My location">◎</button>
+    <button class="fab" id="paste-link" title="Paste a Google Maps link">🔗</button>
+    <button class="fab primary" id="add" title="Add a friend">+</button>
+  </div>
+
+  <div id="sheet">
+    <div class="handle"></div>
+    <header>
+      <h2 id="sheet-title">My friends <span class="count" id="sheet-count"></span></h2>
+      <button class="btn ghost" id="share-list">⇪ Share</button>
+    </header>
+    <div id="list"></div>
+  </div>
+
+  <div id="detail"></div>
+
+  <div id="crosshair">
+    <svg viewBox="0 0 36 44" width="40" height="52"><path d="M18 2C9.7 2 3 8.6 3 16.8 3 27.5 18 42 18 42s15-14.5 15-25.2C33 8.6 26.3 2 18 2z" fill="#ea4335" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17" r="5.5" fill="#fff"/></svg>
+  </div>
+  <div id="pickbar">
+    <p id="pick-text">Drag the map so the pin sits on the right spot.</p>
+    <div class="row">
+      <button class="btn ghost" id="pick-cancel">Cancel</button>
+      <button class="btn" id="pick-ok">Place here</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<!-- Add / edit friend -->
+<dialog id="editor">
+  <form id="editor-form" method="dialog">
+    <h2 id="editor-title">Add a friend</h2>
+    <label class="f">NAME
+      <input id="f-name" required maxlength="60" placeholder="e.g. Sara — my go-to barber" />
+    </label>
+    <div>
+      <label class="f" style="margin-bottom:6px">WHAT ARE THEY GREAT FOR</label>
+      <div class="catgrid" id="f-cats"></div>
+    </div>
+    <label class="f">WHERE (place or area)
+      <input id="f-place" maxlength="80" placeholder="e.g. Northside, near the market" />
+    </label>
+    <div class="loc" id="f-loc">
+      <span>📍</span><span class="txt" id="f-loc-txt">No pin yet</span>
+      <button type="button" class="btn ghost" id="f-pick">Pick on map</button>
+    </div>
+    <div class="loc set hidden" id="f-maps">
+      <span>🗺️</span><span class="txt" id="f-maps-txt"></span>
+      <button type="button" class="iconbtn" id="f-maps-clear" title="Remove link">✕</button>
+    </div>
+    <label class="f">WHY I RECOMMEND THEM
+      <textarea id="f-why" maxlength="600" placeholder="Tell people why they should meet this person…"></textarea>
+    </label>
+    <label class="f">TAGS (comma separated)
+      <input id="f-tags" maxlength="120" placeholder="cheap, speaks spanish, late hours" />
+    </label>
+    <label class="switch"><input type="checkbox" id="f-fav" /> Mark as a top favourite ★</label>
+    <div class="dlg-actions">
+      <button type="button" class="btn ghost" id="editor-cancel">Cancel</button>
+      <button type="submit" class="btn" id="editor-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Me / settings -->
+<dialog id="profile">
+  <div class="inner">
+    <h2 id="profile-title">You & your city</h2>
+    <p class="hint" id="profile-hint">Your name and city go on the lists you share. Everything is saved only on this device.</p>
+    <label class="f">YOUR NAME <input id="p-name" maxlength="40" placeholder="Ammar" /></label>
+    <label class="f">YOUR CITY <input id="p-city" maxlength="60" placeholder="Austin" /></label>
+    <div class="loc" id="p-loc">
+      <span>🏙️</span><span class="txt" id="p-loc-txt">City centre: not set</span>
+    </div>
+    <div class="dlg-actions">
+      <button type="button" class="btn ghost" id="p-geo">Use my location</button>
+      <button type="button" class="btn ghost" id="p-here">Use map centre</button>
+    </div>
+    <div class="menu">
+      <button type="button" id="p-sample"><span class="ic">✨</span><span>Load sample friends<small>6 mock people placed around your city centre</small></span></button>
+      <button type="button" id="p-export"><span class="ic">💾</span><span>Export backup<small>Download everything as a JSON file</small></span></button>
+      <button type="button" id="p-import"><span class="ic">📂</span><span>Import backup<small>Restore from a JSON file</small></span></button>
+      <button type="button" id="p-clear" class="danger"><span class="ic">🗑️</span><span>Delete all my friends</span></button>
+    </div>
+    <input type="file" id="p-file" accept="application/json,.json" class="hidden" />
+    <div class="dlg-actions">
+      <button type="button" class="btn" id="p-save">Done</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Import from Google Maps -->
+<dialog id="importdlg">
+  <div class="inner">
+    <h2>Paste a Google Maps link</h2>
+    <p class="hint">In Google Maps tap <b>Share</b> on a place, then paste what you get here. Name, pin and link fill in automatically. Several links at once work too, one per line.</p>
+    <label class="f">LINK OR SHARED TEXT
+      <textarea id="i-text" placeholder="Sara's Barber&#10;https://maps.app.goo.gl/…" style="min-height:110px"></textarea>
+    </label>
+    <p class="hint" id="i-status"></p>
+    <div class="dlg-actions">
+      <button type="button" class="btn ghost" id="i-cancel">Cancel</button>
+      <button type="button" class="btn" id="i-go">Import</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Share list -->
+<dialog id="sharedlg">
+  <div class="inner">
+    <h2>Share your list</h2>
+    <p class="hint" id="share-hint">Anyone who opens this link sees your friends, your notes and your pins. The list itself travels inside the link, so no server is involved.</p>
+    <div id="share-link"></div>
+    <div class="menu">
+      <button type="button" id="s-native"><span class="ic">📤</span><span>Share…<small>Messages, WhatsApp, email</small></span></button>
+      <button type="button" id="s-copy"><span class="ic">🔗</span><span>Copy link</span></button>
+      <button type="button" id="s-text"><span class="ic">📝</span><span>Copy as text<small>Plain list with your notes</small></span></button>
+    </div>
+    <div class="dlg-actions"><button type="button" class="btn ghost" id="s-close">Close</button></div>
+  </div>
+</dialog>
+
+<script src="vendor/leaflet.js"></script>
+<script>
+(() => {
+  'use strict';
+  /* ══════════════════════════════════════════════════════════════
+   * Friends Map — a mock "Google Maps for people I recommend".
+   * All data lives in localStorage on this device. Sharing encodes
+   * the list into the URL hash, so a link is the whole payload.
+   * ══════════════════════════════════════════════════════════════ */
+  const KEY = 'friendsmap.v1';
+  const DEFAULT_CENTER = [51.5074, -0.1278];  // used only until the user sets a city
+  const CATS = [
+    { k: 'food',    em: '🍕', label: 'Food' },
+    { k: 'coffee',  em: '☕', label: 'Coffee' },
+    { k: 'fix',     em: '🔧', label: 'Fixer' },
+    { k: 'hair',    em: '✂️', label: 'Hair' },
+    { k: 'fit',     em: '🏋️', label: 'Fitness' },
+    { k: 'music',   em: '🎸', label: 'Music' },
+    { k: 'tech',    em: '💻', label: 'Tech' },
+    { k: 'health',  em: '🩺', label: 'Health' },
+    { k: 'home',    em: '🏠', label: 'Home' },
+    { k: 'other',   em: '✨', label: 'Other' },
+  ];
+  const catOf = k => CATS.find(c => c.k === k) || CATS[CATS.length - 1];
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+
+  /* ── State & storage ─────────────────────────────── */
+  const blank = () => ({ me: { name: '', city: '', center: null, zoom: 13 }, friends: [], view: null });
+  let S = blank();
+  function load() {
+    try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(blank(), JSON.parse(raw)); } catch (e) { S = blank(); }
+    S.friends = Array.isArray(S.friends) ? S.friends.filter(f => f && typeof f.lat === 'number' && typeof f.lng === 'number') : [];
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Could not save (storage full or blocked)'); } }
+
+  /* ── Shared-list mode (opened from a link) ───────── */
+  let shared = null;   // { from, city, center, friends } while viewing someone else's list
+  const b64enc = str => btoa(String.fromCharCode(...new TextEncoder().encode(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const b64dec = b => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)));
+  function encodeShare(friends) {
+    const payload = { v: 1, f: S.me.name || 'A friend', c: S.me.city || '', ctr: S.me.center, z: S.me.zoom,
+      fr: friends.map(f => ({ n: f.name, k: f.cat, la: +f.lat.toFixed(5), ln: +f.lng.toFixed(5), p: f.place || '', w: f.why || '', t: f.tags || [], fv: f.fav ? 1 : 0, m: f.maps || undefined })) };
+    return b64enc(JSON.stringify(payload));
+  }
+  function decodeShare(b) {
+    try {
+      const p = JSON.parse(b64dec(b));
+      if (!p || !Array.isArray(p.fr)) return null;
+      return { from: String(p.f || 'A friend').slice(0, 40), city: String(p.c || '').slice(0, 60), center: Array.isArray(p.ctr) ? p.ctr : null, zoom: p.z || 13,
+        friends: p.fr.filter(f => typeof f.la === 'number' && typeof f.ln === 'number').map(f => ({
+          id: 'sh_' + uid(), name: String(f.n || '').slice(0, 60), cat: catOf(f.k).k, lat: f.la, lng: f.ln, place: String(f.p || '').slice(0, 80),
+          why: String(f.w || '').slice(0, 600), tags: (Array.isArray(f.t) ? f.t : []).map(t => String(t).slice(0, 24)).slice(0, 8), fav: !!f.fv,
+          maps: (typeof f.m === 'string' && /^https?:\/\//i.test(f.m)) ? f.m.slice(0, 400) : undefined })) };
+    } catch (e) { return null; }
+  }
+  function shareUrl(friends) { return location.origin + location.pathname + '#s=' + encodeShare(friends); }
+  function readHash() {
+    const m = location.hash.match(/^#s=([A-Za-z0-9_-]+)/);
+    if (!m) return null;
+    return decodeShare(m[1]);
+  }
+
+  /* ── Map ─────────────────────────────────────────── */
+  let map = null, markerLayer = null, meMarker = null;
+  const markers = new Map();  // friend id -> marker
+  function pinIcon(f, sel) {
+    const c = catOf(f.cat);
+    const html = `<div class="pin${f.fav ? ' fav' : ''}${sel ? ' sel' : ''}">
+      <svg viewBox="0 0 36 44"><path d="M18 2C9.7 2 3 8.6 3 16.8 3 27.5 18 42 18 42s15-14.5 15-25.2C33 8.6 26.3 2 18 2z" fill="${shared ? '#7b1fa2' : '#1a73e8'}" stroke="#fff" stroke-width="2"/></svg>
+      <div class="em">${c.em}</div></div>`;
+    return L.divIcon({ html, className: '', iconSize: [36, 44], iconAnchor: [18, 44], popupAnchor: [0, -40] });
+  }
+  function initMap() {
+    if (!window.L) { $('nomap').style.display = 'grid'; return; }
+    map = L.map('map', { zoomControl: false, attributionControl: true, tap: false });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19, subdomains: 'abcd',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    }).addTo(map);
+    markerLayer = L.layerGroup().addTo(map);
+    const v = S.view || (S.me.center ? { c: S.me.center, z: S.me.zoom } : { c: DEFAULT_CENTER, z: 12 });
+    map.setView(v.c, v.z);
+    map.on('moveend', () => { if (!shared) { S.view = { c: [map.getCenter().lat, map.getCenter().lng], z: map.getZoom() }; save(); } });
+    map.on('click', () => { if (!document.body.classList.contains('picking')) closeDetail(); });
+    if (S.me.center) drawMe();
+  }
+  function drawMe() {
+    if (!map || !S.me.center) return;
+    if (meMarker) meMarker.remove();
+    meMarker = L.marker(S.me.center, { icon: L.divIcon({ html: '<div class="me-dot"></div>', className: '', iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false, zIndexOffset: -100 }).addTo(map);
+  }
+  function currentList() { return shared ? shared.friends : S.friends; }
+  function redrawMarkers() {
+    if (!map) return;
+    markerLayer.clearLayers(); markers.clear();
+    for (const f of filtered()) {
+      const m = L.marker([f.lat, f.lng], { icon: pinIcon(f, f.id === selectedId) }).addTo(markerLayer);
+      m.on('click', () => openDetail(f.id, true));
+      markers.set(f.id, m);
+    }
+  }
+  function fitAll() {
+    const list = currentList();
+    if (!map || !list.length) return;
+    const b = L.latLngBounds(list.map(f => [f.lat, f.lng]));
+    map.fitBounds(b.pad(0.25), { maxZoom: 15 });
+  }
+
+  /* ── Filtering ───────────────────────────────────── */
+  let filterCat = 'all', query = '';
+  function filtered() {
+    const q = query.trim().toLowerCase();
+    return currentList().filter(f => {
+      if (filterCat === 'fav' && !f.fav) return false;
+      if (filterCat !== 'all' && filterCat !== 'fav' && f.cat !== filterCat) return false;
+      if (!q) return true;
+      return [f.name, f.place, f.why, ...(f.tags || []), catOf(f.cat).label].join(' ').toLowerCase().includes(q);
+    });
+  }
+  function renderChips() {
+    const used = new Set(currentList().map(f => f.cat));
+    const items = [{ k: 'all', label: 'All' }, { k: 'fav', label: '★ Favourites' }, ...CATS.filter(c => used.has(c.k)).map(c => ({ k: c.k, label: c.em + ' ' + c.label }))];
+    $('chips').innerHTML = items.map(i => `<button class="chip${filterCat === i.k ? ' on' : ''}" data-k="${i.k}">${i.label}</button>`).join('');
+    if (!items.some(i => i.k === filterCat)) { filterCat = 'all'; renderChips(); }
+  }
+  $('chips').addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    filterCat = b.dataset.k; renderAll();
+  });
+  $('q').addEventListener('input', e => { query = e.target.value; $('clear-q').style.display = query ? '' : 'none'; renderList(); redrawMarkers(); });
+  $('clear-q').addEventListener('click', () => { $('q').value = ''; query = ''; $('clear-q').style.display = 'none'; renderList(); redrawMarkers(); });
+
+  /* ── Distance helper ─────────────────────────────── */
+  function km(a, b) {
+    const R = 6371, toR = x => x * Math.PI / 180;
+    const dLat = toR(b[0] - a[0]), dLng = toR(b[1] - a[1]);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a[0])) * Math.cos(toR(b[0])) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function distLabel(f) {
+    const origin = shared ? shared.center : S.me.center;
+    if (!origin) return '';
+    const d = km(origin, [f.lat, f.lng]);
+    return d < 1 ? Math.round(d * 1000) + ' m' : d.toFixed(1) + ' km';
+  }
+
+  /* ── List ────────────────────────────────────────── */
+  function renderList() {
+    const list = filtered();
+    const total = currentList().length;
+    $('sheet-title').innerHTML = shared ? `${esc(shared.from)}'s friends <span class="count">· ${total}</span>` : `My friends <span class="count">· ${total}</span>`;
+    $('share-list').classList.toggle('hidden', !!shared || !total);
+    if (!total) {
+      $('list').innerHTML = shared ? '<div class="empty">This shared list is empty.</div>' :
+        `<div class="empty">No friends pinned yet.<br>Tap <b>+</b> to add someone you'd recommend, or load a few sample people to see how it works.<br>
+         <button class="btn ghost" id="empty-paste">🔗 Paste a Google Maps link</button>
+         <button class="btn ghost" id="empty-sample">Load sample friends</button></div>`;
+      const b = $('empty-sample'); if (b) b.onclick = loadSample;
+      const c = $('empty-paste'); if (c) c.onclick = () => openImport('');
+      return;
+    }
+    if (!list.length) { $('list').innerHTML = '<div class="empty">Nothing matches that search.</div>'; return; }
+    $('list').innerHTML = list.map(f => {
+      const c = catOf(f.cat);
+      return `<div class="friend" data-id="${f.id}">
+        <div class="em${f.fav ? ' fav' : ''}">${c.em}</div>
+        <div class="body">
+          <div class="name">${esc(f.name)}</div>
+          <div class="sub">${esc(c.label)}${f.place ? ' · ' + esc(f.place) : ''}</div>
+          ${f.why ? `<div class="why">“${esc(f.why)}”</div>` : ''}
+        </div>
+        <div class="dist">${distLabel(f)}</div>
+      </div>`;
+    }).join('');
+  }
+  $('list').addEventListener('click', e => {
+    const row = e.target.closest('.friend'); if (!row) return;
+    openDetail(row.dataset.id, true); setSheet(false);
+  });
+
+  /* ── Bottom sheet drag ───────────────────────────── */
+  const sheet = $('sheet');
+  function setSheet(open) { sheet.classList.toggle('open', open); }
+  (() => {
+    let startY = 0, startOpen = false, dy = 0, dragging = false;
+    const onDown = e => {
+      if (e.target.closest('#list') && sheet.classList.contains('open')) return;   // let the list scroll
+      if (e.target.closest('button')) return;
+      startY = e.clientY; startOpen = sheet.classList.contains('open'); dy = 0; dragging = true;
+      sheet.classList.add('dragging'); sheet.setPointerCapture?.(e.pointerId);
+    };
+    const onMove = e => {
+      if (!dragging) return;
+      dy = e.clientY - startY;
+      const base = startOpen ? 0 : sheet.getBoundingClientRect().height - 72;
+      const y = Math.max(0, base + dy);
+      sheet.style.transform = `translateY(${y}px)`;
+    };
+    const onUp = () => {
+      if (!dragging) return; dragging = false;
+      sheet.classList.remove('dragging'); sheet.style.transform = '';
+      if (Math.abs(dy) < 8) { setSheet(!startOpen); return; }    // tap on handle/header toggles
+      setSheet(dy < 0);
+    };
+    sheet.addEventListener('pointerdown', onDown);
+    sheet.addEventListener('pointermove', onMove);
+    sheet.addEventListener('pointerup', onUp);
+    sheet.addEventListener('pointercancel', onUp);
+  })();
+
+  /* ── Detail card ─────────────────────────────────── */
+  let selectedId = null;
+  function openDetail(id, pan) {
+    const f = currentList().find(x => x.id === id); if (!f) return;
+    selectedId = id;
+    const c = catOf(f.cat);
+    const gmaps = f.maps || `https://www.google.com/maps/search/?api=1&query=${f.lat},${f.lng}`;
+    $('detail').innerHTML = `
+      <div class="top">
+        <div class="em">${c.em}</div>
+        <div style="min-width:0;flex:1">
+          <h3>${f.fav ? '★ ' : ''}${esc(f.name)}</h3>
+          <div class="sub">${esc(c.label)}${f.place ? ' · ' + esc(f.place) : ''}${distLabel(f) ? ' · ' + distLabel(f) + ' from centre' : ''}</div>
+        </div>
+        <button class="iconbtn close" id="d-close" title="Close">✕</button>
+      </div>
+      ${f.why ? `<div class="why"><span class="lbl">Why ${shared ? esc(shared.from) + ' recommends' : 'I recommend'} them</span>${esc(f.why)}</div>` : ''}
+      ${f.tags && f.tags.length ? `<div class="tags">${f.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+      <div class="actions">
+        <a class="btn" href="${gmaps}" target="_blank" rel="noopener">🧭 Directions</a>
+        ${shared ? `<button class="btn ghost" id="d-import">＋ Save to my map</button>` :
+          `<button class="btn ghost" id="d-share">⇪ Share</button>
+           <button class="btn ghost" id="d-edit">✎ Edit</button>
+           <button class="btn ghost" id="d-fav">${f.fav ? '★ Unfavourite' : '☆ Favourite'}</button>
+           <button class="btn danger" id="d-del">Delete</button>`}
+      </div>`;
+    $('detail').classList.add('show');
+    $('d-close').onclick = closeDetail;
+    if (shared) {
+      $('d-import').onclick = () => { importFriends([f]); };
+    } else {
+      $('d-share').onclick = () => openShare([f]);
+      $('d-edit').onclick = () => openEditor(f);
+      $('d-fav').onclick = () => { f.fav = !f.fav; save(); renderAll(); openDetail(id, false); };
+      $('d-del').onclick = () => { if (confirm(`Remove ${f.name} from your map?`)) { S.friends = S.friends.filter(x => x.id !== id); save(); closeDetail(); renderAll(); toast('Removed'); } };
+    }
+    redrawMarkers();
+    if (pan && map) map.panTo([f.lat, f.lng], { animate: true });
+  }
+  function closeDetail() { selectedId = null; $('detail').classList.remove('show'); redrawMarkers(); }
+
+  /* ── Editor ──────────────────────────────────────── */
+  let editing = null, pendingLoc = null, pendingMaps = '', pickResolve = null;
+  function mapsText() {
+    $('f-maps').classList.toggle('hidden', !pendingMaps);
+    $('f-maps-txt').textContent = pendingMaps ? 'Linked to Google Maps · ' + pendingMaps.replace(/^https?:\/\//, '').slice(0, 40) : '';
+  }
+  $('f-maps-clear').onclick = () => { pendingMaps = ''; mapsText(); };
+  function renderCats(sel) {
+    $('f-cats').innerHTML = CATS.map(c => `<button type="button" data-k="${c.k}" class="${sel === c.k ? 'on' : ''}">${c.em}<small>${c.label}</small></button>`).join('');
+  }
+  $('f-cats').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...$('f-cats').children].forEach(x => x.classList.toggle('on', x === b));
+  });
+  function selectedCat() { const b = $('f-cats').querySelector('.on'); return b ? b.dataset.k : 'other'; }
+  function locText() {
+    $('f-loc').classList.toggle('set', !!pendingLoc);
+    $('f-loc-txt').textContent = pendingLoc ? `${pendingLoc[0].toFixed(4)}, ${pendingLoc[1].toFixed(4)}` : 'No pin yet';
+  }
+  function openEditor(f, prefill) {
+    editing = f || null;
+    const p = prefill || {};
+    $('editor-title').textContent = f ? 'Edit friend' : (p.name ? 'Add from Google Maps' : 'Add a friend');
+    $('f-name').value = f ? f.name : (p.name || '');
+    $('f-place').value = f ? (f.place || '') : (p.place || '');
+    $('f-why').value = f ? (f.why || '') : '';
+    $('f-tags').value = f ? (f.tags || []).join(', ') : '';
+    $('f-fav').checked = f ? !!f.fav : false;
+    renderCats(f ? f.cat : (p.cat || 'other'));
+    pendingLoc = f ? [f.lat, f.lng] : (typeof p.lat === 'number' ? [p.lat, p.lng] : null);
+    pendingMaps = f ? (f.maps || '') : (p.maps || '');
+    locText(); mapsText();
+    $('editor').showModal();
+    if (!f && p.name) $('f-why').focus();
+  }
+  $('editor-cancel').onclick = () => { importQueue = []; $('editor').close(); };
+  $('f-pick').onclick = async () => {
+    $('editor').close();
+    const name = $('f-name').value.trim() || 'this friend';
+    const loc = await pickOnMap(`Drag the map so the pin sits where ${name} is.`, pendingLoc);
+    if (loc) pendingLoc = loc;
+    locText();
+    $('editor').showModal();
+  };
+  $('editor-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('f-name').value.trim();
+    if (!name) { $('f-name').focus(); return; }
+    if (!pendingLoc) { pendingLoc = map ? [map.getCenter().lat, map.getCenter().lng] : (S.me.center || DEFAULT_CENTER); toast('Pinned at the map centre — edit to move it'); }
+    const data = { name, cat: selectedCat(), lat: pendingLoc[0], lng: pendingLoc[1], place: $('f-place').value.trim(),
+      why: $('f-why').value.trim(), tags: $('f-tags').value.split(',').map(t => t.trim()).filter(Boolean).slice(0, 8), fav: $('f-fav').checked,
+      maps: pendingMaps || undefined };
+    if (editing) Object.assign(editing, data);
+    else { S.friends.push({ id: uid(), addedAt: Date.now(), ...data }); }
+    save(); $('editor').close(); renderAll();
+    const id = editing ? editing.id : S.friends[S.friends.length - 1].id;
+    openDetail(id, true);
+    toast(editing ? 'Saved' : `${name} added to your map`);
+    editing = null;
+    nextImport();
+  });
+
+  function pickOnMap(text, start) {
+    if (!map) { toast('Map unavailable — pin set to city centre'); return Promise.resolve(S.me.center || DEFAULT_CENTER); }
+    $('pick-text').textContent = text;
+    document.body.classList.add('picking');
+    if (start) map.setView(start, Math.max(map.getZoom(), 15));
+    return new Promise(res => { pickResolve = res; });
+  }
+  function endPick(val) { document.body.classList.remove('picking'); const r = pickResolve; pickResolve = null; if (r) r(val); }
+  $('pick-ok').onclick = () => endPick([map.getCenter().lat, map.getCenter().lng]);
+  $('pick-cancel').onclick = () => endPick(null);
+
+  $('add').onclick = () => { if (shared) { toast('Exit the shared list to add your own friends'); return; } openEditor(null); };
+
+  /* ── Profile / settings ──────────────────────────── */
+  function pLocText() { $('p-loc-txt').textContent = S.me.center ? `City centre: ${S.me.center[0].toFixed(3)}, ${S.me.center[1].toFixed(3)}` : 'City centre: not set (uses the map view)'; }
+  function openProfile(first) {
+    $('profile-title').textContent = first ? 'Welcome to Friends Map' : 'You & your city';
+    $('profile-hint').textContent = first ? 'Build a map of the people you recommend around your city, then share it with a link. Nothing leaves your phone unless you share it.' :
+      'Your name and city go on the lists you share. Everything is saved only on this device.';
+    $('p-name').value = S.me.name; $('p-city').value = S.me.city; pLocText();
+    $('profile').showModal();
+  }
+  function meInitial() { $('me-btn').textContent = (S.me.name || '?').trim().charAt(0).toUpperCase() || '?'; }
+  $('me-btn').onclick = () => openProfile(false);
+  $('p-save').onclick = () => {
+    S.me.name = $('p-name').value.trim(); S.me.city = $('p-city').value.trim();
+    if (!S.me.center && map) { S.me.center = [map.getCenter().lat, map.getCenter().lng]; S.me.zoom = map.getZoom(); }
+    save(); meInitial(); drawMe(); renderAll(); $('profile').close();
+    if (!S.friends.length) setSheet(true);   // show the empty-state hints after onboarding
+  };
+  $('p-here').onclick = () => { if (!map) return; S.me.center = [map.getCenter().lat, map.getCenter().lng]; S.me.zoom = map.getZoom(); save(); pLocText(); drawMe(); toast('City centre set'); };
+  $('p-geo').onclick = () => locate(true);
+  $('locate').onclick = () => locate(false);
+  function locate(setCentre) {
+    if (!navigator.geolocation) { toast('Location not available on this device'); return; }
+    toast('Finding you…');
+    navigator.geolocation.getCurrentPosition(pos => {
+      const c = [pos.coords.latitude, pos.coords.longitude];
+      if (setCentre || !S.me.center) { S.me.center = c; S.me.zoom = 14; save(); pLocText(); drawMe(); }
+      if (map) map.setView(c, 15);
+      toast(setCentre ? 'City centre set to your location' : 'Centred on you');
+    }, () => toast('Could not get your location'), { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
+  }
+  $('p-sample').onclick = () => { loadSample(); $('profile').close(); };
+  $('p-clear').onclick = () => { if (confirm('Delete every friend on your map? This cannot be undone.')) { S.friends = []; save(); renderAll(); closeDetail(); $('profile').close(); toast('Cleared'); } };
+  $('p-export').onclick = () => {
+    const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'friends-map-backup.json'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  $('p-import').onclick = () => $('p-file').click();
+  $('p-file').onchange = async e => {
+    const file = e.target.files[0]; if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!data || !Array.isArray(data.friends)) throw new Error('bad');
+      const incoming = data.friends.filter(f => typeof f.lat === 'number' && typeof f.lng === 'number');
+      const n = importFriends(incoming, true);
+      if (data.me && !S.me.name) S.me = Object.assign(S.me, data.me);
+      save(); meInitial(); drawMe(); renderAll(); $('profile').close();
+      toast(`Imported ${n} friend${n === 1 ? '' : 's'}`);
+    } catch (err) { toast('That file is not a Friends Map backup'); }
+    e.target.value = '';
+  };
+
+  function importFriends(list, silent) {
+    let n = 0;
+    for (const f of list) {
+      const dup = S.friends.some(x => x.name.toLowerCase() === String(f.name).toLowerCase() && Math.abs(x.lat - f.lat) < 1e-4 && Math.abs(x.lng - f.lng) < 1e-4);
+      if (dup) continue;
+      S.friends.push({ id: uid(), addedAt: Date.now(), name: f.name, cat: catOf(f.cat).k, lat: f.lat, lng: f.lng, place: f.place || '', why: f.why || '', tags: f.tags || [], fav: !!f.fav, maps: f.maps || undefined,
+        via: shared ? shared.from : (f.via || undefined) });
+      n++;
+    }
+    save();
+    if (!silent) toast(n ? `Saved ${n} to your map` : 'Already on your map');
+    return n;
+  }
+
+  /* ── Sample data (mock) ──────────────────────────── */
+  function loadSample() {
+    const c = S.me.center || (map ? [map.getCenter().lat, map.getCenter().lng] : DEFAULT_CENTER);
+    if (!S.me.center) { S.me.center = c; S.me.zoom = map ? map.getZoom() : 13; drawMe(); }
+    const o = (dlat, dlng) => [c[0] + dlat, c[1] + dlng];
+    const sample = [
+      { name: 'Sara — barber', cat: 'hair', p: 'Old town, behind the market', w: 'Best fade in the city and she actually listens. Book a week ahead, cash only.', t: ['walk-ins ok', 'cash only'], fv: true, at: o(0.012, 0.008) },
+      { name: 'Dmitri — bike mechanic', cat: 'fix', p: 'Riverside workshop', w: 'Fixed my derailleur in 20 minutes for the price of a coffee. Honest about what does not need fixing.', t: ['cheap', 'fast'], fv: false, at: o(-0.009, 0.015) },
+      { name: 'Ling — noodle spot', cat: 'food', p: 'Station square', w: 'Tell her I sent you and ask for the off-menu chili oil. Tiny place, no reservations, worth the queue.', t: ['late hours', 'spicy'], fv: true, at: o(0.004, -0.018) },
+      { name: 'Marcus — coffee', cat: 'coffee', p: 'Corner of the park', w: 'Roasts his own beans. Great person to talk to if you are new in town, he knows everyone.', t: ['wifi', 'dog friendly'], fv: false, at: o(-0.015, -0.006) },
+      { name: 'Priya — physio', cat: 'health', p: 'Clinic on the hill', w: 'Sorted my back after two visits when three others could not. Direct, no upselling.', t: ['takes insurance'], fv: false, at: o(0.02, -0.004) },
+      { name: 'Jonah — guitar teacher', cat: 'music', p: 'Home studio, north side', w: 'Patient with total beginners. First lesson free if you say you came from my map.', t: ['beginners', 'evenings'], fv: false, at: o(-0.003, 0.024) },
+    ];
+    const n = importFriends(sample.map(s => ({ name: s.name, cat: s.cat, lat: s.at[0], lng: s.at[1], place: s.p, why: s.w, tags: s.t, fav: s.fv })), true);
+    save(); renderAll(); fitAll(); toast(n ? `Added ${n} sample friends` : 'Sample friends already loaded');
+  }
+
+  /* ── Import from Google Maps ─────────────────────── */
+  // Understands the URL shapes Google Maps hands out:
+  //   google.com/maps/place/<Name>/@lat,lng,17z/data=…!3dLAT!4dLNG…   (full link; !3d/!4d is the exact pin)
+  //   google.com/maps/search/<query>/@lat,lng…  ·  maps?q=lat,lng  ·  ?api=1&query=lat,lng  ·  ll=lat,lng  ·  geo:lat,lng
+  //   maps.app.goo.gl/… / goo.gl/maps/…  (short link: keeps the link + the name from the share text; pin is picked by hand)
+  // The share sheet in the Maps app sends "Name\nhttps://maps.app.goo.gl/…", so the name comes from the text around the link.
+  const URL_RE = /(?:https?:\/\/[^\s<>"']+|geo:[-0-9.]+,[-0-9.]+[^\s]*)/gi;
+  const isMapsUrl = u => /(?:^|[./])(?:google\.[a-z.]+\/maps|maps\.google\.[a-z.]+|maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)|^geo:/i.test(u);
+  const num = s => { const n = parseFloat(s); return Number.isFinite(n) ? n : null; };
+  const validLL = (la, ln) => la !== null && ln !== null && Math.abs(la) <= 90 && Math.abs(ln) <= 180;
+  const cleanName = s => decodeURIComponent(String(s || '').replace(/\+/g, ' ')).replace(/\s+/g, ' ').replace(/^(check out|look at|found on google maps:?)\s+/i, '').trim().slice(0, 60);
+  function parseMapsUrl(raw) {
+    const url = raw.replace(/[),.;!?]+$/, '');
+    if (!isMapsUrl(url)) return null;
+    const out = { maps: url, name: '', lat: null, lng: null, short: /maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\//i.test(url) };
+    let m;
+    if ((m = url.match(/^geo:([-0-9.]+),([-0-9.]+)/i))) { out.lat = num(m[1]); out.lng = num(m[2]); const q = url.match(/[?&]q=([^&]+)/); if (q && !/^[-0-9.,\s]+$/.test(decodeURIComponent(q[1]))) out.name = cleanName(q[1]); }
+    if ((m = url.match(/\/maps\/place\/([^/@?]+)/i))) out.name = cleanName(m[1]);
+    else if ((m = url.match(/\/maps\/search\/([^/@?]+)/i)) && !/^[-0-9.,%\s]+$/.test(m[1])) out.name = cleanName(m[1]);
+    if ((m = url.match(/!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/))) { out.lat = num(m[1]); out.lng = num(m[2]); }
+    if (out.lat === null && (m = url.match(/[?&](?:q|query|ll|destination|center)=(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/i))) { out.lat = num(m[1]); out.lng = num(m[2]); }
+    if (out.lat === null && (m = url.match(/[?&](?:q|query)=([^&]+)/i)) && !/^[-0-9.,%\s]+$/.test(m[1]) && !out.name) out.name = cleanName(m[1]);
+    if (out.lat === null && (m = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/))) { out.lat = num(m[1]); out.lng = num(m[2]); }
+    if (!validLL(out.lat, out.lng)) { out.lat = null; out.lng = null; }
+    return out;
+  }
+  function parseMapsText(text) {
+    const items = [];
+    const lines = String(text || '').split(/\r?\n/);
+    let pendingName = '';
+    for (const line of lines) {
+      const urls = line.match(URL_RE) || [];
+      const rest = cleanName(line.replace(URL_RE, '').replace(/[|·•-]+\s*$/, ''));
+      if (!urls.length) { if (rest) pendingName = rest; continue; }
+      for (const u of urls) {
+        const p = parseMapsUrl(u);
+        if (!p) continue;
+        if (!p.name) p.name = rest || pendingName;
+        items.push(p);
+      }
+      pendingName = '';
+    }
+    return items;
+  }
+  const guessCat = name => {
+    const n = name.toLowerCase();
+    const rules = [['coffee', /coffee|caf[eé]|espresso|roast/], ['food', /restaurant|pizza|noodle|burger|kitchen|grill|taco|sushi|bakery|bistro|diner|bbq|barbecue|ramen|kebab|deli|eatery|cantina|taqueria/],
+      ['hair', /barber|salon|hair|nails|beauty/], ['fix', /repair|mechanic|garage|auto|tyre|tire|bike|cycle/], ['fit', /gym|fitness|yoga|crossfit|pilates|boxing|climb/],
+      ['music', /music|guitar|piano|studio|records|vinyl/], ['tech', /computer|phone|tech|electronics|repair shop/], ['health', /clinic|doctor|dental|dentist|physio|pharmacy|health|therapy/],
+      ['home', /plumb|electric|clean|garden|paint|movers|handyman|roof/]];
+    for (const [k, re] of rules) if (re.test(n)) return k;
+    return 'other';
+  };
+  let importQueue = [];
+  function nextImport() {
+    const p = importQueue.shift(); if (!p) return;
+    openEditor(null, { name: p.name, cat: guessCat(p.name), lat: p.lat, lng: p.lng, maps: p.maps, place: '' });
+    if (p.lat === null) toast('No pin in that link — tap “Pick on map” to place them');
+  }
+  function importFromText(text) {
+    const items = parseMapsText(text);
+    if (!items.length) { toast('No Google Maps link found in that text'); return false; }
+    if (shared) exitShared();
+    $('importdlg').close();
+    importQueue = items;
+    nextImport();
+    return true;
+  }
+  function openImport(prefillText) {
+    $('i-text').value = prefillText || '';
+    $('i-status').textContent = '';
+    $('importdlg').showModal();
+    if (!prefillText) $('i-text').focus();
+  }
+  $('paste-link').onclick = () => openImport('');
+  $('i-cancel').onclick = () => $('importdlg').close();
+  $('i-go').onclick = () => { if (!importFromText($('i-text').value)) $('i-status').textContent = 'Paste a link that starts with https://maps.app.goo.gl/ or https://www.google.com/maps/…'; };
+  $('i-text').addEventListener('input', () => {
+    const items = parseMapsText($('i-text').value);
+    $('i-status').textContent = !items.length ? '' : items.map(p => `${p.name || 'Unnamed place'} · ${p.lat !== null ? 'pin found' : 'no pin in link, you will place it'}`).join(' — ');
+  });
+  // Pasting a Maps link into the search box jumps straight to the importer.
+  $('q').addEventListener('paste', e => {
+    const t = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+    if (parseMapsText(t).length) { e.preventDefault(); $('q').value = ''; openImport(t); $('i-status').textContent = 'Link recognised — tap Import.'; }
+  });
+  // Android share target: Google Maps -> Share -> Friends Map lands here with ?text=&url=&title=.
+  function consumeShareTarget() {
+    const sp = new URLSearchParams(location.search);
+    if (!sp.has('text') && !sp.has('url') && !sp.has('title')) return false;
+    const text = [sp.get('title'), sp.get('text'), sp.get('url')].filter(Boolean).join('\n');
+    history.replaceState(null, '', location.pathname + location.hash);
+    if (parseMapsText(text).length) { openImport(text); $('i-status').textContent = 'Shared from Google Maps — tap Import.'; return true; }
+    return false;
+  }
+
+  /* ── Sharing ─────────────────────────────────────── */
+  let shareFriends = [];
+  function shareText(list) {
+    const head = `${S.me.name || 'My'} recommended people${S.me.city ? ' in ' + S.me.city : ''}:\n`;
+    return head + list.map(f => `\n${catOf(f.cat).em} ${f.name}${f.place ? ' — ' + f.place : ''}\n   ${f.why || ''}\n   📍 https://www.google.com/maps/search/?api=1&query=${f.lat.toFixed(5)},${f.lng.toFixed(5)}`).join('\n');
+  }
+  function openShare(list) {
+    if (!S.me.name) { toast('Add your name first so people know who sent it'); openProfile(false); return; }
+    shareFriends = list;
+    const url = shareUrl(list);
+    $('share-hint').textContent = list.length === 1 ? `Share ${list[0].name} with someone. The pin and your note travel inside the link.` :
+      `Anyone who opens this link sees your ${list.length} friends, your notes and your pins. The list itself travels inside the link, so no server is involved.`;
+    $('share-link').textContent = url;
+    $('s-native').classList.toggle('hidden', !navigator.share);
+    $('sharedlg').showModal();
+  }
+  $('share-list').onclick = () => openShare(filtered().length ? filtered() : S.friends);
+  $('s-close').onclick = () => $('sharedlg').close();
+  async function copy(text) { try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (e) { prompt('Copy this:', text); } }
+  $('s-copy').onclick = () => copy(shareUrl(shareFriends));
+  $('s-text').onclick = () => copy(shareText(shareFriends));
+  $('s-native').onclick = async () => {
+    try { await navigator.share({ title: 'My recommended people', text: shareText(shareFriends), url: shareUrl(shareFriends) }); $('sharedlg').close(); }
+    catch (e) { /* user cancelled */ }
+  };
+
+  /* ── Shared-list banner ──────────────────────────── */
+  function enterShared(p) {
+    shared = p;
+    $('shared-text').innerHTML = `<b>${esc(p.from)}</b> shared <b>${p.friends.length}</b> recommended ${p.friends.length === 1 ? 'person' : 'people'}${p.city ? ' in <b>' + esc(p.city) + '</b>' : ''}. Tap a pin to read why.`;
+    $('shared-banner').classList.remove('hidden');
+    $('add').classList.add('hidden'); $('paste-link').classList.add('hidden');
+    filterCat = 'all'; query = ''; $('q').value = '';
+    renderAll();
+    if (map) { if (p.friends.length) fitAll(); else if (p.center) map.setView(p.center, p.zoom); }
+    setSheet(true);
+  }
+  function exitShared() {
+    shared = null; closeDetail();
+    history.replaceState(null, '', location.pathname + location.search);
+    $('shared-banner').classList.add('hidden'); $('add').classList.remove('hidden'); $('paste-link').classList.remove('hidden');
+    renderAll(); if (map) { if (S.view) map.setView(S.view.c, S.view.z); else fitAll(); }
+    setSheet(false);
+  }
+  $('shared-exit').onclick = exitShared;
+  $('shared-save').onclick = () => { const n = importFriends(shared.friends, true); toast(n ? `Saved ${n} to your map` : 'All of these are already on your map'); exitShared(); };
+  window.addEventListener('hashchange', () => { const p = readHash(); if (p) enterShared(p); else if (shared) exitShared(); });
+
+  /* ── Toast ───────────────────────────────────────── */
+  let toastT = 0;
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200); }
+
+  /* ── Render everything ───────────────────────────── */
+  function renderAll() { renderChips(); renderList(); redrawMarkers(); }
+
+  /* ── Boot ────────────────────────────────────────── */
+  load();
+  initMap();
+  meInitial();
+  renderAll();
+  const sharedPayload = readHash();
+  if (sharedPayload) enterShared(sharedPayload);
+  else if (consumeShareTarget()) { /* importer is open */ }
+  else if (!S.me.name && !S.friends.length) openProfile(true);
+  else if (S.friends.length && !S.view) fitAll();
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+
+  /* Demo hook for the site's automated tester (see tests/README.md). */
+  window.__friendsmap = {
+    state: () => ({ friends: S.friends.length, shared: shared ? shared.friends.length : 0, me: { ...S.me }, progress: S.friends.length }),
+    loadSample, openShare: () => shareUrl(S.friends), shareUrl: () => shareUrl(S.friends), parseMapsText, importFromText,
+    add: f => { S.friends.push({ id: uid(), addedAt: Date.now(), cat: 'other', place: '', why: '', tags: [], fav: false, ...f }); save(); renderAll(); },
+    reset: () => { S = blank(); save(); renderAll(); },
+    setDemo: () => {}, startDemo: () => { if (!S.friends.length) loadSample(); }, stopDemo: () => {},
+  };
+})();
+</script>
+</body>
+</html>

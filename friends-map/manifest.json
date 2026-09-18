@@ -1,0 +1,34 @@
+{
+  "id": "/friends-map/",
+  "name": "Friends Map — my recommended people",
+  "short_name": "Friends Map",
+  "description": "Pin the friends you recommend around your city, say why, and share the list with a link.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f3f4",
+  "theme_color": "#1a73e8",
+  "categories": [
+    "social",
+    "lifestyle",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "share_target": {
+    "action": "./",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}
