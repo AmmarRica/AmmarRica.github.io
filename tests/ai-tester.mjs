@@ -31,6 +31,7 @@ const GAMES = [
   { name: 'crab-breed-swiper', hook: '__crab',      metric: 'score',    ms: 6000 },
   { name: 'dog-swiper',        hook: '__dog',       metric: 'progress', ms: 6000 },
   { name: 'nonogram',          hook: '__nonogram',  metric: 'progress', ms: 8000 },
+  { name: 'beer-pour',         hook: '__beer',      metric: 'score',    ms: 8000 },
 ];
 
 const browser = await chromium.launch();

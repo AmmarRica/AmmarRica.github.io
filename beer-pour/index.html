@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Perfect Pour</title>
+  <meta name="description" content="Hold to pour, let go to serve. Hit the fill line without overflowing the glass." />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#160c06" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Perfect Pour" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overflow: hidden; background: #160c06; color: #fff3df;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
+    #app { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    /* HUD */
+    #hud { position: absolute; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 0;
+      display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+    #hud .lbl { font-size: 11px; letter-spacing: 2px; color: #d4a86a; font-weight: 700; }
+    #hud .val { font-size: 28px; font-weight: 800; line-height: 1.1; text-shadow: 0 2px 6px rgba(0,0,0,.5); font-variant-numeric: tabular-nums; }
+    #hud .mid { text-align: center; }
+    #hud .right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    #lives { font-size: 20px; letter-spacing: 2px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+    #lives .lost { opacity: .22; filter: grayscale(1); }
+    #mute { pointer-events: auto; width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.35); color: #fff; font-size: 20px; cursor: pointer; }
+    #combo { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 60px); text-align: center;
+      font-weight: 900; font-size: 16px; letter-spacing: 2px; color: #ffd166; opacity: 0; transform: scale(.8);
+      transition: opacity .2s, transform .2s; pointer-events: none; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+    #combo.on { opacity: 1; transform: scale(1); }
+
+    /* Overlays */
+    .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(10,5,2,.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 24px; z-index: 5; }
+    .overlay.show { display: flex; }
+    .card { width: 100%; max-width: 360px; background: linear-gradient(180deg,#2a1810,#1a0e08); border: 1px solid rgba(255,200,120,.25);
+      border-radius: 22px; padding: 28px 22px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+    .logo { font-size: 64px; line-height: 1; margin-bottom: 8px; }
+    h1 { font-size: 34px; font-weight: 900; letter-spacing: -.5px; color: #ffd166; }
+    h2 { font-size: 26px; font-weight: 900; color: #ffd166; margin-bottom: 12px; }
+    .how { margin: 14px 0 18px; font-size: 17px; line-height: 1.55; color: #f3e3c9; }
+    .how b { color: #ffd166; }
+    .best { font-size: 14px; color: #d4a86a; letter-spacing: 1px; margin-bottom: 18px; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 20px; }
+    .stat { background: rgba(255,255,255,.05); border-radius: 12px; padding: 10px 8px; }
+    .stat .k { font-size: 11px; letter-spacing: 1.5px; color: #d4a86a; }
+    .stat .v { font-size: 24px; font-weight: 800; }
+    .btn { width: 100%; min-height: 56px; border: 0; border-radius: 16px; font-size: 19px; font-weight: 800; cursor: pointer;
+      background: linear-gradient(180deg,#ffcf5c,#f2a51d); color: #3a1c05; box-shadow: 0 6px 0 #9a5d08, 0 10px 24px rgba(0,0,0,.4); }
+    .btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #9a5d08; }
+    .tip { margin-top: 14px; font-size: 13px; color: #b08a5a; }
+
+    #rotate { position: absolute; inset: 0; z-index: 9; display: none; align-items: center; justify-content: center;
+      background: #160c06; font-size: 22px; font-weight: 700; text-align: center; padding: 20px; }
+    @media (orientation: landscape) and (max-height: 520px) { #rotate { display: flex; } }
+  </style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+
+  <div id="hud">
+    <div><div class="lbl">SCORE</div><div class="val" id="score">0</div></div>
+    <div class="mid"><div class="lbl">GLASS</div><div class="val" id="round">1</div></div>
+    <div class="right"><div id="lives"></div><button id="mute" aria-label="Toggle sound">🔊</button></div>
+  </div>
+  <div id="combo">×2 COMBO</div>
+
+  <div class="overlay show" id="start">
+    <div class="card">
+      <div class="logo">🍺</div>
+      <h1>Perfect Pour</h1>
+      <p class="how"><b>Hold</b> the screen to pour.<br><b>Let go</b> to serve.<br>Hit the fill line. Don't overflow.</p>
+      <div class="best">BEST <span id="bestStart">0</span></div>
+      <button class="btn" id="playBtn">Start pouring</button>
+      <div class="tip">Foam keeps settling after you let go.</div>
+    </div>
+  </div>
+
+  <div class="overlay" id="over">
+    <div class="card">
+      <h2 id="overTitle">Last call!</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">SCORE</div><div class="v" id="finalScore">0</div></div>
+        <div class="stat"><div class="k">BEST</div><div class="v" id="finalBest">0</div></div>
+        <div class="stat"><div class="k">SERVED</div><div class="v" id="finalServed">0</div></div>
+        <div class="stat"><div class="k">PERFECT</div><div class="v" id="finalPerfect">0</div></div>
+      </div>
+      <button class="btn" id="againBtn">Pour again</button>
+    </div>
+  </div>
+
+  <div id="rotate">Rotate your phone to portrait 🍺</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ───────────────────────── DOM ─────────────────────────
+const $ = s => document.querySelector(s);
+const canvas = $('#c');
+const ctx = canvas.getContext('2d');
+const el = {
+  score: $('#score'), round: $('#round'), lives: $('#lives'), combo: $('#combo'), mute: $('#mute'),
+  start: $('#start'), over: $('#over'), bestStart: $('#bestStart'),
+  finalScore: $('#finalScore'), finalBest: $('#finalBest'), finalServed: $('#finalServed'), finalPerfect: $('#finalPerfect'),
+  overTitle: $('#overTitle'), playBtn: $('#playBtn'), againBtn: $('#againBtn'),
+};
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (_) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} },
+};
+
+// ───────────────────────── Tuning ─────────────────────────
+const TUNE = {
+  target: 0.86,        // fill line height (0..1 of glass)
+  perfect: 0.02,       // ± zone for PERFECT
+  good: 0.06,          // ± zone for GOOD
+  minLevel: 0.45,      // below this = "empty" = lose a life
+  baseRate: 0.30,      // glass volumes per second on round 1
+  rateGrowth: 0.055,   // per round
+  maxRate: 0.72,
+  foamRise: 0.7,       // foam volume per second × foamRatio while pouring
+  foamSettle: 0.7,     // fraction of foam that collapses per second
+  lagSeconds: 0.05,    // beer still in the air after release
+  settleTime: 0.7,     // seconds between release and judgement
+  lives: 3,
+};
+
+// ───────────────────────── Glass shapes ─────────────────────────
+// profile: [heightFraction, halfWidthFraction] from bottom to top
+const SHAPES = [
+  { id: 'pint',   name: 'PINT',   min: 1, pts: [[0, 0.70], [1, 1.00]] },
+  { id: 'mug',    name: 'MUG',    min: 3, pts: [[0, 0.92], [1, 0.92]], handle: true },
+  { id: 'weizen', name: 'WEIZEN', min: 4, pts: [[0, 0.55], [0.22, 0.60], [0.55, 0.95], [0.80, 1.00], [1, 0.92]] },
+  { id: 'tulip',  name: 'TULIP',  min: 6, pts: [[0, 0.48], [0.10, 0.62], [0.45, 1.00], [0.72, 0.80], [1, 0.86]] },
+];
+const N = 256;
+for (const s of SHAPES) {
+  s.widthAt = h => {
+    h = Math.max(0, Math.min(1, h));
+    const p = s.pts;
+    for (let i = 1; i < p.length; i++) {
+      if (h <= p[i][0]) { const t = (h - p[i-1][0]) / (p[i][0] - p[i-1][0]); return p[i-1][1] + (p[i][1] - p[i-1][1]) * t; }
+    }
+    return p[p.length-1][1];
+  };
+  // cumulative volume (revolved profile → area ∝ width²)
+  const cum = new Float64Array(N + 1);
+  for (let i = 1; i <= N; i++) { const w = s.widthAt((i - 0.5) / N); cum[i] = cum[i-1] + w * w; }
+  for (let i = 0; i <= N; i++) cum[i] /= cum[N];
+  s.hFromV = v => {
+    if (v <= 0) return 0;
+    if (v >= 1) return 1;
+    let lo = 0, hi = N;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= v) lo = m; else hi = m; }
+    const t = (v - cum[lo]) / (cum[hi] - cum[lo] || 1);
+    return (lo + t) / N;
+  };
+  s.vFromH = h => {
+    h = Math.max(0, Math.min(1, h)); const x = h * N; const i = Math.min(N - 1, Math.floor(x)); const t = x - i;
+    return cum[i] + (cum[i+1] - cum[i]) * t;
+  };
+}
+
+// ───────────────────────── Audio ─────────────────────────
+const SFX = (() => {
+  let ac = null, pourGain = null, muted = store.get('pp_mute', '0') === '1';
+  function init() {
+    if (ac) { if (ac.state === 'suspended') ac.resume().catch(() => {}); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    ac = new AC();
+    const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+    const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 0.6;
+    pourGain = ac.createGain(); pourGain.gain.value = 0;
+    src.connect(bp).connect(pourGain).connect(ac.destination); src.start();
+  }
+  function pour(on) {
+    if (!ac || !pourGain) return; const t = ac.currentTime; const g = pourGain.gain;
+    g.cancelScheduledValues(t); g.setTargetAtTime(on && !muted ? 0.16 : 0, t, on ? 0.06 : 0.1);
+  }
+  function tone(f, dur, type, vol, f2) {
+    if (!ac || muted) return; const t = ac.currentTime;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    g.gain.setValueAtTime(vol || 0.2, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function burst(dur, vol) {
+    if (!ac || muted) return; const t = ac.currentTime;
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const s = ac.createBufferSource(); s.buffer = buf; const g = ac.createGain(); g.gain.value = vol;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    s.connect(lp).connect(g).connect(ac.destination); s.start(t);
+  }
+  return {
+    init, pour,
+    perfect() { tone(880, 0.12, 'sine', 0.22); setTimeout(() => tone(1320, 0.25, 'sine', 0.22), 90); },
+    good() { tone(660, 0.18, 'triangle', 0.2); },
+    meh() { tone(330, 0.2, 'triangle', 0.15, 260); },
+    bad() { tone(160, 0.35, 'sawtooth', 0.14, 90); },
+    splash() { burst(0.45, 0.35); tone(120, 0.4, 'sawtooth', 0.12, 60); },
+    setMuted(m) { muted = m; store.set('pp_mute', m ? '1' : '0'); if (m) pour(false); },
+    muted: () => muted,
+  };
+})();
+
+function buzz(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (_) {} }
+
+// ───────────────────────── State ─────────────────────────
+let W = 0, H = 0, DPR = 1;
+const L = {};
+const G = {
+  mode: 'title', score: 0, best: +store.get('pp_best', '0') || 0, lives: TUNE.lives, round: 0, combo: 0,
+  perfects: 0, served: 0,
+  shape: SHAPES[0], rate: TUNE.baseRate, foamRatio: 0.15, foamy: false,
+  beer: 0, foam: 0, pouring: false, pending: 0, released: false, done: false, settleT: 0, nextT: 0,
+  result: null, shake: 0, puddle: 0, handle: 0, t: 0,
+  bubbles: [], drops: [], spill: [],
+  lastLevel: null, demo: false, hintT: 0,
+};
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 3);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const sw = Math.min(W, H * 0.62);
+  L.cx = W / 2;
+  L.tapTop = H * 0.155; L.spoutY = H * 0.245;
+  L.glassTop = H * 0.30; L.glassBottom = H * 0.775; L.glassH = L.glassBottom - L.glassTop;
+  L.halfW = Math.min(sw * 0.30, L.glassH * 0.34);
+  L.barY = L.glassBottom + 2;
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+resize();
+
+const gx = (rel, side) => L.cx + side * rel * L.halfW;
+const gy = h => L.glassBottom - h * L.glassH;
+
+// ───────────────────────── Flow ─────────────────────────
+function startGame() {
+  G.mode = 'play'; G.score = 0; G.lives = TUNE.lives; G.round = 0; G.combo = 0; G.perfects = 0; G.served = 0;
+  G.puddle = 0; G.spill = []; G.hintT = 6;
+  el.start.classList.remove('show'); el.over.classList.remove('show');
+  newGlass(); updateHud();
+}
+
+function pickShape(round) {
+  const pool = SHAPES.filter(s => round >= s.min);
+  if (round <= 2) return SHAPES[0];
+  // avoid repeating the previous shape when possible
+  const others = pool.filter(s => s !== G.shape);
+  const src = others.length ? others : pool;
+  return src[Math.floor(Math.random() * src.length)];
+}
+
+function newGlass() {
+  G.round++;
+  G.shape = pickShape(G.round);
+  G.rate = Math.min(TUNE.maxRate, TUNE.baseRate * (1 + TUNE.rateGrowth * (G.round - 1)));
+  G.foamy = G.round >= 4 && Math.random() < 0.22;
+  G.foamRatio = G.foamy ? 0.34 + Math.random() * 0.08 : 0.10 + Math.random() * 0.10;
+  G.beer = 0; G.foam = 0; G.pending = 0; G.pouring = false; G.released = false; G.done = false;
+  G.settleT = 0; G.nextT = 0; G.result = null; G.bubbles = []; G.drops = []; G.lastLevel = null;
+  updateHud();
+}
+
+function beginPour() {
+  if (G.mode !== 'play' || G.released || G.done || G.pouring) return;
+  G.pouring = true; SFX.init(); SFX.pour(true);
+}
+function endPour() {
+  if (!G.pouring) return;
+  G.pouring = false; G.released = true; G.pending = G.rate * TUNE.lagSeconds; G.settleT = TUNE.settleTime;
+  SFX.pour(false);
+}
+
+function setResult(text, sub, color) { G.result = { text, sub, color, t: 0 }; }
+
+function evaluate() {
+  const v = G.beer + G.foam;
+  const level = G.shape.hFromV(Math.min(1, v));
+  const d = level - TUNE.target;
+  G.done = true; G.lastLevel = level; G.nextT = 1.4;
+  let pts = 0;
+  if (Math.abs(d) <= TUNE.perfect) {
+    G.combo++; G.perfects++; G.served++;
+    pts = 100 * Math.min(5, G.combo);
+    setResult('PERFECT!', '+' + pts, '#ffd166'); SFX.perfect(); buzz(30);
+  } else if (Math.abs(d) <= TUNE.good) {
+    G.served++; pts = 50;
+    setResult(d < 0 ? 'GOOD' : 'GOOD', '+50', '#8ef0a3'); SFX.good(); buzz(15);
+  } else if (d > 0) {
+    G.combo = 0; G.served++; pts = 10;
+    setResult('TOO FULL', '+10', '#ffb27a'); SFX.meh();
+  } else if (level >= TUNE.minLevel) {
+    G.combo = 0; G.served++; pts = 10;
+    setResult('SHORT POUR', '+10', '#ffb27a'); SFX.meh();
+  } else {
+    loseLife('EMPTY?!', 'Hold longer');
+    return;
+  }
+  G.score += pts; updateHud();
+}
+
+function loseLife(text, sub) {
+  G.combo = 0; G.lives--; G.done = true; G.pouring = false; G.pending = 0; G.nextT = 1.9;
+  setResult(text, sub, '#ff6b6b'); SFX.pour(false); SFX.bad(); buzz([60, 40, 60]);
+  updateHud();
+}
+
+function overflow() {
+  G.beer = Math.max(0, 1 - G.foam);
+  G.shake = 1; G.puddle = Math.min(1, G.puddle + 0.5);
+  for (let i = 0; i < 34; i++) {
+    const side = Math.random() < 0.5 ? -1 : 1;
+    G.spill.push({ x: gx(G.shape.widthAt(1) * (0.6 + Math.random() * 0.45), side), y: gy(1) + Math.random() * 6,
+      vx: side * (30 + Math.random() * 90), vy: -40 - Math.random() * 120, r: 2 + Math.random() * 4, life: 1 });
+  }
+  loseLife('OVERFLOW!', 'Spilled it');
+  SFX.splash();
+}
+
+function gameOver() {
+  G.mode = 'over';
+  if (G.score > G.best) { G.best = G.score; store.set('pp_best', String(G.best)); }
+  el.finalScore.textContent = G.score; el.finalBest.textContent = G.best;
+  el.finalServed.textContent = G.served; el.finalPerfect.textContent = G.perfects;
+  el.overTitle.textContent = G.score >= G.best && G.score > 0 ? 'New best! 🏆' : 'Last call!';
+  el.over.classList.add('show');
+  if (G.demo) setTimeout(() => { if (G.demo && G.mode === 'over') startGame(); }, 600);
+}
+
+function updateHud() {
+  el.score.textContent = G.score;
+  el.round.textContent = G.round || 1;
+  let s = ''; for (let i = 0; i < TUNE.lives; i++) s += '<span' + (i < G.lives ? '' : ' class="lost"') + '>🍺</span>';
+  el.lives.innerHTML = s;
+  el.combo.textContent = '×' + G.combo + ' COMBO';
+  el.combo.classList.toggle('on', G.combo >= 2);
+  el.bestStart.textContent = G.best;
+}
+
+// ───────────────────────── Update ─────────────────────────
+function update(dt) {
+  G.t += dt;
+  G.handle += ((G.pouring ? 1 : 0) - G.handle) * Math.min(1, dt * 14);
+  if (G.hintT > 0 && (G.pouring || G.round > 1)) G.hintT -= dt;
+
+  if (G.mode === 'play') {
+    let dv = 0;
+    if (G.pouring) dv = G.rate * dt;
+    else if (G.pending > 0) { dv = Math.min(G.pending, G.rate * dt); G.pending -= dv; }
+    if (dv > 0 && !G.done) {
+      G.beer += dv;
+      G.foam += dt * TUNE.foamRise * G.foamRatio;
+      if (Math.random() < 0.7) spawnDrop();
+      const settle = G.foam * TUNE.foamSettle * dt; G.foam -= settle; G.beer += settle * 0.3;
+      if (G.beer + G.foam > 1) overflow();
+    } else if (!G.done) {
+      const settle = G.foam * TUNE.foamSettle * dt; G.foam -= settle; G.beer += settle * 0.3;
+    }
+    if (G.released && !G.done) { G.settleT -= dt; if (G.settleT <= 0) evaluate(); }
+    if (G.done) { G.nextT -= dt; if (G.nextT <= 0) { if (G.lives <= 0) gameOver(); else newGlass(); } }
+    if (G.demo) demoThink();
+  }
+
+  // bubbles inside the beer
+  const beerH = G.shape.hFromV(Math.min(1, G.beer));
+  if (beerH > 0.05 && Math.random() < beerH * 0.6) {
+    G.bubbles.push({ u: Math.random() * 1.6 - 0.8, h: 0.01 + Math.random() * beerH * 0.5, r: 1 + Math.random() * 2, s: 0.08 + Math.random() * 0.14, w: Math.random() * 6 });
+  }
+  for (let i = G.bubbles.length - 1; i >= 0; i--) { const b = G.bubbles[i]; b.h += b.s * dt; b.w += dt * 4; if (b.h >= beerH) G.bubbles.splice(i, 1); }
+  for (let i = G.drops.length - 1; i >= 0; i--) { const p = G.drops[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 900 * dt; p.life -= dt * 3; if (p.life <= 0) G.drops.splice(i, 1); }
+  for (let i = G.spill.length - 1; i >= 0; i--) { const p = G.spill[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 1200 * dt; if (p.y > L.barY) { p.y = L.barY; p.vy = 0; p.vx *= 0.9; p.life -= dt * 1.2; } if (p.life <= 0) G.spill.splice(i, 1); }
+  if (G.result) G.result.t += dt;
+  G.shake = Math.max(0, G.shake - dt * 2.2);
+  G.puddle = Math.max(0, G.puddle - dt * 0.12);
+}
+
+function spawnDrop() {
+  const topH = G.shape.hFromV(Math.min(1, G.beer + G.foam));
+  const y = gy(topH);
+  G.drops.push({ x: L.cx + (Math.random() - 0.5) * 8, y, vx: (Math.random() - 0.5) * 160, vy: -60 - Math.random() * 120, r: 1.5 + Math.random() * 2, life: 1 });
+}
+
+// ───────────────────────── Demo AI ─────────────────────────
+function demoThink() {
+  if (G.done) return;
+  if (!G.released && !G.pouring) { beginPour(); return; }
+  if (G.pouring) {
+    const drop = G.foam * (1 - Math.exp(-TUNE.foamSettle * TUNE.settleTime)) * 0.7;
+    const predicted = G.beer + G.foam - drop + G.rate * (TUNE.lagSeconds + 0.016);
+    const aim = G.shape.vFromH(TUNE.target - 0.004 + (Math.random() - 0.5) * 0.01);
+    if (predicted >= aim) endPour();
+  }
+}
+window.__beer = {
+  setDemo(on) { G.demo = !!on; if (on && G.mode !== 'play') startGame(); },
+  startDemo() { this.setDemo(true); },
+  stopDemo() { this.setDemo(false); },
+  state() { return { score: G.score, mode: G.shape.id + (G.foamy ? '-foamy' : ''), round: G.round, lives: G.lives, combo: G.combo, level: G.lastLevel, phase: G.mode }; },
+  pour(on) { on ? beginPour() : endPour(); },
+  G, TUNE,
+};
+
+// ───────────────────────── Draw ─────────────────────────
+function glassPath() {
+  const p = G.shape.pts;
+  ctx.beginPath();
+  ctx.moveTo(gx(p[0][1], -1), gy(p[0][0]));
+  for (let i = 1; i < p.length; i++) ctx.lineTo(gx(p[i][1], -1), gy(p[i][0]));
+  for (let i = p.length - 1; i >= 0; i--) ctx.lineTo(gx(p[i][1], 1), gy(p[i][0]));
+  ctx.closePath();
+}
+
+function draw() {
+  ctx.save();
+  if (G.shake > 0) ctx.translate((Math.random() - 0.5) * 14 * G.shake, (Math.random() - 0.5) * 10 * G.shake);
+
+  // background
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#2b170b'); bg.addColorStop(0.6, '#1a0e07'); bg.addColorStop(1, '#0f0704');
+  ctx.fillStyle = bg; ctx.fillRect(-20, -20, W + 40, H + 40);
+  // warm glow behind glass
+  const glow = ctx.createRadialGradient(L.cx, L.glassTop + L.glassH * 0.5, 10, L.cx, L.glassTop + L.glassH * 0.5, L.glassH * 0.9);
+  glow.addColorStop(0, 'rgba(255,170,60,0.16)'); glow.addColorStop(1, 'rgba(255,170,60,0)');
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+
+  drawBar();
+  drawTap();
+  drawStream();
+  drawGlass();
+  drawFillLine();
+  drawSpill();
+  drawLabels();
+  drawResult();
+  ctx.restore();
+}
+
+function drawBar() {
+  const g = ctx.createLinearGradient(0, L.barY, 0, H);
+  g.addColorStop(0, '#6b3d1c'); g.addColorStop(0.08, '#4d2a12'); g.addColorStop(1, '#2a150a');
+  ctx.fillStyle = g; ctx.fillRect(-20, L.barY, W + 40, H - L.barY + 20);
+  ctx.fillStyle = 'rgba(255,200,140,0.35)'; ctx.fillRect(-20, L.barY, W + 40, 3);
+  // wood grain
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1;
+  for (let y = L.barY + 22; y < H; y += 26) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  // puddle
+  if (G.puddle > 0) {
+    ctx.fillStyle = 'rgba(245,166,35,' + (0.55 * G.puddle) + ')';
+    ctx.beginPath(); ctx.ellipse(L.cx, L.barY + 5, L.halfW * (1.2 + G.puddle * 0.9), 7 + G.puddle * 6, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  // glass shadow on bar
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(L.cx, L.barY + 3, L.halfW * G.shape.widthAt(0) * 1.15, 5, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawTap() {
+  const cx = L.cx, top = L.tapTop, sy = L.spoutY, pw = Math.max(16, L.halfW * 0.16);
+  const chrome = ctx.createLinearGradient(cx - pw, 0, cx + pw, 0);
+  chrome.addColorStop(0, '#6f7680'); chrome.addColorStop(0.35, '#e9edf2'); chrome.addColorStop(0.6, '#b8c0cb'); chrome.addColorStop(1, '#5a616b');
+  // vertical body
+  ctx.fillStyle = chrome; rr(cx - pw / 2, top, pw, sy - top, pw / 2); ctx.fill();
+  // spout (flares out at the bottom)
+  ctx.beginPath();
+  ctx.moveTo(cx - pw / 2, sy - pw * 0.6); ctx.lineTo(cx + pw / 2, sy - pw * 0.6);
+  ctx.lineTo(cx + pw * 0.85, sy + pw * 0.5); ctx.lineTo(cx - pw * 0.85, sy + pw * 0.5); ctx.closePath();
+  ctx.fillStyle = chrome; ctx.fill();
+  ctx.fillStyle = '#2d3238'; ctx.beginPath(); ctx.ellipse(cx, sy + pw * 0.5, pw * 0.75, pw * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+  // collar
+  ctx.fillStyle = '#c9d1da'; rr(cx - pw * 0.9, top + pw * 0.9, pw * 1.8, pw * 0.5, 4); ctx.fill();
+  // handle: pivots at the top, tilts forward while pouring
+  ctx.save(); ctx.translate(cx, top + pw * 0.5);
+  ctx.rotate(-0.95 + G.handle * 1.8);
+  const hl = pw * 2.2;
+  ctx.fillStyle = '#d9dee5'; rr(-pw * 0.22, -hl, pw * 0.44, hl, pw * 0.2); ctx.fill();
+  const knob = ctx.createRadialGradient(-pw * 0.2, -hl - pw * 0.1, 2, 0, -hl, pw * 0.8);
+  knob.addColorStop(0, '#3b2a1c'); knob.addColorStop(1, '#0d0806');
+  ctx.fillStyle = knob; rr(-pw * 0.6, -hl - pw * 1.3, pw * 1.2, pw * 1.5, pw * 0.4); ctx.fill();
+  ctx.fillStyle = '#ffd166'; ctx.font = 'bold ' + Math.round(pw * 0.55) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('🍺', 0, -hl - pw * 0.55);
+  ctx.restore();
+}
+
+function drawStream() {
+  if (!(G.pouring || G.pending > 0) || G.done) return;
+  const topH = G.shape.hFromV(Math.min(1, G.beer + G.foam));
+  const y0 = L.spoutY + L.halfW * 0.16 * 0.5, y1 = gy(topH) + 3;
+  if (y1 <= y0) return;
+  const w = Math.max(5, L.halfW * 0.09) * Math.sqrt(G.rate / TUNE.baseRate) * (G.pouring ? 1 : 0.55);
+  ctx.beginPath();
+  const seg = 12;
+  for (let i = 0; i <= seg; i++) { const t = i / seg, y = y0 + (y1 - y0) * t; const wob = Math.sin(y * 0.06 + G.t * 22) * 1.4; ctx.lineTo(L.cx - w / 2 * (1 + t * 0.25) + wob, y); }
+  for (let i = seg; i >= 0; i--) { const t = i / seg, y = y0 + (y1 - y0) * t; const wob = Math.sin(y * 0.06 + G.t * 22 + 1.2) * 1.4; ctx.lineTo(L.cx + w / 2 * (1 + t * 0.25) + wob, y); }
+  ctx.closePath();
+  const g = ctx.createLinearGradient(L.cx - w, 0, L.cx + w, 0);
+  g.addColorStop(0, '#c9720b'); g.addColorStop(0.45, '#ffcf5c'); g.addColorStop(1, '#d98a1a');
+  ctx.fillStyle = g; ctx.fill();
+  // droplets near impact
+  ctx.fillStyle = 'rgba(255,240,200,0.9)';
+  for (const p of G.drops) { ctx.globalAlpha = Math.max(0, p.life); ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+
+function drawGlass() {
+  const s = G.shape;
+  const beerH = s.hFromV(Math.min(1, G.beer));
+  const topH = s.hFromV(Math.min(1, G.beer + G.foam));
+  const beerY = gy(beerH), topY = gy(topH);
+  const wideX = L.halfW * 1.15;
+
+  // handle behind glass (mug)
+  if (s.handle) {
+    ctx.lineWidth = Math.max(9, L.halfW * 0.13); ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(gx(0.92, 1) - 2, gy(0.72)); ctx.bezierCurveTo(gx(0.92, 1) + L.halfW * 0.55, gy(0.75), gx(0.92, 1) + L.halfW * 0.55, gy(0.27), gx(0.92, 1) - 2, gy(0.3)); ctx.stroke();
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.beginPath(); ctx.moveTo(gx(0.92, 1) - 2, gy(0.72)); ctx.bezierCurveTo(gx(0.92, 1) + L.halfW * 0.38, gy(0.74), gx(0.92, 1) + L.halfW * 0.38, gy(0.28), gx(0.92, 1) - 2, gy(0.3)); ctx.stroke();
+  }
+
+  ctx.save();
+  glassPath(); ctx.clip();
+  // glass interior tint
+  ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(L.cx - wideX, L.glassTop - 10, wideX * 2, L.glassH + 20);
+
+  if (G.beer > 0) {
+    const bg = ctx.createLinearGradient(0, beerY, 0, L.glassBottom);
+    bg.addColorStop(0, '#f7b733'); bg.addColorStop(0.5, '#e8901a'); bg.addColorStop(1, '#b8600c');
+    ctx.fillStyle = bg; ctx.fillRect(L.cx - wideX, beerY, wideX * 2, L.glassBottom - beerY + 4);
+    // side darkening for depth
+    const side = ctx.createLinearGradient(L.cx - L.halfW, 0, L.cx + L.halfW, 0);
+    side.addColorStop(0, 'rgba(120,50,0,0.35)'); side.addColorStop(0.25, 'rgba(120,50,0,0)'); side.addColorStop(0.75, 'rgba(120,50,0,0)'); side.addColorStop(1, 'rgba(120,50,0,0.35)');
+    ctx.fillStyle = side; ctx.fillRect(L.cx - wideX, beerY, wideX * 2, L.glassBottom - beerY + 4);
+    // bubbles
+    ctx.fillStyle = 'rgba(255,240,200,0.55)';
+    for (const b of G.bubbles) {
+      const w = s.widthAt(b.h);
+      const x = L.cx + (b.u + Math.sin(b.w) * 0.05) * w * L.halfW;
+      ctx.beginPath(); ctx.arc(x, gy(b.h), b.r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  if (G.foam > 0.001 || G.beer > 0) {
+    // foam head with a wobbly top edge
+    ctx.beginPath();
+    const x0 = L.cx - wideX, x1 = L.cx + wideX, steps = 28;
+    for (let i = 0; i <= steps; i++) {
+      const x = x0 + (x1 - x0) * i / steps;
+      const y = topY + Math.sin(x * 0.11 + G.t * 2.4) * 1.6 + Math.sin(x * 0.23 - G.t * 3.1) * 1.1 - 1.5;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(x1, beerY + 2); ctx.lineTo(x0, beerY + 2); ctx.closePath();
+    const fg = ctx.createLinearGradient(0, topY, 0, beerY + 2);
+    fg.addColorStop(0, '#fffaf0'); fg.addColorStop(0.7, '#f9ecd2'); fg.addColorStop(1, '#f2d9a8');
+    ctx.fillStyle = fg; ctx.fill();
+    // foam bubbles
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    const fh = beerY - topY;
+    if (fh > 6) {
+      for (let i = 0; i < 12; i++) {
+        const px = L.cx + Math.sin(i * 12.9 + 1) * L.halfW * 0.9, py = topY + 3 + ((i * 37.1 + G.t * 6) % Math.max(1, fh - 4));
+        ctx.beginPath(); ctx.arc(px, py, 1.5 + (i % 3), 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+
+  // glass outline & highlights
+  glassPath();
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
+  ctx.save(); glassPath(); ctx.clip();
+  const hl = ctx.createLinearGradient(L.cx - L.halfW, 0, L.cx - L.halfW * 0.4, 0);
+  hl.addColorStop(0, 'rgba(255,255,255,0.28)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hl; ctx.fillRect(L.cx - wideX, L.glassTop, wideX, L.glassH);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(L.cx + L.halfW * 0.55, L.glassTop, 3, L.glassH);
+  // thick base
+  ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(L.cx - wideX, L.glassBottom - Math.max(6, L.glassH * 0.03), wideX * 2, L.glassH * 0.03 + 6);
+  ctx.restore();
+  // rim
+  const rw = s.widthAt(1);
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(gx(rw, -1), gy(1)); ctx.lineTo(gx(rw, 1), gy(1)); ctx.stroke();
+}
+
+function drawFillLine() {
+  const y = gy(TUNE.target), w = G.shape.widthAt(TUNE.target) * L.halfW;
+  // zones
+  ctx.fillStyle = 'rgba(255,209,102,0.10)';
+  ctx.fillRect(L.cx - w, gy(TUNE.target + TUNE.good), w * 2, L.glassH * TUNE.good * 2);
+  ctx.fillStyle = 'rgba(255,209,102,0.22)';
+  ctx.fillRect(L.cx - w, gy(TUNE.target + TUNE.perfect), w * 2, L.glassH * TUNE.perfect * 2);
+  // dashed line
+  ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = '#ffd166';
+  ctx.beginPath(); ctx.moveTo(L.cx - w - 12, y); ctx.lineTo(L.cx + w + 12, y); ctx.stroke(); ctx.setLineDash([]);
+  // arrow markers
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath(); ctx.moveTo(L.cx - w - 24, y - 7); ctx.lineTo(L.cx - w - 13, y); ctx.lineTo(L.cx - w - 24, y + 7); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(L.cx + w + 24, y - 7); ctx.lineTo(L.cx + w + 13, y); ctx.lineTo(L.cx + w + 24, y + 7); ctx.closePath(); ctx.fill();
+  ctx.font = '700 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(255,209,102,0.9)'; ctx.fillText('FILL', L.cx + w + 30, y - 6);
+}
+
+function drawSpill() {
+  ctx.fillStyle = '#f5b733';
+  for (const p of G.spill) { ctx.globalAlpha = Math.max(0, Math.min(1, p.life)); ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+
+function drawLabels() {
+  const y = L.barY + Math.min(48, (H - L.barY) * 0.3);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '800 15px sans-serif'; ctx.fillStyle = '#f3e3c9';
+  const keg = G.foamy ? '⚠ FOAMY KEG' : 'standard keg';
+  ctx.fillText(G.shape.name, L.cx, y);
+  ctx.font = (G.foamy ? '800' : '600') + ' 13px sans-serif'; ctx.fillStyle = G.foamy ? '#ffb27a' : '#b08a5a';
+  ctx.fillText(keg + '  ·  ' + (G.rate / TUNE.baseRate).toFixed(1) + '× flow', L.cx, y + 22);
+  if (G.hintT > 0 && G.mode === 'play' && !G.done) {
+    ctx.globalAlpha = Math.min(1, G.hintT); ctx.font = '700 15px sans-serif'; ctx.fillStyle = '#ffd166';
+    ctx.fillText(G.released ? 'settling…' : (G.pouring ? 'release at the line' : 'HOLD anywhere to pour'), L.cx, y + 54);
+    ctx.globalAlpha = 1;
+  } else if (G.released && !G.done) {
+    ctx.font = '700 14px sans-serif'; ctx.fillStyle = '#b08a5a'; ctx.fillText('settling…', L.cx, y + 54);
+  }
+}
+
+function drawResult() {
+  const r = G.result; if (!r) return;
+  const t = r.t, pop = t < 0.25 ? 1.5 - 0.5 * (t / 0.25) : 1, alpha = t < 1.1 ? 1 : Math.max(0, 1 - (t - 1.1) / 0.5);
+  if (alpha <= 0) return;
+  const y = L.glassTop + L.glassH * 0.42;
+  ctx.save(); ctx.translate(L.cx, y); ctx.scale(pop, pop); ctx.globalAlpha = alpha;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '900 ' + Math.round(Math.min(48, L.halfW * 0.36)) + 'px sans-serif';
+  ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineJoin = 'round';
+  ctx.strokeText(r.text, 0, 0); ctx.fillStyle = r.color; ctx.fillText(r.text, 0, 0);
+  ctx.font = '800 22px sans-serif';
+  ctx.strokeText(r.sub, 0, 40); ctx.fillStyle = '#fff'; ctx.fillText(r.sub, 0, 40);
+  ctx.restore();
+}
+
+function rr(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+// ───────────────────────── Input ─────────────────────────
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); if (!G.demo) beginPour(); }, { passive: false });
+const release = () => { if (!G.demo) endPour(); };
+window.addEventListener('pointerup', release);
+window.addEventListener('pointercancel', release);
+window.addEventListener('blur', release);
+document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
+window.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (G.mode === 'title') startGame(); else if (G.mode === 'over') startGame(); else beginPour();
+  }
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space' || e.code === 'Enter') release(); });
+
+el.playBtn.addEventListener('click', () => { SFX.init(); startGame(); });
+el.againBtn.addEventListener('click', () => { SFX.init(); startGame(); });
+function syncMute() { el.mute.textContent = SFX.muted() ? '🔇' : '🔊'; }
+el.mute.addEventListener('click', e => { e.stopPropagation(); SFX.init(); SFX.setMuted(!SFX.muted()); syncMute(); });
+el.mute.addEventListener('pointerdown', e => e.stopPropagation());
+syncMute();
+updateHud();
+
+// ───────────────────────── Loop ─────────────────────────
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  update(dt); draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if (new URLSearchParams(location.search).get('demo') === '1') window.__beer.setDemo(true);
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+})();
+</script>
+</body>
+</html>

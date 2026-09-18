@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="beer" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7b733"/>
+      <stop offset="1" stop-color="#b8600c"/>
+    </linearGradient>
+    <linearGradient id="foam" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffaf0"/>
+      <stop offset="1" stop-color="#f2d9a8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="#160c06"/>
+  <!-- glass body (pint, slightly tapered) -->
+  <path d="M168 120 L344 120 L322 420 L190 420 Z" fill="rgba(255,255,255,0.08)"/>
+  <!-- beer -->
+  <path d="M177 230 L335 230 L322 420 L190 420 Z" fill="url(#beer)"/>
+  <!-- foam head -->
+  <path d="M170 184 Q200 160 232 178 Q256 150 290 176 Q320 158 342 186 L335 236 L177 236 Z" fill="url(#foam)"/>
+  <!-- fill line -->
+  <path d="M150 232 L362 232" stroke="#ffd166" stroke-width="10" stroke-dasharray="22 14" stroke-linecap="round"/>
+  <!-- glass outline -->
+  <path d="M168 120 L344 120 L322 420 L190 420 Z" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="12" stroke-linejoin="round"/>
+  <!-- highlight -->
+  <path d="M192 140 L184 400" stroke="#ffffff" stroke-opacity="0.35" stroke-width="14" stroke-linecap="round"/>
+  <!-- bubbles -->
+  <circle cx="230" cy="300" r="8" fill="#fff0c8" fill-opacity="0.7"/>
+  <circle cx="270" cy="350" r="6" fill="#fff0c8" fill-opacity="0.7"/>
+  <circle cx="300" cy="290" r="5" fill="#fff0c8" fill-opacity="0.7"/>
+</svg>
