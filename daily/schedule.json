@@ -1,0 +1,28 @@
+{
+  "timezone": "local",
+  "clock": "12h",
+  "fallback": {
+    "type": "image",
+    "src": "media/fallback.svg",
+    "fit": "contain",
+    "title": "nothing scheduled today",
+    "subtitle": "check back tomorrow"
+  },
+  "entries": [
+    {
+      "date": "09-21",
+      "type": "youtube",
+      "src": "https://www.youtube.com/watch?v=Gs069dndIYk",
+      "title": "do you remember?",
+      "subtitle": "the 21st night of September",
+      "bg": "#0b0b1a"
+    },
+    {
+      "date": "01-01",
+      "type": "text",
+      "title": "happy new year",
+      "subtitle": "you made it",
+      "bg": "#111"
+    }
+  ]
+}

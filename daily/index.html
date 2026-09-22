@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily</title>
+  <meta name="description" content="One thing a day. Comes back tomorrow with something else." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%85%3C/text%3E%3C/svg%3E" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #000;
+      --fg: #fff;
+      --bar-bg: rgba(0, 0, 0, 0.72);
+      --bar-fg: #e8e8e8;
+      --muted: #8a8a8a;
+      --accent: #ffd200;
+      --stroke: #000;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── Top bar: date, clock, countdown ─────────────── */
+    #bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 16px;
+      background: var(--bar-bg);
+      color: var(--bar-fg);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 100;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    #bar a.home {
+      color: var(--bar-fg);
+      text-decoration: none;
+      font-size: 18px;
+      line-height: 1;
+      opacity: 0.8;
+    }
+    #bar a.home:hover { opacity: 1; }
+    #date { font-weight: 600; letter-spacing: 0.02em; }
+    #clock { font-family: 'Courier New', Consolas, monospace; font-size: 17px; }
+    #next { margin-left: auto; color: var(--muted); font-size: 13px; }
+    #next b { color: var(--bar-fg); font-weight: 600; font-family: 'Courier New', Consolas, monospace; }
+    #preview {
+      display: none;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #000;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    body.preview #preview { display: inline-block; }
+    body.preview #next { display: none; }
+
+    /* ── Stage: the one thing for today ───────────────── */
+    #stage {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-top: 52px;
+      background-color: var(--bg);
+      background-position: center;
+    }
+    #stage.tile, #stage.cover { padding: 0 !important; }
+    #stage.tile { background-repeat: repeat; }
+    #stage img, #stage video {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      display: block;
+    }
+    #stage.cover img, #stage.cover video {
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      object-fit: cover;
+    }
+    #stage iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+    #stage a.wrap { display: contents; }
+
+    /* ── YTMND text ───────────────────────────────────── */
+    #text {
+      position: fixed;
+      left: 0; right: 0;
+      padding: 0 24px;
+      text-align: center;
+      pointer-events: none;
+      z-index: 50;
+      font-family: Impact, 'Arial Black', 'Helvetica Neue', sans-serif;
+      text-transform: uppercase;
+      color: var(--fg);
+      text-shadow:
+        -2px -2px 0 var(--stroke), 2px -2px 0 var(--stroke),
+        -2px  2px 0 var(--stroke), 2px  2px 0 var(--stroke),
+         0    4px 8px rgba(0, 0, 0, 0.6);
+    }
+    #text.top    { top: 72px; }
+    #text.middle { top: 50%; transform: translateY(-50%); }
+    #text.bottom { bottom: 28px; }
+    #text h1 {
+      font-size: clamp(32px, 7vw, 96px);
+      line-height: 1.05;
+      letter-spacing: 0.02em;
+      font-weight: 400;
+    }
+    #text p {
+      margin-top: 8px;
+      font-size: clamp(18px, 3vw, 40px);
+      letter-spacing: 0.04em;
+    }
+    #text:empty { display: none; }
+
+    /* ── Sound / unmute prompt ────────────────────────── */
+    #sound {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: none;
+      padding: 10px 16px;
+      border: 2px solid var(--fg);
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.75);
+      color: var(--fg);
+      font: 700 14px/1 'Segoe UI', system-ui, sans-serif;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      z-index: 120;
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    #sound.show { display: block; }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50%      { transform: scale(1.06); }
+    }
+
+    /* ── Status / error ───────────────────────────────── */
+    #status {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 16px;
+      z-index: 40;
+    }
+    #status.show { display: flex; }
+
+    @media (max-width: 560px) {
+      #bar { gap: 10px; padding: 0 12px; font-size: 14px; }
+      #clock { font-size: 15px; }
+      #next span.label { display: none; }
+      #preview { padding: 2px 6px; font-size: 11px; }
+      #sound { top: 62px; right: 12px; bottom: auto; padding: 8px 12px; font-size: 12px; }
+      #text.top { top: 110px; }
+    }
+  </style>
+</head>
+<body>
+  <header id="bar">
+    <a class="home" href="/" title="Home" aria-label="Home">&larr;</a>
+    <span id="date">&nbsp;</span>
+    <span id="clock">&nbsp;</span>
+    <span id="preview">preview</span>
+    <span id="next"><span class="label">next in </span><b>--:--:--</b></span>
+  </header>
+
+  <main id="stage" aria-live="polite"></main>
+  <div id="text"></div>
+  <button id="sound" type="button">&#9654; click for sound</button>
+  <div id="status"></div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    /* ── Config ─────────────────────────────────────────
+     * Everything the page shows comes from schedule.json next to this file.
+     * The JSON is the only thing that needs editing to add a day; nothing
+     * else is loaded until we know which entry is today's.
+     */
+    var SCHEDULE_URL = 'schedule.json';
+    var DEFAULT_TZ = 'local';
+
+    var $ = function (id) { return document.getElementById(id); };
+    var els = { bar: $('bar'), date: $('date'), clock: $('clock'), next: $('next'),
+                stage: $('stage'), text: $('text'), sound: $('sound'), status: $('status') };
+
+    var schedule = null;        // parsed schedule.json
+    var current = null;         // { key, entry, source }
+    var pinned = null;          // ?date=YYYY-MM-DD preview override
+    var audio = null;           // <audio> element for looping sound
+    var ytFrame = null;         // active YouTube iframe (for unmute)
+
+    /* ── Dates ──────────────────────────────────────────
+     * All date maths go through parts() so the site can flip at midnight in
+     * a chosen IANA zone (schedule.json "timezone") rather than the viewer's.
+     */
+    var fmtCache = {};
+    function partsFormatter(tz) {
+      if (!fmtCache[tz]) {
+        fmtCache[tz] = new Intl.DateTimeFormat('en-US', {
+          timeZone: tz, hourCycle: 'h23',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+      }
+      return fmtCache[tz];
+    }
+
+    function tz() {
+      var z = schedule && schedule.timezone;
+      return (!z || z === 'local') ? null : z;
+    }
+
+    function parts(d) {
+      var zone = tz();
+      if (!zone) {
+        return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate(),
+                 h: d.getHours(), mi: d.getMinutes(), s: d.getSeconds() };
+      }
+      var out = {};
+      try {
+        partsFormatter(zone).formatToParts(d).forEach(function (p) { out[p.type] = p.value; });
+      } catch (e) {
+        schedule.timezone = 'local';   // bad zone name: fall back quietly
+        return parts(d);
+      }
+      return { y: +out.year, m: +out.month, d: +out.day,
+               h: +out.hour % 24, mi: +out.minute, s: +out.second };
+    }
+
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function keyOf(p) { return p.y + '-' + pad(p.m) + '-' + pad(p.d); }
+    function todayKey() { return pinned || keyOf(parts(new Date())); }
+
+    function secondsToMidnight(now) {
+      var p = parts(now);
+      return 86400 - (p.h * 3600 + p.mi * 60 + p.s);
+    }
+
+    function fmtDateLong(key) {
+      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+      var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+      var narrow = window.matchMedia && window.matchMedia('(max-width: 560px)').matches;
+      return new Intl.DateTimeFormat(undefined, {
+        timeZone: 'UTC', weekday: narrow ? 'short' : 'long', year: 'numeric',
+        month: narrow ? 'short' : 'long', day: 'numeric'
+      }).format(d);
+    }
+
+    function fmtClock(p) {
+      var twelve = !(schedule && schedule.clock === '24h');
+      var h = p.h, suffix = '';
+      if (twelve) { suffix = h >= 12 ? ' PM' : ' AM'; h = h % 12 || 12; }
+      return (twelve ? h : pad(h)) + ':' + pad(p.mi) + ':' + pad(p.s) + suffix;
+    }
+
+    function fmtHMS(secs) {
+      secs = Math.max(0, secs | 0);
+      return pad((secs / 3600) | 0) + ':' + pad(((secs % 3600) / 60) | 0) + ':' + pad(secs % 60);
+    }
+
+    /* ── Matching ───────────────────────────────────────
+     * "date" on an entry is "YYYY-MM-DD" (one-off) or "MM-DD" (every year),
+     * or an array of either. Exact dates beat recurring ones; first match
+     * wins within a tier; otherwise the "fallback" entry.
+     */
+    function normalizeDates(entry) {
+      var v = entry && entry.date;
+      if (!v) return [];
+      return (Array.isArray(v) ? v : [v]).map(String);
+    }
+
+    function pick(key) {
+      var entries = (schedule && Array.isArray(schedule.entries)) ? schedule.entries : [];
+      var mmdd = key.slice(5);
+      var i, j, dates;
+      for (i = 0; i < entries.length; i++) {
+        dates = normalizeDates(entries[i]);
+        for (j = 0; j < dates.length; j++) if (dates[j] === key) return { entry: entries[i], source: 'exact' };
+      }
+      for (i = 0; i < entries.length; i++) {
+        dates = normalizeDates(entries[i]);
+        for (j = 0; j < dates.length; j++) if (dates[j] === mmdd) return { entry: entries[i], source: 'yearly' };
+      }
+      if (schedule && schedule.fallback) return { entry: schedule.fallback, source: 'fallback' };
+      return { entry: { type: 'text', title: 'nothing today', subtitle: 'come back tomorrow' }, source: 'none' };
+    }
+
+    /* ── Rendering ──────────────────────────────────────*/
+    function youtubeId(src) {
+      src = String(src || '').trim();
+      if (/^[\w-]{11}$/.test(src)) return src;
+      var m = /(?:v=|\/(?:embed|shorts|v|live)\/|youtu\.be\/)([\w-]{11})/.exec(src);
+      return m ? m[1] : null;
+    }
+
+    function youtubeEmbed(id, muted) {
+      var q = 'autoplay=1&loop=1&playlist=' + id + '&mute=' + (muted ? 1 : 0) +
+              '&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3';
+      var f = document.createElement('iframe');
+      f.src = 'https://www.youtube-nocookie.com/embed/' + id + '?' + q;
+      f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+      f.setAttribute('allowfullscreen', '');
+      f.title = 'YouTube video';
+      return f;
+    }
+
+    function stopMedia() {
+      if (audio) { try { audio.pause(); } catch (e) {} audio = null; }
+      ytFrame = null;
+      els.sound.classList.remove('show');
+      els.sound.onclick = null;
+    }
+
+    function wrapLink(node, href) {
+      if (!href) return node;
+      var a = document.createElement('a');
+      a.className = 'wrap';
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.appendChild(node);
+      return a;
+    }
+
+    function setText(entry) {
+      els.text.textContent = '';
+      els.text.className = entry.position === 'middle' ? 'middle' : (entry.position === 'top' ? 'top' : 'bottom');
+      if (entry.title) { var h = document.createElement('h1'); h.textContent = entry.title; els.text.appendChild(h); }
+      if (entry.subtitle) { var p = document.createElement('p'); p.textContent = entry.subtitle; els.text.appendChild(p); }
+      if (entry.color) els.text.style.color = entry.color; else els.text.style.color = '';
+    }
+
+    /* Keep contained media clear of the caption: measure the text block and
+     * pad the stage by that much on whichever edge it sits. */
+    function fitText() {
+      var h = els.text.offsetHeight || 0;
+      var top = 52, bottom = 0;
+      if (h) {
+        if (els.text.classList.contains('bottom')) bottom = h + 40;
+        else if (els.text.classList.contains('top')) top = h + 90;
+      }
+      els.stage.style.paddingTop = top + 'px';
+      els.stage.style.paddingBottom = bottom + 'px';
+    }
+
+    function startAudio(src) {
+      audio = new Audio(src);
+      audio.loop = true;
+      audio.preload = 'auto';
+      var tryPlay = function () {
+        var p = audio.play();
+        if (p && p.catch) {
+          p.then(function () { els.sound.classList.remove('show'); })
+           .catch(function () { els.sound.classList.add('show'); });
+        }
+      };
+      els.sound.textContent = '▶ click for sound';
+      els.sound.onclick = function () { tryPlay(); };
+      document.addEventListener('pointerdown', function once() {
+        document.removeEventListener('pointerdown', once);
+        if (audio && audio.paused) tryPlay();
+      });
+      tryPlay();
+    }
+
+    function render(key, picked) {
+      var entry = picked.entry || {};
+      stopMedia();
+      els.status.classList.remove('show');
+      els.stage.textContent = '';
+      els.stage.className = '';
+      els.stage.style.backgroundImage = '';
+      els.stage.style.backgroundSize = '';
+      document.documentElement.style.setProperty('--bg', entry.bg || '#000');
+      document.title = (entry.title ? entry.title + ' — ' : '') + 'Daily';
+
+      var type = String(entry.type || (entry.src ? 'image' : 'text')).toLowerCase();
+      var node = null;
+
+      if (type === 'youtube') {
+        var id = youtubeId(entry.src);
+        if (id) {
+          ytFrame = youtubeEmbed(id, true);
+          node = ytFrame;
+          els.sound.textContent = '🔊 unmute';
+          els.sound.classList.add('show');
+          els.sound.onclick = function () {
+            if (!ytFrame) return;
+            var fresh = youtubeEmbed(id, false);
+            ytFrame.replaceWith(fresh);
+            ytFrame = fresh;
+            els.sound.classList.remove('show');
+          };
+        } else {
+          type = 'text';
+          entry = Object.assign({}, entry, { subtitle: 'bad youtube src' });
+        }
+      } else if (type === 'video') {
+        var v = document.createElement('video');
+        v.src = entry.src;
+        v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+        v.setAttribute('playsinline', '');
+        node = wrapLink(v, entry.link);
+        if (entry.fit === 'cover') els.stage.classList.add('cover');
+      } else if (type === 'image') {
+        if (entry.tile) {
+          els.stage.classList.add('tile');
+          els.stage.style.backgroundImage = 'url("' + String(entry.src).replace(/"/g, '%22') + '")';
+          if (entry.tileSize) els.stage.style.backgroundSize = entry.tileSize;
+        } else {
+          var img = document.createElement('img');
+          img.src = entry.src;
+          img.alt = entry.title || '';
+          img.decoding = 'async';
+          node = wrapLink(img, entry.link);
+          if (entry.fit === 'cover') els.stage.classList.add('cover');
+        }
+      }
+
+      if (node) els.stage.appendChild(node);
+      setText(entry);
+      fitText();
+      if (entry.audio && type !== 'youtube') startAudio(entry.audio);
+
+      current = { key: key, entry: entry, source: picked.source, type: type };
+      els.date.textContent = fmtDateLong(key);
+    }
+
+    /* ── Loading ────────────────────────────────────────*/
+    function loadSchedule() {
+      var url = SCHEDULE_URL + '?t=' + Date.now();   // always fresh: the JSON is tiny
+      return fetch(url, { cache: 'no-store' })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function (json) { schedule = json || {}; return schedule; });
+    }
+
+    function show() {
+      var key = todayKey();
+      render(key, pick(key));
+    }
+
+    function fail(msg) {
+      stopMedia();
+      els.stage.textContent = '';
+      els.text.textContent = '';
+      els.status.textContent = msg;
+      els.status.classList.add('show');
+    }
+
+    /* ── Clock + midnight rollover ──────────────────────
+     * One tick per second updates the bar; when the day key changes the
+     * schedule is re-fetched (so new entries land without a reload) and the
+     * next entry is rendered in place.
+     */
+    var lastKey = null;
+    function tick() {
+      var now = new Date();
+      var p = parts(now);
+      els.clock.textContent = fmtClock(p);
+      els.next.querySelector('b').textContent = fmtHMS(secondsToMidnight(now));
+      var key = todayKey();
+      if (lastKey && key !== lastKey && !pinned) {
+        lastKey = key;
+        loadSchedule().then(show, show);
+      } else {
+        lastKey = key;
+      }
+    }
+
+    function scheduleTick() {
+      tick();
+      setTimeout(scheduleTick, 1000 - (Date.now() % 1000));
+    }
+
+    /* ── Boot ───────────────────────────────────────────*/
+    var qs = new URLSearchParams(location.search);
+    var q = qs.get('date');
+    if (q) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(q)) pinned = q;
+      else if (/^\d{2}-\d{2}$/.test(q)) pinned = new Date().getFullYear() + '-' + q;
+      if (pinned) document.body.classList.add('preview');
+    }
+
+    loadSchedule().then(function () {
+      scheduleTick();
+      show();
+    }, function (err) {
+      scheduleTick();
+      fail('could not load schedule.json (' + err.message + ')');
+    });
+
+    window.addEventListener('resize', function () {
+      if (current) els.date.textContent = fmtDateLong(current.key);
+      fitText();
+    });
+
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) tick();
+    });
+
+    /* Test / console hook, same shape as the other pages' demo hooks. */
+    window.__daily = {
+      state: function () {
+        return {
+          key: current && current.key,
+          type: current && current.type,
+          source: current && current.source,
+          title: current && current.entry && current.entry.title,
+          src: current && current.entry && current.entry.src,
+          pinned: pinned
+        };
+      },
+      setDate: function (key) {           // preview any day without reloading
+        pinned = key || null;
+        document.body.classList.toggle('preview', !!pinned);
+        show();
+      },
+      reload: function () { return loadSchedule().then(show); },
+      pick: pick,
+      youtubeId: youtubeId
+    };
+  })();
+  </script>
+</body>
+</html>
