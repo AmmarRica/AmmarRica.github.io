@@ -41,6 +41,17 @@ the seasonal / off-range rarity model. Birdex also exposes the standard
 node tests/birdex.mjs
 ```
 
+`daily.mjs` smoke-tests the `/daily/` page: schedule.json validity, date
+matching (exact / yearly / fallback), that only today's one media file is
+requested, the YouTube embed + unmute, and the in-place midnight rollover.
+It exposes `window.__daily` (`state()`, `setDate(key)`, `reload()`).
+
+```sh
+node tests/daily.mjs
+# with a pre-installed browser instead of playwright's own download:
+CHROMIUM_PATH=/path/to/chrome node tests/daily.mjs
+```
+
 ## Run
 
 ```sh
