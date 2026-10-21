@@ -993,23 +993,23 @@ const Munch = {
 };
 
 // ═════════════════════════ GAME 4: PIN-HOLES ═════════════════════════
-// Pinball without flippers, played like a ball breaker: tilt the table to
-// steer the balls, bumpers kick you around and crack after a few hits, and
-// clearing every bumper racks up the next table. Holes swallow balls, and
-// wandering holes (the enemies) drift around — from rack 3 they hunt you.
-const BUMPER_COLS = ['#f2f2f2', '#ffe066', '#ff9f1a', '#d62a4a', '#9b2cc4', '#3a3fd6'];
+// Pinball without flippers on a gravity grid: tilt the table to steer the
+// balls. Every bumper counts down and pays out its score when it vanishes;
+// touching one kicks you off and resets your multiplier. When the last bumper
+// is gone the next rack is laid out. Black holes swallow balls — the grid
+// sags into them — and wandering holes drift around, hunting you from rack 3.
 const Pin = {
   id: 'pin', title: 'PIN-HOLES', pal: PAL.green,
-  blurb: 'Break bumpers, dodge holes',
-  help: 'No flippers: tilt to steer. Each bumper breaks after its number of hits — clear them all for the next rack. Black holes swallow balls, and the moving ones hunt you. Stars raise the multiplier; every 3rd adds a ball.',
+  blurb: 'Outlast bumpers, dodge black holes',
+  help: 'No flippers: tilt to steer. Bumpers count down and pay out their score × your multiplier when they vanish — but touching one resets the multiplier to x1. Stars raise it; every 3rd adds a ball. Black holes swallow balls, and the moving ones hunt you.',
   X0: 6, Y0: 18, X1: 314, Y1: 234,
   init() {
     this.level = 0; this.score = 0; this.over = false; this.reserve = 2; this.balls = [];
-    this.mult = 1; this.stars = 0; this.t = 0; this.popT = 3; this.spawnQ = 0;
+    this.mult = 1; this.stars = 0; this.t = 0; this.popT = 3; this.spawnQ = 0; this.pops = [];
     this.holes = []; this.bumpers = []; this.foes = [];
     this.nextRack();
     this.spawnBall();
-    this.msg = 'BREAK THE BUMPERS'; this.msgT = 1.8;
+    this.msg = "DON'T TOUCH BUMPERS"; this.msgT = 1.8;
   },
   // Lay out a fresh table around whatever balls are still rolling.
   nextRack() {
@@ -1036,9 +1036,10 @@ const Pin = {
     }
     return { x: 160, y: 126 };
   },
+  // life: seconds until it vanishes; value: points paid out when it does.
   newBumper() {
-    const p = this.freeSpot(18, 12), hp = Math.min(BUMPER_COLS.length, 2 + ((Math.random() * (1 + this.level)) | 0));
-    return { ...p, r: rand(9, 13), hp, max: hp, flash: 0, charge: 0, fade: 1, state: 'on' };
+    const p = this.freeSpot(18, 12), life = Math.round(rand(8, 14) + this.level * 1.5);
+    return { ...p, r: rand(9, 13), life, max: life, value: life * 100, flash: 0, charge: 0, fade: 1, state: 'on' };
   },
   spawnBall() {
     const p = this.freeSpot(26, 7);
@@ -1048,14 +1049,20 @@ const Pin = {
   },
   placeStar() { this.star = { ...this.freeSpot(16, 6), t: 0 }; },
   hitBumper(bu) {
-    bu.flash = 1; bu.hp--;
-    this.score += 100 * this.mult;
-    if (bu.hp <= 0) {
-      bu.state = 'break'; this.score += 250 * this.mult;
-      burst(bu.x, bu.y, 22, BUMPER_COLS[0], { max: 140, size: 3 });
-      burst(bu.x, bu.y, 10, '#d62a4a', { max: 90, size: 2 });
-      beep(220, .2, 'square', .05, 60); buzz(40);
-    } else { beep(880 + rand(-60, 60), .06, 'square', .05); buzz(15); }
+    bu.flash = 1;
+    if (this.mult > 1) { this.msg = 'x1'; this.msgT = 0.7; beep(260, .18, 'sawtooth', .05, 120); buzz(50); }
+    else { beep(880 + rand(-60, 60), .06, 'square', .05); buzz(15); }
+    this.mult = 1;
+  },
+  // A bumper that ran out its counter pays out and pops.
+  removeBumper(bu) {
+    bu.state = 'break';
+    const pts = bu.value * this.mult;
+    this.score += pts;
+    this.pops.push({ x: bu.x, y: bu.y, s: '+' + pts, t: 1 });
+    burst(bu.x, bu.y, 22, '#ffe066', { max: 140, size: 3 });
+    burst(bu.x, bu.y, 10, '#d62a4a', { max: 90, size: 2 });
+    beep(660, .08, 'square', .05); setTimeout(() => beep(990, .12, 'square', .05), 70); buzz(25);
   },
   updateFoes(dt) {
     const L = this.level;
@@ -1092,6 +1099,8 @@ const Pin = {
     for (const bu of this.bumpers) {
       bu.flash = Math.max(0, bu.flash - dt * 4);
       if (bu.state === 'break') { bu.fade -= dt * 3; continue; }
+      bu.life -= dt;
+      if (bu.life <= 0) { this.removeBumper(bu); continue; }
       if (bu.charge > 0) {
         bu.charge -= dt;
         if (bu.charge <= 0) {
@@ -1101,12 +1110,14 @@ const Pin = {
           for (const b of this.balls) {
             if (b.fall || b.drop > 0) continue;
             const d = dist(b, bu);
-            if (d < 48 && d > 1e-6) { const k = 420 * (1 - d / 60); b.vx += (b.x - bu.x) / d * k; b.vy += (b.y - bu.y) / d * k; this.score += 50 * this.mult; buzz(30); }
+            if (d < 48 && d > 1e-6) { const k = 420 * (1 - d / 60); b.vx += (b.x - bu.x) / d * k; b.vy += (b.y - bu.y) / d * k; buzz(30); }
           }
         }
       }
     }
     this.bumpers = this.bumpers.filter(b => b.state !== 'break' || b.fade > 0);
+    for (const p of this.pops) { p.t -= dt; p.y -= dt * 18; }
+    this.pops = this.pops.filter(p => p.t > 0);
     const traps = [...this.holes, ...this.foes];
     for (const b of this.balls) {
       if (b.fall) {
@@ -1141,11 +1152,11 @@ const Pin = {
       }
       if (!b.fall && this.star && dist(b, this.star) < b.r + 7) {
         this.score += 500 * this.mult; this.stars++;
-        this.mult = 1 + Math.floor(this.stars / 2);
+        this.mult = Math.min(9, this.mult + 1);
         burst(this.star.x, this.star.y, 18, '#ffe066', { max: 100 });
         beep(988, .08, 'square', .05); setTimeout(() => beep(1318, .15, 'square', .05), 80);
         this.msg = 'x' + this.mult; this.msgT = 0.8;
-        if (this.stars % 3 === 0) { this.spawnBall(); this.msg = 'MULTIBALL!'; this.msgT = 1.2; }
+        if (this.stars % 3 === 0 && this.balls.length < 4) { this.spawnBall(); this.msg = 'MULTIBALL!'; this.msgT = 1.2; }
         this.placeStar();
       }
     }
@@ -1183,38 +1194,60 @@ const Pin = {
   demo() {
     const b = this.balls.find(x => !x.fall && !(x.drop > 0));
     if (!b) return;
-    // go break the nearest bumper, or grab the star when it's closer
-    let s = this.star || { x: 160, y: 126 };
-    let best = this.star ? dist(b, this.star) * 0.8 : Infinity;
-    for (const bu of this.bumpers) if (bu.state === 'on' && dist(b, bu) < best) { best = dist(b, bu); s = bu; }
+    // grab the star, steer clear of bumpers (they reset the multiplier) and holes
+    const s = this.star || { x: 160, y: 126 };
     let ax = 30 * (s.x - b.x) - 8 * b.vx, ay = 30 * (s.y - b.y) - 8 * b.vy;
-    for (const h of [...this.holes, ...this.foes]) {
+    const avoid = [...this.holes.map(h => [h, 32]), ...this.foes.map(h => [h, 34]),
+      ...this.bumpers.filter(u => u.state === 'on').map(u => [u, u.r + 18])];
+    for (const [h, R] of avoid) {
       const dx = b.x - h.x, dy = b.y - h.y, d = Math.hypot(dx, dy);
-      if (d < 32) { const k = 6000 * (1 - d / 32); ax += dx / d * k; ay += dy / d * k; }
+      if (d < R && d > 1e-6) { const k = 6000 * (1 - d / R); ax += dx / d * k; ay += dy / d * k; }
     }
     demoAccel(ax, ay);
   },
-  drawHole(h, rim) {
-    const hg = ctx.createRadialGradient(h.x - 2, h.y - 2, 0, h.x, h.y, h.r);
-    hg.addColorStop(0, '#000'); hg.addColorStop(.8, '#05110f'); hg.addColorStop(1, rim);
-    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill();
+  // Black hole: a dark well with a thin glowing event-horizon ring.
+  drawHole(h, glow) {
+    const well = ctx.createRadialGradient(h.x, h.y, h.r * .6, h.x, h.y, h.r * 2.2);
+    well.addColorStop(0, 'rgba(0,0,0,.75)'); well.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = well; ctx.beginPath(); ctx.arc(h.x, h.y, h.r * 2.2, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = glow; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(h.x, h.y, h.r + .6, 0, TAU); ctx.stroke();
+  },
+  // Table grid bent toward every hole, so the lines show where the dips are.
+  warp(x, y, wells) {
+    let dx = 0, dy = 0;
+    for (const h of wells) {
+      const ox = h.x - x, oy = h.y - y, m = h.r * 2.6;
+      const k = 0.85 * Math.exp(-(ox * ox + oy * oy) / (m * m));
+      dx += ox * k; dy += oy * k;
+    }
+    return [x + dx, y + dy];
+  },
+  drawGrid() {
+    const wells = [...this.holes, ...this.foes], G = 14, step = 4;
+    const { X0, Y0, X1, Y1 } = this;
+    ctx.strokeStyle = 'rgba(120,255,220,.28)'; ctx.lineWidth = .8;
+    ctx.beginPath();
+    for (let x = X0; x <= X1 + .1; x += G) {
+      for (let y = Y0; y <= Y1 + .1; y += step) { const [px, py] = this.warp(x, y, wells); y === Y0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); }
+    }
+    for (let y = Y0; y <= Y1 + .1; y += G) {
+      for (let x = X0; x <= X1 + .1; x += step) { const [px, py] = this.warp(x, y, wells); x === X0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); }
+    }
+    ctx.stroke();
   },
   draw() {
     layer('pin', () => {
-      ctx.fillStyle = '#2a1f14'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#1a1622'; ctx.fillRect(0, 0, W, H);
       const g = ctx.createRadialGradient(160, 120, 30, 160, 126, 210);
-      g.addColorStop(0, '#1f7a6a'); g.addColorStop(1, '#0d3a3a');
+      g.addColorStop(0, '#123a44'); g.addColorStop(1, '#07141c');
       ctx.fillStyle = g; ctx.fillRect(this.X0, this.Y0, this.X1 - this.X0, this.Y1 - this.Y0);
-      ctx.strokeStyle = 'rgba(255,255,255,.05)';
-      for (let x = this.X0; x < this.X1; x += 16) { ctx.beginPath(); ctx.moveTo(x, this.Y0); ctx.lineTo(x, this.Y1); ctx.stroke(); }
-      for (let y = this.Y0; y < this.Y1; y += 16) { ctx.beginPath(); ctx.moveTo(this.X0, y); ctx.lineTo(this.X1, y); ctx.stroke(); }
-      ctx.strokeStyle = '#c99a5a'; ctx.lineWidth = 2; ctx.strokeRect(this.X0 - 1, this.Y0 - 1, this.X1 - this.X0 + 2, this.Y1 - this.Y0 + 2);
-      for (const h of this.holes) {
-        ctx.strokeStyle = 'rgba(255,80,80,.35)'; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
-        ctx.beginPath(); ctx.arc(h.x, h.y, h.r * 1.9, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
-        this.drawHole(h, '#4a8a7a');
-      }
+      ctx.strokeStyle = '#5ad1c0'; ctx.lineWidth = 2; ctx.strokeRect(this.X0 - 1, this.Y0 - 1, this.X1 - this.X0 + 2, this.Y1 - this.Y0 + 2);
     });
+    ctx.save(); ctx.beginPath(); ctx.rect(this.X0, this.Y0, this.X1 - this.X0, this.Y1 - this.Y0); ctx.clip();
+    this.drawGrid();
+    for (const h of this.holes) this.drawHole(h, 'rgba(120,255,220,.7)');
+    ctx.restore();
     const t = performance.now() / 1000;
     // wandering holes: a swirling pull ring and two hungry eyes
     for (const f of this.foes) {
@@ -1222,7 +1255,7 @@ const Pin = {
       ctx.strokeStyle = this.level >= 3 ? 'rgba(255,60,90,.55)' : 'rgba(180,120,255,.5)'; ctx.lineWidth = 1.2;
       for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(0, 0, f.r * 1.9 - i * 3, i * 2.1, i * 2.1 + 1.6); ctx.stroke(); }
       ctx.restore();
-      this.drawHole(f, this.level >= 3 ? '#7a1830' : '#4b2a7a');
+      this.drawHole(f, this.level >= 3 ? 'rgba(255,64,96,.85)' : 'rgba(208,160,255,.85)');
       const blink = Math.sin(f.t * 1.7) > 0.96;
       const ex = Math.cos(f.a) * 1.5, ey = Math.sin(f.a) * 1.5;
       ctx.fillStyle = this.level >= 3 ? '#ff4060' : '#d0a0ff';
@@ -1239,30 +1272,16 @@ const Pin = {
         ctx.strokeStyle = `rgba(255,224,102,${0.4 + 0.6 * Math.abs(Math.sin(t * 20))})`; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(bu.x, bu.y, r + 3 + (0.9 - bu.charge) * 30, 0, TAU); ctx.stroke();
       }
-      const col = BUMPER_COLS[Math.max(0, bu.hp - 1)];
+      const left = clamp(bu.life / bu.max, 0, 1), urgent = !breaking && bu.life < 3;
       ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.arc(bu.x + 2, bu.y + 3, r, 0, TAU); ctx.fill();
-      ctx.fillStyle = bu.flash > 0 ? '#ffffff' : col; ctx.beginPath(); ctx.arc(bu.x, bu.y, r, 0, TAU); ctx.fill();
-      // remaining-hit pips around the rim
-      for (let i = 0; i < bu.max; i++) {
-        const a = -Math.PI / 2 + i * TAU / bu.max;
-        ctx.fillStyle = i < bu.hp ? 'rgba(255,255,255,.9)' : 'rgba(0,0,0,.35)';
-        ctx.beginPath(); ctx.arc(bu.x + Math.cos(a) * r * .82, bu.y + Math.sin(a) * r * .82, 1, 0, TAU); ctx.fill();
-      }
+      ctx.fillStyle = bu.flash > 0 ? '#ffffff' : '#d62a4a'; ctx.beginPath(); ctx.arc(bu.x, bu.y, r, 0, TAU); ctx.fill();
+      // countdown ring: drains clockwise as the bumper's time runs out
+      ctx.strokeStyle = urgent && Math.floor(t * 8) % 2 ? '#ffffff' : '#ffe066'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .8, -Math.PI / 2, -Math.PI / 2 + TAU * left); ctx.stroke();
       const cg = ctx.createRadialGradient(bu.x - r * .3, bu.y - r * .35, 0, bu.x, bu.y, r * .6);
-      cg.addColorStop(0, '#fff'); cg.addColorStop(1, 'rgba(255,255,255,.55)');
-      ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .55, 0, TAU); ctx.fill();
-      if (!breaking) txt(String(bu.hp), bu.x, bu.y + .5, 7, '#2a1030', 'center', false);
-      // cracks once it has taken a hit
-      if (bu.hp < bu.max) {
-        ctx.strokeStyle = 'rgba(40,10,20,.7)'; ctx.lineWidth = .8; ctx.beginPath();
-        for (let i = 0; i < bu.max - bu.hp; i++) {
-          const a = i * 2.4 + bu.max;
-          ctx.moveTo(bu.x + Math.cos(a) * r * .55, bu.y + Math.sin(a) * r * .55);
-          ctx.lineTo(bu.x + Math.cos(a + .3) * r * .8, bu.y + Math.sin(a + .3) * r * .8);
-          ctx.lineTo(bu.x + Math.cos(a - .1) * r, bu.y + Math.sin(a - .1) * r);
-        }
-        ctx.stroke();
-      }
+      cg.addColorStop(0, '#fff'); cg.addColorStop(1, 'rgba(255,255,255,.6)');
+      ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .58, 0, TAU); ctx.fill();
+      if (!breaking) txt(String(Math.ceil(bu.life)), bu.x, bu.y + .5, 7, '#2a1030', 'center', false);
       ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(bu.x, bu.y, r, 0, TAU); ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -1275,6 +1294,8 @@ const Pin = {
     }
     for (const b of this.balls) drawMarble(b);
     drawFX();
+    for (const p of this.pops) { ctx.globalAlpha = clamp(p.t * 2, 0, 1); txt(p.s, p.x, p.y, 8, '#ffe066', 'center'); }
+    ctx.globalAlpha = 1;
     txt(String(this.score).padStart(7, '0'), 8, 9, 8, '#fff');
     txt('RACK ' + this.level, 120, 9, 8, '#9fe8d8', 'center');
     txt('x' + this.mult, 176, 9, 8, '#ffe066', 'center');
