@@ -52,8 +52,8 @@
     @media (max-height: 640px) { #lvl { display: none; } }
 
     /* Two square buttons at the bottom */
-    #pads { width: min(100%, 420px); display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
-    .padcol { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    #pads { width: min(100%, 420px); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    .padcol { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0; transform: none; }
     .pad { width: min(34vw, 132px, 17dvh); aspect-ratio: 1; border-radius: 12px; border: 0; cursor: pointer;
       font: 900 34px/1 ui-monospace, Menlo, Consolas, monospace; color: rgba(255,255,255,.85);
       background: linear-gradient(160deg, #ff5d8f, #b8235a); box-shadow: 0 7px 0 #6e1236, 0 12px 20px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.3);
@@ -61,7 +61,7 @@
     #btnB { background: linear-gradient(160deg, #8f86ff, #4b3fc4); box-shadow: 0 7px 0 #2a2180, 0 12px 20px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.3); }
     .pad.down { transform: translateY(6px); box-shadow: 0 1px 0 #6e1236, 0 4px 8px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.2); }
     #btnB.down { box-shadow: 0 1px 0 #2a2180, 0 4px 8px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.2); }
-    .padlbl { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: #9d97cc; min-height: 14px; }
+    .padlbl { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: #9d97cc; height: 14px; line-height: 14px; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -1068,6 +1068,7 @@ const Pin = {
     const L = this.level;
     for (const f of this.foes) {
       f.t += dt;
+      if (f.closing) continue;
       f.a += rand(-2.5, 2.5) * dt;
       if (L >= 3) {
         let best = null, bd = Infinity;
@@ -1118,7 +1119,11 @@ const Pin = {
     this.bumpers = this.bumpers.filter(b => b.state !== 'break' || b.fade > 0);
     for (const p of this.pops) { p.t -= dt; p.y -= dt * 18; }
     this.pops = this.pops.filter(p => p.t > 0);
-    const traps = [...this.holes, ...this.foes];
+    // a hole that swallowed a ball shrinks shut and is gone
+    for (const h of [...this.holes, ...this.foes]) if (h.closing) h.r = Math.max(0, h.r - dt * 26);
+    this.holes = this.holes.filter(h => !h.closing || h.r > 0);
+    this.foes = this.foes.filter(h => !h.closing || h.r > 0);
+    const traps = [...this.holes, ...this.foes].filter(h => !h.closing);
     for (const b of this.balls) {
       if (b.fall) {
         b.fall.t += dt; const k = clamp(b.fall.t / 0.4, 0, 1);
@@ -1148,7 +1153,12 @@ const Pin = {
       for (const h of traps) {
         const dx = h.x - b.x, dy = h.y - b.y, d = Math.hypot(dx, dy), pr = h.r * 1.9;
         if (d < pr && d > 1e-6) { const a = 900 * (1 - d / pr); b.vx += dx / d * a * dt; b.vy += dy / d * a * dt; }
-        if (d < h.r * 0.7) { b.fall = { t: 0, h }; beep(500, .4, 'triangle', .06, 60); buzz(120); break; }
+        if (d < h.r * 0.7) {
+          b.fall = { t: 0, h: { x: h.x, y: h.y } }; h.closing = true;
+          burst(h.x, h.y, 16, '#78ffdc', { max: 80 });
+          this.msg = 'HOLE SEALED'; this.msgT = 0.9;
+          beep(500, .4, 'triangle', .06, 60); buzz(120); break;
+        }
       }
       if (!b.fall && this.star && dist(b, this.star) < b.r + 7) {
         this.score += 500 * this.mult; this.stars++;
@@ -1207,6 +1217,7 @@ const Pin = {
   },
   // Black hole: a dark well with a thin glowing event-horizon ring.
   drawHole(h, glow) {
+    if (h.r <= 0.2) return;
     const well = ctx.createRadialGradient(h.x, h.y, h.r * .6, h.x, h.y, h.r * 2.2);
     well.addColorStop(0, 'rgba(0,0,0,.75)'); well.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = well; ctx.beginPath(); ctx.arc(h.x, h.y, h.r * 2.2, 0, TAU); ctx.fill();
@@ -1253,9 +1264,10 @@ const Pin = {
     for (const f of this.foes) {
       ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.t * 3);
       ctx.strokeStyle = this.level >= 3 ? 'rgba(255,60,90,.55)' : 'rgba(180,120,255,.5)'; ctx.lineWidth = 1.2;
-      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(0, 0, f.r * 1.9 - i * 3, i * 2.1, i * 2.1 + 1.6); ctx.stroke(); }
+      for (let i = 0; i < 3; i++) { const rr = f.r * 1.9 - i * 3; if (rr <= 0) continue; ctx.beginPath(); ctx.arc(0, 0, rr, i * 2.1, i * 2.1 + 1.6); ctx.stroke(); }
       ctx.restore();
       this.drawHole(f, this.level >= 3 ? 'rgba(255,64,96,.85)' : 'rgba(208,160,255,.85)');
+      if (f.closing) continue;
       const blink = Math.sin(f.t * 1.7) > 0.96;
       const ex = Math.cos(f.a) * 1.5, ey = Math.sin(f.a) * 1.5;
       ctx.fillStyle = this.level >= 3 ? '#ff4060' : '#d0a0ff';
@@ -1281,7 +1293,12 @@ const Pin = {
       const cg = ctx.createRadialGradient(bu.x - r * .3, bu.y - r * .35, 0, bu.x, bu.y, r * .6);
       cg.addColorStop(0, '#fff'); cg.addColorStop(1, 'rgba(255,255,255,.6)');
       ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .58, 0, TAU); ctx.fill();
-      if (!breaking) txt(String(Math.ceil(bu.life)), bu.x, bu.y + .5, 7, '#2a1030', 'center', false);
+      if (!breaking) {
+        const n = String(Math.ceil(bu.life)), fs = Math.round(r * (n.length > 1 ? 0.95 : 1.15));
+        ctx.font = `900 ${fs}px ui-monospace, Menlo, Consolas, monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = 2.2; ctx.strokeStyle = '#ffffff'; ctx.strokeText(n, bu.x, bu.y + .8);
+        ctx.fillStyle = urgent ? '#c4102e' : '#2a1030'; ctx.fillText(n, bu.x, bu.y + .8);
+      }
       ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(bu.x, bu.y, r, 0, TAU); ctx.stroke();
     }
     ctx.globalAlpha = 1;
