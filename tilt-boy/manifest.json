@@ -1,0 +1,14 @@
+{
+  "name": "Tilt Boy",
+  "short_name": "Tilt Boy",
+  "description": "A pocket handheld you play by tilting your phone: Love Dance, Marble Maze, Ms. Munch and Pin-Holes.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1d1b2e",
+  "theme_color": "#1d1b2e",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
