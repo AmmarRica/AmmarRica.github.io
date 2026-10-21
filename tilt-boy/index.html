@@ -18,7 +18,10 @@
     html, body { height: 100%; overflow: hidden; background: #1d1b2e; color: #e9e6ff;
       font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace;
       touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
-    #app { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    /* The whole handheld renders in black and white. --fs is the single font
+       size, set from JS to match the canvas text size on screen. */
+    :root { --fs: 10px; }
+    #app { filter: grayscale(1) contrast(1.1); font-size: var(--fs); position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
       padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
       background: radial-gradient(120% 80% at 50% 0%, #34305a 0%, #1d1b2e 60%, #141224 100%); }
 
@@ -29,14 +32,14 @@
     #screenwrap { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 4px;
       box-shadow: inset 0 0 0 2px #15132a, 0 0 0 3px #222038; overflow: hidden; }
     canvas { display: block; width: 100%; height: 100%; }
-    #brand { display: flex; align-items: center; gap: 8px; padding: 8px 2px 2px; font-size: 12px; font-weight: 800;
+    #brand { display: flex; align-items: center; gap: 8px; padding: 8px 2px 2px; font-size: var(--fs); font-weight: 800;
       letter-spacing: 3px; color: #c9c3ff; }
-    #brand small { font-size: 9px; letter-spacing: 2px; color: #ff7eb6; font-style: italic; }
+    #brand small { font-size: var(--fs); letter-spacing: 2px; color: #ff7eb6; font-style: italic; }
     #brand .led { width: 8px; height: 8px; border-radius: 50%; background: #555; box-shadow: 0 0 0 1px #000; }
     #brand .led.on { background: #ff3b5c; box-shadow: 0 0 8px #ff3b5c; }
     #brand .led.ok { background: #3bff8a; box-shadow: 0 0 8px #3bff8a; }
 
-    #info { margin-top: 12px; min-height: 18px; font-size: 12px; color: #9d97cc; text-align: center; letter-spacing: 1px; }
+    #info { margin-top: 12px; min-height: 18px; font-size: var(--fs); color: #9d97cc; text-align: center; letter-spacing: 1px; }
     #info b { color: #e9e6ff; }
 
     /* Middle deck: live tilt level + how-to */
@@ -48,20 +51,20 @@
     #lvl::after { top: 50%; left: 8px; right: 8px; height: 1px; }
     #dot { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%;
       background: radial-gradient(circle at 35% 30%, #bfe0ff, #3a7bd5 55%, #0b2350); box-shadow: 2px 3px 4px rgba(0,0,0,.45); }
-    #help { max-width: 340px; font-size: 12px; line-height: 1.5; color: #8a84b8; text-align: center; min-height: 36px; }
+    #help { max-width: 340px; font-size: var(--fs); line-height: 1.5; color: #8a84b8; text-align: center; min-height: 36px; }
     @media (max-height: 640px) { #lvl { display: none; } }
 
     /* Two square buttons at the bottom */
     #pads { width: min(100%, 420px); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
     .padcol { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0; transform: none; }
     .pad { width: min(34vw, 132px, 17dvh); aspect-ratio: 1; border-radius: 12px; border: 0; cursor: pointer;
-      font: 900 34px/1 ui-monospace, Menlo, Consolas, monospace; color: rgba(255,255,255,.85);
+      font: 900 var(--fs)/1 ui-monospace, Menlo, Consolas, monospace; color: rgba(255,255,255,.85);
       background: linear-gradient(160deg, #ff5d8f, #b8235a); box-shadow: 0 7px 0 #6e1236, 0 12px 20px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.3);
       touch-action: none; transition: transform .05s, box-shadow .05s; }
     #btnB { background: linear-gradient(160deg, #8f86ff, #4b3fc4); box-shadow: 0 7px 0 #2a2180, 0 12px 20px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.3); }
     .pad.down { transform: translateY(6px); box-shadow: 0 1px 0 #6e1236, 0 4px 8px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.2); }
     #btnB.down { box-shadow: 0 1px 0 #2a2180, 0 4px 8px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.2); }
-    .padlbl { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: #9d97cc; height: 14px; line-height: 14px; white-space: nowrap; }
+    .padlbl { font-size: var(--fs); font-weight: 800; letter-spacing: 2px; color: #9d97cc; height: 14px; line-height: 14px; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -85,6 +88,7 @@
 // Logical resolution is 320×240 (4:3). The backing store is scaled up for the
 // device's pixel ratio so marbles stay smooth.
 const W = 320, H = 240;
+const FS = 9; // the one font size, in screen pixels
 const cv = document.getElementById('screen');
 const screenCtx = cv.getContext('2d');
 let ctx = screenCtx;
@@ -97,6 +101,7 @@ function resize() {
   cv.width = w; cv.height = Math.round(w * 3 / 4);
   SCALE = cv.width / W;
   LAYERS.clear();
+  document.documentElement.style.setProperty('--fs', (FS * r.width / W).toFixed(2) + 'px');
 }
 new ResizeObserver(resize).observe(cv);
 resize();
@@ -122,8 +127,9 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const wrap180 = a => { while (a > 180) a -= 360; while (a < -180) a += 360; return a; };
 
-function txt(s, x, y, size = 8, col = '#fff', align = 'left', shadow = true) {
-  ctx.font = `bold ${size}px ui-monospace, Menlo, Consolas, monospace`;
+// Every piece of text uses FS; callers' size arguments are ignored.
+function txt(s, x, y, size, col = '#fff', align = 'left', shadow = true) {
+  ctx.font = `bold ${FS}px ui-monospace, Menlo, Consolas, monospace`;
   ctx.textAlign = align; ctx.textBaseline = 'middle';
   if (shadow) { ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillText(s, x + 1, y + 1); }
   ctx.fillStyle = col; ctx.fillText(s, x, y);
@@ -1275,8 +1281,8 @@ const Pin = {
       cg.addColorStop(0, '#fff'); cg.addColorStop(1, 'rgba(255,255,255,.6)');
       ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .58, 0, TAU); ctx.fill();
       if (!breaking) {
-        const n = String(bu.hp), fs = Math.round(r * (n.length > 1 ? 0.95 : 1.15));
-        ctx.font = `900 ${fs}px ui-monospace, Menlo, Consolas, monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const n = String(bu.hp);
+        ctx.font = `900 ${FS}px ui-monospace, Menlo, Consolas, monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.lineWidth = 2.2; ctx.strokeStyle = '#ffffff'; ctx.strokeText(n, bu.x, bu.y + .8);
         ctx.fillStyle = urgent ? '#c4102e' : '#2a1030'; ctx.fillText(n, bu.x, bu.y + .8);
       }
@@ -1492,7 +1498,7 @@ function drawOverlay() {
   OVERLAY_BTNS.length = 0;
   if (paused) {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
-    panel(70, 70, 180, 100);
+    panel(50, 70, 220, 100);
     txt('PAUSED', 160, 92, 14, '#fff', 'center');
     overlayBtn(84, 112, 72, 26, 'RESUME', 'A', pressA);
     overlayBtn(164, 112, 72, 26, 'MENU', 'B', pressB);
