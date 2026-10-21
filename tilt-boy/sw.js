@@ -1,5 +1,7 @@
 // Tilt Boy service worker — offline + installable.
-const CACHE = 'tiltboy-v1';
+// Network-first, so a new deploy shows up on the next load; the cache is only
+// a fallback for offline play. Bump CACHE to drop older caches.
+const CACHE = 'tiltboy-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
@@ -17,10 +19,10 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).then(resp => {
+    fetch(e.request).then(resp => {
       const copy = resp.clone();
       caches.open(CACHE).then(c => { try { c.put(e.request, copy); } catch (_) {} });
       return resp;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => caches.match(e.request).then(cached => cached || caches.match('./index.html')))
   );
 });
