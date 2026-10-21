@@ -993,23 +993,24 @@ const Munch = {
 };
 
 // ═════════════════════════ GAME 4: PIN-HOLES ═════════════════════════
-// Pinball without flippers on a gravity grid: tilt the table to steer the
-// balls. Every bumper counts down and pays out its score when it vanishes;
-// touching one kicks you off and resets your multiplier. When the last bumper
-// is gone the next rack is laid out. Black holes swallow balls — the grid
-// sags into them — and wandering holes drift around, hunting you from rack 3.
+// Pinball without flippers on a gravity grid, one life: tilt to steer. Grab
+// stars to build the multiplier, then bounce off bumpers to cash it in — each
+// bounce counts a bumper down and pays out, and at zero it breaks for a bonus.
+// Clearing every bumper lays out the next rack. Black holes swallow balls (the
+// grid sags into them) and are filled by the ball they swallow; wandering
+// holes drift around, hunting you from rack 3. Last ball gone = game over.
 const Pin = {
   id: 'pin', title: 'PIN-HOLES', pal: PAL.green,
-  blurb: 'Outlast bumpers, dodge black holes',
-  help: 'No flippers: tilt to steer. Bumpers count down and pay out their score × your multiplier when they vanish — but touching one resets the multiplier to x1. Stars raise it; every 3rd adds a ball. Black holes swallow balls, and the moving ones hunt you.',
+  blurb: 'Build a multiplier, bump to score',
+  help: 'One life, no flippers: tilt to steer. Stars raise the multiplier (every 3rd adds a ball). Bouncing off a bumper scores × multiplier and counts it down; at 0 it breaks. A ball that falls in a hole fills it. Last ball gone = game over.',
   X0: 6, Y0: 18, X1: 314, Y1: 234,
   init() {
-    this.level = 0; this.score = 0; this.over = false; this.reserve = 2; this.balls = [];
-    this.mult = 1; this.stars = 0; this.t = 0; this.popT = 3; this.spawnQ = 0; this.pops = [];
+    this.level = 0; this.score = 0; this.over = false; this.balls = [];
+    this.mult = 1; this.stars = 0; this.t = 0; this.pops = [];
     this.holes = []; this.bumpers = []; this.foes = [];
     this.nextRack();
     this.spawnBall();
-    this.msg = "DON'T TOUCH BUMPERS"; this.msgT = 1.8;
+    this.msg = 'GRAB STARS, THEN BUMP'; this.msgT = 1.8;
   },
   // Lay out a fresh table around whatever balls are still rolling.
   nextRack() {
@@ -1036,10 +1037,10 @@ const Pin = {
     }
     return { x: 160, y: 126 };
   },
-  // life: seconds until it vanishes; value: points paid out when it does.
+  // hp: bounces left before it breaks.
   newBumper() {
-    const p = this.freeSpot(18, 12), life = Math.round(rand(8, 14) + this.level * 1.5);
-    return { ...p, r: rand(9, 13), life, max: life, value: life * 100, flash: 0, charge: 0, fade: 1, state: 'on' };
+    const p = this.freeSpot(18, 12), hp = Math.min(9, 3 + ((Math.random() * (this.level + 1)) | 0));
+    return { ...p, r: rand(9, 13), hp, max: hp, flash: 0, fade: 1, state: 'on' };
   },
   spawnBall() {
     const p = this.freeSpot(26, 7);
@@ -1048,27 +1049,27 @@ const Pin = {
     this.balls.push(b);
   },
   placeStar() { this.star = { ...this.freeSpot(16, 6), t: 0 }; },
+  // Every bounce pays 100 × multiplier and counts the bumper down; at zero it
+  // breaks for a 500 × multiplier bonus.
   hitBumper(bu) {
     bu.flash = 1;
-    if (this.mult > 1) { this.msg = 'x1'; this.msgT = 0.7; beep(260, .18, 'sawtooth', .05, 120); buzz(50); }
-    else { beep(880 + rand(-60, 60), .06, 'square', .05); buzz(15); }
-    this.mult = 1;
-  },
-  // A bumper that ran out its counter pays out and pops.
-  removeBumper(bu) {
-    bu.state = 'break';
-    const pts = bu.value * this.mult;
+    if (bu.cool > 0) return; // one bounce counts once, even across substeps
+    bu.cool = 0.15; bu.hp--;
+    let pts = 100 * this.mult;
+    if (bu.hp <= 0) {
+      bu.state = 'break'; pts += 500 * this.mult;
+      burst(bu.x, bu.y, 22, '#ffe066', { max: 140, size: 3 });
+      burst(bu.x, bu.y, 10, '#d62a4a', { max: 90, size: 2 });
+      beep(660, .08, 'square', .05); setTimeout(() => beep(990, .12, 'square', .05), 70); buzz(35);
+    } else { beep(880 + rand(-60, 60), .06, 'square', .05); buzz(15); }
     this.score += pts;
-    this.pops.push({ x: bu.x, y: bu.y, s: '+' + pts, t: 1 });
-    burst(bu.x, bu.y, 22, '#ffe066', { max: 140, size: 3 });
-    burst(bu.x, bu.y, 10, '#d62a4a', { max: 90, size: 2 });
-    beep(660, .08, 'square', .05); setTimeout(() => beep(990, .12, 'square', .05), 70); buzz(25);
+    this.pops.push({ x: bu.x, y: bu.y - bu.r, s: '+' + pts, t: 0.8 });
   },
   updateFoes(dt) {
     const L = this.level;
     for (const f of this.foes) {
       f.t += dt;
-      if (f.closing) continue;
+      if (f.filled) continue;
       f.a += rand(-2.5, 2.5) * dt;
       if (L >= 3) {
         let best = null, bd = Infinity;
@@ -1080,7 +1081,7 @@ const Pin = {
       if (f.x < this.X0 + m || f.x > this.X1 - m) { f.x = clamp(f.x, this.X0 + m, this.X1 - m); f.a = Math.PI - f.a; }
       if (f.y < this.Y0 + m || f.y > this.Y1 - m) { f.y = clamp(f.y, this.Y0 + m, this.Y1 - m); f.a = -f.a; }
       // slide around bumpers and fixed holes instead of through them
-      for (const o of [...this.bumpers.filter(b => b.state === 'on'), ...this.holes]) {
+      for (const o of [...this.bumpers.filter(b => b.state === 'on'), ...this.holes.filter(h => !h.filled)]) {
         const dx = f.x - o.x, dy = f.y - o.y, d = Math.hypot(dx, dy), mm = f.r + o.r + 2;
         if (d < mm && d > 1e-6) { f.x = o.x + dx / d * mm; f.y = o.y + dy / d * mm; f.a = Math.atan2(dy, dx) + rand(-0.6, 0.6); }
       }
@@ -1091,39 +1092,17 @@ const Pin = {
     if (IN.demoOn) this.demo();
     const acc = tiltAccel();
     this.updateFoes(dt);
-    // random bumper pops: a charged bumper blasts nearby balls away
-    if ((this.popT -= dt) <= 0) {
-      this.popT = rand(2.5, 5) / Math.min(2, 1 + this.stars * 0.08);
-      const live = this.bumpers.filter(b => b.state === 'on');
-      if (live.length) live[(Math.random() * live.length) | 0].charge = 0.9;
-    }
     for (const bu of this.bumpers) {
       bu.flash = Math.max(0, bu.flash - dt * 4);
-      if (bu.state === 'break') { bu.fade -= dt * 3; continue; }
-      bu.life -= dt;
-      if (bu.life <= 0) { this.removeBumper(bu); continue; }
-      if (bu.charge > 0) {
-        bu.charge -= dt;
-        if (bu.charge <= 0) {
-          bu.charge = 0; bu.flash = 1;
-          burst(bu.x, bu.y, 14, '#ffe066', { max: 120 });
-          beep(120, .15, 'sawtooth', .05, 400);
-          for (const b of this.balls) {
-            if (b.fall || b.drop > 0) continue;
-            const d = dist(b, bu);
-            if (d < 48 && d > 1e-6) { const k = 420 * (1 - d / 60); b.vx += (b.x - bu.x) / d * k; b.vy += (b.y - bu.y) / d * k; buzz(30); }
-          }
-        }
-      }
+      bu.cool = Math.max(0, (bu.cool || 0) - dt);
+      if (bu.state === 'break') bu.fade -= dt * 3;
     }
     this.bumpers = this.bumpers.filter(b => b.state !== 'break' || b.fade > 0);
     for (const p of this.pops) { p.t -= dt; p.y -= dt * 18; }
     this.pops = this.pops.filter(p => p.t > 0);
-    // a hole that swallowed a ball shrinks shut and is gone
-    for (const h of [...this.holes, ...this.foes]) if (h.closing) h.r = Math.max(0, h.r - dt * 26);
-    this.holes = this.holes.filter(h => !h.closing || h.r > 0);
-    this.foes = this.foes.filter(h => !h.closing || h.r > 0);
-    const traps = [...this.holes, ...this.foes].filter(h => !h.closing);
+    // a hole that swallowed a ball is filled by it: the dip levels out
+    for (const h of [...this.holes, ...this.foes]) if (h.filled) h.depth = Math.max(0, (h.depth ?? 1) - dt * 2.5);
+    const traps = [...this.holes, ...this.foes].filter(h => !h.filled);
     for (const b of this.balls) {
       if (b.fall) {
         b.fall.t += dt; const k = clamp(b.fall.t / 0.4, 0, 1);
@@ -1154,9 +1133,9 @@ const Pin = {
         const dx = h.x - b.x, dy = h.y - b.y, d = Math.hypot(dx, dy), pr = h.r * 1.9;
         if (d < pr && d > 1e-6) { const a = 900 * (1 - d / pr); b.vx += dx / d * a * dt; b.vy += dy / d * a * dt; }
         if (d < h.r * 0.7) {
-          b.fall = { t: 0, h: { x: h.x, y: h.y } }; h.closing = true;
+          b.fall = { t: 0, h: { x: h.x, y: h.y } }; h.filled = true; h.depth = 1; h.spots = b;
           burst(h.x, h.y, 16, '#78ffdc', { max: 80 });
-          this.msg = 'HOLE SEALED'; this.msgT = 0.9;
+          if (this.balls.filter(x => !x.fall).length) { this.msg = 'HOLE FILLED'; this.msgT = 0.9; }
           beep(500, .4, 'triangle', .06, 60); buzz(120); break;
         }
       }
@@ -1183,41 +1162,46 @@ const Pin = {
     this.balls = this.balls.filter(b => !b.gone);
     if (!this.bumpers.length) {
       this.score += 1000 * this.level;
-      this.reserve = Math.min(5, this.reserve + 1);
       burst(160, 126, 40, '#ffe066', { max: 160, size: 3 });
       beep(523, .1, 'square', .05); setTimeout(() => beep(784, .1, 'square', .05), 100); setTimeout(() => beep(1046, .25, 'square', .05), 200);
       buzz([30, 40, 30]);
       this.nextRack();
       for (const b of this.balls) { if (!b.fall) { b.vx *= 0.3; b.vy *= 0.3; } }
-      this.msg = 'RACK ' + this.level + '  +1 BALL'; this.msgT = 1.6;
+      this.msg = 'RACK ' + this.level; this.msgT = 1.6;
     }
-    if (!this.balls.length) {
-      if (this.spawnQ <= 0) {
-        if (this.reserve > 0) { this.reserve--; this.spawnQ = 0.9; this.mult = Math.max(1, this.mult - 1); this.msg = 'BALL LOST'; this.msgT = 0.9; }
-        else { this.over = true; this.overMsg = 'OUT OF BALLS'; return; }
-      }
-      this.spawnQ -= dt;
-      if (this.spawnQ <= 0) this.spawnBall();
-    }
+    // one life: when the last ball is gone, the game is over
+    if (!this.balls.length) { this.over = true; this.overMsg = 'LAST BALL LOST'; return; }
     if (this.star) this.star.t += dt;
   },
   demo() {
     const b = this.balls.find(x => !x.fall && !(x.drop > 0));
     if (!b) return;
-    // grab the star, steer clear of bumpers (they reset the multiplier) and holes
-    const s = this.star || { x: 160, y: 126 };
+    // build the multiplier first, then go bump; keep clear of open holes
+    let s = this.star || { x: 160, y: 126 };
+    if (this.mult >= 3 || !this.star) {
+      let best = Infinity;
+      for (const bu of this.bumpers) if (bu.state === 'on' && dist(b, bu) < best) { best = dist(b, bu); s = bu; }
+    }
     let ax = 30 * (s.x - b.x) - 8 * b.vx, ay = 30 * (s.y - b.y) - 8 * b.vy;
-    const avoid = [...this.holes.map(h => [h, 32]), ...this.foes.map(h => [h, 34]),
-      ...this.bumpers.filter(u => u.state === 'on').map(u => [u, u.r + 18])];
+    const avoid = [...this.holes, ...this.foes].filter(h => !h.filled).map(h => [h, 34]);
     for (const [h, R] of avoid) {
       const dx = b.x - h.x, dy = b.y - h.y, d = Math.hypot(dx, dy);
       if (d < R && d > 1e-6) { const k = 6000 * (1 - d / R); ax += dx / d * k; ay += dy / d * k; }
     }
     demoAccel(ax, ay);
   },
-  // Black hole: a dark well with a thin glowing event-horizon ring.
+  // Black hole: a dark well with a thin glowing event-horizon ring. A filled
+  // hole shows the swallowed marble sitting flush in it.
   drawHole(h, glow) {
-    if (h.r <= 0.2) return;
+    if (h.filled) {
+      const d = h.depth;
+      ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.beginPath(); ctx.arc(h.x, h.y, h.r + 1, 0, TAU); ctx.fill();
+      if (d > 0) { ctx.fillStyle = `rgba(0,0,0,${d})`; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill(); }
+      ctx.globalAlpha = 1 - d * 0.8;
+      drawMarble(h.spots, h.x, h.y, (h.r - 1) / h.spots.r);
+      ctx.globalAlpha = 1;
+      return;
+    }
     const well = ctx.createRadialGradient(h.x, h.y, h.r * .6, h.x, h.y, h.r * 2.2);
     well.addColorStop(0, 'rgba(0,0,0,.75)'); well.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = well; ctx.beginPath(); ctx.arc(h.x, h.y, h.r * 2.2, 0, TAU); ctx.fill();
@@ -1229,7 +1213,7 @@ const Pin = {
     let dx = 0, dy = 0;
     for (const h of wells) {
       const ox = h.x - x, oy = h.y - y, m = h.r * 2.6;
-      const k = 0.85 * Math.exp(-(ox * ox + oy * oy) / (m * m));
+      const k = 0.85 * (h.filled ? h.depth : 1) * Math.exp(-(ox * ox + oy * oy) / (m * m));
       dx += ox * k; dy += oy * k;
     }
     return [x + dx, y + dy];
@@ -1262,12 +1246,13 @@ const Pin = {
     const t = performance.now() / 1000;
     // wandering holes: a swirling pull ring and two hungry eyes
     for (const f of this.foes) {
+      if (f.filled) { this.drawHole(f); continue; }
       ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.t * 3);
       ctx.strokeStyle = this.level >= 3 ? 'rgba(255,60,90,.55)' : 'rgba(180,120,255,.5)'; ctx.lineWidth = 1.2;
       for (let i = 0; i < 3; i++) { const rr = f.r * 1.9 - i * 3; if (rr <= 0) continue; ctx.beginPath(); ctx.arc(0, 0, rr, i * 2.1, i * 2.1 + 1.6); ctx.stroke(); }
       ctx.restore();
       this.drawHole(f, this.level >= 3 ? 'rgba(255,64,96,.85)' : 'rgba(208,160,255,.85)');
-      if (f.closing) continue;
+      if (f.filled) continue;
       const blink = Math.sin(f.t * 1.7) > 0.96;
       const ex = Math.cos(f.a) * 1.5, ey = Math.sin(f.a) * 1.5;
       ctx.fillStyle = this.level >= 3 ? '#ff4060' : '#d0a0ff';
@@ -1280,21 +1265,17 @@ const Pin = {
       const breaking = bu.state === 'break';
       ctx.globalAlpha = clamp(bu.fade, 0, 1);
       const r = bu.r * (breaking ? 1 + (1 - bu.fade) * 0.6 : 1) * (1 + bu.flash * 0.15);
-      if (bu.charge > 0) {
-        ctx.strokeStyle = `rgba(255,224,102,${0.4 + 0.6 * Math.abs(Math.sin(t * 20))})`; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(bu.x, bu.y, r + 3 + (0.9 - bu.charge) * 30, 0, TAU); ctx.stroke();
-      }
-      const left = clamp(bu.life / bu.max, 0, 1), urgent = !breaking && bu.life < 3;
+      const left = clamp(bu.hp / bu.max, 0, 1), urgent = !breaking && bu.hp === 1;
       ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.arc(bu.x + 2, bu.y + 3, r, 0, TAU); ctx.fill();
       ctx.fillStyle = bu.flash > 0 ? '#ffffff' : '#d62a4a'; ctx.beginPath(); ctx.arc(bu.x, bu.y, r, 0, TAU); ctx.fill();
-      // countdown ring: drains clockwise as the bumper's time runs out
-      ctx.strokeStyle = urgent && Math.floor(t * 8) % 2 ? '#ffffff' : '#ffe066'; ctx.lineWidth = 2;
+      // ring drains clockwise with each bounce
+      ctx.strokeStyle = urgent && Math.floor(t * 4) % 2 ? '#ffffff' : '#ffe066'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .8, -Math.PI / 2, -Math.PI / 2 + TAU * left); ctx.stroke();
       const cg = ctx.createRadialGradient(bu.x - r * .3, bu.y - r * .35, 0, bu.x, bu.y, r * .6);
       cg.addColorStop(0, '#fff'); cg.addColorStop(1, 'rgba(255,255,255,.6)');
       ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .58, 0, TAU); ctx.fill();
       if (!breaking) {
-        const n = String(Math.ceil(bu.life)), fs = Math.round(r * (n.length > 1 ? 0.95 : 1.15));
+        const n = String(bu.hp), fs = Math.round(r * (n.length > 1 ? 0.95 : 1.15));
         ctx.font = `900 ${fs}px ui-monospace, Menlo, Consolas, monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.lineWidth = 2.2; ctx.strokeStyle = '#ffffff'; ctx.strokeText(n, bu.x, bu.y + .8);
         ctx.fillStyle = urgent ? '#c4102e' : '#2a1030'; ctx.fillText(n, bu.x, bu.y + .8);
@@ -1317,7 +1298,8 @@ const Pin = {
     txt('RACK ' + this.level, 120, 9, 8, '#9fe8d8', 'center');
     txt('x' + this.mult, 176, 9, 8, '#ffe066', 'center');
     txt(this.bumpers.filter(b => b.state === 'on').length + ' LEFT', 222, 9, 7, '#f2b6c2', 'center');
-    for (let i = 0; i < this.reserve; i++) {
+    const live = this.balls.filter(b => !b.fall).length;
+    for (let i = 0; i < live; i++) {
       const x = 308 - i * 11;
       ctx.fillStyle = BODY.base; ctx.beginPath(); ctx.arc(x, 9, 3.5, 0, TAU); ctx.fill();
     }
