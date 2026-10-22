@@ -30,8 +30,10 @@
     /* Handheld bezel with the 4:3 screen */
     #bezel { width: min(calc(100vw - 32px), calc((100dvh - 290px) * 4 / 3 + 28px), 560px);
       background: var(--ink); border: 3px solid var(--paper); border-radius: 0 0 28px 0; padding: 10px 10px 6px; }
-    #screenwrap { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--ink); outline: 2px solid var(--paper); outline-offset: 2px; overflow: hidden; }
-    canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+    #screenwrap { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--ink); outline: 2px solid var(--paper); outline-offset: 2px;
+      overflow: hidden; display: grid; place-items: center; }
+    /* sized from JS to a whole number of device pixels per game pixel */
+    canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
     #brand { display: flex; align-items: center; gap: 8px; padding: 10px 2px 2px; font-weight: 900; letter-spacing: 3px; }
     #brand small { font-size: var(--fs); letter-spacing: 2px; color: var(--red); }
     #brand .led { width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--red); }
@@ -83,21 +85,34 @@
 // ───────────────────────── Screen ─────────────────────────
 // Logical resolution is 320×240 (4:3). The backing store is scaled up for the
 // device's pixel ratio so marbles stay smooth.
-const W = 320, H = 240;
-const cv = document.getElementById('screen');
+// Game logic works in a 320×240 space. It is drawn into a coarser 208×156
+// pixel grid (K = 0.65), and every game pixel is shown as the same whole
+// number of device pixels, so all pixels on screen are one size and line up.
+const W = 320, H = 240, RW = 208, RH = 156, K = RW / W;
+const cv = document.getElementById('screen'), wrap = document.getElementById('screenwrap');
 const screenCtx = cv.getContext('2d', { willReadFrequently: true });
 let ctx = screenCtx;
-let SCALE = 1;
+let SCALE = K;
 const LAYERS = new Map();
-// The screen is drawn at its native 320×240 and scaled up with hard pixels.
-function resize() {
-  const r = cv.getBoundingClientRect();
-  if (cv.width !== W) { cv.width = W; cv.height = H; }
-  SCALE = 1;
-  LAYERS.clear();
-  document.documentElement.style.setProperty('--fs', (7 / 0.56 * r.width / W).toFixed(2) + 'px');
+// Strokes thinner than one game pixel would dither away; floor them at one.
+const LW = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'lineWidth');
+function chunky(g) {
+  Object.defineProperty(g, 'lineWidth', { get() { return LW.get.call(this); }, set(v) { LW.set.call(this, Math.max(v, 1 / K)); } });
+  g.lineWidth = 1;
+  return g;
 }
-new ResizeObserver(resize).observe(cv);
+chunky(screenCtx);
+function resize() {
+  const r = wrap.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if (cv.width !== RW) { cv.width = RW; cv.height = RH; }
+  const pix = Math.max(1, Math.floor(r.width * dpr / RW)); // device px per game pixel
+  cv.style.width = RW * pix / dpr + 'px'; cv.style.height = RH * pix / dpr + 'px';
+  SCALE = K;
+  LAYERS.clear();
+  // DOM text capitals match the pixel font's 7-pixel capitals
+  document.documentElement.style.setProperty('--fs', (7 * pix / dpr / 0.56).toFixed(2) + 'px');
+}
+new ResizeObserver(resize).observe(wrap);
 resize();
 
 // Static backgrounds are rendered once per level into an offscreen canvas.
@@ -106,7 +121,7 @@ function layer(key, fn) {
   if (!L) {
     const c = document.createElement('canvas');
     c.width = cv.width; c.height = cv.height;
-    const g = c.getContext('2d');
+    const g = chunky(c.getContext('2d'));
     g.setTransform(SCALE, 0, 0, SCALE, 0, 0);
     const old = ctx; ctx = g; fn(); ctx = old;
     L = { c }; LAYERS.set(key, L);
@@ -248,16 +263,18 @@ function drawText(s, x, y, col) {
     x += GW;
   }
 }
-// txt(s, x, y, size, col, align, shadow): size is ignored — one size only.
+// txt(s, x, y, size, col, align, shadow): x/y are in 320×240 game space,
+// glyphs land on whole game pixels. size is ignored — one size only.
 // y is the middle of the capitals, like textBaseline 'middle'.
 function txt(s, x, y, size, col = '#fff', align = 'left', shadow = true) {
   s = String(s);
-  const w = s.length * GW - 1;
-  let x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
-  x0 = Math.round(x0); const y0 = Math.round(y - 3.5);
+  const w = s.length * GW - 1, px = x * K;
+  const x0 = Math.round(align === 'center' ? px - w / 2 : align === 'right' ? px - w : px), y0 = Math.round(y * K - 3.5);
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
   // a 1px black outline keeps text readable over grids and dither
   if (shadow) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [1, 1]]) drawText(s, x0 + dx, y0 + dy, '#000');
   drawText(s, x0, y0, ink(col));
+  ctx.restore();
 }
 function heart(x, y, s, col) {
   ctx.fillStyle = col; ctx.beginPath();
@@ -266,10 +283,19 @@ function heart(x, y, s, col) {
   ctx.bezierCurveTo(x + s * 0.6, y - s * 1.2, x + s * 1.4, y - s * 0.1, x, y + s * 0.9);
   ctx.fill();
 }
-function panel(x, y, w, h) {
-  ctx.fillStyle = '#000'; ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+// A UI frame snapped to whole game pixels: optional fill, 1-pixel border.
+function box(x, y, w, h, line, fill) {
+  const x0 = Math.round(x * K), y0 = Math.round(y * K), x1 = Math.round((x + w) * K), y1 = Math.round((y + h) * K);
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (fill) { ctx.fillStyle = fill; ctx.fillRect(x0, y0, x1 - x0, y1 - y0); }
+  if (line) {
+    ctx.fillStyle = line;
+    ctx.fillRect(x0, y0, x1 - x0, 1); ctx.fillRect(x0, y1 - 1, x1 - x0, 1);
+    ctx.fillRect(x0, y0, 1, y1 - y0); ctx.fillRect(x1 - 1, y0, 1, y1 - y0);
+  }
+  ctx.restore();
 }
+function panel(x, y, w, h) { box(x, y, w, h, '#fff', '#000'); }
 
 // ───────────────────────── Settings ─────────────────────────
 const DEF = { sens: 0.5, dead: 1, autoLevel: true, invX: false, invY: false, sound: true, vibe: true };
@@ -589,7 +615,7 @@ const Dance = {
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
       // sparse floor dots, one per tile corner
       ctx.fillStyle = '#fff';
-      for (let y = 18; y < H; y += 20) for (let x = 0; x < W; x += 20) ctx.fillRect(x, y, 1, 1);
+      for (let y = 18; y < H; y += 20) for (let x = 0; x < W; x += 20) ctx.fillRect(x, y, 1 / K, 1 / K);
     });
     const t = performance.now() / 1000;
     const me = this.me, pt = this.pt;
@@ -822,7 +848,7 @@ const MODES = [['scatter', 6], ['chase', 20], ['scatter', 5], ['chase', 20], ['s
 
 const Munch = {
   id: 'munch', title: 'MS. MUNCH', pal: PAL.yellow,
-  blurb: 'Eat every dot, dodge ghosts',
+  blurb: 'Eat dots, dodge ghosts',
   help: 'Tilt toward the way you want to turn next. Power pellets turn ghosts blue — eat them for 200·400·800·1600.',
   init() { this.level = 1; this.score = 0; this.lives = 3; this.over = false; this.newBoard(); },
   newBoard() {
@@ -1095,7 +1121,7 @@ const Munch = {
     drawFX();
     if (this.popup) txt(String(this.popup.s), POX + (this.popup.x + .5) * TS, POY + (this.popup.y + .5) * TS, 7, '#3bf0ff', 'center');
     txt('1UP', 8, 10, 8, RED);
-    txt(String(this.score).padStart(6, '0'), 30, 10, 8, '#fff');
+    txt(String(this.score).padStart(6, '0'), 44, 10, 8, '#fff');
     txt('LV ' + this.level, 160, 10, 8, '#ffb8ff', 'center');
     for (let i = 0; i < this.lives - 1; i++) {
       const lx = 306 - i * 12;
@@ -1114,7 +1140,7 @@ const Munch = {
 // holes drift around, hunting you from rack 3. Last ball gone = game over.
 const Pin = {
   id: 'pin', title: 'PIN-HOLES', pal: PAL.green,
-  blurb: 'Build a multiplier, bump to score',
+  blurb: 'Grab stars, then bump',
   help: 'One life, no flippers: tilt to steer. Stars raise the multiplier (every 3rd adds a ball). Bouncing off a bumper scores × multiplier and counts it down; at 0 it breaks. A ball that falls in a hole fills it. Last ball gone = game over.',
   X0: 6, Y0: 18, X1: 314, Y1: 234,
   init() {
@@ -1334,7 +1360,7 @@ const Pin = {
   drawGrid() {
     const wells = [...this.holes, ...this.foes], G = 14, step = 4;
     const { X0, Y0, X1, Y1 } = this;
-    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1;
     ctx.beginPath();
     for (let x = X0; x <= X1 + .1; x += G) {
       for (let y = Y0; y <= Y1 + .1; y += step) { const [px, py] = this.warp(x, y, wells); y === Y0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); }
@@ -1383,7 +1409,7 @@ const Pin = {
       ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .8, -Math.PI / 2, -Math.PI / 2 + TAU * left); ctx.stroke();
       const cg = ctx.createRadialGradient(bu.x - r * .3, bu.y - r * .35, 0, bu.x, bu.y, r * .6);
       cg.addColorStop(0, '#fff'); cg.addColorStop(1, 'rgba(255,255,255,.6)');
-      ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .58, 0, TAU); ctx.fill();
+      ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .72, 0, TAU); ctx.fill();
       if (!breaking) {
         txt(String(bu.hp), bu.x + .5, bu.y + .5, 0, urgent ? RED : '#000', 'center', false);
       }
@@ -1489,7 +1515,7 @@ const endDrag = e => {
   if (!drag) return;
   if (!drag.moved) {
     const p = toLocal(e);
-    if (scene === 'menu') { const i = Math.floor((p.y - 62) / 28); if (i >= 0 && i < MENU.length) { menuIdx = i; pressA(); } }
+    if (scene === 'menu') { const i = Math.floor((p.y - 56) / 32); if (i >= 0 && i < MENU.length) { menuIdx = i; pressA(); } }
     else if (scene === 'settings') {
       // numeric rows: left half steps down, right half steps up
       const i = Math.floor((p.y - 26) / 20);
@@ -1543,19 +1569,19 @@ function drawMenu(dt) {
   accelBall(menuBall, dt, tiltAccel(), 0.8, 400);
   bumpSound(stepBall(menuBall, dt, b => collideBounds(b, 0, 0, W, H, 0.5)) * 0.5);
   drawMarble(menuBall);
-  txt('TILT BOY', 160, 26, 22, '#fff', 'center');
-  txt('pick a cartridge', 160, 44, 7, RED, 'center');
+  txt('TILT BOY', 160, 22, 22, '#fff', 'center');
+  txt('pick a cartridge', 160, 40, 7, RED, 'center');
   MENU.forEach((it, i) => {
-    const y = 62 + i * 28, sel = i === menuIdx;
+    const y = 56 + i * 32, sel = i === menuIdx;
     ctx.fillStyle = '#000';
-    ctx.fillRect(20, y, 280, 25);
-    if (sel) { ctx.strokeStyle = RED; ctx.lineWidth = 1; ctx.strokeRect(20.5, y + .5, 279, 24); }
+    ctx.fillRect(20, y, 280, 30);
+    if (sel) box(20, y, 280, 30, RED);
     const icon = it._icon || (it._icon = makeMarble(0, 0, 7, it.pal));
     if (sel) roll(icon, dt * 30, dt * 8);
-    drawMarble(icon, 36, y + 12.5, 1);
-    txt(it.title, 52, y + 8, 10, sel ? RED : '#fff');
-    txt(it.blurb, 52, y + 18, 6, '#fff', 'left', false);
-    if (BEST[it.id]) txt('HI ' + BEST[it.id], 292, y + 8, 7, '#fff', 'right');
+    drawMarble(icon, 36, y + 15, 1);
+    txt(it.title, 52, y + 9, 10, sel ? RED : '#fff');
+    txt(it.blurb, 52, y + 23, 6, '#fff', 'left', false);
+    if (BEST[it.id]) txt('HI ' + BEST[it.id], 292, y + 9, 7, '#fff', 'right');
   });
   txt('Tap a game · B: next · A: start', 160, 226, 6, '#fff', 'center', false);
   // tilt up/down nudges the cursor
@@ -1566,7 +1592,7 @@ function drawMenu(dt) {
 }
 function drawSettings() {
   ctx.fillStyle = '#16142a'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 22, W, 1);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 22, W, 1 / K);
   txt('SETTINGS', 10, 11.5, 11, RED);
   // live bubble level
   const t = tiltDeg(), bx = 296, by = 11;
@@ -1576,47 +1602,46 @@ function drawSettings() {
   txt(`${t.x.toFixed(0)}°,${t.y.toFixed(0)}°`, 282, 11.5, 6, '#fff', 'right', false);
   ROWS.forEach((r, i) => {
     const y = 26 + i * 20, sel = i === setIdx;
-    if (sel) { ctx.strokeStyle = RED; ctx.lineWidth = 1; ctx.strokeRect(10.5, y + .5, 299, 17); }
+    if (sel) box(10, y, 300, 18, RED);
     txt((sel ? '▶ ' : '  ') + r.label, 16, y + 9.5, 8, sel ? RED : '#fff');
     if (r.bar) {
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(140.5, y + 5.5, 99, 7);
-      ctx.fillStyle = S.sens >= 1 ? RED : '#fff'; ctx.fillRect(142, y + 7, 96 * r.bar(), 4);
+      box(130, y + 5, 90, 8, '#fff');
+      ctx.fillStyle = S.sens >= 1 ? RED : '#fff'; ctx.fillRect(133, y + 8, 84 * r.bar(), 2 / K);
     }
     txt(r.val(), 302, y + 9.5, 8, '#fff', 'right');
   });
-  txt('100% = 1:1 · table tilts with the phone', 160, 226, 6, '#fff', 'center', false);
+  txt('100% = 1:1 tilt', 160, 226, 6, '#fff', 'center', false);
 }
 // Tappable buttons on the pause / game-over panels (rebuilt every frame).
 const OVERLAY_BTNS = [];
 function overlayBtn(x, y, w, h, label, key, fn) {
   OVERLAY_BTNS.push({ x, y, w, h, fn });
   // A is a solid red block with black type; B is outlined white
-  ctx.fillStyle = key === 'A' ? RED : '#000'; ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = key === 'A' ? RED : '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+  box(x, y, w, h, key === 'A' ? RED : '#fff', key === 'A' ? RED : '#000');
   txt(key + ' ' + label, x + w / 2, y + h / 2, 8, key === 'A' ? '#000' : '#fff', 'center', false);
 }
 function drawOverlay() {
   OVERLAY_BTNS.length = 0;
   if (paused) {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
-    panel(50, 70, 220, 100);
-    txt('PAUSED', 160, 92, 14, '#fff', 'center');
-    overlayBtn(84, 112, 72, 26, 'RESUME', 'A', pressA);
-    overlayBtn(164, 112, 72, 26, 'MENU', 'B', pressB);
+    panel(20, 66, 280, 108);
+    txt('PAUSED', 160, 88, 14, '#fff', 'center');
+    overlayBtn(66, 106, 90, 28, 'RESUME', 'A', pressA);
+    overlayBtn(164, 106, 90, 28, 'MENU', 'B', pressB);
     txt('Tap screen: pause · B: level', 160, 154, 6, '#fff', 'center', false);
   } else if (cur.over) {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
-    panel(60, 56, 200, 128);
+    panel(40, 56, 240, 128);
     txt(cur.overMsg || 'GAME OVER', 160, 78, 14, RED, 'center');
     txt('SCORE ' + Math.floor(cur.score), 160, 104, 10, '#fff', 'center');
     txt('BEST  ' + (BEST[cur.id] || 0), 160, 120, 10, '#fff', 'center');
-    overlayBtn(72, 142, 84, 28, 'RETRY', 'A', pressA);
-    overlayBtn(164, 142, 84, 28, 'MENU', 'B', pressB);
+    overlayBtn(66, 142, 90, 28, 'RETRY', 'A', pressA);
+    overlayBtn(164, 142, 90, 28, 'MENU', 'B', pressB);
   }
 }
 function drawToast() {
   if (toastT <= 0) return;
-  ctx.globalAlpha = Math.min(1, toastT * 3); panel(110, 104, 100, 22); txt(toastMsg, 160, 115.5, 8, RED, 'center'); ctx.globalAlpha = 1;
+  ctx.globalAlpha = Math.min(1, toastT * 3); panel(100, 102, 120, 26); txt(toastMsg, 160, 115.5, 8, RED, 'center'); ctx.globalAlpha = 1;
 }
 
 // ── 1-bit pass ──
@@ -1627,11 +1652,11 @@ function drawToast() {
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
 const ONEBIT_LO = 0.16, ONEBIT_HI = 0.56;
 function oneBit() {
-  const img = screenCtx.getImageData(0, 0, W, H), d = img.data;
+  const img = screenCtx.getImageData(0, 0, RW, RH), d = img.data;
   const k = 1 / (255 * (ONEBIT_HI - ONEBIT_LO)), lo = ONEBIT_LO * 255;
-  for (let y = 0, i = 0; y < H; y++) {
+  for (let y = 0, i = 0; y < RH; y++) {
     const row = (y & 3) << 2;
-    for (let x = 0; x < W; x++, i += 4) {
+    for (let x = 0; x < RW; x++, i += 4) {
       if (d[i] > 200 && d[i + 1] < 90 && d[i + 2] < 90) { d[i] = 255; d[i + 1] = d[i + 2] = 42; d[i + 3] = 255; continue; }
       const l = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] - lo) * k;
       const v = l > BAYER[row | (x & 3)] ? 255 : 0;
