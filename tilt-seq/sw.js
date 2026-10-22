@@ -1,7 +1,7 @@
 // Tilt Seq service worker — offline + installable.
 // Network-first, so a new deploy shows up on the next load; the cache is only
 // a fallback for offline use. Bump CACHE to drop older caches.
-const CACHE = 'tiltseq-v1';
+const CACHE = 'tiltseq-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg', './vendor/lame.min.js'];
 
 self.addEventListener('install', e => {
