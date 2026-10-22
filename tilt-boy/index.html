@@ -6,65 +6,61 @@
   <title>Tilt Boy</title>
   <meta name="description" content="A pocket handheld you play by tilting your phone: Love Dance, Marble Maze, Ms. Munch and Pin-Holes." />
   <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#1d1b2e" />
+  <meta name="theme-color" content="#000000" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Tilt Boy" />
   <link rel="apple-touch-icon" href="icon.svg" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
   <style>
+    /* Downwell-style 1-bit: everything is pure black or pure white. --fs is
+       the single font size, set from JS to match the canvas text on screen. */
+    :root { --fs: 12px; --ink: #000; --paper: #fff; --red: #ff2a2a; }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; overflow: hidden; background: #1d1b2e; color: #e9e6ff;
-      font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace;
+    html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(--paper);
+      font-family: "VT323", ui-monospace, Menlo, Consolas, monospace;
       touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
-    /* The whole handheld renders in black and white. --fs is the single font
-       size, set from JS to match the canvas text size on screen. */
-    :root { --fs: 10px; }
-    #app { filter: grayscale(1) contrast(1.1); font-size: var(--fs); position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
-      padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
-      background: radial-gradient(120% 80% at 50% 0%, #34305a 0%, #1d1b2e 60%, #141224 100%); }
+    #app { font-size: var(--fs); position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+      padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px); background: var(--ink); }
 
     /* Handheld bezel with the 4:3 screen */
     #bezel { width: min(calc(100vw - 32px), calc((100dvh - 290px) * 4 / 3 + 28px), 560px);
-      background: linear-gradient(180deg, #4a4670, #2d2a48); border-radius: 14px 14px 34px 14px;
-      padding: 14px 14px 8px; box-shadow: 0 10px 30px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.15); }
-    #screenwrap { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 4px;
-      box-shadow: inset 0 0 0 2px #15132a, 0 0 0 3px #222038; overflow: hidden; }
-    canvas { display: block; width: 100%; height: 100%; }
-    #brand { display: flex; align-items: center; gap: 8px; padding: 8px 2px 2px; font-size: var(--fs); font-weight: 800;
-      letter-spacing: 3px; color: #c9c3ff; }
-    #brand small { font-size: var(--fs); letter-spacing: 2px; color: #ff7eb6; font-style: italic; }
-    #brand .led { width: 8px; height: 8px; border-radius: 50%; background: #555; box-shadow: 0 0 0 1px #000; }
-    #brand .led.on { background: #ff3b5c; box-shadow: 0 0 8px #ff3b5c; }
-    #brand .led.ok { background: #3bff8a; box-shadow: 0 0 8px #3bff8a; }
+      background: var(--ink); border: 3px solid var(--paper); border-radius: 0 0 28px 0; padding: 10px 10px 6px; }
+    #screenwrap { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--ink); outline: 2px solid var(--paper); outline-offset: 2px; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+    #brand { display: flex; align-items: center; gap: 8px; padding: 10px 2px 2px; font-weight: 900; letter-spacing: 3px; }
+    #brand small { font-size: var(--fs); letter-spacing: 2px; color: var(--red); }
+    #brand .led { width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--red); }
+    #brand .led.ok { background: var(--red); }
 
-    #info { margin-top: 12px; min-height: 18px; font-size: var(--fs); color: #9d97cc; text-align: center; letter-spacing: 1px; }
-    #info b { color: #e9e6ff; }
+    #info { margin-top: 12px; min-height: 18px; text-align: center; letter-spacing: 1px; }
+    #info b { font-weight: 400; color: var(--red); }
 
     /* Middle deck: live tilt level + how-to */
     #mid { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 8px 0; }
-    #lvl { position: relative; width: 84px; height: 84px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #2d2a48, #141224);
-      box-shadow: inset 0 0 0 2px #4a4670, 0 4px 14px rgba(0,0,0,.4); }
-    #lvl::before, #lvl::after { content: ''; position: absolute; background: rgba(143,134,255,.25); }
+    #lvl { position: relative; width: 84px; height: 84px; border-radius: 50%; border: 2px solid var(--paper); }
+    #lvl::before, #lvl::after { content: ''; position: absolute; background: var(--paper); }
     #lvl::before { left: 50%; top: 8px; bottom: 8px; width: 1px; }
     #lvl::after { top: 50%; left: 8px; right: 8px; height: 1px; }
-    #dot { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%;
-      background: radial-gradient(circle at 35% 30%, #bfe0ff, #3a7bd5 55%, #0b2350); box-shadow: 2px 3px 4px rgba(0,0,0,.45); }
-    #help { max-width: 340px; font-size: var(--fs); line-height: 1.5; color: #8a84b8; text-align: center; min-height: 36px; }
+    #dot { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -10px 0 0 -10px; border-radius: 50%;
+      background: var(--red); border: 2px solid var(--ink); box-sizing: content-box; }
+    #help { max-width: 340px; line-height: 1.5; text-align: center; min-height: 36px; }
     @media (max-height: 640px) { #lvl { display: none; } }
 
-    /* Two square buttons at the bottom */
+    /* Two square buttons at the bottom: outlined, inverting when pressed */
     #pads { width: min(100%, 420px); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-    .padcol { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0; transform: none; }
-    .pad { width: min(34vw, 132px, 17dvh); aspect-ratio: 1; border-radius: 12px; border: 0; cursor: pointer;
-      font: 900 var(--fs)/1 ui-monospace, Menlo, Consolas, monospace; color: rgba(255,255,255,.85);
-      background: linear-gradient(160deg, #ff5d8f, #b8235a); box-shadow: 0 7px 0 #6e1236, 0 12px 20px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.3);
-      touch-action: none; transition: transform .05s, box-shadow .05s; }
-    #btnB { background: linear-gradient(160deg, #8f86ff, #4b3fc4); box-shadow: 0 7px 0 #2a2180, 0 12px 20px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.3); }
-    .pad.down { transform: translateY(6px); box-shadow: 0 1px 0 #6e1236, 0 4px 8px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.2); }
-    #btnB.down { box-shadow: 0 1px 0 #2a2180, 0 4px 8px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.2); }
-    .padlbl { font-size: var(--fs); font-weight: 800; letter-spacing: 2px; color: #9d97cc; height: 14px; line-height: 14px; white-space: nowrap; }
+    .padcol { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .pad { width: min(34vw, 132px, 17dvh); aspect-ratio: 1; border-radius: 0; cursor: pointer;
+      font: 400 var(--fs)/1 "VT323", ui-monospace, Menlo, Consolas, monospace; color: var(--paper); background: var(--ink);
+      border: 3px solid var(--paper); box-shadow: 6px 6px 0 var(--paper); touch-action: none; transition: transform .05s, box-shadow .05s; }
+    .pad.down { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--paper); background: var(--paper); color: var(--ink); }
+    #btnA { border-color: var(--red); color: var(--red); box-shadow: 6px 6px 0 var(--red); }
+    #btnA.down { background: var(--red); color: var(--ink); box-shadow: 0 0 0 var(--red); }
+    .padlbl { font-weight: 400; letter-spacing: 2px; height: 14px; line-height: 14px; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -88,20 +84,18 @@
 // Logical resolution is 320×240 (4:3). The backing store is scaled up for the
 // device's pixel ratio so marbles stay smooth.
 const W = 320, H = 240;
-const FS = 9; // the one font size, in screen pixels
 const cv = document.getElementById('screen');
-const screenCtx = cv.getContext('2d');
+const screenCtx = cv.getContext('2d', { willReadFrequently: true });
 let ctx = screenCtx;
 let SCALE = 1;
 const LAYERS = new Map();
+// The screen is drawn at its native 320×240 and scaled up with hard pixels.
 function resize() {
   const r = cv.getBoundingClientRect();
-  const dpr = Math.min(3, window.devicePixelRatio || 1);
-  const w = Math.max(W, Math.round(r.width * dpr));
-  cv.width = w; cv.height = Math.round(w * 3 / 4);
-  SCALE = cv.width / W;
+  if (cv.width !== W) { cv.width = W; cv.height = H; }
+  SCALE = 1;
   LAYERS.clear();
-  document.documentElement.style.setProperty('--fs', (FS * r.width / W).toFixed(2) + 'px');
+  document.documentElement.style.setProperty('--fs', (7 / 0.56 * r.width / W).toFixed(2) + 'px');
 }
 new ResizeObserver(resize).observe(cv);
 resize();
@@ -127,12 +121,143 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const wrap180 = a => { while (a > 180) a -= 360; while (a < -180) a += 360; return a; };
 
-// Every piece of text uses FS; callers' size arguments are ignored.
+// ───────────────────────── Pixel font ─────────────────────────
+// A hand-drawn 5×9 bitmap font (caps on rows 0–6, descenders on 7–8) so text
+// stays crisp through the 1-bit pass. One size everywhere: 6px advance.
+const GLYPHS = `
+A .###. #...# #...# ##### #...# #...# #...#
+B ####. #...# #...# ####. #...# #...# ####.
+C .###. #...# #.... #.... #.... #...# .###.
+D ####. #...# #...# #...# #...# #...# ####.
+E ##### #.... #.... ####. #.... #.... #####
+F ##### #.... #.... ####. #.... #.... #....
+G .###. #...# #.... #.### #...# #...# .####
+H #...# #...# #...# ##### #...# #...# #...#
+I .###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.
+J ..### ...#. ...#. ...#. ...#. #..#. .##..
+K #...# #..#. #.#.. ##... #.#.. #..#. #...#
+L #.... #.... #.... #.... #.... #.... #####
+M #...# ##.## #.#.# #.#.# #...# #...# #...#
+N #...# #...# ##..# #.#.# #..## #...# #...#
+O .###. #...# #...# #...# #...# #...# .###.
+P ####. #...# #...# ####. #.... #.... #....
+Q .###. #...# #...# #...# #.#.# #..#. .##.#
+R ####. #...# #...# ####. #.#.. #..#. #...#
+S .#### #.... #.... .###. ....# ....# ####.
+T ##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..
+U #...# #...# #...# #...# #...# #...# .###.
+V #...# #...# #...# #...# #...# .#.#. ..#..
+W #...# #...# #...# #.#.# #.#.# #.#.# .#.#.
+X #...# #...# .#.#. ..#.. .#.#. #...# #...#
+Y #...# #...# .#.#. ..#.. ..#.. ..#.. ..#..
+Z ##### ....# ...#. ..#.. .#... #.... #####
+a ..... ..... .###. ....# .#### #...# .####
+b #.... #.... #.##. ##..# #...# #...# ####.
+c ..... ..... .###. #.... #.... #...# .###.
+d ....# ....# .##.# #..## #...# #...# .####
+e ..... ..... .###. #...# ##### #.... .###.
+f ..##. .#..# .#... ###.. .#... .#... .#...
+g ..... ..... .#### #...# #...# .#### ....# #...# .###.
+h #.... #.... #.##. ##..# #...# #...# #...#
+i ..#.. ..... .##.. ..#.. ..#.. ..#.. .###.
+j ...#. ..... ..##. ...#. ...#. ...#. ...#. #..#. .##..
+k #.... #.... #..#. #.#.. ##... #.#.. #..#.
+l .##.. ..#.. ..#.. ..#.. ..#.. ..#.. .###.
+m ..... ..... ##.#. #.#.# #.#.# #.#.# #.#.#
+n ..... ..... #.##. ##..# #...# #...# #...#
+o ..... ..... .###. #...# #...# #...# .###.
+p ..... ..... ####. #...# #...# ####. #.... #.... #....
+q ..... ..... .#### #...# #...# .#### ....# ....# ....#
+r ..... ..... #.##. ##..# #.... #.... #....
+s ..... ..... .###. #.... .###. ....# ####.
+t .#... .#... ###.. .#... .#... .#..# ..##.
+u ..... ..... #...# #...# #...# #..## .##.#
+v ..... ..... #...# #...# #...# .#.#. ..#..
+w ..... ..... #...# #...# #.#.# #.#.# .#.#.
+x ..... ..... #...# .#.#. ..#.. .#.#. #...#
+y ..... ..... #...# #...# #...# .#### ....# #...# .###.
+z ..... ..... ##### ...#. ..#.. .#... #####
+0 .###. #...# #..## #.#.# ##..# #...# .###.
+1 ..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.
+2 .###. #...# ....# ...#. ..#.. .#... #####
+3 ####. ....# ....# .###. ....# ....# ####.
+4 ...#. ..##. .#.#. #..#. ##### ...#. ...#.
+5 ##### #.... ####. ....# ....# #...# .###.
+6 ..##. .#... #.... ####. #...# #...# .###.
+7 ##### ....# ...#. ..#.. .#... .#... .#...
+8 .###. #...# #...# .###. #...# #...# .###.
+9 .###. #...# #...# .#### ....# ...#. .##..
+. ..... ..... ..... ..... ..... .##.. .##..
+, ..... ..... ..... ..... .##.. ..#.. .#...
+: ..... .##.. .##.. ..... .##.. .##.. .....
+! ..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..
+? .###. #...# ....# ...#. ..#.. ..... ..#..
+- ..... ..... ..... .###. ..... ..... .....
++ ..... ..#.. ..#.. ##### ..#.. ..#.. .....
+= ..... ..... ##### ..... ##### ..... .....
+/ ....# ...#. ...#. ..#.. .#... .#... #....
+% ##..# ##.#. ...#. ..#.. .#... .#.## #..##
+' ..#.. ..#.. ..... ..... ..... ..... .....
+( ...#. ..#.. .#... .#... .#... ..#.. ...#.
+) .#... ..#.. ...#. ...#. ...#. ..#.. .#...
+° .##.. #..#. .##.. ..... ..... ..... .....
+· ..... ..... ..... ..#.. ..... ..... .....
+— ..... ..... ..... ##### ..... ..... .....
+→ ..... ..#.. ...#. ##### ...#. ..#.. .....
+▶ #.... ##... ###.. ####. ###.. ##... #....
+↕ ..#.. .###. #.#.# ..#.. #.#.# .###. ..#..
+× ..... #...# .#.#. ..#.. .#.#. #...# .....`;
+const FONT = new Map();
+for (const line of GLYPHS.trim().split('\n')) {
+  const [ch, ...rows] = line.trim().split(' ');
+  FONT.set(ch, rows);
+}
+const GW = 6, GH = 9;
+// One glyph atlas per ink colour, built on first use.
+const ATLAS = new Map();
+function atlas(col) {
+  let a = ATLAS.get(col);
+  if (a) return a;
+  const chars = [...FONT.keys()], c = document.createElement('canvas');
+  c.width = chars.length * GW; c.height = GH;
+  const g = c.getContext('2d'); g.fillStyle = col;
+  const at = new Map();
+  chars.forEach((ch, i) => {
+    at.set(ch, i * GW);
+    FONT.get(ch).forEach((row, y) => { for (let x = 0; x < 5; x++) if (row[x] === '#') g.fillRect(i * GW + x, y, 1, 1); });
+  });
+  a = { c, at }; ATLAS.set(col, a);
+  return a;
+}
+// Ink is pure white, pure black or the red accent — nothing in between.
+const RED = '#ff2a2a';
+function ink(col) {
+  if (col === RED) return RED;
+  let h = String(col).replace('#', '');
+  if (h.length === 3) h = h.replace(/./g, c => c + c);
+  const n = parseInt(h.slice(0, 6), 16);
+  if (Number.isNaN(n)) return '#fff';
+  const l = (0.299 * (n >> 16) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255;
+  return l < 0.4 ? '#000' : '#fff';
+}
+function drawText(s, x, y, col) {
+  const a = atlas(col);
+  for (const ch of s) {
+    const sx = a.at.get(ch);
+    if (sx !== undefined) ctx.drawImage(a.c, sx, 0, GW, GH, x, y, GW, GH);
+    x += GW;
+  }
+}
+// txt(s, x, y, size, col, align, shadow): size is ignored — one size only.
+// y is the middle of the capitals, like textBaseline 'middle'.
 function txt(s, x, y, size, col = '#fff', align = 'left', shadow = true) {
-  ctx.font = `bold ${FS}px ui-monospace, Menlo, Consolas, monospace`;
-  ctx.textAlign = align; ctx.textBaseline = 'middle';
-  if (shadow) { ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillText(s, x + 1, y + 1); }
-  ctx.fillStyle = col; ctx.fillText(s, x, y);
+  s = String(s);
+  const w = s.length * GW - 1;
+  let x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+  x0 = Math.round(x0); const y0 = Math.round(y - 3.5);
+  // a 1px black outline keeps text readable over grids and dither
+  if (shadow) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [1, 1]]) drawText(s, x0 + dx, y0 + dy, '#000');
+  drawText(s, x0, y0, ink(col));
 }
 function heart(x, y, s, col) {
   ctx.fillStyle = col; ctx.beginPath();
@@ -142,8 +267,8 @@ function heart(x, y, s, col) {
   ctx.fill();
 }
 function panel(x, y, w, h) {
-  ctx.fillStyle = 'rgba(10,8,24,.82)'; ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = '#8f86ff'; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+  ctx.fillStyle = '#000'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
 }
 
 // ───────────────────────── Settings ─────────────────────────
@@ -234,17 +359,17 @@ window.addEventListener('keyup', e => { if (KEYMAP[e.key]) IN.keys[KEYMAP[e.key]
 
 // ───────────────────────── Marbles ─────────────────────────
 // Every marble shares one glass body; only the spot colours tell them apart.
-// (Ms. Munch keeps her yellow body.)
-const BODY = { light: '#bfe0ff', base: '#3a7bd5', dark: '#0b2350' };
+// (Ms. Munch gets a lighter body so she stands out from the ghosts.)
+const BODY = { light: '#ffffff', base: '#5c5c5c', dark: '#000000' };
 const marblePal = spot => ({ ...BODY, spot });
 const PAL = {
-  blue:   marblePal(['#ffffff', '#ffd23f']),
-  pink:   marblePal(['#ff4f9a', '#ffd6ea']),
-  steel:  marblePal(['#e94b3c', '#ffffff']),
-  green:  marblePal(['#3bff8a', '#ffffff']),
-  orange: marblePal(['#ff8a2a', '#ffe066']),
-  violet: marblePal(['#b388ff', '#ffffff']),
-  yellow: { light: '#fff6b0', base: '#ffd21f', dark: '#7a5200', spot: ['#ff9f1a', '#fff3a0'] },
+  blue:   marblePal(['#ffffff', '#000000']),
+  pink:   marblePal([RED, '#ffffff']),
+  steel:  marblePal([RED, '#000000']),
+  green:  marblePal(['#000000', '#ffffff']),
+  orange: marblePal([RED, '#ffffff']),
+  violet: marblePal(['#ffffff', RED]),
+  yellow: { light: '#ffffff', base: '#d0d0d0', dark: '#3a3a3a', spot: ['#ffffff', '#9a9a9a'] },
 };
 const BALL_PALS = [PAL.steel, PAL.green, PAL.orange, PAL.violet];
 
@@ -405,7 +530,7 @@ const Dance = {
     this.msgT -= dt;
     if (this.state === 'won') {
       this.wonT -= dt;
-      if (Math.random() < 0.5) burst(rand(20, 300), 250, 1, '#ff4f9a', { heart: true, size: rand(3, 6), min: 10, max: 30, up: -90, life: 2 });
+      if (Math.random() < 0.5) burst(rand(20, 300), 250, 1, RED, { heart: true, size: rand(3, 6), min: 10, max: 30, up: -90, life: 2 });
       if (this.wonT <= 0) { this.level++; this.startLevel(); }
       this.dancePartner(dt);
       return;
@@ -436,7 +561,7 @@ const Dance = {
       const k = 1 - d / this.R;
       this.love += dt * (11 + 14 * k);
       this.score += dt * 10 * this.level * (1 + k);
-      if (Math.random() < dt * 6) burst((me.x + pt.x) / 2, (me.y + pt.y) / 2, 1, '#ff7eb6', { heart: true, size: 3, min: 5, max: 20, up: -40, life: 1 });
+      if (Math.random() < dt * 6) burst((me.x + pt.x) / 2, (me.y + pt.y) / 2, 1, RED, { heart: true, size: 3, min: 5, max: 20, up: -40, life: 1 });
       this.chime = (this.chime || 0) - dt;
       if (this.chime <= 0) { this.chime = 0.35; beep(660 + this.love * 6, 0.05, 'sine', 0.03); }
     } else this.love -= dt * 7;
@@ -445,7 +570,7 @@ const Dance = {
       this.state = 'won'; this.wonT = 2.4;
       this.score += 500 * this.level + Math.ceil(this.time) * 20;
       this.msg = 'IN LOVE!'; this.msgT = 2.4;
-      burst(pt.x, pt.y, 30, '#ff4f9a', { heart: true, size: 4, max: 140, life: 1.4 });
+      burst(pt.x, pt.y, 30, RED, { heart: true, size: 4, max: 140, life: 1.4 });
       beep(523, .12, 'sine', .06); setTimeout(() => beep(659, .12, 'sine', .06), 120); setTimeout(() => beep(784, .25, 'sine', .06), 240);
       buzz([30, 40, 30]);
     } else if (this.time <= 0) {
@@ -461,44 +586,35 @@ const Dance = {
   },
   draw() {
     layer('dance', () => {
-      const g = ctx.createRadialGradient(160, 130, 20, 160, 130, 220);
-      g.addColorStop(0, '#3b1d4f'); g.addColorStop(1, '#120a1f');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      for (let y = 18; y < H; y += 20) for (let x = 0; x < W; x += 20)
-        if (((x + y) / 20) % 2 < 1) { ctx.fillStyle = 'rgba(255,255,255,.035)'; ctx.fillRect(x, y, 20, 20); }
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      // sparse floor dots, one per tile corner
+      ctx.fillStyle = '#fff';
+      for (let y = 18; y < H; y += 20) for (let x = 0; x < W; x += 20) ctx.fillRect(x, y, 1, 1);
     });
-    // disco spotlights
     const t = performance.now() / 1000;
-    for (let i = 0; i < 3; i++) {
-      const x = 160 + Math.sin(t * (0.6 + i * 0.3) + i * 2) * 130, y = 130 + Math.cos(t * (0.5 + i * 0.2) + i) * 80;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, 50);
-      g.addColorStop(0, ['rgba(255,80,160,.13)', 'rgba(120,90,255,.13)', 'rgba(80,220,255,.1)'][i]); g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g; ctx.fillRect(x - 50, y - 50, 100, 100);
-    }
     const me = this.me, pt = this.pt;
     // proximity ring
     ctx.save();
     ctx.setLineDash([4, 4]); ctx.lineDashOffset = -t * 20;
-    ctx.strokeStyle = this.close ? 'rgba(255,126,182,.95)' : 'rgba(255,126,182,.4)';
+    ctx.strokeStyle = this.close ? RED : '#fff';
     ctx.lineWidth = this.close ? 2 : 1;
     ctx.beginPath(); ctx.arc(pt.x, pt.y, this.R + Math.sin(t * 6) * 1.5, 0, TAU); ctx.stroke();
     ctx.restore();
     if (this.close) {
-      ctx.strokeStyle = 'rgba(255,126,182,.5)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = RED; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(me.x, me.y); ctx.lineTo(pt.x, pt.y); ctx.stroke();
     }
     drawMarble(pt); drawMarble(me);
-    heart(pt.x, pt.y - pt.r - 5, 2.5, '#ff7eb6');
+    heart(pt.x, pt.y - pt.r - 5, 2.5, RED);
     drawFX();
     // HUD: love meter
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, 16);
-    heart(9, 8, 4, '#ff4f9a');
+    heart(9, 8, 4, RED);
     ctx.fillStyle = '#3a1630'; ctx.fillRect(16, 4, 110, 8);
-    const lg = ctx.createLinearGradient(16, 0, 126, 0); lg.addColorStop(0, '#ff7eb6'); lg.addColorStop(1, '#ff2d6f');
-    ctx.fillStyle = lg; ctx.fillRect(16, 4, 110 * this.love / 100, 8);
+    ctx.fillStyle = RED; ctx.fillRect(16, 4, 110 * this.love / 100, 8);
     ctx.strokeStyle = '#ffb3d1'; ctx.strokeRect(16.5, 4.5, 109, 7);
     txt('S' + this.level, 134, 8.5, 8, '#c9c3ff');
-    txt(Math.ceil(this.time) + 's', 182, 8.5, 8, this.time < 6 ? '#ff5d5d' : '#fff', 'center');
+    txt(Math.ceil(this.time) + 's', 182, 8.5, 8, this.time < 6 ? RED : '#fff', 'center');
     txt(String(Math.floor(this.score)).padStart(6, '0'), 316, 8.5, 8, '#fff', 'right');
     if (this.msgT > 0) txt(this.msg, 160, 120, 18, '#ffd6ea', 'center');
   },
@@ -648,34 +764,25 @@ const Maze = {
   },
   draw() {
     layer('maze', () => {
-      ctx.fillStyle = '#5a3a1c'; ctx.fillRect(0, 0, W, H);
-      const g = ctx.createLinearGradient(0, 0, W, H);
-      g.addColorStop(0, '#d9a868'); g.addColorStop(1, '#b8844a');
-      ctx.fillStyle = g; ctx.fillRect(this.OX, this.OY, this.AW, this.R * this.cs);
-      ctx.strokeStyle = 'rgba(90,50,20,.18)'; ctx.lineWidth = 1;
-      for (let y = this.OY + 3; y < H; y += 5) { ctx.beginPath(); ctx.moveTo(this.OX, y + Math.sin(y) * 2); ctx.bezierCurveTo(100, y + 3, 220, y - 3, W - this.OX, y + Math.cos(y)); ctx.stroke(); }
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
       const drawHole = (h, goal) => {
-        const hg = ctx.createRadialGradient(h.x - h.r * .2, h.y - h.r * .2, 0, h.x, h.y, h.r);
-        hg.addColorStop(0, '#000'); hg.addColorStop(.75, '#1a0f05'); hg.addColorStop(1, '#6b4420');
-        ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill();
+        ctx.strokeStyle = goal ? RED : '#fff'; ctx.lineWidth = 1; ctx.setLineDash(goal ? [] : [2, 2]);
+        ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
         if (goal) {
-          ctx.strokeStyle = '#3bff8a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(h.x, h.y, h.r + 1.5, 0, TAU); ctx.stroke();
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(h.x, h.y - h.r * 1.6); ctx.stroke();
-          ctx.fillStyle = '#ff3b5c'; ctx.beginPath(); ctx.moveTo(h.x, h.y - h.r * 1.6); ctx.lineTo(h.x + h.r, h.y - h.r * 1.35); ctx.lineTo(h.x, h.y - h.r * 1.1); ctx.fill();
+          ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(h.x, h.y - h.r * 1.6); ctx.stroke();
+          ctx.fillStyle = RED; ctx.beginPath(); ctx.moveTo(h.x, h.y - h.r * 1.6); ctx.lineTo(h.x + h.r, h.y - h.r * 1.35); ctx.lineTo(h.x, h.y - h.r * 1.1); ctx.fill();
         }
       };
       for (const t of this.traps) drawHole(t, false);
       drawHole(this.goal, true);
-      for (const w of this.walls) { ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(w[0] + 1.5, w[1] + 1.5, w[2], w[3]); }
-      for (const w of this.walls) {
-        ctx.fillStyle = '#6e4320'; ctx.fillRect(w[0], w[1], w[2], w[3]);
-        ctx.fillStyle = 'rgba(255,220,170,.35)'; ctx.fillRect(w[0], w[1], w[2], Math.min(1, w[3]));
-      }
+      ctx.fillStyle = '#fff';
+      for (const w of this.walls) ctx.fillRect(w[0], w[1], w[2], w[3]);
     });
     drawMarble(this.ball);
     ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, W, 12);
     txt('BOARD ' + this.level, 6, 6.5, 8, '#ffe2b0');
-    txt(this.t.toFixed(1) + 's', 160, 6.5, 8, this.t > this.par ? '#ff8a8a' : '#fff', 'center');
+    txt(this.t.toFixed(1) + 's', 160, 6.5, 8, this.t > this.par ? RED : '#fff', 'center');
     txt(String(this.score).padStart(6, '0'), 314, 6.5, 8, '#fff', 'right');
     if (this.msgT > 0) txt(this.msg, 160, 120, 18, '#fff', 'center');
   },
@@ -706,7 +813,7 @@ const PMAP = [
 const PC = 25, PR = 18, TS = 12, POX = 10, POY = 22;
 const DIRS = [[0, -1], [-1, 0], [0, 1], [1, 0]]; // up, left, down, right (tie-break order)
 const GHOST_DEF = [
-  { name: 'blinky', col: '#ff3b3b', home: [12, 6], corner: [23, -2], release: 0 },
+  { name: 'blinky', col: RED, home: [12, 6], corner: [23, -2], release: 0 },
   { name: 'pinky', col: '#ffb8ff', home: [12, 8], corner: [1, -2], release: 1.5 },
   { name: 'inky', col: '#3bf0ff', home: [11, 8], corner: [23, 19], release: 5 },
   { name: 'sue', col: '#ffb852', home: [13, 8], corner: [1, 19], release: 9 },
@@ -924,7 +1031,7 @@ const Munch = {
       ctx.closePath(); ctx.fill();
       ctx.globalAlpha = .35; ctx.fillStyle = gr; ctx.fill(); ctx.globalAlpha = 1;
       if (fr) {
-        ctx.fillStyle = flash ? '#ff3b3b' : '#ffd6a0';
+        ctx.fillStyle = flash ? RED : '#ffffff';
         ctx.fillRect(x - 2.5, y - 2, 1.5, 1.5); ctx.fillRect(x + 1, y - 2, 1.5, 1.5);
         return;
       }
@@ -980,14 +1087,14 @@ const Munch = {
       ctx.arc(x, y, m.r + .6, a - open / 2 * 1.2, a + open / 2 * 1.2); ctx.closePath(); ctx.fill();
       const side = pac.fx < 0 ? 1 : -1;
       const bx = x + side * 2.6, by = y - m.r + 0.5;
-      ctx.fillStyle = '#ff2050';
+      ctx.fillStyle = RED;
       ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - 3, by - 2.4); ctx.lineTo(bx - 3, by + 2.4); ctx.fill();
       ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + 3, by - 2.4); ctx.lineTo(bx + 3, by + 2.4); ctx.fill();
       ctx.fillStyle = '#1f3bff'; ctx.beginPath(); ctx.arc(bx, by, 1, 0, TAU); ctx.fill();
     }
     drawFX();
     if (this.popup) txt(String(this.popup.s), POX + (this.popup.x + .5) * TS, POY + (this.popup.y + .5) * TS, 7, '#3bf0ff', 'center');
-    txt('1UP', 8, 10, 8, '#ff3b3b');
+    txt('1UP', 8, 10, 8, RED);
     txt(String(this.score).padStart(6, '0'), 30, 10, 8, '#fff');
     txt('LV ' + this.level, 160, 10, 8, '#ffb8ff', 'center');
     for (let i = 0; i < this.lives - 1; i++) {
@@ -1227,7 +1334,7 @@ const Pin = {
   drawGrid() {
     const wells = [...this.holes, ...this.foes], G = 14, step = 4;
     const { X0, Y0, X1, Y1 } = this;
-    ctx.strokeStyle = 'rgba(120,255,220,.28)'; ctx.lineWidth = .8;
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1;
     ctx.beginPath();
     for (let x = X0; x <= X1 + .1; x += G) {
       for (let y = Y0; y <= Y1 + .1; y += step) { const [px, py] = this.warp(x, y, wells); y === Y0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); }
@@ -1239,29 +1346,26 @@ const Pin = {
   },
   draw() {
     layer('pin', () => {
-      ctx.fillStyle = '#1a1622'; ctx.fillRect(0, 0, W, H);
-      const g = ctx.createRadialGradient(160, 120, 30, 160, 126, 210);
-      g.addColorStop(0, '#123a44'); g.addColorStop(1, '#07141c');
-      ctx.fillStyle = g; ctx.fillRect(this.X0, this.Y0, this.X1 - this.X0, this.Y1 - this.Y0);
-      ctx.strokeStyle = '#5ad1c0'; ctx.lineWidth = 2; ctx.strokeRect(this.X0 - 1, this.Y0 - 1, this.X1 - this.X0 + 2, this.Y1 - this.Y0 + 2);
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(this.X0 - 1, this.Y0 - 1, this.X1 - this.X0 + 2, this.Y1 - this.Y0 + 2);
     });
     ctx.save(); ctx.beginPath(); ctx.rect(this.X0, this.Y0, this.X1 - this.X0, this.Y1 - this.Y0); ctx.clip();
     this.drawGrid();
-    for (const h of this.holes) this.drawHole(h, 'rgba(120,255,220,.7)');
+    for (const h of this.holes) this.drawHole(h, '#fff');
     ctx.restore();
     const t = performance.now() / 1000;
     // wandering holes: a swirling pull ring and two hungry eyes
     for (const f of this.foes) {
       if (f.filled) { this.drawHole(f); continue; }
       ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.t * 3);
-      ctx.strokeStyle = this.level >= 3 ? 'rgba(255,60,90,.55)' : 'rgba(180,120,255,.5)'; ctx.lineWidth = 1.2;
+      ctx.strokeStyle = this.level >= 3 ? RED : '#fff'; ctx.lineWidth = 1;
       for (let i = 0; i < 3; i++) { const rr = f.r * 1.9 - i * 3; if (rr <= 0) continue; ctx.beginPath(); ctx.arc(0, 0, rr, i * 2.1, i * 2.1 + 1.6); ctx.stroke(); }
       ctx.restore();
-      this.drawHole(f, this.level >= 3 ? 'rgba(255,64,96,.85)' : 'rgba(208,160,255,.85)');
+      this.drawHole(f, this.level >= 3 ? RED : '#fff');
       if (f.filled) continue;
       const blink = Math.sin(f.t * 1.7) > 0.96;
       const ex = Math.cos(f.a) * 1.5, ey = Math.sin(f.a) * 1.5;
-      ctx.fillStyle = this.level >= 3 ? '#ff4060' : '#d0a0ff';
+      ctx.fillStyle = this.level >= 3 ? RED : '#fff';
       for (const s of [-1, 1]) {
         if (blink) ctx.fillRect(f.x + s * 3 - 1.5 + ex, f.y - 2 + ey, 3, 0.8);
         else { ctx.beginPath(); ctx.arc(f.x + s * 3 + ex, f.y - 2 + ey, 1.3, 0, TAU); ctx.fill(); }
@@ -1275,16 +1379,13 @@ const Pin = {
       ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.arc(bu.x + 2, bu.y + 3, r, 0, TAU); ctx.fill();
       ctx.fillStyle = bu.flash > 0 ? '#ffffff' : '#d62a4a'; ctx.beginPath(); ctx.arc(bu.x, bu.y, r, 0, TAU); ctx.fill();
       // ring drains clockwise with each bounce
-      ctx.strokeStyle = urgent && Math.floor(t * 4) % 2 ? '#ffffff' : '#ffe066'; ctx.lineWidth = 2;
+      ctx.strokeStyle = urgent ? RED : '#fff'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .8, -Math.PI / 2, -Math.PI / 2 + TAU * left); ctx.stroke();
       const cg = ctx.createRadialGradient(bu.x - r * .3, bu.y - r * .35, 0, bu.x, bu.y, r * .6);
       cg.addColorStop(0, '#fff'); cg.addColorStop(1, 'rgba(255,255,255,.6)');
       ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(bu.x, bu.y, r * .58, 0, TAU); ctx.fill();
       if (!breaking) {
-        const n = String(bu.hp);
-        ctx.font = `900 ${FS}px ui-monospace, Menlo, Consolas, monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.lineWidth = 2.2; ctx.strokeStyle = '#ffffff'; ctx.strokeText(n, bu.x, bu.y + .8);
-        ctx.fillStyle = urgent ? '#c4102e' : '#2a1030'; ctx.fillText(n, bu.x, bu.y + .8);
+        txt(String(bu.hp), bu.x + .5, bu.y + .5, 0, urgent ? RED : '#000', 'center', false);
       }
       ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(bu.x, bu.y, r, 0, TAU); ctx.stroke();
     }
@@ -1292,17 +1393,17 @@ const Pin = {
     if (this.star) {
       const s = this.star, rr = 6 + Math.sin(s.t * 6) * .8;
       ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.t * 1.5);
-      ctx.fillStyle = '#ffe066'; ctx.beginPath();
+      ctx.fillStyle = '#fff'; ctx.beginPath();
       for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5, rad = i % 2 ? rr * .45 : rr; ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad); }
       ctx.fill(); ctx.restore();
     }
     for (const b of this.balls) drawMarble(b);
     drawFX();
-    for (const p of this.pops) { ctx.globalAlpha = clamp(p.t * 2, 0, 1); txt(p.s, p.x, p.y, 8, '#ffe066', 'center'); }
+    for (const p of this.pops) { ctx.globalAlpha = clamp(p.t * 2, 0, 1); txt(p.s, p.x, p.y, 8, RED, 'center'); }
     ctx.globalAlpha = 1;
     txt(String(this.score).padStart(7, '0'), 8, 9, 8, '#fff');
     txt('RACK ' + this.level, 120, 9, 8, '#9fe8d8', 'center');
-    txt('x' + this.mult, 176, 9, 8, '#ffe066', 'center');
+    txt('x' + this.mult, 176, 9, 8, RED, 'center');
     txt(this.bumpers.filter(b => b.state === 'on').length + ' LEFT', 222, 9, 7, '#f2b6c2', 'center');
     const live = this.balls.filter(b => !b.fall).length;
     for (let i = 0; i < live; i++) {
@@ -1442,21 +1543,21 @@ function drawMenu(dt) {
   accelBall(menuBall, dt, tiltAccel(), 0.8, 400);
   bumpSound(stepBall(menuBall, dt, b => collideBounds(b, 0, 0, W, H, 0.5)) * 0.5);
   drawMarble(menuBall);
-  txt('TILT BOY', 160, 26, 22, '#ff7eb6', 'center');
-  txt('PICK A CARTRIDGE', 160, 46, 7, '#9d97cc', 'center');
+  txt('TILT BOY', 160, 26, 22, '#fff', 'center');
+  txt('pick a cartridge', 160, 44, 7, RED, 'center');
   MENU.forEach((it, i) => {
     const y = 62 + i * 28, sel = i === menuIdx;
-    ctx.fillStyle = sel ? 'rgba(255,126,182,.18)' : 'rgba(0,0,0,.35)';
+    ctx.fillStyle = '#000';
     ctx.fillRect(20, y, 280, 25);
-    if (sel) { ctx.strokeStyle = '#ff7eb6'; ctx.strokeRect(20.5, y + .5, 279, 24); }
+    if (sel) { ctx.strokeStyle = RED; ctx.lineWidth = 1; ctx.strokeRect(20.5, y + .5, 279, 24); }
     const icon = it._icon || (it._icon = makeMarble(0, 0, 7, it.pal));
     if (sel) roll(icon, dt * 30, dt * 8);
     drawMarble(icon, 36, y + 12.5, 1);
-    txt(it.title, 52, y + 9, 10, sel ? '#fff' : '#c9c3ff');
-    txt(it.blurb, 52, y + 19, 6, '#8a84b8', 'left', false);
-    if (BEST[it.id]) txt('HI ' + BEST[it.id], 292, y + 12.5, 7, '#ffe066', 'right');
+    txt(it.title, 52, y + 8, 10, sel ? RED : '#fff');
+    txt(it.blurb, 52, y + 18, 6, '#fff', 'left', false);
+    if (BEST[it.id]) txt('HI ' + BEST[it.id], 292, y + 8, 7, '#fff', 'right');
   });
-  txt('TAP A GAME  ·  B: NEXT  A: START', 160, 214 + 18, 6, '#8a84b8', 'center', false);
+  txt('Tap a game · B: next · A: start', 160, 226, 6, '#fff', 'center', false);
   // tilt up/down nudges the cursor
   const t = tiltDeg();
   navT -= dt;
@@ -1465,34 +1566,34 @@ function drawMenu(dt) {
 }
 function drawSettings() {
   ctx.fillStyle = '#16142a'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#2d2a48'; ctx.fillRect(0, 0, W, 22);
-  txt('SETTINGS', 10, 11.5, 11, '#ff7eb6');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 22, W, 1);
+  txt('SETTINGS', 10, 11.5, 11, RED);
   // live bubble level
   const t = tiltDeg(), bx = 296, by = 11;
-  ctx.strokeStyle = '#8f86ff'; ctx.beginPath(); ctx.arc(bx, by, 9, 0, TAU); ctx.stroke();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(bx, by, 9, 0, TAU); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(bx - 9, by); ctx.lineTo(bx + 9, by); ctx.moveTo(bx, by - 9); ctx.lineTo(bx, by + 9); ctx.stroke();
-  ctx.fillStyle = '#3bff8a'; ctx.beginPath(); ctx.arc(bx + clamp(t.x / 30, -1, 1) * 7, by + clamp(t.y / 30, -1, 1) * 7, 2.5, 0, TAU); ctx.fill();
-  txt(`${t.x.toFixed(0)}°,${t.y.toFixed(0)}°`, 282, 11.5, 6, '#9d97cc', 'right', false);
+  ctx.fillStyle = RED; ctx.beginPath(); ctx.arc(bx + clamp(t.x / 30, -1, 1) * 7, by + clamp(t.y / 30, -1, 1) * 7, 2.5, 0, TAU); ctx.fill();
+  txt(`${t.x.toFixed(0)}°,${t.y.toFixed(0)}°`, 282, 11.5, 6, '#fff', 'right', false);
   ROWS.forEach((r, i) => {
     const y = 26 + i * 20, sel = i === setIdx;
-    ctx.fillStyle = sel ? 'rgba(255,126,182,.18)' : 'rgba(0,0,0,.25)'; ctx.fillRect(10, y, 300, 18);
-    if (sel) { ctx.strokeStyle = '#ff7eb6'; ctx.strokeRect(10.5, y + .5, 299, 17); }
-    txt((sel ? '▶ ' : '  ') + r.label, 16, y + 9.5, 8, sel ? '#fff' : '#c9c3ff');
+    if (sel) { ctx.strokeStyle = RED; ctx.lineWidth = 1; ctx.strokeRect(10.5, y + .5, 299, 17); }
+    txt((sel ? '▶ ' : '  ') + r.label, 16, y + 9.5, 8, sel ? RED : '#fff');
     if (r.bar) {
-      ctx.fillStyle = '#2d2a48'; ctx.fillRect(140, y + 6, 100, 6);
-      ctx.fillStyle = S.sens >= 1 ? '#3bff8a' : '#ff7eb6'; ctx.fillRect(140, y + 6, 100 * r.bar(), 6);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(140.5, y + 5.5, 99, 7);
+      ctx.fillStyle = S.sens >= 1 ? RED : '#fff'; ctx.fillRect(142, y + 7, 96 * r.bar(), 4);
     }
-    txt(r.val(), 302, y + 9.5, 8, '#ffe066', 'right');
+    txt(r.val(), 302, y + 9.5, 8, '#fff', 'right');
   });
-  txt('100% = 1:1 · table tilts exactly as much as the phone', 160, 214 + 18, 6, '#8a84b8', 'center', false);
+  txt('100% = 1:1 · table tilts with the phone', 160, 226, 6, '#fff', 'center', false);
 }
 // Tappable buttons on the pause / game-over panels (rebuilt every frame).
 const OVERLAY_BTNS = [];
 function overlayBtn(x, y, w, h, label, key, fn) {
   OVERLAY_BTNS.push({ x, y, w, h, fn });
-  ctx.fillStyle = key === 'A' ? '#b8235a' : '#4b3fc4'; ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
-  txt(key + ' ' + label, x + w / 2, y + h / 2 + .5, 8, '#fff', 'center');
+  // A is a solid red block with black type; B is outlined white
+  ctx.fillStyle = key === 'A' ? RED : '#000'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = key === 'A' ? RED : '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+  txt(key + ' ' + label, x + w / 2, y + h / 2, 8, key === 'A' ? '#000' : '#fff', 'center', false);
 }
 function drawOverlay() {
   OVERLAY_BTNS.length = 0;
@@ -1502,20 +1603,42 @@ function drawOverlay() {
     txt('PAUSED', 160, 92, 14, '#fff', 'center');
     overlayBtn(84, 112, 72, 26, 'RESUME', 'A', pressA);
     overlayBtn(164, 112, 72, 26, 'MENU', 'B', pressB);
-    txt('tap screen to pause · B = level tilt', 160, 154, 6, '#8a84b8', 'center', false);
+    txt('Tap screen: pause · B: level', 160, 154, 6, '#fff', 'center', false);
   } else if (cur.over) {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
     panel(60, 56, 200, 128);
-    txt(cur.overMsg || 'GAME OVER', 160, 78, 14, '#ff7eb6', 'center');
+    txt(cur.overMsg || 'GAME OVER', 160, 78, 14, RED, 'center');
     txt('SCORE ' + Math.floor(cur.score), 160, 104, 10, '#fff', 'center');
-    txt('BEST  ' + (BEST[cur.id] || 0), 160, 120, 10, '#ffe066', 'center');
+    txt('BEST  ' + (BEST[cur.id] || 0), 160, 120, 10, '#fff', 'center');
     overlayBtn(72, 142, 84, 28, 'RETRY', 'A', pressA);
     overlayBtn(164, 142, 84, 28, 'MENU', 'B', pressB);
   }
 }
 function drawToast() {
   if (toastT <= 0) return;
-  ctx.globalAlpha = Math.min(1, toastT * 3); panel(110, 104, 100, 22); txt(toastMsg, 160, 115.5, 8, '#3bff8a', 'center'); ctx.globalAlpha = 1;
+  ctx.globalAlpha = Math.min(1, toastT * 3); panel(110, 104, 100, 22); txt(toastMsg, 160, 115.5, 8, RED, 'center'); ctx.globalAlpha = 1;
+}
+
+// ── 1-bit pass ──
+// Every frame is reduced to pure black and white. Brightness is stretched
+// (darks → black, lights → white) and the mid-tones are ordered-dithered, so
+// shading such as the marbles' roundness survives as a pixel pattern. Pure
+// red is kept as the single accent colour.
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+const ONEBIT_LO = 0.16, ONEBIT_HI = 0.56;
+function oneBit() {
+  const img = screenCtx.getImageData(0, 0, W, H), d = img.data;
+  const k = 1 / (255 * (ONEBIT_HI - ONEBIT_LO)), lo = ONEBIT_LO * 255;
+  for (let y = 0, i = 0; y < H; y++) {
+    const row = (y & 3) << 2;
+    for (let x = 0; x < W; x++, i += 4) {
+      if (d[i] > 200 && d[i + 1] < 90 && d[i + 2] < 90) { d[i] = 255; d[i + 1] = d[i + 2] = 42; d[i + 3] = 255; continue; }
+      const l = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] - lo) * k;
+      const v = l > BAYER[row | (x & 3)] ? 255 : 0;
+      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+    }
+  }
+  screenCtx.putImageData(img, 0, 0);
 }
 
 // ── main loop ──
@@ -1550,6 +1673,7 @@ function frame(now) {
     drawOverlay();
   }
   drawToast();
+  oneBit();
   updateChrome();
   requestAnimationFrame(frame);
 }
