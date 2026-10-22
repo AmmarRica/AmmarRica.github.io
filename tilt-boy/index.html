@@ -1432,16 +1432,159 @@ const Pin = {
   },
 };
 
-const GAMES = [Dance, Maze, Munch, Pin];
+// ═════════════════════════ GAME 5: MUSICPIN ═════════════════════════
+// A tilt step sequencer on a pinball table. The table is a 16×8 grid of notes
+// (columns = steps, rows = pitch). A playhead loops across the columns: every
+// bumper in the current column plays its note, and on every other step the
+// ball plays the note of the cell it is rolling through. Bouncing off a bumper
+// pops it with its own sound and takes it out of the loop; pop them all and a
+// new pattern is laid out.
+const SEQ_COLS = 16, SEQ_ROWS = 8;
+const SEQ_SCALE = [0, 3, 5, 7, 10, 12, 15, 17]; // minor pentatonic, low → high
+const midiHz = m => 440 * Math.pow(2, (m - 69) / 12);
+// beep() with stereo position (-1 left … 1 right).
+function tone(f, d, type, v, pan) {
+  if (!S.sound || !AC) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  let out = o.connect(g);
+  if (AC.createStereoPanner) { const p = AC.createStereoPanner(); p.pan.value = pan; out = out.connect(p); }
+  out.connect(AC.destination); o.start(t); o.stop(t + d + 0.02);
+}
+const MusicPin = {
+  id: 'musicpin', title: 'MUSICPIN', pal: PAL.orange,
+  X0: 6, Y0: 18, X1: 314, Y1: 234, STEP: 0.16,
+  init() {
+    this.level = 0; this.score = 0; this.over = false; this.pops = [];
+    this.step = -1; this.stepT = 0;
+    this.ball = makeMarble(160, 126, 6.5, PAL.orange);
+    this.newPattern();
+  },
+  cw() { return (this.X1 - this.X0) / SEQ_COLS; },
+  ch() { return (this.Y1 - this.Y0) / SEQ_ROWS; },
+  cellX(c) { return this.X0 + (c + 0.5) * this.cw(); },
+  cellY(r) { return this.Y0 + (r + 0.5) * this.ch(); },
+  cellOf(b) { return { c: clamp(Math.floor((b.x - this.X0) / this.cw()), 0, SEQ_COLS - 1), r: clamp(Math.floor((b.y - this.Y0) / this.ch()), 0, SEQ_ROWS - 1) }; },
+  // Row 0 is the top of the table and the highest note.
+  hz(r, oct) { return midiHz(57 + SEQ_SCALE[SEQ_ROWS - 1 - r] + 12 * oct); },
+  pan(c) { return (c / (SEQ_COLS - 1)) * 1.6 - 0.8; },
+  newPattern() {
+    this.level++;
+    const n = Math.min(8 + this.level * 2, 24), here = this.cellOf(this.ball), used = new Set();
+    this.bumpers = [];
+    while (this.bumpers.length < n) {
+      const c = (Math.random() * SEQ_COLS) | 0, r = (Math.random() * SEQ_ROWS) | 0, k = c * 10 + r;
+      if (used.has(k) || (Math.abs(c - here.c) < 2 && Math.abs(r - here.r) < 2)) continue;
+      used.add(k);
+      this.bumpers.push({ c, r, x: this.cellX(c), y: this.cellY(r), r0: 7, flash: 0, fade: 1, state: 'on' });
+    }
+    this.msg = 'PATTERN ' + this.level; this.msgT = 1.2;
+  },
+  // Bounce off a bumper: it pops with a rising arpeggio of its own note.
+  pop(bu) {
+    bu.state = 'break'; bu.flash = 1;
+    this.score += 100 * this.level;
+    this.pops.push({ x: bu.x, y: bu.y - 8, s: '+' + 100 * this.level, t: 0.8 });
+    const f = this.hz(bu.r, 1), p = this.pan(bu.c);
+    tone(f, 0.18, 'square', 0.05, p);
+    setTimeout(() => tone(f * 1.5, 0.16, 'square', 0.04, p), 60);
+    setTimeout(() => tone(f * 2, 0.3, 'triangle', 0.05, p), 120);
+    burst(bu.x, bu.y, 16, '#fff', { max: 110, size: 2 });
+    buzz(20);
+  },
+  update(dt) {
+    this.msgT -= dt;
+    const b = this.ball;
+    if (IN.demoOn) this.demo();
+    accelBall(b, dt, tiltAccel(), 0.35, 600);
+    bumpSound(stepBall(b, dt, bb => {
+      const h = collideBounds(bb, this.X0, this.Y0, this.X1, this.Y1, 0.55);
+      for (const bu of this.bumpers) {
+        if (bu.state !== 'on') continue;
+        const dx = bb.x - bu.x, dy = bb.y - bu.y, d = Math.hypot(dx, dy);
+        if (d < bb.r + bu.r0 && d > 1e-6) {
+          const a = Math.atan2(dy, dx) + rand(-0.4, 0.4), k = rand(200, 300);
+          bb.x = bu.x + dx / d * (bb.r + bu.r0 + .5); bb.y = bu.y + dy / d * (bb.r + bu.r0 + .5);
+          bb.vx = Math.cos(a) * k; bb.vy = Math.sin(a) * k;
+          this.pop(bu);
+        }
+      }
+      return h;
+    }) * 0.5);
+    // sequencer clock
+    this.stepT -= dt;
+    while (this.stepT <= 0) {
+      this.stepT += this.STEP;
+      this.step = (this.step + 1) % SEQ_COLS;
+      for (const bu of this.bumpers) if (bu.state === 'on' && bu.c === this.step) {
+        tone(this.hz(bu.r, 0), 0.14, 'square', 0.03, this.pan(bu.c)); bu.flash = 1;
+      }
+      if (this.step % 2 === 0) {
+        const cell = this.cellOf(b);
+        tone(this.hz(cell.r, 1), 0.22, 'triangle', 0.06, this.pan(cell.c));
+        this.ballNote = { ...cell, t: 1 };
+      }
+    }
+    for (const bu of this.bumpers) { bu.flash = Math.max(0, bu.flash - dt * 6); if (bu.state === 'break') bu.fade -= dt * 3; }
+    this.bumpers = this.bumpers.filter(bu => bu.state === 'on' || bu.fade > 0);
+    if (this.ballNote) this.ballNote.t -= dt * 4;
+    for (const p of this.pops) { p.t -= dt; p.y -= dt * 18; }
+    this.pops = this.pops.filter(p => p.t > 0);
+    if (!this.bumpers.length) this.newPattern();
+  },
+  demo() {
+    const b = this.ball;
+    let s = null, best = Infinity;
+    for (const bu of this.bumpers) if (bu.state === 'on' && dist(b, bu) < best) { best = dist(b, bu); s = bu; }
+    if (s) demoAccel(30 * (s.x - b.x) - 8 * b.vx, 30 * (s.y - b.y) - 8 * b.vy);
+  },
+  draw() {
+    const { X0, Y0, X1, Y1 } = this, cw = this.cw(), chh = this.ch();
+    layer('musicpin', () => {
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#fff';
+      for (let c = 0; c <= SEQ_COLS; c++) for (let r = 0; r <= SEQ_ROWS; r++) ctx.fillRect(X0 + c * cw - 0.75, Y0 + r * chh - 0.75, 1.5, 1.5);
+      box(X0 - 1, Y0 - 1, X1 - X0 + 2, Y1 - Y0 + 2, '#fff');
+    });
+    // playhead column
+    const px = X0 + this.step * cw;
+    ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(px, Y0, cw, Y1 - Y0);
+    ctx.fillStyle = RED; ctx.fillRect(px, Y0, 1 / K, Y1 - Y0);
+    // the cell the ball just played
+    if (this.ballNote && this.ballNote.t > 0) box(X0 + this.ballNote.c * cw, Y0 + this.ballNote.r * chh, cw, chh, RED);
+    for (const bu of this.bumpers) {
+      ctx.globalAlpha = clamp(bu.fade, 0, 1);
+      const r = bu.r0 * (bu.state === 'break' ? 1 + (1 - bu.fade) * 0.8 : 1 + bu.flash * 0.25);
+      ctx.fillStyle = bu.flash > 0.3 ? RED : '#fff';
+      ctx.beginPath(); ctx.arc(bu.x, bu.y, r, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(bu.x, bu.y, r * 0.45, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    drawMarble(this.ball);
+    drawFX();
+    for (const p of this.pops) { ctx.globalAlpha = clamp(p.t * 2, 0, 1); txt(p.s, p.x, p.y, 8, RED, 'center'); }
+    ctx.globalAlpha = 1;
+    txt(String(this.score).padStart(7, '0'), 8, 9, 8, '#fff');
+    txt('PATTERN ' + this.level, 160, 9, 8, '#fff', 'center');
+    txt(String(this.bumpers.filter(bu => bu.state === 'on').length), 312, 9, 8, RED, 'right');
+    if (this.msgT > 0) txt(this.msg, 160, 126, 16, '#fff', 'center');
+  },
+};
+
+const GAMES = [Dance, MusicPin, Maze, Munch, Pin];
 
 // ═════════════════════════ Shell: menu / settings / pause ═════════════════════════
 let scene = 'menu', cur = null, paused = false, menuIdx = 0, setIdx = 0, toastT = 0, toastMsg = '', navT = 0;
 // Menu: games ordered by how often they've been played (ties keep their
-// original order), Settings always last. Re-sorted each time the menu opens.
+// original order), except MusicPin, which always sits 2nd. Settings is last.
+// Re-sorted each time the menu opens.
 const SETTINGS_ITEM = { id: 'settings', title: 'SETTINGS', pal: PAL.violet };
 let MENU = [];
 function sortMenu(focusId) {
-  const games = GAMES.map((g, i) => [g, i]).sort((a, b) => (PLAYS[b[0].id] || 0) - (PLAYS[a[0].id] || 0) || a[1] - b[1]).map(e => e[0]);
+  const games = GAMES.filter(g => g !== MusicPin).map((g, i) => [g, i])
+    .sort((a, b) => (PLAYS[b[0].id] || 0) - (PLAYS[a[0].id] || 0) || a[1] - b[1]).map(e => e[0]);
+  games.splice(1, 0, MusicPin);
   MENU = [...games, SETTINGS_ITEM];
   menuIdx = Math.max(0, MENU.findIndex(it => it.id === focusId));
 }
@@ -1543,7 +1686,7 @@ function updateChrome() {
 }
 
 // ── menu / settings drawing ──
-const MENU_Y = 52, MENU_ROW = 34;
+const MENU_Y = 44, MENU_ROW = 32;
 function drawMenu(dt) {
   ctx.fillStyle = '#16142a'; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = 'rgba(143,134,255,.08)';
@@ -1553,7 +1696,7 @@ function drawMenu(dt) {
   accelBall(menuBall, dt, tiltAccel(), 0.8, 400);
   bumpSound(stepBall(menuBall, dt, b => collideBounds(b, 0, 0, W, H, 0.5)) * 0.5);
   drawMarble(menuBall);
-  txt('TILT BOY', 160, 26, 22, '#fff', 'center');
+  txt('TILT BOY', 160, 22, 22, '#fff', 'center');
   MENU.forEach((it, i) => {
     const y = MENU_Y + i * MENU_ROW, sel = i === menuIdx;
     ctx.fillStyle = '#000';
