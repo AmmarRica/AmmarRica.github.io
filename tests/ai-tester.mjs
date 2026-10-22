@@ -33,6 +33,7 @@ const GAMES = [
   { name: 'nonogram',          hook: '__nonogram',  metric: 'progress', ms: 8000 },
   { name: 'beer-pour',         hook: '__beer',      metric: 'score',    ms: 8000 },
   { name: 'tilt-boy',          hook: '__tilt',      metric: 'score',    ms: 30000 },
+  { name: 'tilt-seq',          hook: '__tiltseq',   metric: 'score',    ms: 12000 },
 ];
 
 const browser = await chromium.launch();
