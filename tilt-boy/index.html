@@ -39,10 +39,8 @@
     #brand .led { width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--red); }
     #brand .led.ok { background: var(--red); }
 
-    #info { margin-top: 12px; min-height: 18px; text-align: center; letter-spacing: 1px; }
-    #info b { font-weight: 400; color: var(--red); }
 
-    /* Middle deck: live tilt level + how-to */
+    /* Middle deck: live tilt level */
     #mid { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 8px 0; }
     #lvl { position: relative; width: 84px; height: 84px; border-radius: 50%; border: 2px solid var(--paper); }
     #lvl::before, #lvl::after { content: ''; position: absolute; background: var(--paper); }
@@ -50,7 +48,6 @@
     #lvl::after { top: 50%; left: 8px; right: 8px; height: 1px; }
     #dot { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -10px 0 0 -10px; border-radius: 50%;
       background: var(--red); border: 2px solid var(--ink); box-sizing: content-box; }
-    #help { max-width: 340px; line-height: 1.5; text-align: center; min-height: 36px; }
     @media (max-height: 640px) { #lvl { display: none; } }
 
     /* Two square buttons at the bottom: outlined, inverting when pressed */
@@ -62,7 +59,6 @@
     .pad.down { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--paper); background: var(--paper); color: var(--ink); }
     #btnA { border-color: var(--red); color: var(--red); box-shadow: 6px 6px 0 var(--red); }
     #btnA.down { background: var(--red); color: var(--ink); box-shadow: 0 0 0 var(--red); }
-    .padlbl { font-weight: 400; letter-spacing: 2px; height: 14px; line-height: 14px; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -71,11 +67,10 @@
     <div id="screenwrap"><canvas id="screen" width="320" height="240"></canvas></div>
     <div id="brand"><span class="led" id="led"></span>TILT BOY <small>GYRO</small></div>
   </div>
-  <div id="info">Tap A or B to enable tilt</div>
-  <div id="mid"><div id="lvl"><div id="dot"></div></div><div id="help"></div></div>
+  <div id="mid"><div id="lvl"><div id="dot"></div></div></div>
   <div id="pads">
-    <div class="padcol"><button class="pad" id="btnB" aria-label="B button">B</button><span class="padlbl" id="lblB">NEXT</span></div>
-    <div class="padcol"><button class="pad" id="btnA" aria-label="A button">A</button><span class="padlbl" id="lblA">START</span></div>
+    <div class="padcol"><button class="pad" id="btnB" aria-label="B button">B</button></div>
+    <div class="padcol"><button class="pad" id="btnA" aria-label="A button">A</button></div>
   </div>
 </div>
 <script>
@@ -301,8 +296,13 @@ function panel(x, y, w, h) { box(x, y, w, h, '#fff', '#000'); }
 const DEF = { sens: 0.5, dead: 1, autoLevel: true, invX: false, invY: false, sound: true, vibe: true };
 const S = (() => { try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem('tiltboy.settings') || '{}')); } catch (e) { return { ...DEF }; } })();
 const BEST = (() => { try { return JSON.parse(localStorage.getItem('tiltboy.best') || '{}'); } catch (e) { return {}; } })();
+const PLAYS = (() => { try { return JSON.parse(localStorage.getItem('tiltboy.plays') || '{}'); } catch (e) { return {}; } })();
 function save() {
-  try { localStorage.setItem('tiltboy.settings', JSON.stringify(S)); localStorage.setItem('tiltboy.best', JSON.stringify(BEST)); } catch (e) {}
+  try {
+    localStorage.setItem('tiltboy.settings', JSON.stringify(S));
+    localStorage.setItem('tiltboy.best', JSON.stringify(BEST));
+    localStorage.setItem('tiltboy.plays', JSON.stringify(PLAYS));
+  } catch (e) {}
 }
 
 // ───────────────────────── Audio / haptics ─────────────────────────
@@ -528,8 +528,6 @@ function drawFX() {
 // the love meter before the song ends.
 const Dance = {
   id: 'dance', title: 'LOVE DANCE', pal: PAL.pink,
-  blurb: 'Stay close to your partner',
-  help: 'Stay inside the pink ring while your partner swings around. Fill the heart meter before the song ends to fall in love.',
   init() { this.level = 1; this.score = 0; this.over = false; this.startLevel(); },
   startLevel() {
     const L = this.level;
@@ -651,8 +649,6 @@ const Dance = {
 // boards hide trap holes in dead ends.
 const Maze = {
   id: 'maze', title: 'MARBLE MAZE', pal: PAL.steel,
-  blurb: 'Roll into the goal hole',
-  help: 'Roll the marble to the flagged hole. From board 3, dead ends hide trap holes (+5s and back to start).',
   SIZES: [[8, 6], [12, 9], [16, 12], [16, 12], [20, 15]],
   OX: 10, OY: 14, AW: 300,
   init() { this.level = 1; this.score = 0; this.over = false; this.start(); },
@@ -848,8 +844,6 @@ const MODES = [['scatter', 6], ['chase', 20], ['scatter', 5], ['chase', 20], ['s
 
 const Munch = {
   id: 'munch', title: 'MS. MUNCH', pal: PAL.yellow,
-  blurb: 'Eat dots, dodge ghosts',
-  help: 'Tilt toward the way you want to turn next. Power pellets turn ghosts blue — eat them for 200·400·800·1600.',
   init() { this.level = 1; this.score = 0; this.lives = 3; this.over = false; this.newBoard(); },
   newBoard() {
     this.grid = PMAP.map(r => r.split(''));
@@ -1140,8 +1134,6 @@ const Munch = {
 // holes drift around, hunting you from rack 3. Last ball gone = game over.
 const Pin = {
   id: 'pin', title: 'PIN-HOLES', pal: PAL.green,
-  blurb: 'Grab stars, then bump',
-  help: 'One life, no flippers: tilt to steer. Stars raise the multiplier (every 3rd adds a ball). Bouncing off a bumper scores × multiplier and counts it down; at 0 it breaks. A ball that falls in a hole fills it. Last ball gone = game over.',
   X0: 6, Y0: 18, X1: 314, Y1: 234,
   init() {
     this.level = 0; this.score = 0; this.over = false; this.balls = [];
@@ -1149,7 +1141,7 @@ const Pin = {
     this.holes = []; this.bumpers = []; this.foes = [];
     this.nextRack();
     this.spawnBall();
-    this.msg = 'GRAB STARS, THEN BUMP'; this.msgT = 1.8;
+    this.msgT = 0;
   },
   // Lay out a fresh table around whatever balls are still rolling.
   nextRack() {
@@ -1444,7 +1436,16 @@ const GAMES = [Dance, Maze, Munch, Pin];
 
 // ═════════════════════════ Shell: menu / settings / pause ═════════════════════════
 let scene = 'menu', cur = null, paused = false, menuIdx = 0, setIdx = 0, toastT = 0, toastMsg = '', navT = 0;
-const MENU = [...GAMES, { id: 'settings', title: 'SETTINGS', pal: PAL.violet, blurb: 'Tilt, sound, vibration' }];
+// Menu: games ordered by how often they've been played (ties keep their
+// original order), Settings always last. Re-sorted each time the menu opens.
+const SETTINGS_ITEM = { id: 'settings', title: 'SETTINGS', pal: PAL.violet };
+let MENU = [];
+function sortMenu(focusId) {
+  const games = GAMES.map((g, i) => [g, i]).sort((a, b) => (PLAYS[b[0].id] || 0) - (PLAYS[a[0].id] || 0) || a[1] - b[1]).map(e => e[0]);
+  MENU = [...games, SETTINGS_ITEM];
+  menuIdx = Math.max(0, MENU.findIndex(it => it.id === focusId));
+}
+sortMenu();
 const menuBall = makeMarble(260, 60, 9, PAL.blue);
 
 const ROWS = [
@@ -1462,12 +1463,13 @@ const ROWS = [
 
 function toast(m) { toastMsg = m; toastT = 1.1; }
 function startGame(g) {
+  if (!IN.demoOn) { PLAYS[g.id] = (PLAYS[g.id] || 0) + 1; save(); }
   cur = g; scene = 'game'; paused = false; FX.length = 0;
   if (S.autoLevel && IN.has) levelNow();
   g.init(); g.saved = false;
   beep(440, .06); beep(880, .08);
 }
-function goMenu() { scene = 'menu'; cur = null; paused = false; IN.demo = null; beep(330, .05); }
+function goMenu() { sortMenu(cur && cur.id); scene = 'menu'; cur = null; paused = false; IN.demo = null; beep(330, .05); }
 
 function pressA() {
   if (scene === 'menu') {
@@ -1515,7 +1517,7 @@ const endDrag = e => {
   if (!drag) return;
   if (!drag.moved) {
     const p = toLocal(e);
-    if (scene === 'menu') { const i = Math.floor((p.y - 56) / 32); if (i >= 0 && i < MENU.length) { menuIdx = i; pressA(); } }
+    if (scene === 'menu') { const i = Math.floor((p.y - MENU_Y) / MENU_ROW); if (i >= 0 && i < MENU.length) { menuIdx = i; pressA(); } }
     else if (scene === 'settings') {
       // numeric rows: left half steps down, right half steps up
       const i = Math.floor((p.y - 26) / 20);
@@ -1533,33 +1535,15 @@ cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', 
 document.addEventListener('visibilitychange', () => { if (document.hidden && scene === 'game' && !cur.over && !IN.demoOn) paused = true; });
 
 // ── HUD outside the screen ──
-const elInfo = document.getElementById('info'), elLed = document.getElementById('led');
-const elA = document.getElementById('lblA'), elB = document.getElementById('lblB');
-const elDot = document.getElementById('dot'), elHelp = document.getElementById('help');
-let infoLast = '', helpLast = '';
+const elLed = document.getElementById('led'), elDot = document.getElementById('dot');
 function updateChrome() {
-  let a = 'START', b = 'NEXT';
-  if (scene === 'settings') { a = 'CHANGE'; b = 'NEXT'; }
-  else if (scene === 'game') { if (cur.over) { a = 'RETRY'; b = 'MENU'; } else if (paused) { a = 'RESUME'; b = 'MENU'; } else { a = 'PAUSE'; b = 'LEVEL'; } }
-  if (elA.textContent !== a) elA.textContent = a;
-  if (elB.textContent !== b) elB.textContent = b;
-  let info;
-  if (IN.demoOn) info = '<b>DEMO</b> · AI is tilting';
-  else if (IN.has) { const t = tiltDeg(); info = `TILT <b>${t.x >= 0 ? '+' : ''}${t.x.toFixed(0)}°</b> / <b>${t.y >= 0 ? '+' : ''}${t.y.toFixed(0)}°</b> · ${Math.round(S.sens * 100)}%`; }
-  else if (IN.perm === 'denied') info = 'Tilt blocked · use arrow keys or drag the screen';
-  else if (IN.perm === 'idle' || IN.perm === 'asking') info = 'Tap A or B to enable tilt';
-  else info = performance.now() - (IN.askedAt || 0) > 1500 ? 'No gyro found · arrow keys or drag the screen' : 'Waiting for tilt…';
-  if (info !== infoLast) { elInfo.innerHTML = info; infoLast = info; }
   elLed.className = 'led ' + (IN.has ? 'ok' : 'on');
   const t = tiltDeg();
   elDot.style.transform = `translate(${clamp(t.x / 30, -1, 1) * 30}px, ${clamp(t.y / 30, -1, 1) * 30}px)`;
-  const help = scene === 'menu' ? 'Tap a game to play — or B: next · A: start.<br>Tilt the phone to roll the marble.'
-    : scene === 'settings' ? 'Tap a row (left half −, right half +) — or B: next row · A: change.<br>TILT→MOVE scales phone tilt to table tilt (100% = 1:1)'
-    : cur.help + '<br>Tap screen or A: pause · B: level tilt';
-  if (help !== helpLast) { elHelp.innerHTML = help; helpLast = help; }
 }
 
 // ── menu / settings drawing ──
+const MENU_Y = 52, MENU_ROW = 34;
 function drawMenu(dt) {
   ctx.fillStyle = '#16142a'; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = 'rgba(143,134,255,.08)';
@@ -1569,21 +1553,19 @@ function drawMenu(dt) {
   accelBall(menuBall, dt, tiltAccel(), 0.8, 400);
   bumpSound(stepBall(menuBall, dt, b => collideBounds(b, 0, 0, W, H, 0.5)) * 0.5);
   drawMarble(menuBall);
-  txt('TILT BOY', 160, 22, 22, '#fff', 'center');
-  txt('pick a cartridge', 160, 40, 7, RED, 'center');
+  txt('TILT BOY', 160, 26, 22, '#fff', 'center');
   MENU.forEach((it, i) => {
-    const y = 56 + i * 32, sel = i === menuIdx;
+    const y = MENU_Y + i * MENU_ROW, sel = i === menuIdx;
     ctx.fillStyle = '#000';
-    ctx.fillRect(20, y, 280, 30);
-    if (sel) box(20, y, 280, 30, RED);
+    ctx.fillRect(20, y, 280, MENU_ROW - 4);
+    if (sel) box(20, y, 280, MENU_ROW - 4, RED);
     const icon = it._icon || (it._icon = makeMarble(0, 0, 7, it.pal));
     if (sel) roll(icon, dt * 30, dt * 8);
-    drawMarble(icon, 36, y + 15, 1);
-    txt(it.title, 52, y + 9, 10, sel ? RED : '#fff');
-    txt(it.blurb, 52, y + 23, 6, '#fff', 'left', false);
-    if (BEST[it.id]) txt('HI ' + BEST[it.id], 292, y + 9, 7, '#fff', 'right');
+    const mid = y + (MENU_ROW - 4) / 2;
+    drawMarble(icon, 36, mid, 1);
+    txt(it.title, 52, mid, 10, sel ? RED : '#fff');
+    if (BEST[it.id]) txt(String(BEST[it.id]), 292, mid, 7, '#fff', 'right');
   });
-  txt('Tap a game · B: next · A: start', 160, 226, 6, '#fff', 'center', false);
   // tilt up/down nudges the cursor
   const t = tiltDeg();
   navT -= dt;
@@ -1599,7 +1581,6 @@ function drawSettings() {
   ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(bx, by, 9, 0, TAU); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(bx - 9, by); ctx.lineTo(bx + 9, by); ctx.moveTo(bx, by - 9); ctx.lineTo(bx, by + 9); ctx.stroke();
   ctx.fillStyle = RED; ctx.beginPath(); ctx.arc(bx + clamp(t.x / 30, -1, 1) * 7, by + clamp(t.y / 30, -1, 1) * 7, 2.5, 0, TAU); ctx.fill();
-  txt(`${t.x.toFixed(0)}°,${t.y.toFixed(0)}°`, 282, 11.5, 6, '#fff', 'right', false);
   ROWS.forEach((r, i) => {
     const y = 26 + i * 20, sel = i === setIdx;
     if (sel) box(10, y, 300, 18, RED);
@@ -1610,7 +1591,6 @@ function drawSettings() {
     }
     txt(r.val(), 302, y + 9.5, 8, '#fff', 'right');
   });
-  txt('100% = 1:1 tilt', 160, 226, 6, '#fff', 'center', false);
 }
 // Tappable buttons on the pause / game-over panels (rebuilt every frame).
 const OVERLAY_BTNS = [];
@@ -1624,11 +1604,10 @@ function drawOverlay() {
   OVERLAY_BTNS.length = 0;
   if (paused) {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
-    panel(20, 66, 280, 108);
-    txt('PAUSED', 160, 88, 14, '#fff', 'center');
+    panel(40, 66, 240, 84);
+    txt('PAUSED', 160, 86, 14, '#fff', 'center');
     overlayBtn(66, 106, 90, 28, 'RESUME', 'A', pressA);
     overlayBtn(164, 106, 90, 28, 'MENU', 'B', pressB);
-    txt('Tap screen: pause · B: level', 160, 154, 6, '#fff', 'center', false);
   } else if (cur.over) {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
     panel(40, 56, 240, 128);
