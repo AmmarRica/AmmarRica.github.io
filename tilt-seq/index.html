@@ -58,8 +58,6 @@
       background: #2c3036; border: 2px solid #000; box-shadow: inset 2px 2px 0 #4b5058, inset -2px -2px 0 #1b1d21; color: var(--txt); white-space: nowrap; }
     .b:active, .b.dn { box-shadow: inset 2px 2px 0 #1b1d21, inset -2px -2px 0 #3a3f46; }
     .b.on { background: var(--or); color: #000; box-shadow: inset 2px 2px 0 #ffa165, inset -2px -2px 0 #a8420a; }
-    .b.rec.on { background: var(--rd); box-shadow: inset 2px 2px 0 #ff9a90, inset -2px -2px 0 #8d1a12; }
-    .b.q { background: #5a3a1a; }
     .b.dis { opacity: .35; pointer-events: none; }
     .b.w { flex: 1; }
 
@@ -80,7 +78,7 @@
     /* step grids */
     .grid { display: grid; gap: 2px; touch-action: none; }
     .ga { grid-template-columns: 42px repeat(16, 1fr); }
-    .ga .nm { font-size: 14px; color: var(--dim); overflow: hidden; white-space: nowrap; padding: 4px 2px 0; background: #101114; height: 22px; }
+    .ga .nm { font-size: 14px; color: var(--dim); overflow: hidden; white-space: nowrap; padding: 4px 2px 0 6px; background: #101114; height: 22px; }
     .ga .nm.sel { color: var(--or); background: #000; }
     .c { height: 22px; background: var(--cell); }
     .c.q4 { background: #2e333a; }
@@ -88,21 +86,26 @@
     .c.n { background: var(--am); } .c.n.cy { background: var(--cy); }
     .c.ph { outline: 2px solid var(--or); outline-offset: -2px; }
     .c.v1.ph, .c.v2.ph, .c.n.ph { filter: brightness(1.25); }
-    .g8 { grid-template-columns: repeat(8, 1fr); }
-    .g8 .c { height: 46px; position: relative; }
-    .g8 .c::after { content: attr(data-l); position: absolute; left: 3px; top: 3px; font-size: 13px; color: #000; opacity: .45; }
     .roll { grid-template-columns: 34px repeat(16, 1fr); gap: 1px; }
     .roll .k { font-size: 13px; padding: 4px 2px 0; height: 21px; background: #2c3036; color: var(--txt); }
     .roll .k.blk { background: #121316; color: var(--dim); }
     .roll .c { height: 21px; }
     .roll .c.blk { background: #1c1f24; }
     .roll .c.up { box-shadow: inset 0 3px 0 var(--am); } .roll .c.dnn { box-shadow: inset 0 -3px 0 var(--am); }
-    .roll .c.acc { background: var(--rd); } .roll .c.sld { background: var(--cy); }
     .roll .k.fx { background: #101114; color: var(--dim); }
 
+    /* loops strip */
+    #loops { display: flex; gap: 3px; flex: 1; min-width: 0; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
+    #loops::-webkit-scrollbar { display: none; }
+    .lp { flex: none; min-width: 34px; height: 30px; background: var(--cell); border: 2px solid #000; color: var(--dim); }
+    .lp.on { color: #000; background: var(--or); }
+    .lp.pl { box-shadow: inset 0 -4px 0 var(--gr); }
+    .ga .nm.drum { box-shadow: inset 3px 0 0 var(--gr); } .ga .nm.bass { box-shadow: inset 3px 0 0 var(--am); } .ga .nm.synth { box-shadow: inset 3px 0 0 var(--cy); }
+    .ga .nm.m { text-decoration: line-through; }
+    .roll .c.sld { background: var(--cy); }
     /* knobs */
+    .knobs.k5 { grid-template-columns: repeat(5, 1fr); }
     .knobs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 2px; touch-action: none; }
-    .knobs.k6 { grid-template-columns: repeat(6, 1fr); }
     .knob { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 0; touch-action: none; }
     .kd { width: 38px; height: 38px; border-radius: 50%; background: #2c3036; border: 2px solid #000; box-shadow: inset 2px 2px 0 #4b5058, inset -2px -2px 0 #1b1d21; position: relative; }
     .kd i { position: absolute; left: 50%; top: 3px; width: 4px; height: 14px; margin-left: -2px; background: var(--or); transform-origin: 2px 15px; }
@@ -110,47 +113,18 @@
     .knob span { font-size: 15px; color: var(--txt); min-height: 14px; }
     .knob.act .kd { border-color: var(--or); }
 
-    /* bars (sliders) */
-    .bar { position: relative; height: 24px; flex: 1; background: #0f1012; border: 2px solid #000; box-shadow: inset 0 0 0 1px var(--line); touch-action: none; overflow: hidden; min-width: 50px; }
-    .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #3c5a2c; }
-    .bar.ctr i { background: #2c4a5a; }
-    .bar span { position: absolute; left: 5px; top: 4px; font-size: 15px; color: var(--txt); pointer-events: none; }
-    .bar em { position: absolute; right: 5px; top: 4px; font-size: 15px; font-style: normal; color: var(--gr); pointer-events: none; }
 
-    /* pads + keyboard */
-    .pads { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; touch-action: none; }
-    .pad { height: 58px; background: #33373e; border: 2px solid #000; box-shadow: inset 3px 3px 0 #4f555e, inset -3px -3px 0 #1d1f23; font-size: 16px; color: var(--txt); display: flex; align-items: flex-end; padding: 4px; }
-    .pad.sel { color: var(--or); }
-    .pad.hit { background: var(--or); color: #000; }
     .kb { position: relative; height: 92px; touch-action: none; }
     .kw, .kbk { position: absolute; top: 0; border: 2px solid #000; }
     .kw { height: 92px; background: #2c3036; color: var(--dim); font-size: 13px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 3px; }
     .kbk { height: 56px; background: #0b0c0e; z-index: 2; }
     .kw.on, .kbk.on { background: var(--or); }
 
-    /* XY pad */
-    #xy { position: relative; width: 100%; max-width: 330px; aspect-ratio: 1; margin: 0 auto 6px; background: #0b130d; border: 2px solid #000; box-shadow: inset 0 0 0 1px #2f5a35; touch-action: none; overflow: hidden; }
-    #xy::before, #xy::after { content: ''; position: absolute; background: #1f3a24; }
-    #xy::before { left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; }
-    #xy::after { top: 50%; left: 0; right: 0; height: 2px; margin-top: -1px; }
-    #xy .dot { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; background: var(--gr); z-index: 2; }
-    #xy .dot.on { background: var(--or); }
-    #xy .ax { position: absolute; font-size: 14px; color: #4f8a52; z-index: 1; }
-    #xy .lane { position: absolute; top: 0; bottom: 0; border-left: 1px dashed #1a2f1d; }
-    #xy .lane span { position: absolute; bottom: 2px; left: 2px; font-size: 12px; color: #3d6b41; }
 
-    /* song */
-    .slots { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
-    .slot { height: 40px; background: var(--cell); border: 2px solid #000; display: flex; align-items: center; justify-content: center; font-size: 22px; position: relative; }
-    .slot small { position: absolute; left: 2px; top: 1px; font-size: 11px; color: var(--dim); }
-    .slot.ph { background: var(--or); color: #000; }
 
     .list { display: flex; flex-direction: column; gap: 3px; }
     .li { display: flex; align-items: center; gap: 4px; background: var(--cell); padding: 3px 3px 3px 6px; border: 2px solid #000; }
     .li > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mixr { display: grid; grid-template-columns: 54px 30px 30px 1fr 1fr 1fr; gap: 3px; align-items: center; margin-bottom: 3px; }
-    .mixr .nm { font-size: 15px; overflow: hidden; white-space: nowrap; color: var(--txt); }
-    .mixr .b { min-height: 24px; padding: 0; }
 
     #modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
     #modal[hidden] { display: none; }
@@ -165,26 +139,19 @@
 <div id="dev">
   <div id="topshell">
     <div id="topscr"><canvas id="top" width="240" height="144"></canvas></div>
-    <div id="brand"><span><b>TILT-SEQ</b></span><span id="tiltLed">TILT --</span></div>
+    <div id="brand"><span><b>TILT-SEQ</b></span><span id="tiltLed"></span></div>
   </div>
   <div id="hinge">
     <button class="b" id="bPlay" aria-label="Play">&#9654;</button>
-    <button class="b rec" id="bRec" aria-label="Record">&#9679;</button>
     <button class="b" id="bBpmD">-</button>
     <button class="b" id="bpm" title="Drag to change tempo">120</button>
     <button class="b" id="bBpmU">+</button>
     <span class="sp"></span>
-    <button class="b pat" data-pat="0">A</button>
-    <button class="b pat" data-pat="1">B</button>
-    <button class="b pat" data-pat="2">C</button>
-    <button class="b pat" data-pat="3">D</button>
+    <button class="b" id="bTilt">TILT</button>
   </div>
   <div id="botshell">
     <div id="bot">
-      <div id="tabs">
-        <button data-tab="seq">SEQ</button><button data-tab="drum">DRUM</button><button data-tab="synth">SYNTH</button>
-        <button data-tab="tilt">TILT</button><button data-tab="mix">MIX</button><button data-tab="song">SONG</button><button data-tab="file">FILE</button>
-      </div>
+      <div id="tabs"><button data-tab="loop">LOOP</button><button data-tab="sound">SOUND</button><button data-tab="file">FILE</button></div>
       <div id="panel"></div>
       <div id="status"></div>
     </div>
@@ -206,7 +173,6 @@ function parseNote(s) {
   if (!m) throw new Error('bad note ' + s);
   return { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[m[1].toUpperCase()] + (m[2] ? 1 : 0) + (+m[3] + 1) * 12;
 }
-const PL = 'ABCD';
 const MAXT = 16;
 
 // ───────────────────────── instrument parameters ─────────────────────────
@@ -249,54 +215,62 @@ const PRESETS = {
 };
 
 // ───────────────────────── project model ─────────────────────────
+// A project is a row of loops (1 bar of 16 steps each) played in order.
+// Every track holds one pattern per loop, so tracks.pats.length === P.len.
 let UID = 1;
-const emptyPats = () => [0,1,2,3].map(() => Array(16).fill(0));
-function mkTrack(type, voice, name) {
+const MAXL = 64;
+const emptyLoop = () => Array(16).fill(0);
+function mkTrack(type, voice, name, n) {
   const p = {};
   PDEF[type].forEach(([k, , d]) => p[k] = d);
   if (type === 'drum') Object.assign(p, DRUM_DEF[voice] || {});
   return { id: UID++, name: name || (type === 'drum' ? VLAB[voice] : type === 'bass' ? 'S2K' : 'SYNTH'), type,
-    voice: type === 'drum' ? voice : null, p, vol: .75, pan: 0, mute: false, solo: false, send: 0, pats: emptyPats(), auto: {} };
+    voice: type === 'drum' ? voice : null, p, vol: .75, pan: 0, mute: false, send: 0, pats: Array.from({ length: n || 1 }, emptyLoop) };
 }
 function mkProject() {
-  return { fmt: 'tiltseq', v: 1, name: 'UNTITLED', bpm: 120, swing: 0, mode: 'pat', song: [0],
-    master: { vol: .85, cut: .5, res: .1, dtime: 3, dfb: .35, dmix: .8 }, mauto: {},
+  return { fmt: 'tiltseq', v: 2, name: 'UNTITLED', bpm: 120, swing: 0, len: 1,
+    master: { vol: .85, cut: .5, res: .1, dtime: 3, dfb: .35, dmix: .8 },
     tracks: [mkTrack('drum','kick'), mkTrack('drum','snare'), mkTrack('drum','chat'), mkTrack('drum','ohat'), mkTrack('bass'), mkTrack('synth')] };
 }
-// Validate anything that came from a file or storage; fills defaults, re-issues ids.
-function fixTrack(t) {
+function fixStep(type, v) {
+  if (type === 'drum') return v === 2 ? 2 : v ? 1 : 0;
+  return Array.isArray(v) && typeof v[0] === 'number' ? [clamp(Math.round(v[0]), 12, 108), v[1] ? 1 : 0, v[2] ? 1 : 0] : 0;
+}
+// Validate anything from a file or storage; fills defaults, re-issues ids.
+// `order` maps each loop to a source pattern (v1 files had 4 patterns + a song chain).
+function fixTrack(t, order, len) {
   const type = ['drum','bass','synth'].includes(t && t.type) ? t.type : 'drum';
   const voice = type === 'drum' ? (DRUM_VOICES.includes(t.voice) ? t.voice : 'kick') : null;
-  const n = mkTrack(type, voice, typeof t.name === 'string' ? t.name.slice(0, 10).toUpperCase() : undefined);
+  const n = mkTrack(type, voice, typeof t.name === 'string' ? t.name.slice(0, 10).toUpperCase() : undefined, len);
   if (t.p) for (const k in n.p) if (typeof t.p[k] === 'number') n.p[k] = clamp(t.p[k]);
   for (const k of ['vol','send']) if (typeof t[k] === 'number') n[k] = clamp(t[k]);
   if (typeof t.pan === 'number') n.pan = clamp(t.pan, -1, 1);
-  n.mute = !!t.mute; n.solo = !!t.solo;
-  if (Array.isArray(t.pats)) for (let i = 0; i < 4; i++) {
-    const src = t.pats[i]; if (!Array.isArray(src)) continue;
-    for (let s = 0; s < 16; s++) {
-      const v = src[s];
-      if (type === 'drum') n.pats[i][s] = v === 2 ? 2 : v ? 1 : 0;
-      else n.pats[i][s] = Array.isArray(v) && typeof v[0] === 'number' ? [clamp(Math.round(v[0]), 12, 108), v[1] ? 1 : 0, v[2] ? 1 : 0] : 0;
-    }
-  }
-  if (t.auto && typeof t.auto === 'object') for (const k of TKEYS) if (Array.isArray(t.auto[k])) n.auto[k] = fixLane(t.auto[k]);
+  n.mute = !!t.mute;
+  const pats = Array.isArray(t.pats) ? t.pats : [];
+  n.pats = n.pats.map((_, k) => { const src = pats[order ? order[k] : k]; return emptyLoop().map((z, s) => fixStep(type, Array.isArray(src) ? src[s] : 0)); });
   return n;
 }
-function fixLane(a) { return [0,1,2,3].map(i => Array.from({ length: 16 }, (_, s) => { const v = a[i] && a[i][s]; return typeof v === 'number' ? clamp(v, -1, 1) : null; })); }
 function fixProject(src) {
   const P = mkProject();
   if (!src || typeof src !== 'object') return P;
   if (typeof src.name === 'string') P.name = src.name.slice(0, 16).toUpperCase();
   if (typeof src.bpm === 'number') P.bpm = clamp(Math.round(src.bpm), 50, 220);
   if (typeof src.swing === 'number') P.swing = clamp(src.swing);
-  P.mode = src.mode === 'song' ? 'song' : 'pat';
-  if (Array.isArray(src.song) && src.song.length) P.song = src.song.slice(0, 64).map(x => clamp(x | 0, 0, 3));
   if (src.master) for (const k in P.master) if (typeof src.master[k] === 'number') P.master[k] = k === 'dtime' ? clamp(src.master[k] | 0, 1, 8) : clamp(src.master[k]);
-  if (src.mauto) for (const k of MKEYS) if (Array.isArray(src.mauto[k])) P.mauto[k] = fixLane(src.mauto[k]);
-  if (Array.isArray(src.tracks) && src.tracks.length) P.tracks = src.tracks.slice(0, MAXT).map(fixTrack);
+  const tr = Array.isArray(src.tracks) ? src.tracks.slice(0, MAXT) : [];
+  if (!tr.length) return P;
+  let order = null, len;
+  if (src.v === 2) len = clamp(src.len | 0, 1, MAXL);
+  else if (src.mode === 'song' && Array.isArray(src.song) && src.song.length) { order = src.song.slice(0, MAXL).map(x => clamp(x | 0, 0, 3)); len = order.length; }
+  else {
+    let last = 0;
+    tr.forEach(t => (t.pats || []).forEach((p, i) => { if (i < 4 && Array.isArray(p) && p.some(v => v)) last = Math.max(last, i); }));
+    order = Array.from({ length: last + 1 }, (_, i) => i); len = order.length;
+  }
+  P.len = len; P.tracks = tr.map(t => fixTrack(t, order, len));
   return P;
 }
+
 
 // ───────────────────────── sample songs ─────────────────────────
 const dp = s => [...s].map(c => c === 'X' ? 2 : c === 'x' ? 1 : 0);
@@ -537,20 +511,12 @@ function synthV(c, o, t, n, vel, p, acc) {
   });
 }
 
-// Modulation targets (tilt + recorded automation). Track keys offset the
-// selected/all tracks' params; master keys drive the DJ filter and delay.
-const TGT = [['off','OFF'],['pitch','PITCH'],['cutoff','CUTOFF'],['reso','RESO'],['decay','DECAY'],['env','ENV'],['drive','DRIVE'],
-             ['mcut','DJ FILT'],['mres','DJ RES'],['dfb','DLY FB'],['dmix','DLY MIX']];
-const TKEYS = ['pitch','cutoff','reso','decay','env','drive'], MKEYS = ['mcut','mres','dfb','dmix'];
-const MBASE = { mcut:'cut', mres:'res', dfb:'dfb', dmix:'dmix' };
-const DRUMMAP = { cutoff:'tone', reso:'snap', env:'snap', decay:'decay', drive:null };
-const tlab = k => (TGT.find(x => x[0] === k) || TGT[0])[1];
-
+// Tilt: X sweeps the master DJ filter, Y offsets the selected track's cutoff (tone on drums).
 class Engine {
   constructor(ctx, P, offline) {
     this.c = ctx; this.P = P; this.off = offline; this.strips = new Map(); this.pend = {};
-    this.pat = 0; this.queued = null;
-    this.mod = () => null; this.onStep = null; this.skip = null;
+    this.loop = 0; this.queued = null; this.repeat = false;
+    this.mod = () => null; this.skip = null;
     const c = ctx;
     this.bus = gainNode(c, 0.85);
     this.lp = filt(c, 'lowpass', 20000); this.hp = filt(c, 'highpass', 20);
@@ -561,7 +527,7 @@ class Engine {
     this.mg = c.createGain();
     this.bus.connect(this.lp); this.lp.connect(this.hp); this.hp.connect(this.comp); this.comp.connect(this.mg); this.mg.connect(c.destination);
     if (!offline) { this.an = c.createAnalyser(); this.an.fftSize = 512; this.mg.connect(this.an); }
-    this.sync(); this.applyMaster(c.currentTime, 0, 0);
+    this.sync(); this.applyMaster(c.currentTime);
   }
   sd() { return 60 / this.P.bpm / 4; }
   set(param, v) { if (this.off) param.value = v; else param.setTargetAtTime(v, this.c.currentTime, 0.015); }
@@ -569,7 +535,6 @@ class Engine {
   sync() {
     const c = this.c, ids = new Set(this.P.tracks.map(t => t.id));
     for (const [id, s] of this.strips) if (!ids.has(id)) { s.in.disconnect(); s.out.disconnect(); this.strips.delete(id); }
-    const solo = this.P.tracks.some(t => t.solo);
     for (const t of this.P.tracks) {
       let s = this.strips.get(t.id);
       if (!s) {
@@ -579,59 +544,43 @@ class Engine {
         s.out.connect(this.bus); s.out.connect(s.snd); s.snd.connect(this.dIn);
         this.strips.set(t.id, s);
       }
-      this.set(s.in.gain, !t.mute && (!solo || t.solo) ? t.vol * t.vol * 1.3 : 0);
+      this.set(s.in.gain, t.mute ? 0 : t.vol * t.vol * 1.3);
       if (s.pan) this.set(s.pan.pan, t.pan);
       this.set(s.snd.gain, t.send);
     }
     this.set(this.dl.delayTime, Math.min(2.4, this.P.master.dtime * this.sd()));
   }
-  mval(key, pat, s) {
-    const L = this.mod(-1, key), a = this.P.mauto[key] && this.P.mauto[key][pat] ? this.P.mauto[key][pat][s] : null;
-    return clamp(this.P.master[MBASE[key]] + (L != null ? L : (a != null ? a : 0)));
-  }
-  applyMaster(t, pat, s) {
-    const M = this.P.master, cut = this.mval('mcut', pat, s), res = this.mval('mres', pat, s);
+  applyMaster(t) {
+    const M = this.P.master, d = this.mod(-1), cut = clamp(M.cut + (d || 0));
     const set = (prm, v) => this.off ? prm.setValueAtTime(v, t) : prm.setTargetAtTime(v, t, 0.03);
     // bipolar DJ filter: below centre closes a low-pass, above centre opens a high-pass
     const lpF = cut < 0.48 ? 60 * Math.pow(2, cut / 0.48 * 8.4) : 20000, hpF = cut > 0.52 ? 20 * Math.pow(2, (cut - 0.52) / 0.48 * 8.5) : 20;
     set(this.lp.frequency, lpF); set(this.hp.frequency, hpF);
-    set(this.lp.Q, 0.7 + res * 14); set(this.hp.Q, 0.7 + res * 14);
-    set(this.fb.gain, this.mval('dfb', pat, s) * 0.85); set(this.dOut.gain, this.mval('dmix', pat, s));
-    set(this.mg.gain, M.vol);
+    set(this.lp.Q, 0.7 + M.res * 14); set(this.hp.Q, 0.7 + M.res * 14);
+    set(this.fb.gain, M.dfb * 0.85); set(this.dOut.gain, M.dmix); set(this.mg.gain, M.vol);
   }
-  patFor(bar, s) {
-    const P = this.P;
-    if (P.mode === 'song' && P.song.length) return P.song[bar % P.song.length];
-    if (s === 0 && this.queued != null) { this.pat = this.queued; this.queued = null; }
-    return this.pat;
-  }
-  effP(tr, i, pat, s) {
-    const p = Object.assign({}, tr.p); let semi = 0;
-    for (const k of TKEYS) {
-      const L = this.mod(i, k), lane = tr.auto[k], a = lane && lane[pat] ? lane[pat][s] : null;
-      const d = L != null ? L : (a != null ? a : 0);
-      if (!d) continue;
-      if (k === 'pitch') { if (tr.type === 'drum') p.tune = clamp(p.tune + d * 0.6); else semi = Math.round(d * 12); continue; }
-      const pk = tr.type === 'drum' ? DRUMMAP[k] : k;
-      if (pk && pk in p) p[pk] = clamp(p[pk] + d * 0.6);
-    }
-    p._semi = semi;
+  effP(tr, i) {
+    const p = Object.assign({}, tr.p), d = this.mod(i);
+    if (d) { const k = tr.type === 'drum' ? 'tone' : 'cutoff'; p[k] = clamp(p[k] + d * 0.6); }
     return p;
   }
   scheduleStep(g, t) {
-    const P = this.P, sd = this.sd(), bar = Math.floor(g / 16), s = g % 16, pat = this.patFor(bar, s);
-    this.cur = { g, pat, s, t };
-    if (this.onStep) this.onStep(g, pat, s, t);
-    this.applyMaster(t, pat, s);
-    P.tracks.forEach((tr, i) => {
+    const s = g % 16;
+    // bar boundary: jump to a queued loop, else advance (or stay when repeating)
+    if (s === 0 && g > 0) { if (this.queued != null) { this.loop = this.queued; this.queued = null; } else if (!this.repeat) this.loop++; }
+    if (this.loop >= this.P.len) this.loop = 0;
+    const L = this.loop, sd = this.sd();
+    this.cur = { g, loop: L, s, t };
+    if (!this.off && s === 0) this.applyMaster(t);
+    this.P.tracks.forEach((tr, i) => {
       const strip = this.strips.get(tr.id);
       if (!strip) return;
       if (this.skip && this.skip(i)) { this.endPend(tr.id, t); return; }
-      const st = tr.pats[pat][s], p = this.effP(tr, i, pat, s);
+      const st = tr.pats[L][s], p = this.effP(tr, i);
       if (tr.type === 'drum') { if (st) V[tr.voice](this.c, strip.in, t, st === 2 ? 1 : 0.72, p); return; }
       const pend = this.pend[tr.id];
       if (st) {
-        const n = st[0] + p._semi, sl = st[2], gate = (0.08 + p.gate * 0.92) * sd;
+        const n = st[0], sl = st[2], gate = (0.08 + p.gate * 0.92) * sd;
         if (pend) { pend.glide(n, t); if (!sl) { pend.release(t + gate); delete this.pend[tr.id]; } }
         else {
           const h = (tr.type === 'bass' ? bassV : synthV)(this.c, strip.in, t, n, st[1] ? 1 : 0.7, p, st[1]);
@@ -642,17 +591,13 @@ class Engine {
   }
   endPend(id, t) { if (this.pend[id]) { this.pend[id].release(t + 0.005); delete this.pend[id]; } }
   releaseAll(t) { for (const id in this.pend) this.endPend(id, t); }
-  // live playing from pads / keys / tilt
   hit(i) {
-    const tr = this.P.tracks[i], s = this.strips.get(tr.id), t = this.c.currentTime + 0.005;
-    const cur = this.cur || { pat: 0, s: 0 };
-    if (tr.type === 'drum') V[tr.voice](this.c, s.in, t, 0.85, this.effP(tr, i, cur.pat, cur.s));
+    const tr = this.P.tracks[i], s = this.strips.get(tr.id);
+    if (tr.type === 'drum') V[tr.voice](this.c, s.in, this.c.currentTime + 0.005, 0.85, this.effP(tr, i));
   }
   noteOn(i, n, vel) {
-    const tr = this.P.tracks[i], s = this.strips.get(tr.id), t = this.c.currentTime + 0.005;
-    const cur = this.cur || { pat: 0, s: 0 }, p = this.effP(tr, i, cur.pat, cur.s);
-    const h = (tr.type === 'bass' ? bassV : synthV)(this.c, s.in, t, n + p._semi, vel || 0.8, p, 0);
-    h.p = p; return h;
+    const tr = this.P.tracks[i], s = this.strips.get(tr.id), p = this.effP(tr, i);
+    return (tr.type === 'bass' ? bassV : synthV)(this.c, s.in, this.c.currentTime + 0.005, n, vel || 0.8, p, 0);
   }
 }
 
@@ -663,12 +608,10 @@ const LS = {
 };
 function loadCur() { try { const j = LS.get('tiltseq.cur'); return j ? fixProject(JSON.parse(j)) : null; } catch (_) { return null; } }
 let P = loadCur() || demoProject(0);
-const S = { sel: 0, edit: 0, tab: 'seq', view: 'all', rollOct: {}, kbOct: 3, playing: false, rec: false, steps: 0,
-  clip: null, loops: 2, fmt: 'wav', from: 0, to: 1, demo: false };
-const LIVE = { mode: 'fx', latch: false, touch: false, x: 0, y: 0, tx: 0, ty: 0, xT: 'mcut', yT: 'cutoff', scope: 'sel',
-  scale: 1, root: 0, oct: 0, hold: null, gateBtn: false };
+const S = { sel: 0, edit: 0, tab: 'loop', rollOct: {}, kbOct: 3, playing: false, steps: 0, repeat: false,
+  loops: 1, fmt: 'wav', demo: false, last: {} };
+const LIVE = { x: 0, y: 0, hold: null };
 const TILT = { on: false, have: false, g: 0, b: 0, cg: 0, cb: 0, cal: false };
-const SCALES = [['MAJOR',[0,2,4,5,7,9,11]],['MINOR',[0,2,3,5,7,8,10]],['PENTA',[0,3,5,7,10]],['DORIAN',[0,2,3,5,7,9,10]],['BLUES',[0,3,5,6,7,10]],['CHROM',[0,1,2,3,4,5,6,7,8,9,10,11]]];
 let E = null;
 const queue = [];
 
@@ -677,7 +620,7 @@ function ensureAudio() {
   if (!E) {
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {}
     E = new Engine(new AC({ latencyHint: 'interactive' }), P, false);
-    E.mod = liveMod; E.onStep = onStep; E.skip = i => !!(LIVE.hold && LIVE.hold.track === i);
+    E.mod = liveMod; E.repeat = S.repeat; E.skip = i => !!(LIVE.hold && LIVE.hold.track === i);
   }
   if (E.c.state !== 'running') E.c.resume();
   return E;
@@ -692,7 +635,7 @@ function dirty(sync) {
 function setProject(np) {
   if (S.playing) stop();
   P = np; S.sel = 0; S.edit = 0;
-  if (E) { E.P = P; E.pat = 0; E.queued = null; E.sync(); E.applyMaster(E.c.currentTime, 0, 0); }
+  if (E) { E.P = P; E.loop = 0; E.queued = null; E.sync(); E.applyMaster(E.c.currentTime); }
   dirty(); updHinge(); render();
 }
 const selT = () => P.tracks[S.sel];
@@ -701,14 +644,13 @@ const selT = () => P.tracks[S.sel];
 let timer = 0, nextT = 0, gStep = 0;
 function play() {
   const e = ensureAudio(); if (!e) return;
-  e.pat = S.edit; e.queued = null; gStep = 0; nextT = e.c.currentTime + 0.06; queue.length = 0;
+  e.loop = S.edit; e.queued = null; gStep = 0; nextT = e.c.currentTime + 0.06; queue.length = 0;
   S.playing = true; clearInterval(timer); timer = setInterval(tick, 25); tick(); updHinge();
 }
 function tick() {
   const sd = E.sd();
   while (nextT < E.c.currentTime + 0.12) {
-    const t = nextT + (gStep % 2 ? P.swing * 0.33 * sd : 0);
-    E.scheduleStep(gStep, t);
+    E.scheduleStep(gStep, nextT + (gStep % 2 ? P.swing * 0.33 * sd : 0));
     queue.push(Object.assign({}, E.cur));
     if (queue.length > 64) queue.shift();
     nextT += sd; gStep++; S.steps++;
@@ -725,32 +667,26 @@ function nowStep() {
   for (const q of queue) if (q.t <= now) cur = q;
   return cur;
 }
-// quantize a live hit to the closest scheduled step (for recording)
-function recStep() {
-  if (!E || !queue.length) return null;
-  const now = E.c.currentTime; let best = queue[0];
-  for (const q of queue) if (Math.abs(q.t - now) < Math.abs(best.t - now)) best = q;
-  return best;
+
+// ───────────────────────── loops ─────────────────────────
+function selLoop(k) {
+  S.edit = k;
+  if (E) { if (S.playing) E.queued = k; else E.loop = k; }
+  render();
 }
-function onStep(g, pat, s) {
-  if (!S.rec) return;
-  // tilt automation recording
-  if (LIVE.mode === 'fx' && (LIVE.latch || LIVE.touch)) {
-    for (const [key, val] of [[LIVE.xT, LIVE.x], [LIVE.yT, LIVE.y]]) {
-      if (key === 'off') continue;
-      if (MKEYS.includes(key)) { (P.mauto[key] = P.mauto[key] || fixLane([]))[pat][s] = +val.toFixed(3); continue; }
-      P.tracks.forEach((tr, i) => { if (LIVE.scope === 'all' || i === S.sel) (tr.auto[key] = tr.auto[key] || fixLane([]))[pat][s] = +val.toFixed(3); });
-    }
-    dirty();
-  }
-  // tilt PLAY legato recording: every step the gate is held gets the current note
-  const h = LIVE.hold;
-  if (h && h.legato) {
-    const tr = P.tracks[h.track]; if (!tr || tr.type === 'drum') return;
-    if (h.last) h.last[2] = 1;
-    tr.pats[pat][s] = h.last = [h.note, 0, 1];
-    dirty();
-  }
+function dupLoop() {
+  if (P.len >= MAXL) return toast('64 MAX');
+  for (const t of P.tracks) t.pats.splice(S.edit + 1, 0, JSON.parse(JSON.stringify(t.pats[S.edit])));
+  P.len++; dirty(); selLoop(S.edit + 1);
+  const el = document.querySelector('.lp.on'); if (el) el.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+}
+function clrLoop() { for (const t of P.tracks) t.pats[S.edit] = emptyLoop(); dirty(); render(); }
+function delLoop() {
+  if (P.len <= 1) return clrLoop();
+  for (const t of P.tracks) t.pats.splice(S.edit, 1);
+  P.len--; S.edit = Math.min(S.edit, P.len - 1);
+  if (E && E.loop >= P.len) E.loop = 0;
+  dirty(); render();
 }
 
 // ───────────────────────── tilt input ─────────────────────────
@@ -763,40 +699,16 @@ window.addEventListener('deviceorientation', e => {
   TILT.g = g; TILT.b = b;
   if (TILT.on && !TILT.cal) { TILT.cg = g; TILT.cb = b; TILT.cal = true; }
 });
-function enableTilt() {
+function toggleTilt() {
+  if (TILT.on) { TILT.on = false; LIVE.x = LIVE.y = 0; if (E) E.applyMaster(E.c.currentTime); updHinge(); return; }
   const DOE = window.DeviceOrientationEvent;
-  const go = () => { TILT.on = true; TILT.cal = false; render(); };
-  if (DOE && typeof DOE.requestPermission === 'function') {
-    DOE.requestPermission().then(r => r === 'granted' ? go() : toast('DENIED')).catch(() => toast('DENIED'));
-  } else go();
+  const go = () => { TILT.on = true; TILT.cal = false; if (!TILT.have) toast('NO SENSOR'); updHinge(); };
+  if (DOE && typeof DOE.requestPermission === 'function') DOE.requestPermission().then(r => r === 'granted' ? go() : toast('DENIED')).catch(() => toast('DENIED'));
+  else go();
 }
-function liveMod(i, key) {
-  if (LIVE.mode !== 'fx' || !(LIVE.latch || LIVE.touch)) return null;
-  if (MKEYS.includes(key) ? i !== -1 : (i === -1 || (LIVE.scope === 'sel' && i !== S.sel))) return null;
-  let d = 0, hit = false;
-  if (LIVE.xT === key) { d += LIVE.x; hit = true; }
-  if (LIVE.yT === key) { d += LIVE.y; hit = true; }
-  return hit ? d : null;
-}
-function liveNote(x) {
-  const sc = SCALES[LIVE.scale][1], tr = selT(), n = sc.length * 2;
-  const idx = Math.min(n - 1, Math.floor((x + 1) / 2 * n));
-  const base = (tr && tr.type === 'bass' ? 36 : 48) + LIVE.oct * 12 + LIVE.root;
-  return base + Math.floor(idx / sc.length) * 12 + sc[idx % sc.length];
-}
-function gateOn() {
-  const tr = selT(); if (!tr || tr.type === 'drum' || LIVE.hold) return;
-  const e = ensureAudio(); if (!e) return;
-  const note = liveNote(LIVE.x), h = { track: S.sel, note, v: e.noteOn(S.sel, note, 0.85), legato: S.rec && S.playing, last: null };
-  if (h.legato) { const q = recStep(); if (q) { tr.pats[q.pat][q.s] = h.last = [note, 0, 1]; dirty(); } }
-  LIVE.hold = h;
-}
-function gateOff() {
-  const h = LIVE.hold; if (!h) return;
-  h.v.release(E.c.currentTime);
-  if (h.last) h.last[2] = 0;
-  LIVE.hold = null;
-  if (S.tab === 'seq') render();
+function liveMod(i) {
+  if (!(TILT.on || S.demo)) return null;
+  return i === -1 ? LIVE.x : i === S.sel ? LIVE.y : null;
 }
 
 // ───────────────────────── files / export ─────────────────────────
@@ -819,25 +731,28 @@ function deliver(blob, name) {
     if (k === 'x') { closeModal(); if (url) URL.revokeObjectURL(url); }
   });
 }
-const fileJSON = obj => new Blob([JSON.stringify(obj)], { type: 'application/json' });
-function exportProject() { deliver(fileJSON({ fmt: 'tiltseq', kind: 'project', v: 1, project: P }), safeName(P.name) + '.tseq.json'); }
-function exportTrack() { const t = selT(); deliver(fileJSON({ fmt: 'tiltseq', kind: 'track', v: 1, bpm: P.bpm, track: t }), safeName(P.name + '-' + t.name) + '.track.json'); }
-function addTracks(list) {
+function exportProject() { deliver(new Blob([JSON.stringify({ fmt: 'tiltseq', kind: 'project', v: 2, project: P })], { type: 'application/json' }), safeName(P.name) + '.tseq.json'); }
+// merge: append another project's tracks, fitted to this project's loop count
+function mergeTracks(list) {
   let n = 0;
-  for (const t of list) { if (P.tracks.length >= MAXT) break; P.tracks.push(fixTrack(t)); n++; }
-  dirty(true); render();
+  for (const t of list) {
+    if (P.tracks.length >= MAXT) break;
+    while (t.pats.length < P.len) t.pats.push(emptyLoop());
+    t.pats.length = P.len; P.tracks.push(t); n++;
+  }
   if (n < list.length) toast('16 MAX');
+  dirty(true); render();
 }
 function importText(txt) {
   let o; try { o = JSON.parse(txt); } catch (_) { return toast('BAD FILE'); }
-  if (o && o.kind === 'track' && o.track) return addTracks([o.track]);
-  const proj = o && o.kind === 'project' ? o.project : (o && Array.isArray(o.tracks) ? o : null);
-  if (!proj) return toast('BAD FILE');
-  modal(`<h3>${(proj.name || '').toString().slice(0, 16).toUpperCase()} &middot; ${(proj.tracks || []).length} TRK</h3>
+  const src = o && o.kind === 'project' ? o.project : (o && Array.isArray(o.tracks) ? o : null);
+  if (!src) return toast('BAD FILE');
+  const np = fixProject(src);
+  modal(`<h3>${np.name} &middot; ${np.tracks.length} TRK &middot; ${np.len} LOOP</h3>
     <div class="row"><button class="b w on" data-m="r">REPLACE</button><button class="b w" data-m="m">MERGE</button><button class="b" data-m="x">CANCEL</button></div>`, k => {
     closeModal();
-    if (k === 'r') { setProject(fixProject(proj)); }
-    if (k === 'm') addTracks(proj.tracks || []);
+    if (k === 'r') setProject(np);
+    if (k === 'm') mergeTracks(np.tracks);
   });
 }
 $('#fileIn').addEventListener('change', e => {
@@ -847,10 +762,8 @@ $('#fileIn').addEventListener('change', e => {
 
 async function renderAudio(loops) {
   if (!OAC) throw new Error('OFFLINE AUDIO UNSUPPORTED');
-  const sr = 44100, sd = 60 / P.bpm / 4, bars = (P.mode === 'song' ? P.song.length : 1) * loops, steps = bars * 16;
-  const len = 0.05 + steps * sd + 2.5;
+  const sr = 44100, sd = 60 / P.bpm / 4, steps = P.len * 16 * loops, len = 0.05 + steps * sd + 2.5;
   const oc = new OAC(2, Math.ceil(len * sr), sr), eng = new Engine(oc, P, true);
-  eng.pat = S.edit;
   for (let g = 0; g < steps; g++) eng.scheduleStep(g, 0.05 + g * sd + (g % 2 ? P.swing * 0.33 * sd : 0));
   eng.releaseAll(0.05 + steps * sd);
   const buf = await oc.startRendering();
@@ -859,6 +772,7 @@ async function renderAudio(loops) {
   if (peak > 0.98) for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch), k = 0.98 / peak; for (let i = 0; i < d.length; i++) d[i] *= k; }
   return buf;
 }
+
 function toWav(buf) {
   const ch = buf.numberOfChannels, n = buf.length, sr = buf.sampleRate, dv = new DataView(new ArrayBuffer(44 + n * ch * 2));
   const ws = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
@@ -900,22 +814,6 @@ async function toMp3(buf, prog) {
   const e = enc.flush(); if (e.length) out.push(new Uint8Array(e));
   return new Blob(out, { type: 'audio/mpeg' });
 }
-async function doRender() {
-  const fmt = S.fmt, loops = S.loops;
-  modal(`<h3>RENDERING</h3><div class="lbl" id="rprog"></div>`, () => {});
-  try {
-    const buf = await renderAudio(loops);
-    const prog = $('#rprog');
-    let blob;
-    if (fmt === 'mp3') blob = await toMp3(buf, f => { if (prog) prog.textContent = Math.round(f * 100) + '%'; });
-    else blob = toWav(buf);
-    deliver(blob, safeName(P.name) + '.' + fmt);
-  } catch (err) {
-    modal(`<h3>${String(err.message || err).toUpperCase()}</h3><button class="b" data-m="x">OK</button>`, () => closeModal());
-  }
-}
-
-// local save slots
 const slots = () => { try { return JSON.parse(LS.get('tiltseq.slots') || '{}') || {}; } catch (_) { return {}; } };
 function saveSlot() {
   const sl = slots(); sl[P.name] = { t: Date.now(), p: P };
@@ -936,7 +834,6 @@ function closeModal() { $('#modal').hidden = true; $('#modal').innerHTML = ''; }
 let CTL = [];
 function ctl(get, set, fmt, def) { CTL.push({ get, set, fmt: fmt || (v => Math.round(v * 99)), def }); return CTL.length - 1; }
 const knob = (label, id) => `<div class="knob" data-k="${id}"><div class="kd"><i></i></div><b>${label}</b><span></span></div>`;
-const bar = (label, id, ctr) => `<div class="bar${ctr ? ' ctr' : ''}" data-k="${id}"><i></i><span>${label}</span><em></em></div>`;
 function paintCtl(el) {
   const c = CTL[el.dataset.k]; if (!c) return;
   const v = c.get();
@@ -972,72 +869,62 @@ document.addEventListener('pointermove', moveDrag);
 const endDrag = () => { if (drag) { drag.el.classList.remove('act'); drag = null; } };
 document.addEventListener('pointerup', endDrag); document.addEventListener('pointercancel', endDrag);
 
+
+async function doRender() {
+  const fmt = S.fmt;
+  modal(`<h3>RENDERING</h3><div class="lbl" id="rprog"></div>`, () => {});
+  try {
+    const buf = await renderAudio(S.loops), prog = $('#rprog');
+    const blob = fmt === 'mp3' ? await toMp3(buf, f => { if (prog) prog.textContent = Math.round(f * 100) + '%'; }) : toWav(buf);
+    deliver(blob, safeName(P.name) + '.' + fmt);
+  } catch (err) {
+    modal(`<h3>${String(err.message || err).toUpperCase()}</h3><button class="b" data-m="x">OK</button>`, () => closeModal());
+  }
+}
+
 // ───────────────────────── hinge (transport) ─────────────────────────
 function updHinge() {
   $('#bPlay').innerHTML = S.playing ? '&#9632;' : '&#9654;';
   $('#bPlay').classList.toggle('on', S.playing);
-  $('#bRec').classList.toggle('on', S.rec);
-  document.querySelectorAll('.pat').forEach(b => {
-    const k = +b.dataset.pat;
-    b.classList.toggle('on', k === S.edit);
-    b.classList.toggle('q', !!(E && S.playing && E.queued === k && k !== S.edit));
-  });
+  $('#bTilt').classList.toggle('on', TILT.on);
   paintCtl($('#bpm'));
 }
 $('#bPlay').onclick = () => S.playing ? stop() : play();
-$('#bRec').onclick = () => { S.rec = !S.rec; updHinge(); };
+$('#bTilt').onclick = toggleTilt;
 const bpmCtl = { get: () => (P.bpm - 50) / 170, set: v => { P.bpm = Math.round(50 + v * 170); if (E) E.sync(); dirty(); }, fmt: () => String(P.bpm) };
 $('#bpm').dataset.k = 'bpm';
 const bump = d => { P.bpm = clamp(P.bpm + d, 50, 220); if (E) E.sync(); dirty(); updHinge(); };
 $('#bBpmD').onclick = () => bump(-1); $('#bBpmU').onclick = () => bump(1);
-document.querySelectorAll('.pat').forEach(b => b.onclick = () => {
-  const k = +b.dataset.pat; S.edit = k;
-  if (E) { if (S.playing && P.mode === 'pat') E.queued = k; else if (!S.playing) E.pat = k; }
-  updHinge(); render();
-});
 $('#tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { S.tab = b.dataset.tab; render(); } };
 
 // ───────────────────────── panels ─────────────────────────
-function chipsHTML(filter) {
-  return `<div id="chips">${P.tracks.map((t, i) => (!filter || filter(t)) ? `<button class="chip ${t.type}${i === S.sel ? ' sel' : ''}${t.mute ? ' m' : ''}" data-a="sel" data-i="${i}">${t.name}</button>` : '').join('')}
-    ${P.tracks.length < MAXT ? '<button class="chip" data-a="add">+ ADD</button>' : ''}</div>`;
-}
 function render() {
-  CTL = []; CTL.bpm = bpmCtl; CTL['bpm'] = bpmCtl;
+  CTL = []; CTL.bpm = bpmCtl;
   if (S.sel >= P.tracks.length) S.sel = Math.max(0, P.tracks.length - 1);
+  if (S.edit >= P.len) S.edit = P.len - 1;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
-  const R = { seq: rSeq, drum: rDrum, synth: rSynth, tilt: rTilt, mix: rMix, song: rSong, file: rFile }[S.tab];
-  panel.innerHTML = R();
-  phCells = [...panel.querySelectorAll('.c[data-s]')];
+  panel.innerHTML = { loop: rLoop, sound: rSound, file: rFile }[S.tab]();
+  phCells = [...panel.querySelectorAll('.c[data-s]')]; lastPh = -2; lastPl = -2;
   paintAll(); updHinge();
 }
-
 function cellCls(tr, v, s) {
   if (tr.type === 'drum') return v === 2 ? 'v2' : v ? 'v1' : (s % 4 === 0 ? 'q4' : '');
   return v ? ('n' + (tr.type === 'synth' ? ' cy' : '')) : (s % 4 === 0 ? 'q4' : '');
 }
-function rSeq() {
+const defOct = tr => tr.type === 'bass' ? 1 : 3;
+function rLoop() {
+  let h = `<div class="row nw"><div id="loops">${Array.from({ length: P.len }, (_, k) => `<button class="lp${k === S.edit ? ' on' : ''}" data-a="loop" data-i="${k}">${k + 1}</button>`).join('')}</div>
+    <button class="b on" data-a="dup">DUP</button><button class="b" data-a="lclr">CLR</button><button class="b" data-a="ldel">DEL</button><button class="b${S.repeat ? ' on' : ''}" data-a="rep">&#10227;</button></div>`;
+  h += `<div class="grid ga">`;
+  P.tracks.forEach((t, i) => {
+    h += `<div class="nm ${t.type}${i === S.sel ? ' sel' : ''}${t.mute ? ' m' : ''}" data-a="sel" data-i="${i}">${t.name}</div>`;
+    t.pats[S.edit].forEach((v, s) => { h += `<div class="c ${cellCls(t, v, s)}" data-s="${s}" data-t="${i}" data-p="cell"></div>`; });
+  });
+  h += `</div>${P.tracks.length < MAXT ? '<button class="b" style="width:100%;margin-top:4px" data-a="add">+</button>' : ''}`;
   const tr = selT();
-  let h = chipsHTML() + `<div class="row nw"><button class="b${S.view === 'all' ? ' on' : ''}" data-a="view" data-v="all">ALL</button><button class="b${S.view === 'one' ? ' on' : ''}" data-a="view" data-v="one">EDIT</button>
-    <span class="sp"></span><button class="b" data-a="copy">CPY</button><button class="b${S.clip ? '' : ' dis'}" data-a="paste">PST</button><button class="b" data-a="clear">CLR</button></div>`;
-  if (!tr) return h;
-  if (S.view === 'all') {
-    h += `<div class="grid ga" id="ga">`;
-    P.tracks.forEach((t, i) => {
-      h += `<div class="nm${i === S.sel ? ' sel' : ''}" data-a="sel" data-i="${i}">${t.name}</div>`;
-      t.pats[S.edit].forEach((v, s) => { h += `<div class="c ${cellCls(t, v, s)}" data-s="${s}" data-t="${i}" data-p="cell"></div>`; });
-    });
-    return h + `</div>`;
-  }
-  h += `<div class="row nw"><span class="lbl">${tr.type === 'drum' ? 'DRUM ' + VLAB[tr.voice] : tr.type === 'bass' ? 'S2K BASS' : 'SYNTH'}</span><span class="sp"></span>
-    <button class="b" data-a="ren">NAME</button><button class="b" data-a="dup">DUP</button><button class="b${tr.mute ? ' on' : ''}" data-a="mute" data-i="${S.sel}">M</button><button class="b${tr.solo ? ' on' : ''}" data-a="solo" data-i="${S.sel}">S</button><button class="b" data-a="del">DEL</button></div>`;
-  const pat = tr.pats[S.edit];
-  if (tr.type === 'drum') {
-    h += `<div class="grid g8" id="g8">${pat.map((v, s) => `<div class="c ${cellCls(tr, v, s)}" data-s="${s}" data-l="${s + 1}" data-t="${S.sel}" data-p="cell"></div>`).join('')}</div>`;
-    return h + ``;
-  }
-  const o = S.rollOct[tr.id] != null ? S.rollOct[tr.id] : (tr.type === 'bass' ? 1 : 3), lo = (o + 1) * 12, hi = lo + 11;
-  h += `<div class="row nw"><button class="b" data-a="oct" data-d="-1">OCT -</button><span class="lbl">C${o} - B${o}</span><button class="b" data-a="oct" data-d="1">OCT +</button></div><div class="grid roll">`;
+  if (!tr || tr.type === 'drum') return h;
+  const o = S.rollOct[tr.id] != null ? S.rollOct[tr.id] : defOct(tr), lo = (o + 1) * 12, hi = lo + 11, pat = tr.pats[S.edit];
+  h += `<div class="row nw" style="margin-top:6px"><span class="lbl" style="color:var(--${tr.type === 'bass' ? 'am' : 'cy'})">${tr.name}</span><span class="sp"></span><button class="b" data-a="oct" data-d="-1">-</button><span class="lbl">C${o}</span><button class="b" data-a="oct" data-d="1">+</button></div><div class="grid roll">`;
   for (let n = hi; n >= lo; n--) {
     h += `<div class="k${isBlack(n) ? ' blk' : ''}">${noteName(n)}</div>`;
     for (let s = 0; s < 16; s++) {
@@ -1048,116 +935,58 @@ function rSeq() {
       h += `<div class="c ${cls}" data-s="${s}" data-n="${n}" data-p="roll"></div>`;
     }
   }
-  h += `<div class="k fx">ACC</div>` + pat.map((v, s) => `<div class="c${v && v[1] ? ' acc' : ''}" data-s="${s}" data-f="1" data-p="flag"></div>`).join('');
-  h += `<div class="k fx">SLD</div>` + pat.map((v, s) => `<div class="c${v && v[2] ? ' sld' : ''}" data-s="${s}" data-f="2" data-p="flag"></div>`).join('');
+  h += `<div class="k fx">TIE</div>` + pat.map((v, s) => `<div class="c${v && v[2] ? ' sld' : ''}" data-s="${s}" data-p="tie"></div>`).join('');
   return h + '</div>';
-}
-function drumPick() {
-  if (selT() && selT().type === 'drum') return selT();
-  const i = P.tracks.findIndex(t => t.type === 'drum'); if (i >= 0) S.sel = i;
-  return i >= 0 ? P.tracks[i] : null;
-}
-function rDrum() {
-  const tr = drumPick();
-  if (!tr) return chipsHTML() + '<button class="b on" data-a="addv" data-v="kick">+ DRUM</button>';
-  let h = chipsHTML(t => t.type === 'drum');
-  h += `<div class="hd">VOICE</div><div class="mgrid" style="grid-template-columns:repeat(4,1fr)">${DRUM_VOICES.map(v => `<button class="b${tr.voice === v ? ' on' : ''}" data-a="voice" data-v="${v}">${VLAB[v]}</button>`).join('')}</div>`;
-  h += `<div class="hd">SHAPE</div><div class="knobs k6">${PDEF.drum.map(([k, l]) => knob(l, pTrack(tr, k))).join('')}
-    ${knob('VOL', ctl(() => tr.vol, v => { tr.vol = v; dirty(true); }, null, .75))}${knob('PAN', ctl(() => (tr.pan + 1) / 2, v => { tr.pan = Math.abs(v - .5) < .03 ? 0 : v * 2 - 1; dirty(true); }, v => { const p = Math.round((v * 2 - 1) * 9); return p ? (p < 0 ? 'L' + -p : 'R' + p) : 'C'; }, .5))}</div>`;
-  h += `<div class="hd">STEPS</div><div class="grid g8">${tr.pats[S.edit].map((v, s) => `<div class="c ${cellCls(tr, v, s)}" style="height:30px" data-s="${s}" data-l="${s + 1}" data-t="${S.sel}" data-p="cell"></div>`).join('')}</div>`;
-  const drums = P.tracks.map((t, i) => [t, i]).filter(([t]) => t.type === 'drum').slice(0, 8);
-  h += `<div class="hd">PADS</div><div class="pads">${drums.map(([t, i]) => `<div class="pad${i === S.sel ? ' sel' : ''}" data-p="pad" data-i="${i}">${t.name}</div>`).join('')}</div>`;
-  return h + ``;
-}
-function melPick() {
-  if (selT() && selT().type !== 'drum') return selT();
-  const i = P.tracks.findIndex(t => t.type !== 'drum'); if (i >= 0) S.sel = i;
-  return i >= 0 ? P.tracks[i] : null;
 }
 function kbHTML() {
   const lo = (S.kbOct + 1) * 12, whites = [];
   for (let n = lo; n < lo + 25; n++) if (!isBlack(n)) whites.push(n);
   const w = 100 / whites.length;
-  let h = '<div class="kb" id="kb">';
+  let h = '<div class="kb">';
   whites.forEach((n, i) => h += `<div class="kw" data-p="key" data-n="${n}" style="left:${i * w}%;width:${w}%">${n % 12 === 0 ? noteName(n) : ''}</div>`);
   whites.forEach((n, i) => { if (isBlack(n + 1) && n + 1 < lo + 25) h += `<div class="kbk" data-p="key" data-n="${n + 1}" style="left:${(i + 0.68) * w}%;width:${w * 0.64}%"></div>`; });
   return h + '</div>';
 }
-function rSynth() {
-  const tr = melPick();
-  if (!tr) return chipsHTML() + '<div class="row"><button class="b on" data-a="addv" data-v="bass">+ S2K</button><button class="b" data-a="addv" data-v="synth">+ SYNTH</button></div>';
-  let h = chipsHTML(t => t.type !== 'drum');
-  h += `<div class="row nw"><button class="b w${tr.type === 'bass' ? ' on' : ''}" data-a="eng" data-v="bass">S2K BASS</button><button class="b w${tr.type === 'synth' ? ' on' : ''}" data-a="eng" data-v="synth">SYNTH</button></div>`;
-  h += `<div class="row">${Object.keys(PRESETS[tr.type]).map(k => `<button class="b" data-a="pre" data-v="${k}">${k}</button>`).join('')}</div>`;
-  h += `<div class="knobs">${PDEF[tr.type].map(([k, l]) => knob(l, pTrack(tr, k))).join('')}</div>`;
-  h += `<div class="row nw" style="margin-top:6px"><button class="b" data-a="kbo" data-d="-1">OCT -</button><span class="lbl">C${S.kbOct}</span><button class="b" data-a="kbo" data-d="1">OCT +</button></div>` + kbHTML();
-  return h;
-}
-function rTilt() {
-  const tr = selT(), fx = LIVE.mode === 'fx';
-  let h = `<div class="row nw"><button class="b w${TILT.on ? ' on' : ''}" data-a="tilt">TILT</button><button class="b" data-a="cal">0</button>
-    <button class="b${fx ? ' on' : ''}" data-a="lmode" data-v="fx">FX</button><button class="b${!fx ? ' on' : ''}" data-a="lmode" data-v="play">PLAY</button></div>`;
-  h += `<div id="xy" data-p="xy">${fx ? '' : laneHTML()}<div class="ax" style="right:4px;top:50%">${fx ? tlab(LIVE.xT) : 'NOTE'} &gt;</div><div class="ax" style="left:50%;top:3px;margin-left:4px">^ ${fx ? tlab(LIVE.yT) : 'CUTOFF'}</div><div class="dot"></div></div>`;
-  if (fx) {
-    h += `<div class="row nw"><span class="lbl">X</span><button class="b w" data-a="tgt" data-v="xT">${tlab(LIVE.xT)}</button><span class="lbl">Y</span><button class="b w" data-a="tgt" data-v="yT">${tlab(LIVE.yT)}</button></div>
-      <div class="row nw"><button class="b w${LIVE.scope === 'sel' ? ' on' : ''}" data-a="scope" data-v="sel">${tr ? tr.name : 'SEL'}</button><button class="b w${LIVE.scope === 'all' ? ' on' : ''}" data-a="scope" data-v="all">ALL</button>
-      <button class="b w${LIVE.latch ? ' on' : ''}" data-a="latch">LATCH</button><button class="b" data-a="clra">CLR</button></div>`;
+function rSound() {
+  const tr = selT();
+  let h = `<div id="chips">${P.tracks.map((t, i) => `<button class="chip ${t.type}${i === S.sel ? ' sel' : ''}${t.mute ? ' m' : ''}" data-a="sel" data-i="${i}">${t.name}</button>`).join('')}</div>`;
+  if (!tr) return h + '<button class="b" style="width:100%" data-a="add">+</button>';
+  const vol = knob('VOL', ctl(() => tr.vol, v => { tr.vol = v; dirty(true); }, null, .75));
+  if (tr.type === 'drum') {
+    h += `<div class="mgrid" style="grid-template-columns:repeat(4,1fr)">${DRUM_VOICES.map(v => `<button class="b${tr.voice === v ? ' on' : ''}" data-a="voice" data-v="${v}">${VLAB[v]}</button>`).join('')}</div>`;
+    h += `<div class="knobs k5" style="margin-top:8px">${PDEF.drum.map(([k, l]) => knob(l, pTrack(tr, k))).join('')}${vol}</div>`;
+    h += `<button class="b" style="width:100%;height:56px;margin:6px 0" data-p="hit">${tr.name}</button>`;
   } else {
-    h += `<div class="row nw"><button class="b w" data-a="scale">${SCALES[LIVE.scale][0]}</button><button class="b" data-a="root">${NN[LIVE.root]}</button><button class="b" data-a="loct" data-d="-1">-</button><span class="lbl">OCT ${LIVE.oct}</span><button class="b" data-a="loct" data-d="1">+</button></div>
-      <button class="b w" style="width:100%;height:48px" data-p="gate">HOLD</button>`;
+    h += `<div class="row nw"><button class="b w${tr.type === 'bass' ? ' on' : ''}" data-a="eng" data-v="bass">S2K BASS</button><button class="b w${tr.type === 'synth' ? ' on' : ''}" data-a="eng" data-v="synth">SYNTH</button></div>`;
+    h += `<div class="row">${Object.keys(PRESETS[tr.type]).map(k => `<button class="b" data-a="pre" data-v="${k}">${k}</button>`).join('')}</div>`;
+    h += `<div class="knobs">${PDEF[tr.type].map(([k, l]) => knob(l, pTrack(tr, k))).join('')}${vol}</div>`;
+    h += `<div class="row nw" style="margin-top:6px"><button class="b" data-a="kbo" data-d="-1">-</button><span class="lbl">C${S.kbOct}</span><button class="b" data-a="kbo" data-d="1">+</button></div>` + kbHTML();
   }
-  return chipsHTML() + h;
-}
-function laneHTML() {
-  const sc = SCALES[LIVE.scale][1], n = sc.length * 2;
-  let h = '';
-  for (let i = 0; i < n; i++) h += `<div class="lane" style="left:${i / n * 100}%">${sc[i % sc.length] === 0 ? `<span>${NN[LIVE.root]}</span>` : ''}</div>`;
-  return h;
-}
-function rMix() {
-  let h = '<div class="hd">TRACKS</div>';
-  P.tracks.forEach((t, i) => {
-    h += `<div class="mixr"><span class="nm" style="color:var(--${t.type === 'drum' ? 'gr' : t.type === 'bass' ? 'am' : 'cy'})">${t.name}</span>
-      <button class="b${t.mute ? ' on' : ''}" data-a="mute" data-i="${i}">M</button><button class="b${t.solo ? ' on' : ''}" data-a="solo" data-i="${i}">S</button>
-      ${bar('VOL', ctl(() => t.vol, v => { t.vol = v; dirty(true); }))}
-      ${bar('PAN', ctl(() => (t.pan + 1) / 2, v => { t.pan = Math.abs(v - .5) < .04 ? 0 : v * 2 - 1; dirty(true); }, v => { const p = Math.round((v * 2 - 1) * 9); return p ? (p < 0 ? 'L' + -p : 'R' + p) : 'C'; }), true)}
-      ${bar('DLY', ctl(() => t.send, v => { t.send = v; dirty(true); }))}</div>`;
-  });
-  const M = P.master, m = (k, l, f) => bar(l, ctl(() => M[k], v => { M[k] = v; dirty(); if (E) E.applyMaster(E.c.currentTime, 0, 0); }, f));
-  h += `<div class="hd">MASTER</div>
-    <div class="row nw">${m('vol', 'VOL')}${bar('SWING', ctl(() => P.swing, v => { P.swing = v; dirty(); }))}</div>
-    <div class="row nw">${m('cut', 'DJ FILT', v => v < .48 ? 'LP' + Math.round((.48 - v) * 200) : v > .52 ? 'HP' + Math.round((v - .52) * 200) : 'OFF')}${m('res', 'RES')}</div>
-    <div class="row nw">${bar('DLY TIME', ctl(() => (M.dtime - 1) / 7, v => { M.dtime = 1 + Math.round(v * 7); dirty(true); }, () => M.dtime + '/16'))}${m('dfb', 'FEEDBK')}${m('dmix', 'RETURN')}</div>`;
-  return h;
-}
-function rSong() {
-  const song = P.mode === 'song';
-  let h = `<div class="row nw"><button class="b w${!song ? ' on' : ''}" data-a="mode" data-v="pat">LOOP</button><button class="b w${song ? ' on' : ''}" data-a="mode" data-v="song">SONG</button></div>`;
-  h += `<div class="hd">CHAIN ${P.song.length}</div><div class="slots" id="slots">${P.song.map((p, i) => `<div class="slot" data-a="slot" data-i="${i}"><small>${i + 1}</small>${PL[p]}</div>`).join('')}</div>`;
-  h += `<div class="row" style="margin-top:6px"><button class="b" data-a="sadd">+ BAR</button><button class="b" data-a="sdel">- BAR</button><button class="b" data-a="sdup">DOUBLE</button><button class="b" data-a="sclr">RESET</button></div>`;
-  h += `<div class="hd">COPY</div><div class="row nw">${[0,1,2,3].map(k => `<button class="b${S.from === k ? ' on' : ''}" data-a="from" data-v="${k}">${PL[k]}</button>`).join('')}
-    <span class="sp"></span>${[0,1,2,3].map(k => `<button class="b${S.to === k ? ' on' : ''}" data-a="to" data-v="${k}">${PL[k]}</button>`).join('')}</div>
-    <button class="b w" style="width:100%" data-a="pcopy">${PL[S.from]} &gt; ${PL[S.to]}</button>`;
-  return h;
+  return h + `<div class="row nw" style="margin-top:6px"><button class="b w${tr.mute ? ' on' : ''}" data-a="mute">MUTE</button><button class="b w" data-a="del">DEL</button></div>`;
 }
 function rFile() {
   const sl = slots(), names = Object.keys(sl).sort((a, b) => sl[b].t - sl[a].t);
   let h = `<div class="row nw"><button class="b w" data-a="pname">${P.name}</button><button class="b" data-a="new">NEW</button></div>`;
-  h += `<div class="hd">RENDER</div><div class="row nw">${[1,2,4,8].map(n => `<button class="b${S.loops === n ? ' on' : ''}" data-a="loops" data-v="${n}">x${n}</button>`).join('')}
+  h += `<div class="hd">RENDER</div><div class="row nw">${[1,2,4].map(n => `<button class="b${S.loops === n ? ' on' : ''}" data-a="loops" data-v="${n}">x${n}</button>`).join('')}
     <span class="sp"></span><button class="b${S.fmt === 'wav' ? ' on' : ''}" data-a="fmt" data-v="wav">WAV</button><button class="b${S.fmt === 'mp3' ? ' on' : ''}" data-a="fmt" data-v="mp3">MP3</button></div>
     <button class="b on" style="width:100%;height:40px" data-a="render">&#9654; ${S.fmt.toUpperCase()}</button>`;
-  h += `<div class="hd">FILES</div><div class="row nw"><button class="b w" data-a="xproj">EXPORT</button><button class="b w" data-a="xtrk">TRACK</button><button class="b w" data-a="imp">IMPORT</button></div>`;
+  h += `<div class="hd">FILES</div><div class="row nw"><button class="b w" data-a="xproj">EXPORT</button><button class="b w" data-a="imp">IMPORT</button></div>`;
   h += `<div class="hd">DEMOS</div><div class="mgrid">${DEMOS.map((d, i) => `<button class="b" data-a="demo" data-i="${i}">${d().name}</button>`).join('')}</div>`;
-  h += `<div class="hd">LOCAL</div><button class="b w" style="width:100%;margin-bottom:4px" data-a="ssave">SAVE</button><div class="list">${names.length ? names.map(n => `<div class="li"><span>${n}</span><button class="b" data-a="sload" data-v="${encodeURIComponent(n)}">LOAD</button><button class="b" data-a="skill" data-v="${encodeURIComponent(n)}">DEL</button></div>`).join('') : ''}</div>`;
-  h += `<div class="lbl" style="margin-top:8px;font-size:13px">MP3: LAME / LGPL</div>`;
-  return h;
+  h += `<div class="hd">LOCAL</div><button class="b w" style="width:100%;margin-bottom:4px" data-a="ssave">SAVE</button><div class="list">${names.map(n => `<div class="li"><span>${n}</span><button class="b" data-a="sload" data-v="${encodeURIComponent(n)}">LOAD</button><button class="b" data-a="skill" data-v="${encodeURIComponent(n)}">DEL</button></div>`).join('')}</div>`;
+  return h + `<div class="lbl" style="margin-top:8px;font-size:13px">MP3: LAME / LGPL</div>`;
 }
 
 // ───────────────────────── panel input ─────────────────────────
 function audition(tr, n) {
   const e = ensureAudio(); if (!e || S.playing) return;
   const i = P.tracks.indexOf(tr);
-  if (tr.type === 'drum') e.hit(i); else { const h = e.noteOn(i, n, 0.75); h.release(e.c.currentTime + 0.25); }
+  if (tr.type === 'drum') e.hit(i); else e.noteOn(i, n, 0.75).release(e.c.currentTime + 0.25);
+}
+// note a melodic step gets when switched on from the loop grid
+function lastNote(tr) {
+  if (S.last[tr.id] != null) return S.last[tr.id];
+  for (const p of tr.pats) for (const v of p) if (v) return v[0];
+  return (defOct(tr) + 1) * 12;
 }
 let paint = null;
 panel.addEventListener('pointerdown', e => {
@@ -1165,140 +994,91 @@ panel.addEventListener('pointerdown', e => {
   const kind = el.dataset.p;
   if (kind === 'cell') {
     e.preventDefault();
-    const tr = P.tracks[+el.dataset.t], s = +el.dataset.s;
-    if (tr.type !== 'drum') { S.sel = +el.dataset.t; S.view = 'one'; render(); return; }
-    const v = (tr.pats[S.edit][s] + 1) % 3;
-    tr.pats[S.edit][s] = v; el.className = 'c ' + cellCls(tr, v, s);
+    const i = +el.dataset.t, tr = P.tracks[i], s = +el.dataset.s, pat = tr.pats[S.edit];
+    if (tr.type !== 'drum') {
+      if (pat[s]) pat[s] = 0; else { pat[s] = [lastNote(tr), 0, 0]; audition(tr, pat[s][0]); }
+      S.sel = i; dirty(); render(); return;
+    }
+    const v = pat[s] ? 0 : 1;
+    pat[s] = v; el.className = 'c ' + cellCls(tr, v, s);
     if (v) audition(tr);
-    paint = { v: v ? 1 : 0, t: tr, done: new Set([el]) };
+    paint = { v, t: tr, done: new Set([el]) };
     dirty();
   } else if (kind === 'roll') {
     const tr = selT(), s = +el.dataset.s, n = +el.dataset.n, pat = tr.pats[S.edit], cur = pat[s];
-    if (cur && cur[0] === n) pat[s] = 0; else { pat[s] = [n, cur ? cur[1] : 0, cur ? cur[2] : 0]; audition(tr, n); }
+    if (cur && cur[0] === n) pat[s] = 0; else { pat[s] = [n, cur ? cur[1] : 0, cur ? cur[2] : 0]; S.last[tr.id] = n; audition(tr, n); }
     dirty(); render();
-  } else if (kind === 'flag') {
-    const pat = selT().pats[S.edit], s = +el.dataset.s, f = +el.dataset.f;
-    if (pat[s]) { pat[s][f] = pat[s][f] ? 0 : 1; dirty(); render(); } else toast('NO NOTE');
-  } else if (kind === 'pad') {
-    e.preventDefault();
-    const i = +el.dataset.i, e2 = ensureAudio(); if (!e2) return;
-    e2.hit(i);
-    el.classList.add('hit'); setTimeout(() => el.classList.remove('hit'), 90);
-    if (S.rec && S.playing) { const q = recStep(); if (q) { P.tracks[i].pats[q.pat][q.s] = 1; dirty(); } }
-    if (S.sel !== i) { S.sel = i; setTimeout(render, 100); }
+  } else if (kind === 'tie') {
+    const pat = selT().pats[S.edit], s = +el.dataset.s;
+    if (pat[s]) { pat[s][2] = pat[s][2] ? 0 : 1; dirty(); render(); }
+  } else if (kind === 'hit') {
+    e.preventDefault(); const e2 = ensureAudio(); if (e2) e2.hit(S.sel);
   } else if (kind === 'key') {
     e.preventDefault();
     const tr = selT(), e2 = ensureAudio(); if (!e2 || !tr || tr.type === 'drum') return;
     const n = +el.dataset.n;
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
-    if (LIVE.hold) gateOff();
-    LIVE.hold = { track: S.sel, note: n, v: e2.noteOn(S.sel, n, 0.85), legato: false, el };
-    el.classList.add('on');
-    if (S.rec && S.playing) { const q = recStep(); if (q) { tr.pats[q.pat][q.s] = [n, 0, 0]; dirty(); } }
-  } else if (kind === 'xy') {
-    e.preventDefault();
-    try { el.setPointerCapture(e.pointerId); } catch (_) {}
-    LIVE.touch = true; xyMove(e, el);
-    if (LIVE.mode === 'play') gateOn();
-  } else if (kind === 'gate') {
-    e.preventDefault(); LIVE.gateBtn = true; gateOn();
+    keyUp();
+    LIVE.hold = { track: S.sel, v: e2.noteOn(S.sel, n, 0.85), el };
+    S.last[tr.id] = n; el.classList.add('on');
   }
 });
-function xyMove(e, el) {
-  const r = el.getBoundingClientRect();
-  LIVE.tx = clamp((e.clientX - r.left) / r.width * 2 - 1, -1, 1);
-  LIVE.ty = clamp(1 - (e.clientY - r.top) / r.height * 2, -1, 1);
-  LIVE.x = LIVE.tx; LIVE.y = LIVE.ty;
-}
 panel.addEventListener('pointermove', e => {
-  if (LIVE.touch) { const xy = $('#xy'); if (xy) xyMove(e, xy); }
-  if (paint) {
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    if (el && el.dataset && el.dataset.p === 'cell' && !paint.done.has(el) && P.tracks[+el.dataset.t] === paint.t) {
-      paint.done.add(el); const s = +el.dataset.s; paint.t.pats[S.edit][s] = paint.v; el.className = 'c ' + cellCls(paint.t, paint.v, s);
-    }
+  if (!paint) return;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if (el && el.dataset && el.dataset.p === 'cell' && !paint.done.has(el) && P.tracks[+el.dataset.t] === paint.t) {
+    paint.done.add(el); const s = +el.dataset.s; paint.t.pats[S.edit][s] = paint.v; el.className = 'c ' + cellCls(paint.t, paint.v, s);
   }
 });
-function panelUp() {
-  paint = null;
-  if (LIVE.touch) { LIVE.touch = false; if (LIVE.mode === 'play' && !LIVE.gateBtn) gateOff(); }
-  if (LIVE.gateBtn) { LIVE.gateBtn = false; gateOff(); }
-  const h = LIVE.hold;
-  if (h && h.el) { h.el.classList.remove('on'); h.v.release(E.c.currentTime); LIVE.hold = null; }
+function keyUp() {
+  const h = LIVE.hold; if (!h) return;
+  h.el.classList.remove('on'); h.v.release(E.c.currentTime); LIVE.hold = null;
 }
+const panelUp = () => { paint = null; keyUp(); };
 document.addEventListener('pointerup', panelUp); document.addEventListener('pointercancel', panelUp);
 
 panel.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, i = +el.dataset.i, v = el.dataset.v, tr = selT();
   const A = {
-    sel() { S.sel = i; if (S.tab === 'seq' && S.view === 'all' && P.tracks[i].type !== 'drum') S.view = 'one'; },
+    sel() { S.sel = i; },
+    loop() { selLoop(i); return true; },
+    dup() { dupLoop(); return true; },
+    lclr() { clrLoop(); return true; },
+    ldel() { delLoop(); return true; },
+    rep() { S.repeat = !S.repeat; if (E) E.repeat = S.repeat; },
     add() {
-      modal(`<h3>ADD TRACK</h3><div class="mgrid">${DRUM_VOICES.map(d => `<button class="b" data-m="${d}">${VLAB[d]}</button>`).join('')}<button class="b on" data-m="bass">S2K BASS</button><button class="b" data-m="synth">SYNTH</button></div><div class="row" style="margin-top:6px"><button class="b w" data-m="x">CANCEL</button></div>`, k => {
+      modal(`<div class="mgrid">${DRUM_VOICES.map(d => `<button class="b" data-m="${d}">${VLAB[d]}</button>`).join('')}<button class="b on" data-m="bass">S2K BASS</button><button class="b" data-m="synth">SYNTH</button></div><div class="row" style="margin-top:6px"><button class="b w" data-m="x">CANCEL</button></div>`, k => {
         closeModal(); if (k !== 'x') newTrack(k);
       });
       return true;
     },
-    addv() { newTrack(v); return true; },
-    view() { S.view = v; },
-    copy() { S.clip = JSON.parse(JSON.stringify(tr.pats[S.edit])); S.clipType = tr.type; },
-    paste() {
-      if (!S.clip) return;
-      if ((S.clipType === 'drum') !== (tr.type === 'drum')) return toast('TYPE'), true;
-      tr.pats[S.edit] = JSON.parse(JSON.stringify(S.clip)); dirty();
-    },
-    clear() { tr.pats[S.edit] = Array(16).fill(0); for (const k in tr.auto) tr.auto[k][S.edit] = Array(16).fill(null); dirty(); },
-    ren() { const n = prompt('Track name', tr.name); if (n) { tr.name = n.slice(0, 10).toUpperCase(); dirty(); } },
-    dup() { if (P.tracks.length >= MAXT) return toast('16 MAX'), true; const c = fixTrack(JSON.parse(JSON.stringify(tr))); P.tracks.splice(S.sel + 1, 0, c); S.sel++; dirty(true); },
-    del() { if (!confirm('Delete track ' + tr.name + '?')) return true; P.tracks.splice(S.sel, 1); S.sel = Math.max(0, S.sel - 1); dirty(true); },
-    mute() { P.tracks[i].mute = !P.tracks[i].mute; dirty(true); },
-    solo() { P.tracks[i].solo = !P.tracks[i].solo; dirty(true); },
-    oct() { const o = S.rollOct[tr.id] != null ? S.rollOct[tr.id] : (tr.type === 'bass' ? 1 : 3); S.rollOct[tr.id] = clamp(o + +el.dataset.d, 0, 7); },
+    oct() { const o = S.rollOct[tr.id] != null ? S.rollOct[tr.id] : defOct(tr); S.rollOct[tr.id] = clamp(o + +el.dataset.d, 0, 7); },
     voice() { const old = tr.voice; tr.voice = v; if (tr.name === VLAB[old]) tr.name = VLAB[v]; Object.assign(tr.p, { tune:.5, decay:.5, tone:.5, snap:.5 }, DRUM_DEF[v] || {}); audition(tr); dirty(); },
     eng() { if (tr.type === v) return true; const p = {}; PDEF[v].forEach(([k, , d]) => p[k] = d); tr.type = v; tr.p = p; if (/^(S2K|SYNTH)$/.test(tr.name)) tr.name = v === 'bass' ? 'S2K' : 'SYNTH'; dirty(true); },
     pre() { Object.assign(tr.p, PRESETS[tr.type][v]); dirty(); audition(tr, tr.type === 'bass' ? 36 : 48); },
     kbo() { S.kbOct = clamp(S.kbOct + +el.dataset.d, 0, 6); },
-    tilt() { enableTilt(); return true; },
-    cal() { TILT.cal = false; LIVE.x = LIVE.y = 0; return true; },
-    lmode() { LIVE.mode = v; },
-    tgt() { const cur = TGT.findIndex(x => x[0] === LIVE[v]); LIVE[v] = TGT[(cur + 1) % TGT.length][0]; },
-    scope() { LIVE.scope = v; },
-    latch() { LIVE.latch = !LIVE.latch; },
-    clra() { if (tr) tr.auto = {}; P.mauto = {}; dirty(); },
-    scale() { LIVE.scale = (LIVE.scale + 1) % SCALES.length; },
-    root() { LIVE.root = (LIVE.root + 1) % 12; },
-    loct() { LIVE.oct = clamp(LIVE.oct + +el.dataset.d, -2, 2); },
-    mode() { P.mode = v; dirty(); },
-    slot() { P.song[i] = (P.song[i] + 1) % 4; dirty(); },
-    sadd() { if (P.song.length < 64) P.song.push(P.song[P.song.length - 1] || 0); dirty(); },
-    sdel() { if (P.song.length > 1) P.song.pop(); dirty(); },
-    sdup() { P.song = P.song.concat(P.song).slice(0, 64); dirty(); },
-    sclr() { P.song = [0]; dirty(); },
-    from() { S.from = +v; }, to() { S.to = +v; },
-    pcopy() {
-      if (S.from === S.to) return toast('SAME'), true;
-      for (const t of P.tracks) { t.pats[S.to] = JSON.parse(JSON.stringify(t.pats[S.from])); for (const k in t.auto) t.auto[k][S.to] = t.auto[k][S.from].slice(); }
-      for (const k in P.mauto) P.mauto[k][S.to] = P.mauto[k][S.from].slice();
-      dirty();
-    },
-    pname() { const n = prompt('Project name', P.name); if (n) { P.name = n.slice(0, 16).toUpperCase(); dirty(); } },
-    new() { if (confirm('Start a new empty project? (Unsaved changes are lost)')) { setProject(mkProject()); } return true; },
+    mute() { tr.mute = !tr.mute; dirty(true); },
+    del() { if (!confirm('Delete ' + tr.name + '?')) return true; P.tracks.splice(S.sel, 1); S.sel = Math.max(0, S.sel - 1); dirty(true); },
+    pname() { const n = prompt('Name', P.name); if (n) { P.name = n.slice(0, 16).toUpperCase(); dirty(); } },
+    new() { if (confirm('New project?')) setProject(mkProject()); return true; },
     loops() { S.loops = +v; }, fmt() { S.fmt = v; },
     render() { doRender(); return true; },
-    xproj() { exportProject(); return true; }, xtrk() { if (tr) exportTrack(); return true; },
+    xproj() { exportProject(); return true; },
     imp() { $('#fileIn').click(); return true; },
     demo() { setProject(demoProject(i)); return true; },
     ssave() { saveSlot(); return true; },
-    sload() { const s = slots()[decodeURIComponent(v)]; if (s) { setProject(fixProject(s.p)); } return true; },
+    sload() { const s = slots()[decodeURIComponent(v)]; if (s) setProject(fixProject(s.p)); return true; },
     skill() { const sl = slots(); delete sl[decodeURIComponent(v)]; LS.set('tiltseq.slots', JSON.stringify(sl)); },
   };
   if (A[a] && !A[a]()) render();
 });
 function newTrack(k) {
   if (P.tracks.length >= MAXT) return toast('16 MAX');
-  const t = DRUM_VOICES.includes(k) ? mkTrack('drum', k) : mkTrack(k);
+  const t = DRUM_VOICES.includes(k) ? mkTrack('drum', k, null, P.len) : mkTrack(k, null, null, P.len);
   P.tracks.push(t); S.sel = P.tracks.length - 1; dirty(true); render();
 }
+
 
 // ───────────────────────── top screen (LCD) ─────────────────────────
 const FONT = {
@@ -1338,16 +1118,14 @@ window.addEventListener('resize', fitTop);
 const scopeBuf = new Uint8Array(256);
 function drawTop() {
   g2.fillStyle = COL.bg; g2.fillRect(0, 0, TW, TH);
-  const cur = nowStep(), playPat = cur ? cur.pat : S.edit, ps = cur ? cur.s : -1;
-  // header
+  const cur = nowStep(), L = cur ? cur.loop : S.edit, ps = cur ? cur.s : -1;
   txt(P.name.slice(0, 16), 2, 2, COL.ink);
   txt('BPM ' + P.bpm, 82, 2, COL.am);
-  txt(P.mode === 'song' ? `SNG ${cur ? (Math.floor(cur.g / 16) % P.song.length) + 1 : 1}/${P.song.length}` : 'PAT ' + PL[playPat], 122, 2, COL.cy);
-  txt('ED ' + PL[S.edit], 168, 2, COL.mid);
-  if (S.rec) { g2.fillStyle = COL.rd; g2.fillRect(196, 2, 5, 5); }
+  txt(`LOOP ${L + 1}/${P.len}`, 122, 2, COL.cy);
+  if (S.repeat) txt('*', 178, 2, COL.cy);
   txt(S.playing ? '>' : '#', 206, 2, S.playing ? COL.ink : COL.mid);
   g2.fillStyle = COL.mid; g2.fillRect(0, 9, TW, 1);
-  // track overview (shows the playing pattern)
+  // track overview of the playing loop
   const sy = TH - 34, sh = 30, n = Math.max(1, P.tracks.length), rh = Math.max(5, Math.min(12, Math.floor((sy - 16) / n))), y0 = 12, x0 = 28, cw = Math.floor((TW - 30) / 16);
   if (ps >= 0) { g2.fillStyle = COL.dim; g2.fillRect(x0 + ps * cw - 1, y0 - 1, cw, n * rh + 1); }
   P.tracks.forEach((t, i) => {
@@ -1355,13 +1133,13 @@ function drawTop() {
     if (rh >= 6) txt(t.name.slice(0, 6), 1, y + Math.max(0, (rh - 7) >> 1), i === S.sel ? COL.wh : (t.mute ? COL.mid : col));
     else { g2.fillStyle = col; g2.fillRect(2, y, 20, rh - 2); }
     if (i === S.sel) { g2.fillStyle = COL.or; g2.fillRect(25, y, 1, rh - 2); }
-    const pat = t.pats[playPat];
+    const pat = t.pats[L] || [];
     for (let s = 0; s < 16; s++) {
       const v = pat[s], x = x0 + s * cw;
       if (v) {
         g2.fillStyle = t.mute ? COL.mid : (v === 2 || (v && v[1])) ? COL.wh : col;
         g2.fillRect(x, y, cw - 2, rh - 2);
-        if (Array.isArray(v) && v[2]) { g2.fillRect(x + cw - 2, y + (rh >> 1) - 1, 2, 2); }
+        if (Array.isArray(v) && v[2]) g2.fillRect(x + cw - 2, y + (rh >> 1) - 1, 2, 2);
         if (s === ps && !t.mute) { g2.fillStyle = COL.or; g2.fillRect(x, y + rh - 3, cw - 2, 1); }
       } else { g2.fillStyle = s % 4 === 0 ? COL.mid : COL.dim; g2.fillRect(x + (cw >> 1) - 1, y + (rh >> 1) - 1, 1, 1); }
     }
@@ -1373,50 +1151,31 @@ function drawTop() {
     E.an.getByteTimeDomainData(scopeBuf);
     g2.fillStyle = COL.ink;
     for (let x = 0; x < sw; x++) { const v = scopeBuf[Math.floor(x / sw * 256)]; g2.fillRect(3 + x, sy + 1 + Math.round((255 - v) / 255 * (sh - 3)), 1, 1); }
-  } else txt('TAP PLAY', (sw >> 1) - 14, sy + 12, COL.mid);
+  }
   // tilt box
-  const bx = TW - 50, bw = 48;
+  const bx = TW - 50, bw = 48, on = TILT.on || S.demo;
   g2.fillStyle = COL.dim; g2.fillRect(bx, sy, bw, sh); g2.fillStyle = COL.bg; g2.fillRect(bx + 1, sy + 1, bw - 2, sh - 2);
   g2.fillStyle = COL.mid; g2.fillRect(bx + bw / 2, sy + 1, 1, sh - 2); g2.fillRect(bx + 1, sy + sh / 2, bw - 2, 1);
-  const act = LIVE.touch || LIVE.latch || LIVE.hold;
-  g2.fillStyle = act ? COL.or : COL.ink;
+  g2.fillStyle = on ? COL.or : COL.mid;
   g2.fillRect(Math.round(bx + bw / 2 + LIVE.x * (bw / 2 - 3)) - 1, Math.round(sy + sh / 2 - LIVE.y * (sh / 2 - 3)) - 1, 3, 3);
-  txt(LIVE.mode === 'fx' ? 'FX' : 'PLY', bx + 2, sy + 2, COL.mid);
-  if (TILT.on) txt('T', bx + bw - 5, sy + 2, COL.am);
 }
 
 // ───────────────────────── frame loop ─────────────────────────
-let phCells = [], lastPh = -2, demoT = 0, demoI = 0;
+let phCells = [], lastPh = -2, lastPl = -2, demoT = 0, demoI = 0, wasLive = false;
 function frame(ts) {
-  // tilt -> live XY (touch on the pad wins)
   if (S.demo) { LIVE.x = Math.sin(ts / 1300) * 0.7; LIVE.y = Math.sin(ts / 2100) * 0.5; }
-  else if (!LIVE.touch && TILT.on && TILT.have) {
+  else if (TILT.on && TILT.have) {
     const tx = clamp((TILT.g - TILT.cg) / 30, -1, 1), ty = clamp(-(TILT.b - TILT.cb) / 30, -1, 1);
     LIVE.x += (tx - LIVE.x) * 0.35; LIVE.y += (ty - LIVE.y) * 0.35;
   }
-  // live performance updates
-  if (E) {
-    const now = E.c.currentTime, h = LIVE.hold;
-    if (h && !h.el && LIVE.mode === 'play') {
-      const n = liveNote(LIVE.x);
-      if (n !== h.note) { h.note = n; h.v.glide(n, now); }
-      h.v.cut(clamp(h.v.p.cutoff + LIVE.y * 0.5), now);
-    }
-    if (LIVE.mode === 'fx' && (LIVE.touch || LIVE.latch || frame.wasLive)) { const c = E.cur || { pat: 0, s: 0 }; E.applyMaster(now, c.pat, c.s); }
-    frame.wasLive = LIVE.mode === 'fx' && (LIVE.touch || LIVE.latch);
-  }
-  // playhead on the bottom grid
-  const cur = nowStep(), ph = cur && cur.pat === S.edit ? cur.s : -1;
+  const live = TILT.on || S.demo;
+  if (E && (live || wasLive)) E.applyMaster(E.c.currentTime);
+  wasLive = live;
+  // playhead + playing-loop marker
+  const cur = nowStep(), ph = cur && cur.loop === S.edit ? cur.s : -1, pl = cur ? cur.loop : -1;
   if (ph !== lastPh) { for (const c of phCells) c.classList.toggle('ph', +c.dataset.s === ph); lastPh = ph; }
-  if (S.tab === 'song' && cur) {
-    const bi = Math.floor(cur.g / 16) % P.song.length;
-    document.querySelectorAll('.slot').forEach((el, i) => el.classList.toggle('ph', P.mode === 'song' && i === bi));
-  }
-  if (cur && S.playing && E && E.queued == null && document.querySelector('.pat.q')) updHinge();
-  const dot = document.querySelector('#xy .dot');
-  if (dot) { dot.style.left = ((LIVE.x + 1) / 2 * 100) + '%'; dot.style.top = ((1 - LIVE.y) / 2 * 100) + '%'; dot.classList.toggle('on', !!(LIVE.touch || LIVE.latch || LIVE.hold)); }
-  $('#tiltLed').textContent = TILT.on ? (TILT.have ? `TILT ${LIVE.x >= 0 ? '+' : ''}${LIVE.x.toFixed(2)} ${LIVE.y >= 0 ? '+' : ''}${LIVE.y.toFixed(2)}` : 'TILT --') : '';
-  // demo: cycle through the sample songs
+  if (pl !== lastPl) { document.querySelectorAll('.lp').forEach((b, k) => b.classList.toggle('pl', k === pl)); lastPl = pl; }
+  $('#tiltLed').textContent = TILT.on ? (TILT.have ? `${LIVE.x >= 0 ? '+' : ''}${LIVE.x.toFixed(2)} ${LIVE.y >= 0 ? '+' : ''}${LIVE.y.toFixed(2)}` : '--') : '';
   if (S.demo) {
     if (!demoT) demoT = ts;
     if (ts - demoT > 9000) { demoT = ts; demoI = (demoI + 1) % DEMOS.length; setProject(demoProject(demoI)); play(); }
@@ -1434,17 +1193,16 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) LS.se
 window.__tiltseq = {
   setDemo(on) {
     S.demo = !!on;
-    if (on) { demoI = 0; demoT = 0; setProject(demoProject(0)); LIVE.latch = true; LIVE.mode = 'fx'; play(); }
-    else { stop(); LIVE.latch = false; }
+    if (on) { demoI = 0; demoT = 0; setProject(demoProject(0)); play(); } else stop();
   },
   startDemo() { this.setDemo(true); },
   stopDemo() { this.setDemo(false); },
-  state() { return { score: S.steps, mode: P.name, playing: S.playing, tracks: P.tracks.length, audio: E ? E.c.state : 'none' }; },
+  state() { return { score: S.steps, mode: P.name, playing: S.playing, loops: P.len, tracks: P.tracks.length, audio: E ? E.c.state : 'none' }; },
   render: async loops => { const b = await renderAudio(loops || 1); let pk = 0, ss = 0; const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) { pk = Math.max(pk, Math.abs(d[i])); ss += d[i] * d[i]; } return { len: b.length, sr: b.sampleRate, peak: pk, rms: Math.sqrt(ss / d.length) }; },
   wav: async () => toWav(await renderAudio(1)).size,
   mp3: async () => (await toMp3(await renderAudio(1), () => {})).size,
   load: i => setProject(demoProject(i)),
-  importText, get P() { return P; }, S, LIVE, DEMOS,
+  importText, get P() { return P; }, S, DEMOS,
 };
 if (new URLSearchParams(location.search).get('demo') === '1') window.__tiltseq.setDemo(true);
 
