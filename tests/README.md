@@ -29,7 +29,7 @@ distinct **mode** the demo passes through (e.g. nonogram board sizes).
 | nonogram | `__nonogram` | auto-solves, cycling through board sizes | `progress` |
 | beer-pour | `__beer` | holds the tap and releases at the fill line, cycling glass shapes | `score` |
 | tilt-boy | `__tilt` | feeds virtual tilt to steer each marble, cycling dance, musicpin, maze, munch and pin | `score` |
-| tilt-seq | `__tiltseq` | plays the sample songs loop by loop with a virtual tilt sweeping the DJ filter, cycling songs | `score` (steps sequenced) |
+| tilt-seq | `__tiltseq` | plays the demo beats with a virtual tilt sweeping the filter, cycling demos | `score` (steps sequenced) |
 
 ## Other suites
 

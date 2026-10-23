@@ -1,7 +1,7 @@
 {
   "name": "Tilt Seq",
   "short_name": "Tilt Seq",
-  "description": "A pocket two-screen step sequencer: drum maker, S2K sampler bass, synth, tilt Kaoss pad and WAV/MP3 export.",
+  "description": "A pocket music toy: tap a pentatonic grid, duplicate loops, swap kits, tilt to sweep the filter.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
