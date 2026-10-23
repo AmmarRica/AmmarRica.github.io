@@ -36,16 +36,13 @@
     #top { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 
     #hinge { background: var(--shell2); border: 2px solid var(--edge); display: flex; gap: 4px; padding: 5px 6px; align-items: stretch; }
-    #hinge .b { height: 34px; min-width: 30px; padding: 0 6px; }
+    #hinge .b { height: 38px; min-width: 40px; padding: 0 8px; }
+    #bKit { min-width: 70px !important; color: var(--or); }
     #hinge .sp { flex: 1; }
-    #bpm { min-width: 54px !important; touch-action: none; }
 
     #botshell { flex: 1; min-height: 0; background: var(--shell); border: 2px solid var(--edge); border-top: 0; border-radius: 0 0 12px 12px;
       padding: 6px 10px 10px; display: flex; flex-direction: column; }
     #bot { flex: 1; min-height: 0; background: var(--panel); outline: 2px solid #000; display: flex; flex-direction: column; }
-    #tabs { display: flex; border-bottom: 2px solid #000; background: #101114; }
-    #tabs button { flex: 1; padding: 7px 0 6px; color: var(--dim); font-size: 17px; border-right: 1px solid #000; }
-    #tabs button.on { color: #000; background: var(--or); }
     #panel { flex: 1; min-height: 0; overflow: hidden; padding: 6px; display: flex; flex-direction: column; gap: 5px; }
     .fill { flex: 1 1 0; min-height: 0; }
     #bot { position: relative; }
@@ -66,54 +63,25 @@
     .sp { flex: 1; }
 
     .pick { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .pick.drum { color: var(--gr); } .pick.bass { color: var(--am); } .pick.synth { color: var(--cy); }
     .b.pl { box-shadow: inset 0 -4px 0 var(--gr); }
 
     /* step grids */
     .grid { display: grid; gap: 2px; touch-action: none; align-content: start; }
-    .ga { grid-template-columns: 42px repeat(16, 1fr); }
-    .ga .nm { font-size: 14px; color: var(--dim); overflow: hidden; white-space: nowrap; padding: 0 2px 0 6px; background: #101114; display: flex; align-items: center; min-height: 0; }
-    .ga .nm.sel { color: var(--or); background: #000; }
+    .ga { grid-template-columns: 14px repeat(16, 1fr); }
+    .sw { min-height: 0; background: var(--sc); opacity: .7; }
+    .ga.mel { --sc: var(--cy); } .ga.bass { --sc: var(--am); } .ga.drum { --sc: var(--gr); }
+    .ga .c.on { background: var(--sc); }
+    .c.on.ph { filter: brightness(1.3); }
     .c { min-height: 0; background: var(--cell); }
     .c.q4 { background: #2e333a; }
-    .c.v1 { background: var(--gr); } .c.v2 { background: var(--gr); box-shadow: inset 0 0 0 4px #4f8a35; }
-    .c.n { background: var(--am); } .c.n.cy { background: var(--cy); }
     .c.ph { outline: 2px solid var(--or); outline-offset: -2px; }
-    .c.v1.ph, .c.v2.ph, .c.n.ph { filter: brightness(1.25); }
-    .roll { grid-template-columns: 34px repeat(16, 1fr); gap: 1px; }
-    .roll .k { font-size: 13px; padding: 0 2px; display: flex; align-items: center; min-height: 0; overflow: hidden; background: #2c3036; color: var(--txt); }
-    .roll .k.blk { background: #121316; color: var(--dim); }
-    .roll .c.blk { background: #1c1f24; }
-    .roll .c.up { box-shadow: inset 0 3px 0 var(--am); } .roll .c.dnn { box-shadow: inset 0 -3px 0 var(--am); }
-    .roll .k.fx { background: #101114; color: var(--dim); }
 
-    .ga .nm.drum { box-shadow: inset 3px 0 0 var(--gr); } .ga .nm.bass { box-shadow: inset 3px 0 0 var(--am); } .ga .nm.synth { box-shadow: inset 3px 0 0 var(--cy); }
-    .ga .nm.m { text-decoration: line-through; }
-    .roll .c.sld { background: var(--cy); }
     /* knobs */
-    .knobs.k5 { grid-template-columns: repeat(5, 1fr); }
-    .knobs.k8 { grid-template-columns: repeat(8, 1fr); gap: 2px 0; }
-    .k8 .kd { width: 30px; height: 30px; } .k8 .kd i { height: 10px; transform-origin: 2px 10px; }
-    .k8 .knob b { font-size: 12px; letter-spacing: 0; } .k8 .knob span { font-size: 13px; }
-    .knobs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 2px; touch-action: none; flex: none; }
-    .knob { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 0; touch-action: none; }
-    .kd { width: 38px; height: 38px; border-radius: 50%; background: #2c3036; border: 2px solid #000; box-shadow: inset 2px 2px 0 #4b5058, inset -2px -2px 0 #1b1d21; position: relative; }
-    .kd i { position: absolute; left: 50%; top: 3px; width: 4px; height: 14px; margin-left: -2px; background: var(--or); transform-origin: 2px 15px; }
-    .knob b { font-weight: 400; font-size: 14px; color: var(--dim); letter-spacing: 1px; }
-    .knob span { font-size: 15px; color: var(--txt); min-height: 14px; }
-    .knob.act .kd { border-color: var(--or); }
-
-
-    .kb { position: relative; min-height: 56px; touch-action: none; }
-    .kw, .kbk { position: absolute; top: 0; border: 2px solid #000; }
-    .kw { height: 100%; background: #2c3036; color: var(--dim); font-size: 13px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 3px; }
-    .kbk { height: 60%; background: #0b0c0e; z-index: 2; }
-    .kw.on, .kbk.on { background: var(--or); }
 
 
 
-    .li { display: flex; align-items: center; gap: 4px; background: var(--cell); padding: 3px 3px 3px 6px; border: 2px solid #000; }
-    .li > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
 
     #modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
     #modal[hidden] { display: none; }
@@ -131,15 +99,14 @@
   </div>
   <div id="hinge">
     <button class="b" id="bPlay" aria-label="Play">&#9654;</button>
-    <button class="b" id="bBpmD">-</button>
-    <button class="b" id="bpm" title="Drag to change tempo">120</button>
-    <button class="b" id="bBpmU">+</button>
+    <button class="b" id="bSpeed" aria-label="Speed"></button>
+    <button class="b" id="bKit" aria-label="Sound"></button>
     <span class="sp"></span>
     <button class="b" id="bTilt">TILT</button>
+    <button class="b" id="bMenu" aria-label="Menu">&#9776;</button>
   </div>
   <div id="botshell">
     <div id="bot">
-      <div id="tabs"><button data-tab="loop">LOOP</button><button data-tab="sound">SOUND</button><button data-tab="file">FILE</button></div>
       <div id="panel"></div>
       <div id="status"></div>
     </div>
@@ -153,21 +120,10 @@
 const $ = s => document.querySelector(s);
 const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
 const midiHz = n => 440 * Math.pow(2, (n - 69) / 12);
-const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const noteName = n => NN[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1);
-const isBlack = n => [1,3,6,8,10].includes(((n % 12) + 12) % 12);
-function parseNote(s) {
-  const m = /^([A-G])(#?)(-?\d)$/i.exec(s);
-  if (!m) throw new Error('bad note ' + s);
-  return { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[m[1].toUpperCase()] + (m[2] ? 1 : 0) + (+m[3] + 1) * 12;
-}
-const MAXT = 16;
 
 // ───────────────────────── instrument parameters ─────────────────────────
 // Every instrument parameter is stored normalized 0..1 and mapped at play time,
 // so tilt / automation can offset any of them the same way.
-const DRUM_VOICES = ['kick','snare','clap','chat','ohat','tom','rim','cow'];
-const VLAB = { kick:'KICK', snare:'SNARE', clap:'CLAP', chat:'C.HAT', ohat:'O.HAT', tom:'TOM', rim:'RIM', cow:'COWBL' };
 const PDEF = {
   drum: [['tune','TUNE',.5],['decay','DECAY',.5],['tone','TONE',.5],['snap','SNAP',.5]],
   bass: [['cutoff','CUTOFF',.4],['reso','RESO',.3],['env','ENV',.45],['decay','DECAY',.35],
@@ -182,10 +138,9 @@ const DRUM_DEF = {
   kick: { tune:.35, decay:.45, tone:.4, snap:.3 }, snare: { tune:.5, decay:.4, tone:.55, snap:.6 },
   chat: { tune:.5, decay:.25, tone:.5, snap:.3 },  ohat: { tune:.5, decay:.45, tone:.5, snap:.3 },
 };
-const WAVES = ['sawtooth','square','triangle','sine'], WLAB = ['SAW','SQR','TRI','SIN'];
-const OCT2 = [-12, 0, 7, 12], OLAB = ['-12','0','+7','+12'];
+const WAVES = ['sawtooth','square','triangle','sine'];
+const OCT2 = [-12, 0, 7, 12];
 const q4 = v => Math.min(3, Math.floor(v * 4));
-const fmtP = (k, v) => k === 'wave' || k === 'wave2' ? WLAB[q4(v)] : k === 'oct2' ? OLAB[q4(v)] : String(Math.round(v * 99));
 
 const PRESETS = {
   bass: {
@@ -202,136 +157,101 @@ const PRESETS = {
   },
 };
 
-// ───────────────────────── project model ─────────────────────────
-// A project is a row of loops (1 bar of 16 steps each) played in order.
-// Every track holds one pattern per loop, so tracks.pats.length === P.len.
-let UID = 1;
-const MAXL = 64;
+// ───────────────────────── toy model ─────────────────────────
+// Fixed rows, all tuned to C minor pentatonic so any tap sounds good:
+// 6 melody notes, 3 bass notes, 4 drums. Each row is its own track.
+const ROWS = [
+  ...[72, 70, 67, 65, 63, 60].map(note => ({ kind: 'mel', note })),
+  ...[43, 39, 36].map(note => ({ kind: 'bass', note })),
+  ...['chat', 'clap', 'snare', 'kick'].map(voice => ({ kind: 'drum', voice })),
+];
+const SECTIONS = [['mel', 0, 6], ['bass', 6, 9], ['drum', 9, 13]];
+const MAXL = 32, SPEEDS = [90, 120, 150];
 const emptyLoop = () => Array(16).fill(0);
-function mkTrack(type, voice, name, n) {
-  const p = {};
-  PDEF[type].forEach(([k, , d]) => p[k] = d);
-  if (type === 'drum') Object.assign(p, DRUM_DEF[voice] || {});
-  return { id: UID++, name: name || (type === 'drum' ? VLAB[voice] : type === 'bass' ? 'S2K' : 'SYNTH'), type,
-    voice: type === 'drum' ? voice : null, p, vol: .75, pan: 0, mute: false, send: 0, pats: Array.from({ length: n || 1 }, emptyLoop) };
+const synthP = over => { const p = {}; PDEF.synth.forEach(([k, , d]) => p[k] = d); return Object.assign(p, over); };
+const bassP = over => { const p = {}; PDEF.bass.forEach(([k, , d]) => p[k] = d); return Object.assign(p, over); };
+// A kit swaps every row's sound at once.
+const KITS = [
+  { name: 'S2K',
+    mel: { type: 'synth', p: synthP({ wave: .3, wave2: 0, oct2: .6, detune: .2, mix2: .5, cutoff: .55, reso: .25, env: .35, decay: .25, sustain: .2, release: .25, gate: .5, drive: .1 }), vol: .5, send: .35 },
+    bass: { type: 'bass', p: bassP(PRESETS.bass['S2K SUB']), vol: .85 },
+    drum: { kick: { tune: .4, decay: .35, tone: .45, snap: .45 }, snare: { tune: .66, decay: .32, tone: .6, snap: .75 }, clap: {}, chat: { decay: .2 } } },
+  { name: 'ACID',
+    mel: { type: 'synth', p: synthP(PRESETS.synth.LEAD), vol: .45, send: .4 },
+    bass: { type: 'synth', p: synthP(PRESETS.synth.ACID), vol: .7 },
+    drum: { kick: { tune: .38, decay: .4, tone: .5, snap: .4 }, snare: {}, clap: {}, chat: { decay: .15 } } },
+  { name: '8BIT',
+    mel: { type: 'synth', p: synthP({ wave: .3, wave2: .3, oct2: .6, detune: 0, mix2: .3, cutoff: .8, reso: 0, env: .1, decay: .2, sustain: .5, release: .05, gate: .45, drive: 0 }), vol: .55, send: .2 },
+    bass: { type: 'synth', p: synthP({ wave: .55, wave2: .3, oct2: .3, detune: 0, mix2: .4, cutoff: .7, reso: 0, env: .1, decay: .2, sustain: .7, release: .05, gate: .6, drive: 0 }), vol: .75 },
+    drum: { kick: { tune: .55, decay: .2, tone: .7, snap: .1 }, snare: { tune: .7, decay: .2, tone: .8, snap: .9 }, clap: { decay: .2 }, chat: { decay: .08, tone: .8 } } },
+  { name: 'DREAM',
+    mel: { type: 'synth', p: synthP({ wave: .55, wave2: 0, oct2: .6, detune: .5, mix2: .4, cutoff: .5, reso: .15, env: .25, decay: .5, attack: .25, sustain: .6, release: .55, gate: .8, drive: 0 }), vol: .45, send: .6 },
+    bass: { type: 'bass', p: bassP(PRESETS.bass['S2K WARM']), vol: .8 },
+    drum: { kick: { tune: .3, decay: .55, tone: .3, snap: .1 }, snare: { tune: .4, decay: .5, tone: .3, snap: .4 }, clap: { decay: .6 }, chat: { decay: .3, tone: .3 } } },
+];
+let UID = 1;
+// Build the 13 row-tracks for a kit, keeping existing step data.
+function kitTracks(k, pats, len) {
+  const K = KITS[k];
+  return ROWS.map((r, i) => {
+    const src = pats && pats[i], t = { id: UID++, type: 'drum', voice: null, p: {}, vol: .7, pan: 0, mute: false, send: 0, note: r.note,
+      pats: Array.from({ length: len }, (_, l) => emptyLoop().map((z, s) => src && src[l] && src[l][s] ? (r.kind === 'drum' ? 1 : [r.note, 0, 0]) : 0)) };
+    if (r.kind === 'drum') {
+      t.voice = r.voice; PDEF.drum.forEach(([key, , d]) => t.p[key] = d);
+      Object.assign(t.p, DRUM_DEF[r.voice] || {}, K.drum[r.voice] || {});
+      t.vol = r.voice === 'chat' ? .5 : r.voice === 'kick' ? .85 : .65;
+    } else {
+      const S = K[r.kind];
+      t.type = S.type; t.p = Object.assign({}, S.p); t.vol = S.vol; t.send = S.send || 0;
+    }
+    return t;
+  });
 }
-function mkProject() {
-  return { fmt: 'tiltseq', v: 2, name: 'UNTITLED', bpm: 120, swing: 0, len: 1,
-    master: { vol: .85, cut: .5, res: .1, dtime: 3, dfb: .35, dmix: .8 },
-    tracks: [mkTrack('drum','kick'), mkTrack('drum','snare'), mkTrack('drum','chat'), mkTrack('drum','ohat'), mkTrack('bass'), mkTrack('synth')] };
-}
-function fixStep(type, v) {
-  if (type === 'drum') return v === 2 ? 2 : v ? 1 : 0;
-  return Array.isArray(v) && typeof v[0] === 'number' ? [clamp(Math.round(v[0]), 12, 108), v[1] ? 1 : 0, v[2] ? 1 : 0] : 0;
-}
-// Validate anything from a file or storage; fills defaults, re-issues ids.
-// `order` maps each loop to a source pattern (v1 files had 4 patterns + a song chain).
-function fixTrack(t, order, len) {
-  const type = ['drum','bass','synth'].includes(t && t.type) ? t.type : 'drum';
-  const voice = type === 'drum' ? (DRUM_VOICES.includes(t.voice) ? t.voice : 'kick') : null;
-  const n = mkTrack(type, voice, typeof t.name === 'string' ? t.name.slice(0, 10).toUpperCase() : undefined, len);
-  if (t.p) for (const k in n.p) if (typeof t.p[k] === 'number') n.p[k] = clamp(t.p[k]);
-  for (const k of ['vol','send']) if (typeof t[k] === 'number') n[k] = clamp(t[k]);
-  if (typeof t.pan === 'number') n.pan = clamp(t.pan, -1, 1);
-  n.mute = !!t.mute;
-  const pats = Array.isArray(t.pats) ? t.pats : [];
-  n.pats = n.pats.map((_, k) => { const src = pats[order ? order[k] : k]; return emptyLoop().map((z, s) => fixStep(type, Array.isArray(src) ? src[s] : 0)); });
-  return n;
-}
+function mkProject(k) { return { fmt: 'tiltseq', v: 3, name: 'TOY', kit: k || 0, speed: 1, bpm: SPEEDS[1], swing: 0, len: 1,
+  master: { vol: .85, cut: .5, res: .1, dtime: 3, dfb: .35, dmix: .8 }, tracks: kitTracks(k || 0, null, 1) }; }
+// Validate a saved/imported toy beat (v3); older formats start fresh.
 function fixProject(src) {
-  const P = mkProject();
-  if (!src || typeof src !== 'object') return P;
-  if (typeof src.name === 'string') P.name = src.name.slice(0, 16).toUpperCase();
-  if (typeof src.bpm === 'number') P.bpm = clamp(Math.round(src.bpm), 50, 220);
-  if (typeof src.swing === 'number') P.swing = clamp(src.swing);
-  if (src.master) for (const k in P.master) if (typeof src.master[k] === 'number') P.master[k] = k === 'dtime' ? clamp(src.master[k] | 0, 1, 8) : clamp(src.master[k]);
-  const tr = Array.isArray(src.tracks) ? src.tracks.slice(0, MAXT) : [];
-  if (!tr.length) return P;
-  let order = null, len;
-  if (src.v === 2) len = clamp(src.len | 0, 1, MAXL);
-  else if (src.mode === 'song' && Array.isArray(src.song) && src.song.length) { order = src.song.slice(0, MAXL).map(x => clamp(x | 0, 0, 3)); len = order.length; }
-  else {
-    let last = 0;
-    tr.forEach(t => (t.pats || []).forEach((p, i) => { if (i < 4 && Array.isArray(p) && p.some(v => v)) last = Math.max(last, i); }));
-    order = Array.from({ length: last + 1 }, (_, i) => i); len = order.length;
-  }
-  P.len = len; P.tracks = tr.map(t => fixTrack(t, order, len));
+  if (!src || src.v !== 3 || !Array.isArray(src.tracks)) return null;
+  const k = clamp(src.kit | 0, 0, KITS.length - 1), len = clamp(src.len | 0, 1, MAXL);
+  const P = mkProject(k);
+  P.speed = clamp(src.speed | 0, 0, SPEEDS.length - 1); P.bpm = SPEEDS[P.speed]; P.len = len;
+  P.tracks = kitTracks(k, src.tracks.slice(0, ROWS.length).map(t => t && t.pats), len);
   return P;
 }
 
-
-// ───────────────────────── sample songs ─────────────────────────
-const dp = s => [...s].map(c => c === 'X' ? 2 : c === 'x' ? 1 : 0);
-const mp = s => s.trim().split(/\s+/).map(tok => tok === '.' ? 0 : [parseNote(tok.replace(/[!~]/g, '')), tok.includes('!') ? 1 : 0, tok.includes('~') ? 1 : 0]);
-function T(type, voice, name, pats, p, mix) {
-  const t = mkTrack(type, voice, name);
-  pats.forEach((s, i) => { if (s) t.pats[i] = type === 'drum' ? dp(s) : mp(s); });
-  Object.assign(t.p, p || {}); Object.assign(t, mix || {});
-  return t;
-}
-const PR = (type, name) => PRESETS[type][name];
+// ───────────────────────── demo beats ─────────────────────────
+// Each loop: 13 rows of 16 steps, top to bottom (melody, bass, drums).
 const DEMOS = [
-  () => ({ name: 'S2K JUNGLE', bpm: 172, swing: 0, mode: 'song', song: [0,0,1,0,2,2,1,3],
-    master: { vol: .85, cut: .5, res: .1, dtime: 3, dfb: .4, dmix: .8 },
-    tracks: [
-      T('drum','kick','KICK', ['X.x.......x.....','X.x.......xx....','','X.x.......x.x...'], { tune:.42, decay:.3, tone:.45, snap:.5 }),
-      T('drum','snare','SNARE', ['....X..x.x..X..x','....X..x.x..X.XX','','....X..x.xX.XXXX'], { tune:.68, decay:.32, tone:.62, snap:.75 }),
-      T('drum','chat','HATS', ['x.x.x.x.x.xxx.x.','x.x.x.x.x.xxx.x.','x...x...x...x...','x.x.x.x.x.x.x.x.'], { decay:.2, tone:.6 }, { vol:.55 }),
-      T('drum','ohat','OPEN', ['..............x.','......x.......x.','','..............x.'], {}, { vol:.5, send:.25 }),
-      T('bass',null,'S2K', ['E1~ E1~ E1~ E1~ E1~ E1~ E1 . . . G1~ G1~ G1 . A1~ A1',
-                            'D2~ D2~ D2~ D2 . . C2~ C2~ C2 . . . A1~ A1~ A1~ A1',
-                            'E1~ E1~ E1~ E1~ E1~ E1~ E1~ E1~ E1~ E1~ E1~ E1~ E1~ E1~ E1~ E1',
-                            'E1~ E1~ E1~ E1~ E1~ E1~ E1 . . . G1~ G1~ G1 . A1~ A1'], PR('bass','S2K SUB'), { vol:.85 }),
-      T('synth',null,'PAD', ['E3~ E3~ E3~ E3~ E3~ E3~ E3~ E3 . . . . . . . .',
-                             'D3~ D3~ D3~ D3~ D3~ D3~ D3~ D3 C3~ C3~ C3~ C3 B2~ B2~ B2~ B2',
-                             'G3~ G3~ G3~ G3~ G3~ G3~ G3~ G3 F#3~ F#3~ F#3~ F#3~ F#3~ F#3~ F#3~ F#3',
-                             'E3~ E3~ E3~ E3~ E3~ E3~ E3~ E3 . . . . . . . .'], PR('synth','PAD'), { vol:.45, send:.45 }),
-    ] }),
-  () => ({ name: 'BOOM BAP', bpm: 88, swing: .55, mode: 'song', song: [0,0,0,1],
-    master: { vol: .85, cut: .5, res: .1, dtime: 3, dfb: .3, dmix: .7 },
-    tracks: [
-      T('drum','kick','KICK', ['X......x..X.....','X......x..X..x..'], { tune:.3, decay:.55, tone:.3, snap:.2 }),
-      T('drum','snare','SNARE', ['....X.......X...','....X.......X..x'], { tune:.42, decay:.45, tone:.4, snap:.55 }),
-      T('drum','chat','HATS', ['X.x.X.x.X.x.X.x.','X.x.X.x.X.x.X.xx'], { decay:.22, tone:.4 }, { vol:.5 }),
-      T('drum','rim','RIM', ['..........x.....','..........x...x.'], {}, { vol:.45, send:.3 }),
-      T('bass',null,'S2K', ['C2 . . . . . . D#2 . . C2 . . . G1 .', 'A#1 . . . . . . C2 . . A#1 . . . F1 G1'], PR('bass','S2K WARM'), { vol:.85 }),
-      T('synth',null,'KEYS', ['. . . . G3 . . . . . . . D#3 . . .', '. . . . F3 . . . . . . . D3 . . .'], PR('synth','STAB'), { vol:.4, send:.5 }),
-    ] }),
-  () => ({ name: 'ACID LINE', bpm: 130, swing: 0, mode: 'song', song: [0,0,1,1,0,2,1,1],
-    master: { vol: .85, cut: .5, res: .2, dtime: 3, dfb: .45, dmix: .8 },
-    tracks: [
-      T('drum','kick','KICK', ['X...X...X...X...','X...X...X...X...','X...X...X...X...'], { tune:.38, decay:.4, tone:.5, snap:.4 }),
-      T('drum','clap','CLAP', ['....x.......x...','....x.......x...',''], {}, { vol:.6 }),
-      T('drum','chat','HAT', ['..x...x...x...x.','..x...x...x...x.','xxxxxxxxxxxxxxxx'], { decay:.18 }, { vol:.5 }),
-      T('drum','ohat','OPEN', ['','..x...x...x...x.',''], {}, { vol:.45 }),
-      T('synth',null,'ACID', ['C2! C2 C3~ C2 . C2 D#2! C2 . C2 G2~ F2 C2 C3! . A#1',
-                              'C2 C2~ D#2 C2! . F2~ G2 C2 C2 . C3!~ A#2~ G2 . F2! D#2',
-                              'C2! C2 C3~ C2 . C2 D#2! C2 . C2 G2~ F2 C2 C3! . A#1'], PR('synth','ACID'), { vol:.6, send:.3 }),
-      T('bass',null,'S2K', ['C1 . . . C1 . . . C1 . . . C1 . . .', 'C1 . . . C1 . . . C1 . . . C1 . . .', ''], PR('bass','S2K SUB'), { vol:.6 }),
-    ] }),
-  () => ({ name: 'ELECTRO 808', bpm: 112, swing: .2, mode: 'song', song: [0,1,0,1],
-    master: { vol: .85, cut: .5, res: .1, dtime: 4, dfb: .35, dmix: .8 },
-    tracks: [
-      T('drum','kick','KICK', ['X.....x...X.....','X.....x...X...x.'], { tune:.28, decay:.75, tone:.25, snap:.15 }),
-      T('drum','clap','CLAP', ['....X.......X...','....X.......X...'], { tune:.4, decay:.45 }),
-      T('drum','chat','HATS', ['XxxxXxxxXxxxXxxx','XxxxXxxxXxxxXxxx'], { decay:.15, tone:.55 }, { vol:.45 }),
-      T('drum','cow','COWBL', ['..x.....x.x.....','..x.....x.x.....'], {}, { vol:.4, send:.3 }),
-      T('drum','tom','TOM', ['','..........x.x.xx'], { tune:.35, decay:.5 }),
-      T('bass',null,'S2K', ['C2 . C2 . . . C2 D#2 . . F2~ G2 . . C2 .', 'C2 . C2 . . . C2 D#2 . . F2~ G2 . . A#1 .'], PR('bass','S2K PLUCK'), { vol:.85 }),
-      T('synth',null,'LEAD', ['', 'G3 . . G3 . . A#3~ C4 . . . . G3 . F3 .'], PR('synth','LEAD'), { vol:.45, send:.5 }),
-    ] }),
-  () => ({ name: 'S2K HOUSE', bpm: 124, swing: .3, mode: 'song', song: [0,0,1,1],
-    master: { vol: .85, cut: .5, res: .1, dtime: 3, dfb: .35, dmix: .8 },
-    tracks: [
-      T('drum','kick','KICK', ['X...X...X...X...','X...X...X...X...'], { tune:.36, decay:.5, tone:.45, snap:.35 }),
-      T('drum','clap','CLAP', ['....X.......X...','....X.......X..x'], {}, { vol:.6, send:.2 }),
-      T('drum','ohat','OPEN', ['..x...x...x...x.','..x...x...x...x.'], { decay:.35 }, { vol:.45 }),
-      T('drum','chat','HATS', ['xxX.xxX.xxX.xxX.','xxX.xxX.xxX.xxX.'], { decay:.15 }, { vol:.35 }),
-      T('bass',null,'S2K', ['. . C2 . . . C2 C3 . . C2 . . D#2 C2 .', '. . A#1 . . . A#1 A#2 . . A#1 . . C2 A#1 .'], PR('bass','S2K PLUCK'), { vol:.85 }),
-      T('synth',null,'STAB', ['. . G3 . . . . . . . G3 . . . . .', '. . A#3 . . . . . . . A#3 . . G3 . .'], PR('synth','STAB'), { vol:.4, send:.55 }),
-    ] }),
+  { kit: 0, speed: 2, loops: [
+    ['................','................','x.......x.......','................','....x.......x...','................',
+     '................','..........x.....','x.x.....x.......',
+     'x.x.x.x.x.x.x.x.','................','....x.......x...','x.x.......x.....'],
+    ['..........x.....','........x.......','x...............','....x...........','................','..............x.',
+     'x...............','........x.......','....x.......x...',
+     'x.x.x.x.x.x.x.x.','................','....x..x....x.xx','x.x.......xx....'] ] },
+  { kit: 1, speed: 1, loops: [
+    ['................','................','......x.........','..........x.....','................','x...............',
+     'x.x...x...x.x...','................','....x.......x..x',
+     '..x...x...x...x.','....x.......x...','................','x...x...x...x...'],
+    ['x...............','..x.............','....x.....x.....','......x.........','........x.......','............x...',
+     'x.x...x...x.x...','.....x..........','....x.......x..x',
+     '..x...x...x...x.','....x.......x...','...............x','x...x...x...x...'] ] },
+  { kit: 3, speed: 0, loops: [
+    ['................','....x...........','x...........x...','........x.......','................','................',
+     '................','................','x.......x.......',
+     'x.x.x.x.x.x.x.x.','................','....x.......x...','x......x..x.....'],
+    ['x...............','................','....x.......x...','................','........x.......','..............x.',
+     '................','x...............','........x.......',
+     'x.x.x.x.x.x.x.x.','............x...','....x.......x...','x......x..x.....'] ] },
 ];
-const demoProject = i => fixProject(DEMOS[i]());
+function demoProject(i) {
+  const D = DEMOS[i], P = mkProject(D.kit);
+  P.speed = D.speed; P.bpm = SPEEDS[D.speed]; P.len = D.loops.length; P.name = KITS[D.kit].name;
+  const pats = ROWS.map((r, ri) => D.loops.map(L => [...L[ri]].map(c => c === 'x' ? 1 : 0)));
+  P.tracks = kitTracks(D.kit, pats, P.len);
+  return P;
+}
+
 
 // ───────────────────────── audio engine ─────────────────────────
 const AC = window.AudioContext || window.webkitAudioContext;
@@ -594,12 +514,12 @@ const LS = {
   get(k) { try { return localStorage.getItem(k); } catch (_) { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } },
 };
-function loadCur() { try { const j = LS.get('tiltseq.cur'); return j ? fixProject(JSON.parse(j)) : null; } catch (_) { return null; } }
+function loadCur() { try { const j = LS.get('tiltseq.toy'); return j ? fixProject(JSON.parse(j)) : null; } catch (_) { return null; } }
 let P = loadCur() || demoProject(0);
-const S = { sel: 0, edit: 0, tab: 'loop', rollOct: {}, kbOct: 3, playing: false, steps: 0, repeat: false,
-  loops: 1, fmt: 'wav', demo: false, last: {} };
-const LIVE = { x: 0, y: 0, hold: null };
+const S = { edit: 0, playing: false, steps: 0, demo: false };
+const LIVE = { x: 0, y: 0 };
 const TILT = { on: false, have: false, g: 0, b: 0, cg: 0, cb: 0, cal: false };
+const flash = ROWS.map(() => new Float64Array(16).fill(-9));   // audio time each cell last fired
 let E = null;
 const queue = [];
 
@@ -608,7 +528,7 @@ function ensureAudio() {
   if (!E) {
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {}
     E = new Engine(new AC({ latencyHint: 'interactive' }), P, false);
-    E.mod = liveMod; E.repeat = S.repeat; E.skip = i => !!(LIVE.hold && LIVE.hold.track === i);
+    E.mod = liveMod;
   }
   if (E.c.state !== 'running') E.c.resume();
   return E;
@@ -618,15 +538,21 @@ function ensureAudio() {
 let saveT = 0;
 function dirty(sync) {
   if (sync && E) E.sync();
-  clearTimeout(saveT); saveT = setTimeout(() => LS.set('tiltseq.cur', JSON.stringify(P)), 500);
+  clearTimeout(saveT); saveT = setTimeout(() => LS.set('tiltseq.toy', JSON.stringify(P)), 500);
 }
 function setProject(np) {
-  if (S.playing) stop();
-  P = np; S.sel = 0; S.edit = 0;
+  const was = S.playing;
+  if (was) stop();
+  P = np; S.edit = 0;
   if (E) { E.P = P; E.loop = 0; E.queued = null; E.sync(); E.applyMaster(E.c.currentTime); }
-  dirty(); updHinge(); render();
+  dirty(); render();
+  if (was) play();
 }
-const selT = () => P.tracks[S.sel];
+function setKit(k) {
+  P.kit = k; P.tracks = kitTracks(k, P.tracks.map(t => t.pats), P.len);
+  if (E) { E.pend = {}; E.sync(); }
+  dirty(); render();
+}
 
 // ───────────────────────── transport ─────────────────────────
 let timer = 0, nextT = 0, gStep = 0;
@@ -638,8 +564,10 @@ function play() {
 function tick() {
   const sd = E.sd();
   while (nextT < E.c.currentTime + 0.12) {
-    E.scheduleStep(gStep, nextT + (gStep % 2 ? P.swing * 0.33 * sd : 0));
-    queue.push(Object.assign({}, E.cur));
+    E.scheduleStep(gStep, nextT);
+    const c = E.cur;
+    P.tracks.forEach((t, r) => { if (t.pats[c.loop][c.s]) flash[r][c.s] = c.t; });
+    queue.push(Object.assign({}, c));
     if (queue.length > 64) queue.shift();
     nextT += sd; gStep++; S.steps++;
   }
@@ -663,7 +591,7 @@ function selLoop(k) {
   render();
 }
 function dupLoop() {
-  if (P.len >= MAXL) return toast('64 MAX');
+  if (P.len >= MAXL) return toast(MAXL + ' MAX');
   for (const t of P.tracks) t.pats.splice(S.edit + 1, 0, JSON.parse(JSON.stringify(t.pats[S.edit])));
   P.len++; dirty(); selLoop(S.edit + 1);
 }
@@ -693,13 +621,15 @@ function toggleTilt() {
   if (DOE && typeof DOE.requestPermission === 'function') DOE.requestPermission().then(r => r === 'granted' ? go() : toast('DENIED')).catch(() => toast('DENIED'));
   else go();
 }
+// tilt: X sweeps the DJ filter, Y brightens/darkens every melody + bass row
 function liveMod(i) {
   if (!(TILT.on || S.demo)) return null;
-  return i === -1 ? LIVE.x : i === S.sel ? LIVE.y : null;
+  if (i === -1) return LIVE.x;
+  return ROWS[i] && ROWS[i].kind !== 'drum' ? LIVE.y : null;
 }
 
+
 // ───────────────────────── files / export ─────────────────────────
-const safeName = s => (s || 'tiltseq').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tiltseq';
 function saveBlob(blob, name) {
   const u = URL.createObjectURL(blob), a = document.createElement('a');
   a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -718,46 +648,40 @@ function deliver(blob, name) {
     if (k === 'x') { closeModal(); if (url) URL.revokeObjectURL(url); }
   });
 }
-function exportProject() { deliver(new Blob([JSON.stringify({ fmt: 'tiltseq', kind: 'project', v: 2, project: P })], { type: 'application/json' }), safeName(P.name) + '.tseq.json'); }
-// merge: append another project's tracks, fitted to this project's loop count
-function mergeTracks(list) {
-  let n = 0;
-  for (const t of list) {
-    if (P.tracks.length >= MAXT) break;
-    while (t.pats.length < P.len) t.pats.push(emptyLoop());
-    t.pats.length = P.len; P.tracks.push(t); n++;
-  }
-  if (n < list.length) toast('16 MAX');
-  dirty(true); render();
-}
+function exportBeat() { deliver(new Blob([JSON.stringify({ fmt: 'tiltseq', kind: 'toy', v: 3, project: P })], { type: 'application/json' }), 'tilt-toy-' + Date.now().toString(36) + '.json'); }
 function importText(txt) {
   let o; try { o = JSON.parse(txt); } catch (_) { return toast('BAD FILE'); }
-  const src = o && o.kind === 'project' ? o.project : (o && Array.isArray(o.tracks) ? o : null);
-  if (!src) return toast('BAD FILE');
-  const np = fixProject(src);
-  modal(`<h3>${np.name} &middot; ${np.tracks.length} TRK &middot; ${np.len} LOOP</h3>
-    <div class="row"><button class="b w on" data-m="r">REPLACE</button><button class="b w" data-m="m">MERGE</button><button class="b" data-m="x">CANCEL</button></div>`, k => {
-    closeModal();
-    if (k === 'r') setProject(np);
-    if (k === 'm') mergeTracks(np.tracks);
-  });
+  const np = fixProject(o && o.project ? o.project : o);
+  if (!np) return toast('BAD FILE');
+  setProject(np);
 }
 $('#fileIn').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   f.text().then(importText); e.target.value = '';
 });
-
-async function renderAudio(loops) {
+// renders the whole loop chain, repeated to at least 4 bars
+async function renderAudio(reps) {
   if (!OAC) throw new Error('OFFLINE AUDIO UNSUPPORTED');
-  const sr = 44100, sd = 60 / P.bpm / 4, steps = P.len * 16 * loops, len = 0.05 + steps * sd + 2.5;
+  reps = reps || Math.max(1, Math.ceil(4 / P.len));
+  const sr = 44100, sd = 60 / P.bpm / 4, steps = P.len * 16 * reps, len = 0.05 + steps * sd + 2.5;
   const oc = new OAC(2, Math.ceil(len * sr), sr), eng = new Engine(oc, P, true);
-  for (let g = 0; g < steps; g++) eng.scheduleStep(g, 0.05 + g * sd + (g % 2 ? P.swing * 0.33 * sd : 0));
+  for (let g = 0; g < steps; g++) eng.scheduleStep(g, 0.05 + g * sd);
   eng.releaseAll(0.05 + steps * sd);
   const buf = await oc.startRendering();
   let peak = 0;
   for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; } }
   if (peak > 0.98) for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch), k = 0.98 / peak; for (let i = 0; i < d.length; i++) d[i] *= k; }
   return buf;
+}
+async function doRender(fmt) {
+  modal(`<h3>&#9203;</h3><div class="lbl" id="rprog"></div>`, () => {});
+  try {
+    const buf = await renderAudio(), prog = $('#rprog');
+    const blob = fmt === 'mp3' ? await toMp3(buf, f => { if (prog) prog.textContent = Math.round(f * 100) + '%'; }) : toWav(buf);
+    deliver(blob, 'tilt-toy.' + fmt);
+  } catch (err) {
+    modal(`<h3>${String(err.message || err).toUpperCase()}</h3><button class="b" data-m="x">OK</button>`, () => closeModal());
+  }
 }
 
 function toWav(buf) {
@@ -801,11 +725,6 @@ async function toMp3(buf, prog) {
   const e = enc.flush(); if (e.length) out.push(new Uint8Array(e));
   return new Blob(out, { type: 'audio/mpeg' });
 }
-const slots = () => { try { return JSON.parse(LS.get('tiltseq.slots') || '{}') || {}; } catch (_) { return {}; } };
-function saveSlot() {
-  const sl = slots(); sl[P.name] = { t: Date.now(), p: P };
-  toast(LS.set('tiltseq.slots', JSON.stringify(sl)) ? 'SAVED' : 'FULL'); render();
-}
 
 // ───────────────────────── UI helpers ─────────────────────────
 const panel = $('#panel');
@@ -817,302 +736,91 @@ function modal(html, on) {
 }
 function closeModal() { $('#modal').hidden = true; $('#modal').innerHTML = ''; }
 
-// control registry: knobs + bars bound to getter/setter pairs, rebuilt on render
-let CTL = [];
-function ctl(get, set, fmt, def) { CTL.push({ get, set, fmt: fmt || (v => Math.round(v * 99)), def }); return CTL.length - 1; }
-const knob = (label, id) => `<div class="knob" data-k="${id}"><div class="kd"><i></i></div><b>${label}</b><span></span></div>`;
-function paintCtl(el) {
-  const c = CTL[el.dataset.k]; if (!c) return;
-  const v = c.get();
-  if (el.classList.contains('knob')) { el.querySelector('i').style.transform = `rotate(${-135 + v * 270}deg)`; el.querySelector('span').textContent = c.fmt(v); }
-  else if (el.classList.contains('bar')) { el.querySelector('i').style.width = (v * 100) + '%'; el.querySelector('em').textContent = c.fmt(v); }
-  else el.textContent = c.fmt(v);
-}
-function paintAll() { document.querySelectorAll('[data-k]').forEach(paintCtl); }
-const pTrack = (tr, k) => ctl(() => tr.p[k], v => { tr.p[k] = v; dirty(); }, v => fmtP(k, v), (PDEF[tr.type].find(x => x[0] === k) || [])[2]);
-
-// drag handling for knobs, bars and the BPM display
-let drag = null;
-document.addEventListener('pointerdown', e => {
-  const el = e.target.closest('[data-k]'); if (!el) return;
-  const c = CTL[el.dataset.k]; if (!c) return;
-  e.preventDefault();
-  const now = performance.now();
-  if (el.classList.contains('knob') && el._tap && now - el._tap < 300 && c.def != null) { c.set(c.def); paintCtl(el); el._tap = 0; return; }
-  el._tap = now;
-  try { el.setPointerCapture(e.pointerId); } catch (_) {}
-  drag = { el, c, x: e.clientX, y: e.clientY, v: c.get(), bar: el.classList.contains('bar') };
-  el.classList.add('act');
-  if (drag.bar) moveDrag(e);
-});
-function moveDrag(e) {
-  if (!drag) return;
-  let v;
-  if (drag.bar) { const r = drag.el.getBoundingClientRect(); v = clamp((e.clientX - r.left) / r.width); }
-  else v = clamp(drag.v + ((e.clientX - drag.x) - (e.clientY - drag.y)) / 180);
-  drag.c.set(v); paintCtl(drag.el);
-}
-document.addEventListener('pointermove', moveDrag);
-const endDrag = () => { if (drag) { drag.el.classList.remove('act'); drag = null; } };
-document.addEventListener('pointerup', endDrag); document.addEventListener('pointercancel', endDrag);
-
-
-async function doRender() {
-  const fmt = S.fmt;
-  modal(`<h3>RENDERING</h3><div class="lbl" id="rprog"></div>`, () => {});
-  try {
-    const buf = await renderAudio(S.loops), prog = $('#rprog');
-    const blob = fmt === 'mp3' ? await toMp3(buf, f => { if (prog) prog.textContent = Math.round(f * 100) + '%'; }) : toWav(buf);
-    deliver(blob, safeName(P.name) + '.' + fmt);
-  } catch (err) {
-    modal(`<h3>${String(err.message || err).toUpperCase()}</h3><button class="b" data-m="x">OK</button>`, () => closeModal());
-  }
-}
-
-// ───────────────────────── hinge (transport) ─────────────────────────
+// ───────────────────────── hinge ─────────────────────────
+const SPEED_LAB = ['&#9656;', '&#9656;&#9656;', '&#9656;&#9656;&#9656;'];
 function updHinge() {
   $('#bPlay').innerHTML = S.playing ? '&#9632;' : '&#9654;';
   $('#bPlay').classList.toggle('on', S.playing);
+  $('#bSpeed').innerHTML = SPEED_LAB[P.speed];
+  $('#bKit').textContent = KITS[P.kit].name;
   $('#bTilt').classList.toggle('on', TILT.on);
-  paintCtl($('#bpm'));
 }
 $('#bPlay').onclick = () => S.playing ? stop() : play();
+$('#bSpeed').onclick = () => { P.speed = (P.speed + 1) % SPEEDS.length; P.bpm = SPEEDS[P.speed]; if (E) E.sync(); dirty(); updHinge(); };
+$('#bKit').onclick = () => { setKit((P.kit + 1) % KITS.length); if (!S.playing) preview(0); };
 $('#bTilt').onclick = toggleTilt;
-const bpmCtl = { get: () => (P.bpm - 50) / 170, set: v => { P.bpm = Math.round(50 + v * 170); if (E) E.sync(); dirty(); }, fmt: () => String(P.bpm) };
-$('#bpm').dataset.k = 'bpm';
-const bump = d => { P.bpm = clamp(P.bpm + d, 50, 220); if (E) E.sync(); dirty(); updHinge(); };
-$('#bBpmD').onclick = () => bump(-1); $('#bBpmU').onclick = () => bump(1);
-$('#tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { S.tab = b.dataset.tab; render(); } };
+$('#bMenu').onclick = () => {
+  modal(`<div class="mgrid">${DEMOS.map((d, i) => `<button class="b" data-m="demo" data-i="${i}">&#9835; ${i + 1}</button>`).join('')}</div>
+    <div class="mgrid" style="grid-template-columns:1fr 1fr"><button class="b on" data-m="wav">WAV</button><button class="b on" data-m="mp3">MP3</button>
+    <button class="b" data-m="out">SHARE</button><button class="b" data-m="in">OPEN</button></div>
+    <div class="mgrid" style="grid-template-columns:1fr 1fr"><button class="b" data-m="new">NEW</button><button class="b" data-m="x">&#10005;</button></div>
+    <div class="lbl" style="font-size:12px">MP3: LAME / LGPL</div>`, (k, b) => {
+    if (k !== 'out' && k !== 'in') closeModal();
+    if (k === 'demo') setProject(demoProject(+b.dataset.i));
+    if (k === 'wav' || k === 'mp3') doRender(k);
+    if (k === 'out') exportBeat();
+    if (k === 'in') { closeModal(); $('#fileIn').click(); }
+    if (k === 'new') setProject(mkProject(P.kit));
+  });
+};
 
-// ───────────────────────── panels ─────────────────────────
+// ───────────────────────── loop screen ─────────────────────────
 function render() {
-  CTL = []; CTL.bpm = bpmCtl;
-  if (S.sel >= P.tracks.length) S.sel = Math.max(0, P.tracks.length - 1);
   if (S.edit >= P.len) S.edit = P.len - 1;
-  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
-  panel.innerHTML = { loop: rLoop, sound: rSound, file: rFile }[S.tab]();
-  phCells = [...panel.querySelectorAll('.c[data-s]')]; lastPh = -2; lastPl = -2;
-  paintAll(); updHinge();
-}
-function cellCls(tr, v, s) {
-  if (tr.type === 'drum') return v === 2 ? 'v2' : v ? 'v1' : (s % 4 === 0 ? 'q4' : '');
-  return v ? ('n' + (tr.type === 'synth' ? ' cy' : '')) : (s % 4 === 0 ? 'q4' : '');
-}
-const typeOct = tr => tr.type === 'bass' ? 1 : 3;
-// open the note grid on the octave the track already uses
-function defOct(tr) {
-  for (const p of tr.pats) for (const v of p) if (v) return Math.floor(v[0] / 12) - 1;
-  return typeOct(tr);
-}
-function rLoop() {
-  const n = P.tracks.length, tr = selT(), mel = tr && tr.type !== 'drum';
   let h = `<div class="row nw"><button class="b" data-a="lprev">&#9664;</button><button class="b pick" id="lpk">${S.edit + 1}/${P.len}</button><button class="b" data-a="lnext">&#9654;</button>
-    <button class="b on" data-a="dup">DUP</button><button class="b" data-a="lclr">CLR</button><button class="b" data-a="ldel">DEL</button><button class="b${S.repeat ? ' on' : ''}" data-a="rep">&#10227;</button>${n < MAXT ? '<button class="b" data-a="add">+</button>' : ''}</div>`;
-  // grids stretch to the free height (no scrolling); rows cap at a comfortable size
-  h += `<div class="grid ga" style="flex:${mel ? n : 1} 1 0;min-height:0;grid-template-rows:repeat(${n},minmax(0,40px))">`;
-  P.tracks.forEach((t, i) => {
-    h += `<div class="nm ${t.type}${i === S.sel ? ' sel' : ''}${t.mute ? ' m' : ''}" data-a="sel" data-i="${i}">${t.name}</div>`;
-    t.pats[S.edit].forEach((v, s) => { h += `<div class="c ${cellCls(t, v, s)}" data-s="${s}" data-t="${i}" data-p="cell"></div>`; });
-  });
-  h += `</div>`;
-  if (!mel) return h;
-  const o = S.rollOct[tr.id] != null ? S.rollOct[tr.id] : defOct(tr), lo = (o + 1) * 12, hi = lo + 11, pat = tr.pats[S.edit];
-  h += `<div class="row nw"><span class="lbl pick ${tr.type}">${tr.name}</span><button class="b" data-a="oct" data-d="-1">-</button><span class="lbl">C${o}</span><button class="b" data-a="oct" data-d="1">+</button></div>
-    <div class="grid roll" style="flex:13 1 0;min-height:0;grid-template-rows:repeat(13,minmax(0,32px))">`;
-  for (let n = hi; n >= lo; n--) {
-    h += `<div class="k${isBlack(n) ? ' blk' : ''}">${noteName(n)}</div>`;
-    for (let s = 0; s < 16; s++) {
-      const v = pat[s], on = v && v[0] === n;
-      let cls = on ? 'n' + (tr.type === 'synth' ? ' cy' : '') : (isBlack(n) ? 'blk' : (s % 4 === 0 ? 'q4' : ''));
-      if (v && !on && n === hi && v[0] > hi) cls += ' up';
-      if (v && !on && n === lo && v[0] < lo) cls += ' dnn';
-      h += `<div class="c ${cls}" data-s="${s}" data-n="${n}" data-p="roll"></div>`;
+    <button class="b on" data-a="dup">DUP</button><button class="b" data-a="lclr">CLR</button><button class="b" data-a="ldel">DEL</button></div>`;
+  for (const [kind, a, b] of SECTIONS) {
+    h += `<div class="grid ga ${kind}" style="flex:${b - a} 1 0;min-height:0;grid-template-rows:repeat(${b - a},minmax(0,44px))">`;
+    for (let r = a; r < b; r++) {
+      h += `<div class="sw" data-p="sw" data-r="${r}"></div>`;
+      P.tracks[r].pats[S.edit].forEach((v, s) => { h += `<div class="c${v ? ' on' : ''}${s % 4 === 0 ? ' q4' : ''}" data-s="${s}" data-r="${r}" data-p="cell"></div>`; });
     }
+    h += `</div>`;
   }
-  h += `<div class="k fx">TIE</div>` + pat.map((v, s) => `<div class="c${v && v[2] ? ' sld' : ''}" data-s="${s}" data-p="tie"></div>`).join('');
-  return h + '</div>';
+  panel.innerHTML = h;
+  phCells = [...panel.querySelectorAll('.c[data-s]')]; lastPh = -2; lastPl = -2;
+  updHinge();
 }
-function kbHTML() {
-  const lo = (S.kbOct + 1) * 12, whites = [];
-  for (let n = lo; n < lo + 25; n++) if (!isBlack(n)) whites.push(n);
-  const w = 100 / whites.length;
-  let h = '<div class="kb fill">';
-  whites.forEach((n, i) => h += `<div class="kw" data-p="key" data-n="${n}" style="left:${i * w}%;width:${w}%">${n % 12 === 0 ? noteName(n) : ''}</div>`);
-  whites.forEach((n, i) => { if (isBlack(n + 1) && n + 1 < lo + 25) h += `<div class="kbk" data-p="key" data-n="${n + 1}" style="left:${(i + 0.68) * w}%;width:${w * 0.64}%"></div>`; });
-  return h + '</div>';
-}
-function rSound() {
-  const tr = selT();
-  if (!tr) return '<button class="b" data-a="add">+</button>';
-  let h = `<div class="row nw"><button class="b" data-a="tprev">&#9664;</button><button class="b pick ${tr.type}" data-a="ren">${tr.name}</button><button class="b" data-a="tnext">&#9654;</button>
-    ${P.tracks.length < MAXT ? '<button class="b" data-a="add">+</button>' : ''}<button class="b${tr.mute ? ' on' : ''}" data-a="mute">M</button><button class="b" data-a="del">DEL</button></div>`;
-  const vol = knob('VOL', ctl(() => tr.vol, v => { tr.vol = v; dirty(true); }, null, .75));
-  if (tr.type === 'drum') {
-    h += `<div class="mgrid" style="grid-template-columns:repeat(4,1fr)">${DRUM_VOICES.map(v => `<button class="b${tr.voice === v ? ' on' : ''}" data-a="voice" data-v="${v}">${VLAB[v]}</button>`).join('')}</div>`;
-    h += `<div class="knobs k5">${PDEF.drum.map(([k, l]) => knob(l, pTrack(tr, k))).join('')}${vol}</div>`;
-    return h + `<button class="b fill" data-p="hit">&#9679;</button>`;
-  }
-  h += `<div class="row nw"><button class="b w${tr.type === 'bass' ? ' on' : ''}" data-a="eng" data-v="bass">S2K</button><button class="b w${tr.type === 'synth' ? ' on' : ''}" data-a="eng" data-v="synth">SYNTH</button>
-    <button class="b" data-a="kbo" data-d="-1">-</button><span class="lbl">C${S.kbOct}</span><button class="b" data-a="kbo" data-d="1">+</button></div>`;
-  h += `<div class="mgrid" style="grid-template-columns:repeat(4,1fr)">${Object.keys(PRESETS[tr.type]).map(k => `<button class="b" data-a="pre" data-v="${k}">${k.replace('S2K ', '')}</button>`).join('')}</div>`;
-  h += `<div class="knobs k8">${PDEF[tr.type].map(([k, l]) => knob(l, pTrack(tr, k))).join('')}${vol}</div>`;
-  return h + kbHTML();
-}
-function rFile() {
-  let h = `<div class="row nw"><button class="b w" data-a="pname">${P.name}</button><button class="b" data-a="new">NEW</button></div>`;
-  h += `<div class="row nw">${[1,2,4].map(n => `<button class="b${S.loops === n ? ' on' : ''}" data-a="loops" data-v="${n}">x${n}</button>`).join('')}
-    <span class="sp"></span><button class="b${S.fmt === 'wav' ? ' on' : ''}" data-a="fmt" data-v="wav">WAV</button><button class="b${S.fmt === 'mp3' ? ' on' : ''}" data-a="fmt" data-v="mp3">MP3</button></div>
-    <button class="b on" style="height:40px;flex:none" data-a="render">&#9654; ${S.fmt.toUpperCase()}</button>`;
-  h += `<div class="row nw"><button class="b w" data-a="xproj">EXPORT</button><button class="b w" data-a="imp">IMPORT</button></div>`;
-  h += `<div class="row nw"><button class="b w" data-a="ssave">SAVE</button><button class="b w" data-a="sopen">LOAD</button></div>`;
-  h += `<div class="mgrid">${DEMOS.map((d, i) => `<button class="b" data-a="demo" data-i="${i}">${d().name}</button>`).join('')}</div>`;
-  return h + `<span class="sp"></span><div class="lbl" style="font-size:13px">MP3: LAME / LGPL</div>`;
-}
-// saved projects, newest first (capped so the dialog never scrolls)
-function openSlots() {
-  const sl = slots(), names = Object.keys(sl).sort((a, b) => sl[b].t - sl[a].t).slice(0, 8);
-  modal(`${names.map(n => `<div class="li"><span>${n}</span><button class="b" data-m="l" data-v="${encodeURIComponent(n)}">LOAD</button><button class="b" data-m="d" data-v="${encodeURIComponent(n)}">DEL</button></div>`).join('')}
-    <button class="b" data-m="x">CLOSE</button>`, (k, b) => {
-    const name = b.dataset.v && decodeURIComponent(b.dataset.v);
-    if (k === 'l') { closeModal(); const s = slots()[name]; if (s) setProject(fixProject(s.p)); }
-    if (k === 'd') { const all = slots(); delete all[name]; LS.set('tiltseq.slots', JSON.stringify(all)); openSlots(); }
-    if (k === 'x') closeModal();
-  });
-}
-
-// ───────────────────────── panel input ─────────────────────────
-function audition(tr, n) {
-  const e = ensureAudio(); if (!e || S.playing) return;
-  const i = P.tracks.indexOf(tr);
-  if (tr.type === 'drum') e.hit(i); else e.noteOn(i, n, 0.75).release(e.c.currentTime + 0.25);
-}
-// note a melodic step gets when switched on from the loop grid
-function lastNote(tr) {
-  if (S.last[tr.id] != null) return S.last[tr.id];
-  for (const p of tr.pats) for (const v of p) if (v) return v[0];
-  return (typeOct(tr) + 1) * 12;
+function preview(r) {
+  const e = ensureAudio(); if (!e) return;
+  const t = P.tracks[r];
+  if (t.type === 'drum') e.hit(r); else e.noteOn(r, t.note, 0.75).release(e.c.currentTime + 0.25);
 }
 let paint = null;
+function setCell(el, v) {
+  const r = +el.dataset.r, s = +el.dataset.s, t = P.tracks[r];
+  t.pats[S.edit][s] = v ? (t.type === 'drum' ? 1 : [t.note, 0, 0]) : 0;
+  el.classList.toggle('on', !!v);
+}
 panel.addEventListener('pointerdown', e => {
   const el = e.target.closest('[data-p]'); if (!el) return;
-  const kind = el.dataset.p;
-  if (kind === 'cell') {
-    e.preventDefault();
-    const i = +el.dataset.t, tr = P.tracks[i], s = +el.dataset.s, pat = tr.pats[S.edit];
-    if (tr.type !== 'drum') {
-      if (pat[s]) pat[s] = 0; else { pat[s] = [lastNote(tr), 0, 0]; audition(tr, pat[s][0]); }
-      S.sel = i; dirty(); render(); return;
-    }
-    const v = pat[s] ? 0 : 1;
-    pat[s] = v; el.className = 'c ' + cellCls(tr, v, s);
-    if (v) audition(tr);
-    paint = { v, t: tr, done: new Set([el]) };
-    dirty();
-  } else if (kind === 'roll') {
-    const tr = selT(), s = +el.dataset.s, n = +el.dataset.n, pat = tr.pats[S.edit], cur = pat[s];
-    if (cur && cur[0] === n) pat[s] = 0; else { pat[s] = [n, cur ? cur[1] : 0, cur ? cur[2] : 0]; S.last[tr.id] = n; audition(tr, n); }
-    dirty(); render();
-  } else if (kind === 'tie') {
-    const pat = selT().pats[S.edit], s = +el.dataset.s;
-    if (pat[s]) { pat[s][2] = pat[s][2] ? 0 : 1; dirty(); render(); }
-  } else if (kind === 'hit') {
-    e.preventDefault(); const e2 = ensureAudio(); if (e2) e2.hit(S.sel);
-  } else if (kind === 'key') {
-    e.preventDefault();
-    const tr = selT(), e2 = ensureAudio(); if (!e2 || !tr || tr.type === 'drum') return;
-    const n = +el.dataset.n;
-    try { el.setPointerCapture(e.pointerId); } catch (_) {}
-    keyUp();
-    LIVE.hold = { track: S.sel, v: e2.noteOn(S.sel, n, 0.85), el };
-    S.last[tr.id] = n; el.classList.add('on');
-  }
+  e.preventDefault();
+  const r = +el.dataset.r;
+  if (el.dataset.p === 'sw') { preview(r); return; }
+  const v = P.tracks[r].pats[S.edit][+el.dataset.s] ? 0 : 1;
+  setCell(el, v);
+  if (v && !S.playing) preview(r);
+  paint = { v, done: new Set([el]) };
+  dirty();
 });
 panel.addEventListener('pointermove', e => {
   if (!paint) return;
   const el = document.elementFromPoint(e.clientX, e.clientY);
-  if (el && el.dataset && el.dataset.p === 'cell' && !paint.done.has(el) && P.tracks[+el.dataset.t] === paint.t) {
-    paint.done.add(el); const s = +el.dataset.s; paint.t.pats[S.edit][s] = paint.v; el.className = 'c ' + cellCls(paint.t, paint.v, s);
-  }
+  if (el && el.dataset && el.dataset.p === 'cell' && !paint.done.has(el)) { paint.done.add(el); setCell(el, paint.v); dirty(); }
 });
-function keyUp() {
-  const h = LIVE.hold; if (!h) return;
-  h.el.classList.remove('on'); h.v.release(E.c.currentTime); LIVE.hold = null;
-}
-const panelUp = () => { paint = null; keyUp(); };
+const panelUp = () => { paint = null; };
 document.addEventListener('pointerup', panelUp); document.addEventListener('pointercancel', panelUp);
-
 panel.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
-  const a = el.dataset.a, i = +el.dataset.i, v = el.dataset.v, tr = selT();
-  const A = {
-    sel() { S.sel = i; },
-    lprev() { selLoop((S.edit + P.len - 1) % P.len); return true; },
-    lnext() { selLoop((S.edit + 1) % P.len); return true; },
-    tprev() { S.sel = (S.sel + P.tracks.length - 1) % P.tracks.length; },
-    tnext() { S.sel = (S.sel + 1) % P.tracks.length; },
-    ren() { const n = prompt('Name', tr.name); if (n) { tr.name = n.slice(0, 10).toUpperCase(); dirty(); } },
-    sopen() { openSlots(); return true; },
-    dup() { dupLoop(); return true; },
-    lclr() { clrLoop(); return true; },
-    ldel() { delLoop(); return true; },
-    rep() { S.repeat = !S.repeat; if (E) E.repeat = S.repeat; },
-    add() {
-      modal(`<div class="mgrid">${DRUM_VOICES.map(d => `<button class="b" data-m="${d}">${VLAB[d]}</button>`).join('')}<button class="b on" data-m="bass">S2K BASS</button><button class="b" data-m="synth">SYNTH</button></div><div class="row" style="margin-top:6px"><button class="b w" data-m="x">CANCEL</button></div>`, k => {
-        closeModal(); if (k !== 'x') newTrack(k);
-      });
-      return true;
-    },
-    oct() { const o = S.rollOct[tr.id] != null ? S.rollOct[tr.id] : defOct(tr); S.rollOct[tr.id] = clamp(o + +el.dataset.d, 0, 7); },
-    voice() { const old = tr.voice; tr.voice = v; if (tr.name === VLAB[old]) tr.name = VLAB[v]; Object.assign(tr.p, { tune:.5, decay:.5, tone:.5, snap:.5 }, DRUM_DEF[v] || {}); audition(tr); dirty(); },
-    eng() { if (tr.type === v) return true; const p = {}; PDEF[v].forEach(([k, , d]) => p[k] = d); tr.type = v; tr.p = p; if (/^(S2K|SYNTH)$/.test(tr.name)) tr.name = v === 'bass' ? 'S2K' : 'SYNTH'; dirty(true); },
-    pre() { Object.assign(tr.p, PRESETS[tr.type][v]); dirty(); audition(tr, tr.type === 'bass' ? 36 : 48); },
-    kbo() { S.kbOct = clamp(S.kbOct + +el.dataset.d, 0, 6); },
-    mute() { tr.mute = !tr.mute; dirty(true); },
-    del() { if (!confirm('Delete ' + tr.name + '?')) return true; P.tracks.splice(S.sel, 1); S.sel = Math.max(0, S.sel - 1); dirty(true); },
-    pname() { const n = prompt('Name', P.name); if (n) { P.name = n.slice(0, 16).toUpperCase(); dirty(); } },
-    new() { if (confirm('New project?')) setProject(mkProject()); return true; },
-    loops() { S.loops = +v; }, fmt() { S.fmt = v; },
-    render() { doRender(); return true; },
-    xproj() { exportProject(); return true; },
-    imp() { $('#fileIn').click(); return true; },
-    demo() { setProject(demoProject(i)); return true; },
-    ssave() { saveSlot(); return true; },
-  };
-  if (A[a] && !A[a]()) render();
+  ({ lprev: () => selLoop((S.edit + P.len - 1) % P.len), lnext: () => selLoop((S.edit + 1) % P.len),
+     dup: dupLoop, lclr: clrLoop, ldel: delLoop })[el.dataset.a]();
 });
-function newTrack(k) {
-  if (P.tracks.length >= MAXT) return toast('16 MAX');
-  const t = DRUM_VOICES.includes(k) ? mkTrack('drum', k, null, P.len) : mkTrack(k, null, null, P.len);
-  P.tracks.push(t); S.sel = P.tracks.length - 1; dirty(true); render();
-}
 
 
 // ───────────────────────── top screen (LCD) ─────────────────────────
-const FONT = {
-  A:'.#./#.#/###/#.#/#.#', B:'##./#.#/##./#.#/##.', C:'.##/#../#../#../.##', D:'##./#.#/#.#/#.#/##.', E:'###/#../##./#../###',
-  F:'###/#../##./#../#..', G:'.##/#../#.#/#.#/.##', H:'#.#/#.#/###/#.#/#.#', I:'###/.#./.#./.#./###', J:'..#/..#/..#/#.#/.#.',
-  K:'#.#/#.#/##./#.#/#.#', L:'#../#../#../#../###', M:'#.#/###/###/#.#/#.#', N:'##./#.#/#.#/#.#/#.#', O:'.#./#.#/#.#/#.#/.#.',
-  P:'##./#.#/##./#../#..', Q:'.#./#.#/#.#/##./.##', R:'##./#.#/##./#.#/#.#', S:'.##/#../.#./..#/##.', T:'###/.#./.#./.#./.#.',
-  U:'#.#/#.#/#.#/#.#/###', V:'#.#/#.#/#.#/#.#/.#.', W:'#.#/#.#/###/###/#.#', X:'#.#/#.#/.#./#.#/#.#', Y:'#.#/#.#/.#./.#./.#.',
-  Z:'###/..#/.#./#../###', 0:'###/#.#/#.#/#.#/###', 1:'.#./##./.#./.#./###', 2:'##./..#/.#./#../###', 3:'##./..#/.#./..#/##.',
-  4:'#.#/#.#/###/..#/..#', 5:'###/#../##./..#/##.', 6:'.##/#../###/#.#/###', 7:'###/..#/.#./.#./.#.', 8:'###/#.#/###/#.#/###',
-  9:'###/#.#/###/..#/##.', '.':'.../.../.../.../.#.', ':':'.../.#./.../.#./...', '-':'.../.../###/.../...', '+':'.../.#./###/.#./...',
-  '/':'..#/..#/.#./#../#..', '>':'#../.#./..#/.#./#..', '<':'..#/.#./#../.#./..#', '#':'#.#/###/#.#/###/#.#', '!':'.#./.#./.#./.../.#.',
-  '?':'##./..#/.#./.../.#.', '=':'.../###/.../###/...', '_':'.../.../.../.../###', '(':'.#./#../#../#../.#.', ')':'.#./..#/..#/..#/.#.',
-  '*':'.../#.#/.#./#.#/...', ' ':'.../.../.../.../...',
-};
-for (const k in FONT) FONT[k] = FONT[k].split('/');
 const cv = $('#top'), g2 = cv.getContext('2d');
 let TW = 240, TH = 144;
 const COL = { bg:'#0b130d', dim:'#1d3622', mid:'#2f5a35', ink:'#9cf06a', am:'#ffb347', cy:'#6ad6f0', rd:'#ff4a3a', or:'#ff6a13', wh:'#e8ffd0' };
-function txt(s, x, y, col) {
-  g2.fillStyle = col;
-  s = String(s).toUpperCase();
-  for (let i = 0; i < s.length; i++) {
-    const gl = FONT[s[i]] || FONT['?'];
-    for (let r = 0; r < 5; r++) for (let c = 0; c < 3; c++) if (gl[r][c] === '#') g2.fillRect(x + i * 4 + c, y + r, 1, 1);
-  }
-}
 function fitTop() {
   const wrap = $('#topscr'), dpr = window.devicePixelRatio || 1;
   // whole device pixels per LCD pixel; the LCD's logical size flexes (~240 wide) so it fills the screen
@@ -1123,34 +831,33 @@ function fitTop() {
 }
 window.addEventListener('resize', fitTop);
 const scopeBuf = new Uint8Array(256);
+const SEC_COL = { mel: COL.cy, bass: COL.am, drum: COL.ink };
 function drawTop() {
   g2.fillStyle = COL.bg; g2.fillRect(0, 0, TW, TH);
-  const cur = nowStep(), L = cur ? cur.loop : S.edit, ps = cur ? cur.s : -1;
-  txt(P.name.slice(0, 16), 2, 2, COL.ink);
-  txt('BPM ' + P.bpm, 82, 2, COL.am);
-  txt(`LOOP ${L + 1}/${P.len}`, 122, 2, COL.cy);
-  if (S.repeat) txt('*', 178, 2, COL.cy);
-  txt(S.playing ? '>' : '#', 206, 2, S.playing ? COL.ink : COL.mid);
-  g2.fillStyle = COL.mid; g2.fillRect(0, 9, TW, 1);
-  // track overview of the playing loop
-  const sy = TH - 34, sh = 30, n = Math.max(1, P.tracks.length), rh = Math.max(5, Math.min(12, Math.floor((sy - 16) / n))), y0 = 12, x0 = 28, cw = Math.floor((TW - 30) / 16);
-  if (ps >= 0) { g2.fillStyle = COL.dim; g2.fillRect(x0 + ps * cw - 1, y0 - 1, cw, n * rh + 1); }
-  P.tracks.forEach((t, i) => {
-    const y = y0 + i * rh, col = t.type === 'drum' ? COL.ink : t.type === 'bass' ? COL.am : COL.cy;
-    if (rh >= 6) txt(t.name.slice(0, 6), 1, y + Math.max(0, (rh - 7) >> 1), i === S.sel ? COL.wh : (t.mute ? COL.mid : col));
-    else { g2.fillStyle = col; g2.fillRect(2, y, 20, rh - 2); }
-    if (i === S.sel) { g2.fillStyle = COL.or; g2.fillRect(25, y, 1, rh - 2); }
-    const pat = t.pats[L] || [];
+  const cur = nowStep(), L = cur ? cur.loop : S.edit, ps = cur ? cur.s : -1, now = E ? E.c.currentTime : 0;
+  // loop pips: one per loop, the playing one lit
+  for (let l = 0; l < P.len; l++) {
+    g2.fillStyle = l === L ? COL.or : l === S.edit ? COL.wh : COL.mid;
+    g2.fillRect(3 + (l % 40) * 6, 3 + Math.floor(l / 40) * 6, 4, 4);
+  }
+  // light show: cells glow when they fire, then fade
+  const sy = TH - 34, sh = 30, top = 12, x0 = 3, cw = Math.floor((TW - 6) / 16), avail = sy - top - 8, rh = Math.max(3, Math.floor(avail / ROWS.length));
+  let y = top;
+  ROWS.forEach((row, r) => {
+    if (r === 6 || r === 9) y += 3;
+    const col = SEC_COL[row.kind], pat = P.tracks[r].pats[L] || [];
     for (let s = 0; s < 16; s++) {
-      const v = pat[s], x = x0 + s * cw;
-      if (v) {
-        g2.fillStyle = t.mute ? COL.mid : (v === 2 || (v && v[1])) ? COL.wh : col;
-        g2.fillRect(x, y, cw - 2, rh - 2);
-        if (Array.isArray(v) && v[2]) g2.fillRect(x + cw - 2, y + (rh >> 1) - 1, 2, 2);
-        if (s === ps && !t.mute) { g2.fillStyle = COL.or; g2.fillRect(x, y + rh - 3, cw - 2, 1); }
-      } else { g2.fillStyle = s % 4 === 0 ? COL.mid : COL.dim; g2.fillRect(x + (cw >> 1) - 1, y + (rh >> 1) - 1, 1, 1); }
+      const x = x0 + s * cw, age = now - flash[r][s];
+      if (pat[s]) {
+        g2.fillStyle = S.playing && age >= 0 && age < 0.18 ? COL.wh : col;
+        g2.globalAlpha = S.playing && !(age >= 0 && age < 0.18) ? 0.55 : 1;
+        g2.fillRect(x, y, cw - 2, rh - 1);
+        g2.globalAlpha = 1;
+      } else { g2.fillStyle = s === ps ? COL.mid : COL.dim; g2.fillRect(x + (cw >> 1) - 1, y + (rh >> 1), 2, 1); }
     }
+    y += rh;
   });
+  if (ps >= 0) { g2.fillStyle = COL.or; g2.fillRect(x0 + ps * cw, y + 2, cw - 2, 2); }
   // scope
   const sw = TW - 56;
   g2.fillStyle = COL.dim; g2.fillRect(2, sy, sw + 2, sh); g2.fillStyle = COL.bg; g2.fillRect(3, sy + 1, sw, sh - 2);
@@ -1164,7 +871,7 @@ function drawTop() {
   g2.fillStyle = COL.dim; g2.fillRect(bx, sy, bw, sh); g2.fillStyle = COL.bg; g2.fillRect(bx + 1, sy + 1, bw - 2, sh - 2);
   g2.fillStyle = COL.mid; g2.fillRect(bx + bw / 2, sy + 1, 1, sh - 2); g2.fillRect(bx + 1, sy + sh / 2, bw - 2, 1);
   g2.fillStyle = on ? COL.or : COL.mid;
-  g2.fillRect(Math.round(bx + bw / 2 + LIVE.x * (bw / 2 - 3)) - 1, Math.round(sy + sh / 2 - LIVE.y * (sh / 2 - 3)) - 1, 3, 3);
+  g2.fillRect(Math.round(bx + bw / 2 + LIVE.x * (bw / 2 - 3)) - 2, Math.round(sy + sh / 2 - LIVE.y * (sh / 2 - 3)) - 2, 4, 4);
 }
 
 // ───────────────────────── frame loop ─────────────────────────
@@ -1178,13 +885,12 @@ function frame(ts) {
   const live = TILT.on || S.demo;
   if (E && (live || wasLive)) E.applyMaster(E.c.currentTime);
   wasLive = live;
-  // playhead + playing-loop marker
   const cur = nowStep(), ph = cur && cur.loop === S.edit ? cur.s : -1, pl = cur ? cur.loop : -1;
   if (ph !== lastPh) { for (const c of phCells) c.classList.toggle('ph', +c.dataset.s === ph); lastPh = ph; }
   if (pl !== lastPl) { const b = $('#lpk'); if (b) b.classList.toggle('pl', pl === S.edit); lastPl = pl; }
   if (S.demo) {
     if (!demoT) demoT = ts;
-    if (ts - demoT > 9000) { demoT = ts; demoI = (demoI + 1) % DEMOS.length; setProject(demoProject(demoI)); play(); }
+    if (ts - demoT > 9000) { demoT = ts; demoI = (demoI + 1) % DEMOS.length; setProject(demoProject(demoI)); if (!S.playing) play(); }
   }
   drawTop();
   requestAnimationFrame(frame);
@@ -1193,7 +899,7 @@ function frame(ts) {
 // ───────────────────────── boot ─────────────────────────
 fitTop(); render();
 requestAnimationFrame(frame);
-document.addEventListener('visibilitychange', () => { if (document.hidden) LS.set('tiltseq.cur', JSON.stringify(P)); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) LS.set('tiltseq.toy', JSON.stringify(P)); });
 
 // demo hook for the AI tester
 window.__tiltseq = {
@@ -1203,12 +909,12 @@ window.__tiltseq = {
   },
   startDemo() { this.setDemo(true); },
   stopDemo() { this.setDemo(false); },
-  state() { return { score: S.steps, mode: P.name, playing: S.playing, loops: P.len, tracks: P.tracks.length, audio: E ? E.c.state : 'none' }; },
-  render: async loops => { const b = await renderAudio(loops || 1); let pk = 0, ss = 0; const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) { pk = Math.max(pk, Math.abs(d[i])); ss += d[i] * d[i]; } return { len: b.length, sr: b.sampleRate, peak: pk, rms: Math.sqrt(ss / d.length) }; },
-  wav: async () => toWav(await renderAudio(1)).size,
-  mp3: async () => (await toMp3(await renderAudio(1), () => {})).size,
-  load: i => setProject(demoProject(i)),
-  importText, get P() { return P; }, S, DEMOS,
+  state() { return { score: S.steps, mode: P.name, playing: S.playing, loops: P.len, audio: E ? E.c.state : 'none' }; },
+  render: async () => { const b = await renderAudio(); let pk = 0, ss = 0; const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) { pk = Math.max(pk, Math.abs(d[i])); ss += d[i] * d[i]; } return { len: b.length, peak: pk, rms: Math.sqrt(ss / d.length) }; },
+  wav: async () => toWav(await renderAudio()).size,
+  mp3: async () => (await toMp3(await renderAudio(), () => {})).size,
+  load: i => setProject(demoProject(i)), kit: setKit,
+  importText, get P() { return P; }, S, DEMOS, KITS,
 };
 if (new URLSearchParams(location.search).get('demo') === '1') window.__tiltseq.setDemo(true);
 
