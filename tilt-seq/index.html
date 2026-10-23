@@ -31,11 +31,9 @@
       padding: calc(env(safe-area-inset-top, 0px) + 6px) 8px calc(env(safe-area-inset-bottom, 0px) + 6px); }
     #dev > * { width: 100%; max-width: 480px; }
 
-    #topshell { background: var(--shell); border: 2px solid var(--edge); border-bottom: 0; border-radius: 12px 12px 0 0; padding: 8px 10px 6px; }
-    #topscr { background: #0b130d; outline: 2px solid #000; aspect-ratio: 5 / 3; display: grid; place-items: center; overflow: hidden; }
+    #topshell { background: var(--shell); border: 2px solid var(--edge); border-bottom: 0; border-radius: 12px 12px 0 0; padding: 8px 10px; }
+    #topscr { background: #0b130d; outline: 2px solid #000; height: clamp(110px, 25vh, 230px); display: grid; place-items: center; overflow: hidden; }
     #top { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
-    #brand { display: flex; justify-content: space-between; color: var(--dim); font-size: 15px; letter-spacing: 2px; padding: 4px 2px 0; }
-    #brand b { color: var(--or); font-weight: 400; }
 
     #hinge { background: var(--shell2); border: 2px solid var(--edge); display: flex; gap: 4px; padding: 5px 6px; align-items: stretch; }
     #hinge .b { height: 34px; min-width: 30px; padding: 0 6px; }
@@ -48,7 +46,8 @@
     #tabs { display: flex; border-bottom: 2px solid #000; background: #101114; }
     #tabs button { flex: 1; padding: 7px 0 6px; color: var(--dim); font-size: 17px; border-right: 1px solid #000; }
     #tabs button.on { color: #000; background: var(--or); }
-    #panel { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px; touch-action: pan-y; }
+    #panel { flex: 1; min-height: 0; overflow: hidden; padding: 6px; display: flex; flex-direction: column; gap: 5px; }
+    .fill { flex: 1 1 0; min-height: 0; }
     #bot { position: relative; }
     #status { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); padding: 4px 8px 3px; font-size: 16px; color: var(--am); background: #000; border: 1px solid var(--line); white-space: nowrap; pointer-events: none; z-index: 5; }
     #status:empty { display: none; }
@@ -61,51 +60,42 @@
     .b.dis { opacity: .35; pointer-events: none; }
     .b.w { flex: 1; }
 
-    .row { display: flex; gap: 4px; align-items: center; margin-bottom: 5px; flex-wrap: wrap; }
+    .row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; flex: none; }
     .row.nw { flex-wrap: nowrap; }
     .lbl { color: var(--dim); font-size: 16px; }
-    .hd { color: var(--or); letter-spacing: 2px; margin: 6px 0 4px; font-size: 17px; border-bottom: 1px dashed var(--line); padding-bottom: 3px; }
     .sp { flex: 1; }
 
-    /* track chips */
-    #chips { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 4px; touch-action: pan-x; scrollbar-width: none; }
-    #chips::-webkit-scrollbar { display: none; }
-    .chip { flex: none; padding: 5px 6px 4px; background: var(--cell); border: 2px solid #000; font-size: 16px; color: var(--dim); }
-    .chip.drum { border-left: 4px solid var(--gr); } .chip.bass { border-left: 4px solid var(--am); } .chip.synth { border-left: 4px solid var(--cy); }
-    .chip.sel { color: var(--or); background: #000; border-color: var(--or); }
-    .chip.m { text-decoration: line-through; }
+    .pick { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .pick.drum { color: var(--gr); } .pick.bass { color: var(--am); } .pick.synth { color: var(--cy); }
+    .b.pl { box-shadow: inset 0 -4px 0 var(--gr); }
 
     /* step grids */
-    .grid { display: grid; gap: 2px; touch-action: none; }
+    .grid { display: grid; gap: 2px; touch-action: none; align-content: start; }
     .ga { grid-template-columns: 42px repeat(16, 1fr); }
-    .ga .nm { font-size: 14px; color: var(--dim); overflow: hidden; white-space: nowrap; padding: 4px 2px 0 6px; background: #101114; height: 22px; }
+    .ga .nm { font-size: 14px; color: var(--dim); overflow: hidden; white-space: nowrap; padding: 0 2px 0 6px; background: #101114; display: flex; align-items: center; min-height: 0; }
     .ga .nm.sel { color: var(--or); background: #000; }
-    .c { height: 22px; background: var(--cell); }
+    .c { min-height: 0; background: var(--cell); }
     .c.q4 { background: #2e333a; }
     .c.v1 { background: var(--gr); } .c.v2 { background: var(--gr); box-shadow: inset 0 0 0 4px #4f8a35; }
     .c.n { background: var(--am); } .c.n.cy { background: var(--cy); }
     .c.ph { outline: 2px solid var(--or); outline-offset: -2px; }
     .c.v1.ph, .c.v2.ph, .c.n.ph { filter: brightness(1.25); }
     .roll { grid-template-columns: 34px repeat(16, 1fr); gap: 1px; }
-    .roll .k { font-size: 13px; padding: 4px 2px 0; height: 21px; background: #2c3036; color: var(--txt); }
+    .roll .k { font-size: 13px; padding: 0 2px; display: flex; align-items: center; min-height: 0; overflow: hidden; background: #2c3036; color: var(--txt); }
     .roll .k.blk { background: #121316; color: var(--dim); }
-    .roll .c { height: 21px; }
     .roll .c.blk { background: #1c1f24; }
     .roll .c.up { box-shadow: inset 0 3px 0 var(--am); } .roll .c.dnn { box-shadow: inset 0 -3px 0 var(--am); }
     .roll .k.fx { background: #101114; color: var(--dim); }
 
-    /* loops strip */
-    #loops { display: flex; gap: 3px; flex: 1; min-width: 0; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
-    #loops::-webkit-scrollbar { display: none; }
-    .lp { flex: none; min-width: 34px; height: 30px; background: var(--cell); border: 2px solid #000; color: var(--dim); }
-    .lp.on { color: #000; background: var(--or); }
-    .lp.pl { box-shadow: inset 0 -4px 0 var(--gr); }
     .ga .nm.drum { box-shadow: inset 3px 0 0 var(--gr); } .ga .nm.bass { box-shadow: inset 3px 0 0 var(--am); } .ga .nm.synth { box-shadow: inset 3px 0 0 var(--cy); }
     .ga .nm.m { text-decoration: line-through; }
     .roll .c.sld { background: var(--cy); }
     /* knobs */
     .knobs.k5 { grid-template-columns: repeat(5, 1fr); }
-    .knobs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 2px; touch-action: none; }
+    .knobs.k8 { grid-template-columns: repeat(8, 1fr); gap: 2px 0; }
+    .k8 .kd { width: 30px; height: 30px; } .k8 .kd i { height: 10px; transform-origin: 2px 10px; }
+    .k8 .knob b { font-size: 12px; letter-spacing: 0; } .k8 .knob span { font-size: 13px; }
+    .knobs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 2px; touch-action: none; flex: none; }
     .knob { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 0; touch-action: none; }
     .kd { width: 38px; height: 38px; border-radius: 50%; background: #2c3036; border: 2px solid #000; box-shadow: inset 2px 2px 0 #4b5058, inset -2px -2px 0 #1b1d21; position: relative; }
     .kd i { position: absolute; left: 50%; top: 3px; width: 4px; height: 14px; margin-left: -2px; background: var(--or); transform-origin: 2px 15px; }
@@ -114,24 +104,23 @@
     .knob.act .kd { border-color: var(--or); }
 
 
-    .kb { position: relative; height: 92px; touch-action: none; }
+    .kb { position: relative; min-height: 56px; touch-action: none; }
     .kw, .kbk { position: absolute; top: 0; border: 2px solid #000; }
-    .kw { height: 92px; background: #2c3036; color: var(--dim); font-size: 13px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 3px; }
-    .kbk { height: 56px; background: #0b0c0e; z-index: 2; }
+    .kw { height: 100%; background: #2c3036; color: var(--dim); font-size: 13px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 3px; }
+    .kbk { height: 60%; background: #0b0c0e; z-index: 2; }
     .kw.on, .kbk.on { background: var(--or); }
 
 
 
-    .list { display: flex; flex-direction: column; gap: 3px; }
     .li { display: flex; align-items: center; gap: 4px; background: var(--cell); padding: 3px 3px 3px 6px; border: 2px solid #000; }
     .li > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     #modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
     #modal[hidden] { display: none; }
-    .mbox { width: 100%; max-width: 380px; background: var(--panel); border: 2px solid #000; outline: 2px solid var(--or); padding: 10px; max-height: 90vh; overflow-y: auto; }
+    .mbox { width: 100%; max-width: 380px; background: var(--panel); border: 2px solid #000; outline: 2px solid var(--or); padding: 10px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; gap: 4px; }
     .mbox h3 { font-weight: 400; color: var(--or); letter-spacing: 2px; margin-bottom: 8px; }
     .mbox audio { width: 100%; margin: 6px 0; }
-    .mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    .mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; flex: none; }
     input[type=file] { display: none; }
   </style>
 </head>
@@ -139,7 +128,6 @@
 <div id="dev">
   <div id="topshell">
     <div id="topscr"><canvas id="top" width="240" height="144"></canvas></div>
-    <div id="brand"><span><b>TILT-SEQ</b></span><span id="tiltLed"></span></div>
   </div>
   <div id="hinge">
     <button class="b" id="bPlay" aria-label="Play">&#9654;</button>
@@ -678,7 +666,6 @@ function dupLoop() {
   if (P.len >= MAXL) return toast('64 MAX');
   for (const t of P.tracks) t.pats.splice(S.edit + 1, 0, JSON.parse(JSON.stringify(t.pats[S.edit])));
   P.len++; dirty(); selLoop(S.edit + 1);
-  const el = document.querySelector('.lp.on'); if (el) el.scrollIntoView({ inline: 'nearest', block: 'nearest' });
 }
 function clrLoop() { for (const t of P.tracks) t.pats[S.edit] = emptyLoop(); dirty(); render(); }
 function delLoop() {
@@ -911,20 +898,27 @@ function cellCls(tr, v, s) {
   if (tr.type === 'drum') return v === 2 ? 'v2' : v ? 'v1' : (s % 4 === 0 ? 'q4' : '');
   return v ? ('n' + (tr.type === 'synth' ? ' cy' : '')) : (s % 4 === 0 ? 'q4' : '');
 }
-const defOct = tr => tr.type === 'bass' ? 1 : 3;
+const typeOct = tr => tr.type === 'bass' ? 1 : 3;
+// open the note grid on the octave the track already uses
+function defOct(tr) {
+  for (const p of tr.pats) for (const v of p) if (v) return Math.floor(v[0] / 12) - 1;
+  return typeOct(tr);
+}
 function rLoop() {
-  let h = `<div class="row nw"><div id="loops">${Array.from({ length: P.len }, (_, k) => `<button class="lp${k === S.edit ? ' on' : ''}" data-a="loop" data-i="${k}">${k + 1}</button>`).join('')}</div>
-    <button class="b on" data-a="dup">DUP</button><button class="b" data-a="lclr">CLR</button><button class="b" data-a="ldel">DEL</button><button class="b${S.repeat ? ' on' : ''}" data-a="rep">&#10227;</button></div>`;
-  h += `<div class="grid ga">`;
+  const n = P.tracks.length, tr = selT(), mel = tr && tr.type !== 'drum';
+  let h = `<div class="row nw"><button class="b" data-a="lprev">&#9664;</button><button class="b pick" id="lpk">${S.edit + 1}/${P.len}</button><button class="b" data-a="lnext">&#9654;</button>
+    <button class="b on" data-a="dup">DUP</button><button class="b" data-a="lclr">CLR</button><button class="b" data-a="ldel">DEL</button><button class="b${S.repeat ? ' on' : ''}" data-a="rep">&#10227;</button>${n < MAXT ? '<button class="b" data-a="add">+</button>' : ''}</div>`;
+  // grids stretch to the free height (no scrolling); rows cap at a comfortable size
+  h += `<div class="grid ga" style="flex:${mel ? n : 1} 1 0;min-height:0;grid-template-rows:repeat(${n},minmax(0,40px))">`;
   P.tracks.forEach((t, i) => {
     h += `<div class="nm ${t.type}${i === S.sel ? ' sel' : ''}${t.mute ? ' m' : ''}" data-a="sel" data-i="${i}">${t.name}</div>`;
     t.pats[S.edit].forEach((v, s) => { h += `<div class="c ${cellCls(t, v, s)}" data-s="${s}" data-t="${i}" data-p="cell"></div>`; });
   });
-  h += `</div>${P.tracks.length < MAXT ? '<button class="b" style="width:100%;margin-top:4px" data-a="add">+</button>' : ''}`;
-  const tr = selT();
-  if (!tr || tr.type === 'drum') return h;
+  h += `</div>`;
+  if (!mel) return h;
   const o = S.rollOct[tr.id] != null ? S.rollOct[tr.id] : defOct(tr), lo = (o + 1) * 12, hi = lo + 11, pat = tr.pats[S.edit];
-  h += `<div class="row nw" style="margin-top:6px"><span class="lbl" style="color:var(--${tr.type === 'bass' ? 'am' : 'cy'})">${tr.name}</span><span class="sp"></span><button class="b" data-a="oct" data-d="-1">-</button><span class="lbl">C${o}</span><button class="b" data-a="oct" data-d="1">+</button></div><div class="grid roll">`;
+  h += `<div class="row nw"><span class="lbl pick ${tr.type}">${tr.name}</span><button class="b" data-a="oct" data-d="-1">-</button><span class="lbl">C${o}</span><button class="b" data-a="oct" data-d="1">+</button></div>
+    <div class="grid roll" style="flex:13 1 0;min-height:0;grid-template-rows:repeat(13,minmax(0,32px))">`;
   for (let n = hi; n >= lo; n--) {
     h += `<div class="k${isBlack(n) ? ' blk' : ''}">${noteName(n)}</div>`;
     for (let s = 0; s < 16; s++) {
@@ -942,38 +936,48 @@ function kbHTML() {
   const lo = (S.kbOct + 1) * 12, whites = [];
   for (let n = lo; n < lo + 25; n++) if (!isBlack(n)) whites.push(n);
   const w = 100 / whites.length;
-  let h = '<div class="kb">';
+  let h = '<div class="kb fill">';
   whites.forEach((n, i) => h += `<div class="kw" data-p="key" data-n="${n}" style="left:${i * w}%;width:${w}%">${n % 12 === 0 ? noteName(n) : ''}</div>`);
   whites.forEach((n, i) => { if (isBlack(n + 1) && n + 1 < lo + 25) h += `<div class="kbk" data-p="key" data-n="${n + 1}" style="left:${(i + 0.68) * w}%;width:${w * 0.64}%"></div>`; });
   return h + '</div>';
 }
 function rSound() {
   const tr = selT();
-  let h = `<div id="chips">${P.tracks.map((t, i) => `<button class="chip ${t.type}${i === S.sel ? ' sel' : ''}${t.mute ? ' m' : ''}" data-a="sel" data-i="${i}">${t.name}</button>`).join('')}</div>`;
-  if (!tr) return h + '<button class="b" style="width:100%" data-a="add">+</button>';
+  if (!tr) return '<button class="b" data-a="add">+</button>';
+  let h = `<div class="row nw"><button class="b" data-a="tprev">&#9664;</button><button class="b pick ${tr.type}" data-a="ren">${tr.name}</button><button class="b" data-a="tnext">&#9654;</button>
+    ${P.tracks.length < MAXT ? '<button class="b" data-a="add">+</button>' : ''}<button class="b${tr.mute ? ' on' : ''}" data-a="mute">M</button><button class="b" data-a="del">DEL</button></div>`;
   const vol = knob('VOL', ctl(() => tr.vol, v => { tr.vol = v; dirty(true); }, null, .75));
   if (tr.type === 'drum') {
     h += `<div class="mgrid" style="grid-template-columns:repeat(4,1fr)">${DRUM_VOICES.map(v => `<button class="b${tr.voice === v ? ' on' : ''}" data-a="voice" data-v="${v}">${VLAB[v]}</button>`).join('')}</div>`;
-    h += `<div class="knobs k5" style="margin-top:8px">${PDEF.drum.map(([k, l]) => knob(l, pTrack(tr, k))).join('')}${vol}</div>`;
-    h += `<button class="b" style="width:100%;height:56px;margin:6px 0" data-p="hit">${tr.name}</button>`;
-  } else {
-    h += `<div class="row nw"><button class="b w${tr.type === 'bass' ? ' on' : ''}" data-a="eng" data-v="bass">S2K BASS</button><button class="b w${tr.type === 'synth' ? ' on' : ''}" data-a="eng" data-v="synth">SYNTH</button></div>`;
-    h += `<div class="row">${Object.keys(PRESETS[tr.type]).map(k => `<button class="b" data-a="pre" data-v="${k}">${k}</button>`).join('')}</div>`;
-    h += `<div class="knobs">${PDEF[tr.type].map(([k, l]) => knob(l, pTrack(tr, k))).join('')}${vol}</div>`;
-    h += `<div class="row nw" style="margin-top:6px"><button class="b" data-a="kbo" data-d="-1">-</button><span class="lbl">C${S.kbOct}</span><button class="b" data-a="kbo" data-d="1">+</button></div>` + kbHTML();
+    h += `<div class="knobs k5">${PDEF.drum.map(([k, l]) => knob(l, pTrack(tr, k))).join('')}${vol}</div>`;
+    return h + `<button class="b fill" data-p="hit">&#9679;</button>`;
   }
-  return h + `<div class="row nw" style="margin-top:6px"><button class="b w${tr.mute ? ' on' : ''}" data-a="mute">MUTE</button><button class="b w" data-a="del">DEL</button></div>`;
+  h += `<div class="row nw"><button class="b w${tr.type === 'bass' ? ' on' : ''}" data-a="eng" data-v="bass">S2K</button><button class="b w${tr.type === 'synth' ? ' on' : ''}" data-a="eng" data-v="synth">SYNTH</button>
+    <button class="b" data-a="kbo" data-d="-1">-</button><span class="lbl">C${S.kbOct}</span><button class="b" data-a="kbo" data-d="1">+</button></div>`;
+  h += `<div class="mgrid" style="grid-template-columns:repeat(4,1fr)">${Object.keys(PRESETS[tr.type]).map(k => `<button class="b" data-a="pre" data-v="${k}">${k.replace('S2K ', '')}</button>`).join('')}</div>`;
+  h += `<div class="knobs k8">${PDEF[tr.type].map(([k, l]) => knob(l, pTrack(tr, k))).join('')}${vol}</div>`;
+  return h + kbHTML();
 }
 function rFile() {
-  const sl = slots(), names = Object.keys(sl).sort((a, b) => sl[b].t - sl[a].t);
   let h = `<div class="row nw"><button class="b w" data-a="pname">${P.name}</button><button class="b" data-a="new">NEW</button></div>`;
-  h += `<div class="hd">RENDER</div><div class="row nw">${[1,2,4].map(n => `<button class="b${S.loops === n ? ' on' : ''}" data-a="loops" data-v="${n}">x${n}</button>`).join('')}
+  h += `<div class="row nw">${[1,2,4].map(n => `<button class="b${S.loops === n ? ' on' : ''}" data-a="loops" data-v="${n}">x${n}</button>`).join('')}
     <span class="sp"></span><button class="b${S.fmt === 'wav' ? ' on' : ''}" data-a="fmt" data-v="wav">WAV</button><button class="b${S.fmt === 'mp3' ? ' on' : ''}" data-a="fmt" data-v="mp3">MP3</button></div>
-    <button class="b on" style="width:100%;height:40px" data-a="render">&#9654; ${S.fmt.toUpperCase()}</button>`;
-  h += `<div class="hd">FILES</div><div class="row nw"><button class="b w" data-a="xproj">EXPORT</button><button class="b w" data-a="imp">IMPORT</button></div>`;
-  h += `<div class="hd">DEMOS</div><div class="mgrid">${DEMOS.map((d, i) => `<button class="b" data-a="demo" data-i="${i}">${d().name}</button>`).join('')}</div>`;
-  h += `<div class="hd">LOCAL</div><button class="b w" style="width:100%;margin-bottom:4px" data-a="ssave">SAVE</button><div class="list">${names.map(n => `<div class="li"><span>${n}</span><button class="b" data-a="sload" data-v="${encodeURIComponent(n)}">LOAD</button><button class="b" data-a="skill" data-v="${encodeURIComponent(n)}">DEL</button></div>`).join('')}</div>`;
-  return h + `<div class="lbl" style="margin-top:8px;font-size:13px">MP3: LAME / LGPL</div>`;
+    <button class="b on" style="height:40px;flex:none" data-a="render">&#9654; ${S.fmt.toUpperCase()}</button>`;
+  h += `<div class="row nw"><button class="b w" data-a="xproj">EXPORT</button><button class="b w" data-a="imp">IMPORT</button></div>`;
+  h += `<div class="row nw"><button class="b w" data-a="ssave">SAVE</button><button class="b w" data-a="sopen">LOAD</button></div>`;
+  h += `<div class="mgrid">${DEMOS.map((d, i) => `<button class="b" data-a="demo" data-i="${i}">${d().name}</button>`).join('')}</div>`;
+  return h + `<span class="sp"></span><div class="lbl" style="font-size:13px">MP3: LAME / LGPL</div>`;
+}
+// saved projects, newest first (capped so the dialog never scrolls)
+function openSlots() {
+  const sl = slots(), names = Object.keys(sl).sort((a, b) => sl[b].t - sl[a].t).slice(0, 8);
+  modal(`${names.map(n => `<div class="li"><span>${n}</span><button class="b" data-m="l" data-v="${encodeURIComponent(n)}">LOAD</button><button class="b" data-m="d" data-v="${encodeURIComponent(n)}">DEL</button></div>`).join('')}
+    <button class="b" data-m="x">CLOSE</button>`, (k, b) => {
+    const name = b.dataset.v && decodeURIComponent(b.dataset.v);
+    if (k === 'l') { closeModal(); const s = slots()[name]; if (s) setProject(fixProject(s.p)); }
+    if (k === 'd') { const all = slots(); delete all[name]; LS.set('tiltseq.slots', JSON.stringify(all)); openSlots(); }
+    if (k === 'x') closeModal();
+  });
 }
 
 // ───────────────────────── panel input ─────────────────────────
@@ -986,7 +990,7 @@ function audition(tr, n) {
 function lastNote(tr) {
   if (S.last[tr.id] != null) return S.last[tr.id];
   for (const p of tr.pats) for (const v of p) if (v) return v[0];
-  return (defOct(tr) + 1) * 12;
+  return (typeOct(tr) + 1) * 12;
 }
 let paint = null;
 panel.addEventListener('pointerdown', e => {
@@ -1042,7 +1046,12 @@ panel.addEventListener('click', e => {
   const a = el.dataset.a, i = +el.dataset.i, v = el.dataset.v, tr = selT();
   const A = {
     sel() { S.sel = i; },
-    loop() { selLoop(i); return true; },
+    lprev() { selLoop((S.edit + P.len - 1) % P.len); return true; },
+    lnext() { selLoop((S.edit + 1) % P.len); return true; },
+    tprev() { S.sel = (S.sel + P.tracks.length - 1) % P.tracks.length; },
+    tnext() { S.sel = (S.sel + 1) % P.tracks.length; },
+    ren() { const n = prompt('Name', tr.name); if (n) { tr.name = n.slice(0, 10).toUpperCase(); dirty(); } },
+    sopen() { openSlots(); return true; },
     dup() { dupLoop(); return true; },
     lclr() { clrLoop(); return true; },
     ldel() { delLoop(); return true; },
@@ -1068,8 +1077,6 @@ panel.addEventListener('click', e => {
     imp() { $('#fileIn').click(); return true; },
     demo() { setProject(demoProject(i)); return true; },
     ssave() { saveSlot(); return true; },
-    sload() { const s = slots()[decodeURIComponent(v)]; if (s) setProject(fixProject(s.p)); return true; },
-    skill() { const sl = slots(); delete sl[decodeURIComponent(v)]; LS.set('tiltseq.slots', JSON.stringify(sl)); },
   };
   if (A[a] && !A[a]()) render();
 });
@@ -1174,8 +1181,7 @@ function frame(ts) {
   // playhead + playing-loop marker
   const cur = nowStep(), ph = cur && cur.loop === S.edit ? cur.s : -1, pl = cur ? cur.loop : -1;
   if (ph !== lastPh) { for (const c of phCells) c.classList.toggle('ph', +c.dataset.s === ph); lastPh = ph; }
-  if (pl !== lastPl) { document.querySelectorAll('.lp').forEach((b, k) => b.classList.toggle('pl', k === pl)); lastPl = pl; }
-  $('#tiltLed').textContent = TILT.on ? (TILT.have ? `${LIVE.x >= 0 ? '+' : ''}${LIVE.x.toFixed(2)} ${LIVE.y >= 0 ? '+' : ''}${LIVE.y.toFixed(2)}` : '--') : '';
+  if (pl !== lastPl) { const b = $('#lpk'); if (b) b.classList.toggle('pl', pl === S.edit); lastPl = pl; }
   if (S.demo) {
     if (!demoT) demoT = ts;
     if (ts - demoT > 9000) { demoT = ts; demoI = (demoI + 1) % DEMOS.length; setProject(demoProject(demoI)); play(); }
