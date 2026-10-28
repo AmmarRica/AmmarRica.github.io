@@ -11,3 +11,6 @@ Gemfile.lock
 node_modules/
 package.json
 package-lock.json
+
+# Android build output
+build/

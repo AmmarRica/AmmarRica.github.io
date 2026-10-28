@@ -1,0 +1,52 @@
+name: Tilt Seq Android app
+
+on:
+  push:
+    branches: ["main"]
+    paths: ["tilt-seq/**", ".github/tilt-seq/**", ".github/workflows/tilt-seq-apk.yml"]
+  pull_request:
+    paths: ["tilt-seq/**", ".github/tilt-seq/**", ".github/workflows/tilt-seq-apk.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tilt-seq-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      # ubuntu-latest ships the Android SDK (ANDROID_HOME); no setup action needed
+
+      - name: Build APK
+        run: .github/tilt-seq/build-apk.sh ${{ github.run_number }}
+        env:
+          TILTSEQ_KEYSTORE_B64: ${{ secrets.TILTSEQ_KEYSTORE_B64 }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tilt-seq-apk
+          path: build/tilt-seq.apk
+
+      # main only: refresh the stable download link
+      #   https://github.com/AmmarRica/AmmarRica.github.io/releases/download/tilt-seq-apk/tilt-seq.apk
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tilt-seq-apk
+          name: Tilt Seq (Android)
+          body: "Android app for https://ammarrica.github.io/tilt-seq/ — download tilt-seq.apk, open it, allow install from this source."
+          files: build/tilt-seq.apk
+          make_latest: true
