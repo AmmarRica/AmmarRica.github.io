@@ -90,3 +90,4 @@ exclude:
   - .jekyll-cache
   - README.md
   - tests
+  - build

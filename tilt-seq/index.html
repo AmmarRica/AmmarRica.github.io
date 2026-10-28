@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Tilt Seq" />
-  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -638,13 +638,29 @@ function saveBlob(blob, name) {
 function canShare(blob, name) {
   try { return !!(navigator.canShare && navigator.canShare({ files: [new File([blob], name, { type: blob.type })] })); } catch (_) { return false; }
 }
+// Inside the Android app (Capacitor) browser downloads/share don't exist,
+// so files go through the native Filesystem + Share plugins instead.
+const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const blobB64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); });
+async function nativeShare(blob, name) {
+  const { Filesystem, Share } = window.Capacitor.Plugins;
+  const r = await Filesystem.writeFile({ path: name, data: await blobB64(blob), directory: 'CACHE' });
+  await Share.share({ title: name, url: r.uri });
+}
+async function nativeSave(blob, name) {
+  try {
+    await window.Capacitor.Plugins.Filesystem.writeFile({ path: 'TiltSeq/' + name, data: await blobB64(blob), directory: 'DOCUMENTS', recursive: true });
+    toast('DOCUMENTS/TILTSEQ');
+  } catch (_) { nativeShare(blob, name).catch(() => toast('FAILED')); }
+}
 function deliver(blob, name) {
   const isAudio = /^audio/.test(blob.type), url = isAudio ? URL.createObjectURL(blob) : '';
   const kb = blob.size > 1e6 ? (blob.size / 1e6).toFixed(1) + ' MB' : Math.ceil(blob.size / 1024) + ' KB';
   modal(`<h3>${name}</h3><div class="lbl">${kb}</div>${isAudio ? `<audio controls src="${url}"></audio>` : ''}
-    <div class="row"><button class="b w on" data-m="save">SAVE</button>${canShare(blob, name) ? '<button class="b w" data-m="share">SHARE</button>' : ''}<button class="b" data-m="x">CLOSE</button></div>`, k => {
-    if (k === 'save') saveBlob(blob, name);
-    if (k === 'share') navigator.share({ files: [new File([blob], name, { type: blob.type })], title: name }).catch(() => {});
+    <div class="row"><button class="b w on" data-m="save">SAVE</button>${NATIVE || canShare(blob, name) ? '<button class="b w" data-m="share">SHARE</button>' : ''}<button class="b" data-m="x">CLOSE</button></div>`, k => {
+    if (k === 'save') NATIVE ? nativeSave(blob, name) : saveBlob(blob, name);
+    if (k === 'share' && NATIVE) nativeShare(blob, name).catch(() => toast('FAILED'));
+    else if (k === 'share') navigator.share({ files: [new File([blob], name, { type: blob.type })], title: name }).catch(() => {});
     if (k === 'x') { closeModal(); if (url) URL.revokeObjectURL(url); }
   });
 }
@@ -698,7 +714,7 @@ function toWav(buf) {
 // LAME (LGPL) is a separate file, loaded only when exporting MP3.
 function loadLame() {
   if (window.lamejs) return Promise.resolve();
-  const urls = ['vendor/lame.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js'];
+  const urls = ['lib/lame.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js'];
   let i = 0;
   return new Promise((res, rej) => {
     const next = () => {
@@ -749,10 +765,22 @@ $('#bPlay').onclick = () => S.playing ? stop() : play();
 $('#bSpeed').onclick = () => { P.speed = (P.speed + 1) % SPEEDS.length; P.bpm = SPEEDS[P.speed]; if (E) E.sync(); dirty(); updHinge(); };
 $('#bKit').onclick = () => { setKit((P.kit + 1) % KITS.length); if (!S.playing) preview(0); };
 $('#bTilt').onclick = toggleTilt;
+// install: browser prompt where supported, Add to Home Screen hint on iOS, APK on Android
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
+const STANDALONE = NATIVE || (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const ANDROID = /Android/.test(navigator.userAgent);
+const APK_URL = 'https://github.com/AmmarRica/AmmarRica.github.io/releases/download/tilt-seq-apk/tilt-seq.apk';
+function install() {
+  if (installEvt) { installEvt.prompt(); installEvt.userChoice.finally(() => { installEvt = null; }); return; }
+  modal(`<h3>${IOS ? '&#11014; &rsaquo; ADD TO HOME SCREEN' : '&#8942; &rsaquo; INSTALL APP'}</h3><button class="b" data-m="x">OK</button>`, () => closeModal());
+}
 $('#bMenu').onclick = () => {
   modal(`<div class="mgrid">${DEMOS.map((d, i) => `<button class="b" data-m="demo" data-i="${i}">&#9835; ${i + 1}</button>`).join('')}</div>
     <div class="mgrid" style="grid-template-columns:1fr 1fr"><button class="b on" data-m="wav">WAV</button><button class="b on" data-m="mp3">MP3</button>
     <button class="b" data-m="out">SHARE</button><button class="b" data-m="in">OPEN</button></div>
+    ${STANDALONE ? '' : `<div class="mgrid" style="grid-template-columns:${ANDROID ? '1fr 1fr' : '1fr'}"><button class="b on" data-m="inst">&#11015; INSTALL</button>${ANDROID ? '<button class="b" data-m="apk">&#11015; APK</button>' : ''}</div>`}
     <div class="mgrid" style="grid-template-columns:1fr 1fr"><button class="b" data-m="new">NEW</button><button class="b" data-m="x">&#10005;</button></div>
     <div class="lbl" style="font-size:12px">MP3: LAME / LGPL</div>`, (k, b) => {
     if (k !== 'out' && k !== 'in') closeModal();
@@ -761,6 +789,8 @@ $('#bMenu').onclick = () => {
     if (k === 'out') exportBeat();
     if (k === 'in') { closeModal(); $('#fileIn').click(); }
     if (k === 'new') setProject(mkProject(P.kit));
+    if (k === 'inst') install();
+    if (k === 'apk') location.href = APK_URL;
   });
 };
 
@@ -918,7 +948,7 @@ window.__tiltseq = {
 };
 if (new URLSearchParams(location.search).get('demo') === '1') window.__tiltseq.setDemo(true);
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
+if (!NATIVE && 'serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
 }
 })();
