@@ -779,6 +779,7 @@ function updHinge() {
   $('#bKit').textContent = KITS[P.kit].name;
   $('#bTilt').classList.toggle('on', TILT.on);
   $('#bRec').classList.toggle('on', S.rec);
+  $('#bRec').setAttribute('aria-pressed', String(S.rec));
   panel.classList.toggle('jam', !S.rec);
 }
 $('#bPlay').onclick = () => S.playing ? stop() : play();
@@ -846,7 +847,8 @@ let paint = null;
 // play-only tap: sound + flash, nothing is stored
 function jam(el) {
   preview(+el.dataset.r);
-  el.classList.add('tap'); setTimeout(() => el.classList.remove('tap'), 160);
+  el.classList.remove('tap'); void el.offsetWidth; el.classList.add('tap');
+  clearTimeout(el._tap); el._tap = setTimeout(() => el.classList.remove('tap'), 160);
 }
 function setCell(el, v) {
   const r = +el.dataset.r, s = +el.dataset.s, t = P.tracks[r];
@@ -858,7 +860,7 @@ panel.addEventListener('pointerdown', e => {
   e.preventDefault();
   const r = +el.dataset.r;
   if (el.dataset.p === 'sw') { preview(r); return; }
-  if (!S.rec) { jam(el); paint = { jam: true, done: new Set([el]) }; return; }
+  if (!S.rec) { jam(el); paint = { jam: true, last: el }; return; }
   const v = P.tracks[r].pats[S.edit][+el.dataset.s] ? 0 : 1;
   setCell(el, v);
   if (v && !S.playing) preview(r);
@@ -868,16 +870,22 @@ panel.addEventListener('pointerdown', e => {
 panel.addEventListener('pointermove', e => {
   if (!paint) return;
   const el = document.elementFromPoint(e.clientX, e.clientY);
-  if (el && el.dataset && el.dataset.p === 'cell' && !paint.done.has(el)) { paint.done.add(el); if (paint.jam) jam(el); else { setCell(el, paint.v); dirty(); } }
+  if (!el || !el.dataset || el.dataset.p !== 'cell') return;
+  // jam: replay every time the drag enters a box; record: paint each box once per gesture
+  if (paint.jam) { if (el !== paint.last) { paint.last = el; jam(el); } }
+  else if (!paint.done.has(el)) { paint.done.add(el); setCell(el, paint.v); dirty(); }
 });
 const panelUp = () => { paint = null; };
 document.addEventListener('pointerup', panelUp); document.addEventListener('pointercancel', panelUp);
 panel.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
+  // pager actions re-render the panel: put keyboard focus back on the same button
+  const a = el.dataset.a, nth = [...panel.querySelectorAll(`[data-a="${a}"]`)].indexOf(el), hadFocus = document.activeElement === el;
   ({ lprev: () => selLoop((S.edit + P.len - 1) % P.len), lnext: () => selLoop((S.edit + 1) % P.len),
      dup: dupLoop, lclr: clrLoop, ldel: delLoop,
      iprev: () => { S.scr = (S.scr + SCREENS.length - 1) % SCREENS.length; render(); },
-     inext: () => { S.scr = (S.scr + 1) % SCREENS.length; render(); } })[el.dataset.a]();
+     inext: () => { S.scr = (S.scr + 1) % SCREENS.length; render(); } })[a]();
+  if (hadFocus && !el.isConnected) { const again = panel.querySelectorAll(`[data-a="${a}"]`)[nth]; if (again) again.focus(); }
 });
 
 
