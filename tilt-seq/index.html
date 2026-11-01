@@ -36,8 +36,9 @@
     #top { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 
     #hinge { background: var(--shell2); border: 2px solid var(--edge); display: flex; gap: 4px; padding: 5px 6px; align-items: stretch; }
-    #hinge .b { height: 38px; min-width: 40px; padding: 0 8px; }
-    #bKit { min-width: 70px !important; color: var(--or); }
+    #hinge .b { height: 38px; min-width: 36px; padding: 0 6px; }
+    .b.rec.on { background: var(--rd); color: #000; box-shadow: inset 2px 2px 0 #ff9a90, inset -2px -2px 0 #8d1a12; }
+    #bKit { min-width: 60px !important; color: var(--or); }
     #hinge .sp { flex: 1; }
 
     #botshell { flex: 1; min-height: 0; background: var(--shell); border: 2px solid var(--edge); border-top: 0; border-radius: 0 0 12px 12px;
@@ -67,8 +68,11 @@
 
     /* step grids */
     .grid { display: grid; gap: 2px; touch-action: none; align-content: start; }
-    .ga { grid-template-columns: 14px repeat(16, 1fr); }
-    .sw { min-height: 0; background: var(--sc); opacity: .7; }
+    .ga { grid-template-columns: 40px repeat(16, 1fr); }
+    .sw { min-height: 0; display: flex; align-items: center; padding-left: 6px; overflow: hidden; white-space: nowrap;
+      font-size: 13px; color: var(--txt); background: #101114; box-shadow: inset 3px 0 0 var(--sc); }
+    .ga .c.tap { background: var(--sc); filter: brightness(1.4); }
+    .pick.mel { color: var(--cy); } .pick.bass { color: var(--am); } .pick.drum { color: var(--gr); }
     .ga.mel { --sc: var(--cy); } .ga.bass { --sc: var(--am); } .ga.drum { --sc: var(--gr); }
     .ga .c.on { background: var(--sc); }
     .c.on.ph { filter: brightness(1.3); }
@@ -99,6 +103,7 @@
   </div>
   <div id="hinge">
     <button class="b" id="bPlay" aria-label="Play">&#9654;</button>
+    <button class="b rec" id="bRec" aria-label="Record">&#9679; REC</button>
     <button class="b" id="bSpeed" aria-label="Speed"></button>
     <button class="b" id="bKit" aria-label="Sound"></button>
     <span class="sp"></span>
@@ -159,47 +164,57 @@ const PRESETS = {
 
 // ───────────────────────── toy model ─────────────────────────
 // Fixed rows, all tuned to C minor pentatonic so any tap sounds good:
-// 6 melody notes, 3 bass notes, 4 drums. Each row is its own track.
+// 8 lead notes, 5 bass notes, 6 drums. Each row is its own track.
 const ROWS = [
-  ...[72, 70, 67, 65, 63, 60].map(note => ({ kind: 'mel', note })),
-  ...[43, 39, 36].map(note => ({ kind: 'bass', note })),
-  ...['chat', 'clap', 'snare', 'kick'].map(voice => ({ kind: 'drum', voice })),
+  ...[77, 75, 72, 70, 67, 65, 63, 60].map(note => ({ kind: 'mel', note })),
+  ...[46, 43, 41, 39, 36].map(note => ({ kind: 'bass', note })),
+  ...['chat', 'ohat', 'clap', 'snare', 'tom', 'kick'].map(voice => ({ kind: 'drum', voice })),
 ];
-const SECTIONS = [['mel', 0, 6], ['bass', 6, 9], ['drum', 9, 13]];
+const rowKey = r => r.kind === 'drum' ? r.voice : r.kind + r.note;
+const ROW_IDX = Object.fromEntries(ROWS.map((r, i) => [rowKey(r), i]));
+// v3 beats and the demo strings use the older 13-row layout
+const V3_KEYS = ['mel72', 'mel70', 'mel67', 'mel65', 'mel63', 'mel60', 'bass43', 'bass39', 'bass36', 'chat', 'clap', 'snare', 'kick'];
+const SECTIONS = [['mel', 0, 8], ['bass', 8, 13], ['drum', 13, 19]];
+// instrument screens: everything, then one per instrument
+const SCREENS = ['all', 'mel', 'bass', 'drum'];
+const SEC_NAME = { mel: 'LEAD', bass: 'BASS', drum: 'DRUMS' };
+const NN = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const DRUM_NAME = { kick: 'KICK', snare: 'SNARE', clap: 'CLAP', chat: 'HAT', ohat: 'OPEN', tom: 'TOM' };
+const rowName = r => r.kind === 'drum' ? DRUM_NAME[r.voice] : NN[r.note % 12] + (Math.floor(r.note / 12) - 1);
 const MAXL = 32, SPEEDS = [90, 120, 150];
 const emptyLoop = () => Array(16).fill(0);
 const synthP = over => { const p = {}; PDEF.synth.forEach(([k, , d]) => p[k] = d); return Object.assign(p, over); };
 const bassP = over => { const p = {}; PDEF.bass.forEach(([k, , d]) => p[k] = d); return Object.assign(p, over); };
 // A kit swaps every row's sound at once.
 const KITS = [
-  { name: 'S2K',
+  { name: 'S2K', inst: { mel: 'PLUCK', bass: 'S2K SUB', drum: 'JUNGLE' },
     mel: { type: 'synth', p: synthP({ wave: .3, wave2: 0, oct2: .6, detune: .2, mix2: .5, cutoff: .55, reso: .25, env: .35, decay: .25, sustain: .2, release: .25, gate: .5, drive: .1 }), vol: .5, send: .35 },
     bass: { type: 'bass', p: bassP(PRESETS.bass['S2K SUB']), vol: .85 },
     drum: { kick: { tune: .4, decay: .35, tone: .45, snap: .45 }, snare: { tune: .66, decay: .32, tone: .6, snap: .75 }, clap: {}, chat: { decay: .2 } } },
-  { name: 'ACID',
+  { name: 'ACID', inst: { mel: 'SAW LEAD', bass: 'ACID 303', drum: 'HOUSE' },
     mel: { type: 'synth', p: synthP(PRESETS.synth.LEAD), vol: .45, send: .4 },
     bass: { type: 'synth', p: synthP(PRESETS.synth.ACID), vol: .7 },
     drum: { kick: { tune: .38, decay: .4, tone: .5, snap: .4 }, snare: {}, clap: {}, chat: { decay: .15 } } },
-  { name: '8BIT',
+  { name: '8BIT', inst: { mel: 'SQUARE', bass: 'SQUARE BASS', drum: 'CHIP' },
     mel: { type: 'synth', p: synthP({ wave: .3, wave2: .3, oct2: .6, detune: 0, mix2: .3, cutoff: .8, reso: 0, env: .1, decay: .2, sustain: .5, release: .05, gate: .45, drive: 0 }), vol: .55, send: .2 },
     bass: { type: 'synth', p: synthP({ wave: .55, wave2: .3, oct2: .3, detune: 0, mix2: .4, cutoff: .7, reso: 0, env: .1, decay: .2, sustain: .7, release: .05, gate: .6, drive: 0 }), vol: .75 },
-    drum: { kick: { tune: .55, decay: .2, tone: .7, snap: .1 }, snare: { tune: .7, decay: .2, tone: .8, snap: .9 }, clap: { decay: .2 }, chat: { decay: .08, tone: .8 } } },
-  { name: 'DREAM',
+    drum: { kick: { tune: .55, decay: .2, tone: .7, snap: .1 }, snare: { tune: .7, decay: .2, tone: .8, snap: .9 }, clap: { decay: .2 }, chat: { decay: .08, tone: .8 }, ohat: { decay: .2, tone: .8 }, tom: { decay: .25, tune: .6 } } },
+  { name: 'DREAM', inst: { mel: 'SOFT PAD', bass: 'S2K WARM', drum: 'SOFT' },
     mel: { type: 'synth', p: synthP({ wave: .55, wave2: 0, oct2: .6, detune: .5, mix2: .4, cutoff: .5, reso: .15, env: .25, decay: .5, attack: .25, sustain: .6, release: .55, gate: .8, drive: 0 }), vol: .45, send: .6 },
     bass: { type: 'bass', p: bassP(PRESETS.bass['S2K WARM']), vol: .8 },
     drum: { kick: { tune: .3, decay: .55, tone: .3, snap: .1 }, snare: { tune: .4, decay: .5, tone: .3, snap: .4 }, clap: { decay: .6 }, chat: { decay: .3, tone: .3 } } },
 ];
 let UID = 1;
-// Build the 13 row-tracks for a kit, keeping existing step data.
+// Build the row-tracks for a kit, keeping existing step data (pats indexed like ROWS).
 function kitTracks(k, pats, len) {
   const K = KITS[k];
   return ROWS.map((r, i) => {
-    const src = pats && pats[i], t = { id: UID++, type: 'drum', voice: null, p: {}, vol: .7, pan: 0, mute: false, send: 0, note: r.note,
+    const src = pats && pats[i], t = { id: UID++, key: rowKey(r), type: 'drum', voice: null, p: {}, vol: .7, pan: 0, mute: false, send: 0, note: r.note,
       pats: Array.from({ length: len }, (_, l) => emptyLoop().map((z, s) => src && src[l] && src[l][s] ? (r.kind === 'drum' ? 1 : [r.note, 0, 0]) : 0)) };
     if (r.kind === 'drum') {
       t.voice = r.voice; PDEF.drum.forEach(([key, , d]) => t.p[key] = d);
       Object.assign(t.p, DRUM_DEF[r.voice] || {}, K.drum[r.voice] || {});
-      t.vol = r.voice === 'chat' ? .5 : r.voice === 'kick' ? .85 : .65;
+      t.vol = { chat: .5, ohat: .45, kick: .85, tom: .6 }[r.voice] || .65;
     } else {
       const S = K[r.kind];
       t.type = S.type; t.p = Object.assign({}, S.p); t.vol = S.vol; t.send = S.send || 0;
@@ -207,15 +222,17 @@ function kitTracks(k, pats, len) {
     return t;
   });
 }
-function mkProject(k) { return { fmt: 'tiltseq', v: 3, name: 'TOY', kit: k || 0, speed: 1, bpm: SPEEDS[1], swing: 0, len: 1,
+function mkProject(k) { return { fmt: 'tiltseq', v: 4, name: 'TOY', kit: k || 0, speed: 1, bpm: SPEEDS[1], swing: 0, len: 1,
   master: { vol: .85, cut: .5, res: .1, dtime: 3, dfb: .35, dmix: .8 }, tracks: kitTracks(k || 0, null, 1) }; }
-// Validate a saved/imported toy beat (v3); older formats start fresh.
+// Validate a saved/imported toy beat (v4 rows carry a key, v3 rows map by position); older formats start fresh.
 function fixProject(src) {
-  if (!src || src.v !== 3 || !Array.isArray(src.tracks)) return null;
+  if (!src || (src.v !== 3 && src.v !== 4) || !Array.isArray(src.tracks)) return null;
   const k = clamp(src.kit | 0, 0, KITS.length - 1), len = clamp(src.len | 0, 1, MAXL);
   const P = mkProject(k);
   P.speed = clamp(src.speed | 0, 0, SPEEDS.length - 1); P.bpm = SPEEDS[P.speed]; P.len = len;
-  P.tracks = kitTracks(k, src.tracks.slice(0, ROWS.length).map(t => t && t.pats), len);
+  const pats = ROWS.map(() => null);
+  src.tracks.forEach((t, i) => { const at = ROW_IDX[src.v === 4 ? t && t.key : V3_KEYS[i]]; if (t && at != null) pats[at] = t.pats; });
+  P.tracks = kitTracks(k, pats, len);
   return P;
 }
 
@@ -247,7 +264,8 @@ const DEMOS = [
 function demoProject(i) {
   const D = DEMOS[i], P = mkProject(D.kit);
   P.speed = D.speed; P.bpm = SPEEDS[D.speed]; P.len = D.loops.length; P.name = KITS[D.kit].name;
-  const pats = ROWS.map((r, ri) => D.loops.map(L => [...L[ri]].map(c => c === 'x' ? 1 : 0)));
+  const pats = ROWS.map(() => null);
+  V3_KEYS.forEach((key, ri) => { pats[ROW_IDX[key]] = D.loops.map(L => [...L[ri]].map(c => c === 'x' ? 1 : 0)); });
   P.tracks = kitTracks(D.kit, pats, P.len);
   return P;
 }
@@ -516,7 +534,7 @@ const LS = {
 };
 function loadCur() { try { const j = LS.get('tiltseq.toy'); return j ? fixProject(JSON.parse(j)) : null; } catch (_) { return null; } }
 let P = loadCur() || demoProject(0);
-const S = { edit: 0, playing: false, steps: 0, demo: false };
+const S = { edit: 0, playing: false, steps: 0, demo: false, rec: false, scr: 0 };
 const LIVE = { x: 0, y: 0 };
 const TILT = { on: false, have: false, g: 0, b: 0, cg: 0, cb: 0, cal: false };
 const flash = ROWS.map(() => new Float64Array(16).fill(-9));   // audio time each cell last fired
@@ -664,7 +682,7 @@ function deliver(blob, name) {
     if (k === 'x') { closeModal(); if (url) URL.revokeObjectURL(url); }
   });
 }
-function exportBeat() { deliver(new Blob([JSON.stringify({ fmt: 'tiltseq', kind: 'toy', v: 3, project: P })], { type: 'application/json' }), 'tilt-toy-' + Date.now().toString(36) + '.json'); }
+function exportBeat() { deliver(new Blob([JSON.stringify({ fmt: 'tiltseq', kind: 'toy', v: 4, project: P })], { type: 'application/json' }), 'tilt-toy-' + Date.now().toString(36) + '.json'); }
 function importText(txt) {
   let o; try { o = JSON.parse(txt); } catch (_) { return toast('BAD FILE'); }
   const np = fixProject(o && o.project ? o.project : o);
@@ -760,11 +778,15 @@ function updHinge() {
   $('#bSpeed').innerHTML = SPEED_LAB[P.speed];
   $('#bKit').textContent = KITS[P.kit].name;
   $('#bTilt').classList.toggle('on', TILT.on);
+  $('#bRec').classList.toggle('on', S.rec);
+  panel.classList.toggle('jam', !S.rec);
 }
 $('#bPlay').onclick = () => S.playing ? stop() : play();
 $('#bSpeed').onclick = () => { P.speed = (P.speed + 1) % SPEEDS.length; P.bpm = SPEEDS[P.speed]; if (E) E.sync(); dirty(); updHinge(); };
 $('#bKit').onclick = () => { setKit((P.kit + 1) % KITS.length); if (!S.playing) preview(0); };
 $('#bTilt').onclick = toggleTilt;
+// REC on: taps place boxes that stay. REC off: taps only play the sound.
+$('#bRec').onclick = () => { S.rec = !S.rec; updHinge(); };
 // install: browser prompt where supported, Add to Home Screen hint on iOS, APK on Android
 let installEvt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
@@ -799,10 +821,14 @@ function render() {
   if (S.edit >= P.len) S.edit = P.len - 1;
   let h = `<div class="row nw"><button class="b" data-a="lprev">&#9664;</button><button class="b pick" id="lpk">${S.edit + 1}/${P.len}</button><button class="b" data-a="lnext">&#9654;</button>
     <button class="b on" data-a="dup">DUP</button><button class="b" data-a="lclr">CLR</button><button class="b" data-a="ldel">DEL</button></div>`;
+  // instrument pager: ALL, LEAD, BASS, DRUMS, each named for the current kit
+  const scr = SCREENS[S.scr], K = KITS[P.kit];
+  h += `<div class="row nw"><button class="b" data-a="iprev">&#9664;</button><button class="b pick ${scr}" data-a="inext">${scr === 'all' ? 'ALL &middot; ' + K.name : SEC_NAME[scr] + ' &middot; ' + K.inst[scr]}</button><button class="b" data-a="inext">&#9654;</button></div>`;
   for (const [kind, a, b] of SECTIONS) {
-    h += `<div class="grid ga ${kind}" style="flex:${b - a} 1 0;min-height:0;grid-template-rows:repeat(${b - a},minmax(0,44px))">`;
+    if (scr !== 'all' && scr !== kind) continue;
+    h += `<div class="grid ga ${kind}" style="flex:${b - a} 1 0;min-height:0;grid-template-rows:repeat(${b - a},minmax(0,${scr === 'all' ? 40 : 56}px))">`;
     for (let r = a; r < b; r++) {
-      h += `<div class="sw" data-p="sw" data-r="${r}"></div>`;
+      h += `<div class="sw" data-p="sw" data-r="${r}">${rowName(ROWS[r])}</div>`;
       P.tracks[r].pats[S.edit].forEach((v, s) => { h += `<div class="c${v ? ' on' : ''}${s % 4 === 0 ? ' q4' : ''}" data-s="${s}" data-r="${r}" data-p="cell"></div>`; });
     }
     h += `</div>`;
@@ -817,6 +843,11 @@ function preview(r) {
   if (t.type === 'drum') e.hit(r); else e.noteOn(r, t.note, 0.75).release(e.c.currentTime + 0.25);
 }
 let paint = null;
+// play-only tap: sound + flash, nothing is stored
+function jam(el) {
+  preview(+el.dataset.r);
+  el.classList.add('tap'); setTimeout(() => el.classList.remove('tap'), 160);
+}
 function setCell(el, v) {
   const r = +el.dataset.r, s = +el.dataset.s, t = P.tracks[r];
   t.pats[S.edit][s] = v ? (t.type === 'drum' ? 1 : [t.note, 0, 0]) : 0;
@@ -827,6 +858,7 @@ panel.addEventListener('pointerdown', e => {
   e.preventDefault();
   const r = +el.dataset.r;
   if (el.dataset.p === 'sw') { preview(r); return; }
+  if (!S.rec) { jam(el); paint = { jam: true, done: new Set([el]) }; return; }
   const v = P.tracks[r].pats[S.edit][+el.dataset.s] ? 0 : 1;
   setCell(el, v);
   if (v && !S.playing) preview(r);
@@ -836,14 +868,16 @@ panel.addEventListener('pointerdown', e => {
 panel.addEventListener('pointermove', e => {
   if (!paint) return;
   const el = document.elementFromPoint(e.clientX, e.clientY);
-  if (el && el.dataset && el.dataset.p === 'cell' && !paint.done.has(el)) { paint.done.add(el); setCell(el, paint.v); dirty(); }
+  if (el && el.dataset && el.dataset.p === 'cell' && !paint.done.has(el)) { paint.done.add(el); if (paint.jam) jam(el); else { setCell(el, paint.v); dirty(); } }
 });
 const panelUp = () => { paint = null; };
 document.addEventListener('pointerup', panelUp); document.addEventListener('pointercancel', panelUp);
 panel.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   ({ lprev: () => selLoop((S.edit + P.len - 1) % P.len), lnext: () => selLoop((S.edit + 1) % P.len),
-     dup: dupLoop, lclr: clrLoop, ldel: delLoop })[el.dataset.a]();
+     dup: dupLoop, lclr: clrLoop, ldel: delLoop,
+     iprev: () => { S.scr = (S.scr + SCREENS.length - 1) % SCREENS.length; render(); },
+     inext: () => { S.scr = (S.scr + 1) % SCREENS.length; render(); } })[el.dataset.a]();
 });
 
 
@@ -874,7 +908,7 @@ function drawTop() {
   const sy = TH - 34, sh = 30, top = 12, x0 = 3, cw = Math.floor((TW - 6) / 16), avail = sy - top - 8, rh = Math.max(3, Math.floor(avail / ROWS.length));
   let y = top;
   ROWS.forEach((row, r) => {
-    if (r === 6 || r === 9) y += 3;
+    if (r === SECTIONS[1][1] || r === SECTIONS[2][1]) y += 3;
     const col = SEC_COL[row.kind], pat = P.tracks[r].pats[L] || [];
     for (let s = 0; s < 16; s++) {
       const x = x0 + s * cw, age = now - flash[r][s];
